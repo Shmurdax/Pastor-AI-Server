@@ -1,0 +1,405 @@
+# BETTER DAYS AHEAD
+ 
+Blue denotes PPT slide 
+Brown denotes instructions to technician 
+ 
+
+TEXT: Philippians 3:13-14 (NKJV) 
+“Brethren, I do not count myself to have 
+apprehended; but one thing I do, forgetting 
+those things which are behind and reaching 
+forward to those things which are ahead, 14 I 
+press toward the goal for the prize of the 
+upward call of God in Christ Jesus.” 
+ 
+
+INTRO: We all know there is nothing 
+impossible with God, but many things are 
+impossible for us. An impossibility that we all 
+grapple with is that we cannot live in our past, 
+present and future at the same time. 
+ 
+Try as we might, we can’t reach back into 
+yesterday. Many people go through life 
+attempting to recapture the past. This is a futile 
+exercise and a big waste of time and energy. 
+
+Try as we might, we can’t live in the future 
+prematurely. Because we spend so much time 
+tethered to the past and daydreaming about our 
+future, we miss the opportunities of the present. 
+Today is a gift, that is why it is called the 
+present. 
+ 
+I want to remind all of us, based on what Paul 
+said, that the future hinges on today…not 
+yesterday or tomorrow. 
+ 
+In order to properly step into our future we 
+must let go of the past, embrace the present and 
+patiently await the provision of God for our 
+future. 
+ 
+We all have a story. What is behind us, good or 
+bad, is certainly part of the future. But what is 
+ahead of us is everything we were created for. 
+
+Paul is letting us know that we should savor the 
+present, embrace the future, and let yesterday 
+stay where it belongs - behind us. 
+ 
+
+## I. TEMPORARY vs. PERMANENT…
+There are four temporaries in every person’s 
+life: 
+• Temporary relationships… Some people are 
+in your life for reasons and seasons (Paul 
+and Barnabas) (Paul and Demas) 
+• Temporary circumstances… Certain 
+circumstances enter and leave your life 
+quickly (Paul and Silas in a Philippian jail) 
+• Temporary struggles… Paul's perils - 2 
+Corinthians 11:24-28 (NKJV) “From the 
+Jews five times I received forty stripes 
+minus one. 25 Three times I was beaten 
+with rods; once I was stoned; three times I 
+was shipwrecked; a night and a day I have 
+been in the deep; 26 in journeys often, in 
+perils of waters, in perils of robbers, in 
+perils of my own countrymen, in perils of 
+the Gentiles, in perils in the city, in perils 
+
+in the wilderness, in perils in the sea, in 
+perils among false brethren; 27 in 
+weariness and toil, in sleeplessness often, 
+in hunger and thirst, in fastings often, in 
+cold and nakedness— 28 besides the other 
+things, what comes upon me daily: my 
+deep concern for all the churches.” 
+• Temporary successes… Paul’s pedigree 
+Philippians 3:4-8 (NKJV) “Though I also 
+might have confidence in the flesh. If 
+anyone else thinks he may have confidence 
+in the flesh, I more so: 5 circumcised the 
+eighth day, of the stock of Israel, of the 
+tribe of Benjamin, a Hebrew of the 
+Hebrews; concerning the law, a Pharisee; 
+6 concerning zeal, persecuting the church; 
+concerning the righteousness which is in 
+the law, blameless. 7 But what things were 
+gain to me, these I have counted loss for 
+Christ. 8 Yet indeed I also count all things 
+loss for the excellence of the knowledge of 
+Christ Jesus my Lord, for whom I have 
+
+suffered the loss of all things, and count 
+them as rubbish, that I may gain Christ.” 
+ 
+We should not allow the temporary in our 
+relationships, circumstances, struggles, and 
+successes to cause a permanent disability in our 
+present or future. 
+ 
+Most people believe their past has a hold on 
+them, but the truth is the past has no hands or 
+arms! We have a hold on our past! When will 
+we gather the courage to turn it loose? I 
+challenge you today, let it go! 
+ 
+If we will let go of what we have in our hand, 
+(the past) God will let go of what's in His hand: 
+• Blessing… 
+• Direction… 
+• Provision… 
+• Protection… 
+
+So what will it be? Are we going to be tethered 
+to the past or will we release it and embrace the 
+present while reaching for the future? 
+ 
+
+## II. PERMANENT vs. TEMPORARY…
+Last week we talked about temporary versus 
+permanent; this week I want to talk about 
+permanent versus temporary. 
+ 
+ 
+There are many things that occur in our lives 
+that are meant to be temporary. At the 
+appropriate time we are to put them in the rear 
+view mirror of our lives and move on because 
+better days are ahead. 
+ 
+There are seven things the Word of God tells us 
+to hold on to that I want to focus on today: 
+• Hold on to your faith… Hebrews 4:14 
+(CEV) “We have a great high priest, who 
+has gone into heaven, and he is Jesus the 
+Son of God. That is why we must hold on 
+to what we have said about him.” Hebrews 
+10:23 (CEV) “We must hold tightly to the 
+
+hope that we say is ours. After all, we can 
+trust the one who made the agreement with 
+us.” 
+• Hold on to your wife… Genesis 2:24 
+(NKJV) “Therefore a man shall leave his 
+father and mother and be joined to his 
+wife, and they shall become one flesh.” 
+Jesus quoted this verse in Matthew 19:5 
+(NKJV) “For this reason a man shall leave 
+his father and mother and be joined to his 
+wife, and the two shall become one flesh?” 
+Paul quoted this verse in Ephesians 5:31 
+(NKJV) “For this reason a man shall leave 
+his father and mother and be joined to his 
+wife, and the two shall become one flesh.” 
+• Hold on to the Word… 2 Thessalonians 
+2:15 (MSG) “Friends, take a firm stand, 
+feet on the ground and head high. Keep a 
+tight grip on what you were taught, 
+whether in personal conversation or by our 
+letter. May Jesus himself and God our 
+Father, who reached out in love and 
+surprised you with gifts of unending help 
+
+and confidence, put a fresh heart in you, 
+invigorate your work, enliven your 
+speech.” 2 Timothy 1:13 (MSG) “Keep at 
+your work, this faith and love rooted in 
+Christ, exactly as I set it out for you. It’s as 
+sound as the day you first heard it from 
+me. Guard this precious thing placed in 
+your custody by the Holy Spirit who works 
+in us.” Proverbs 4:13 (NKJV) “Take firm 
+hold of instruction, do not let go; Keep her, 
+for she is your life.” Paul talking to Titus 
+whom he left in charge of church planting 
+in Crete, says when you appoint a pastor 
+Titus 1:9 (CEV) “They must stick to the 
+true message they were taught, so that 
+their good teaching can help others and 
+correct everyone who opposes it.” 
+• Hold on to what is good… 1 Thessalonians 
+5:19-22 (MSG) “Don’t suppress the Spirit, 
+and don’t stifle those who have a word 
+from the Master. On the other hand, don’t 
+be gullible. Check out everything, and keep 
+
+only what’s good. Throw out anything 
+tainted with evil.” 
+• Hold on to your confidence… Hebrews 3:6 
+(AMP) “But Christ (the Messiah) was 
+faithful over His [own Father’s] house as 
+a Son [and Master of it]. And it is we who 
+are [now members] of this house, if we 
+hold fast and firm to the end our joyful 
+and exultant confidence and sense of 
+triumph in our hope [in Christ].” Hebrews 
+3:14 (AMP) “For we have become fellows 
+with Christ (the Messiah) and share in all 
+He has for us, if only we hold our first 
+newborn confidence and original assured 
+expectation [in virtue of which we are 
+believers] firm and unshaken to the end.” 
+Hebrews 10:35 (AMP) “Do not, therefore, 
+fling away your fearless confidence, for it 
+carries a great and glorious compensation 
+of reward.” 
+• Hold on to the things that cannot be 
+shaken… Hebrews 12:25-27 (NKJV) “See 
+that you do not refuse Him who speaks. 
+
+For if they did not escape who refused 
+Him who spoke on earth, much more shall 
+we not escape if we turn away from Him 
+who speaks from heaven, 26 whose voice 
+then shook the earth; but now He has 
+promised, saying, “Yet once more I shake 
+not only the earth, but also heaven.” 
+27 Now this, “Yet once more,” indicates the 
+removal of those things that are being 
+shaken, as of things that are made, that the 
+things which cannot be shaken may 
+remain.” Jesus speaks to the church of 
+Philadelphia through John and said, 
+Revelation 3:10-11 (NKJV) “Because you 
+have kept My command to persevere, I also 
+will keep you from the hour of trial which 
+shall come upon the whole world, to test 
+those who dwell on the earth. 11 Behold, I 
+am coming quickly! Hold fast what you 
+have, that no one may take your crown.” 
+• Hold on to the name of Jesus… Revelation 
+2:8-15 (NKJV) ““And to the angel of the 
+church in Smyrna (The persecuted church) 
+
+write, ‘These things says the First and the 
+Last, who was dead, and came to life: 9 “I 
+know your works, tribulation, and poverty 
+(but you are rich); and I know the 
+blasphemy of those who say they are Jews 
+and are not, but are a synagogue of Satan. 
+10 Do not fear any of those things which 
+you are about to suffer. Indeed, the devil is 
+about to throw some of you into prison, 
+that you may be tested, and you will have 
+tribulation ten days. Be faithful until 
+death, and I will give you the crown of life. 
+11 “He who has an ear, let him hear what 
+the Spirit says to the churches. He who 
+overcomes shall not be hurt by the second 
+death.”’ 12 “And to the angel of the church 
+in Pergamos write, ‘These things says He 
+who has the sharp two-edged sword: 13 “I 
+know your works, and where you dwell, 
+where Satan’s throne is. And you hold fast 
+to My name, and did not deny My faith 
+even in the days in which Antipas was My 
+faithful martyr, who was killed among you, 
+
+where Satan dwells. 14 But I have a few 
+things against you, because you have there 
+those who hold the doctrine of Balaam, 
+who taught Balak to put a stumbling block 
+before the children of Israel, to eat things 
+sacrificed to idols, and to commit sexual 
+immorality. 15 Thus you also have those 
+who hold the doctrine of the Nicolaitans, 
+which thing I hate.” 
+ 
+In order to hold on to what is important and 
+permanent, you have to let go of what is 
+temporary and behind you. 
+ 
+Philippians 3:13-14 (NKJV) “Brethren, I do 
+not count myself to have apprehended; but one 
+thing I do, forgetting those things which are 
+behind and reaching forward to those things 
+which are ahead, 14 I press toward the goal 
+for the prize of the upward call of God in 
+Christ Jesus.” 
+
+Romans 8:28 (NKJV) “And we know that all 
+things work together for good to those who 
+love God, to those who are the called 
+according to His purpose.” 
+ 
+
+## III. THE STORY IN PART, BUT NOT IN
+WHOLE… 
+We all have a story, and that story consists of 
+the past, present, and the future. Each of us has 
+been sent into this world by a God who had a 
+divine design for our lives. Psalm 139:13-16 
+(CEV) “You are the one who put me together 
+inside my mother’s body, 14 and I praise you 
+because of the wonderful way you created me. 
+Everything you do is marvelous! Of this I have 
+no doubt. 15 Nothing about me is hidden from 
+you! I was secretly woven together deep in the 
+earth below, 16 but with your own eyes you saw 
+my body being formed. Even before I was born 
+you had written in your book everything I 
+would do.” (Use a set of blue prints here) 
+
+God created you to be not only who you are, 
+but who He is making you into. 
+ 
+It is a fact that our past is a part of our story, but 
+the truth is it does not have to design our 
+present nor negatively influence our future: 
+• Abraham was a liar, but became the father 
+of the faith… 
+• Moses was a murderer, but became a 
+deliverer… 
+• Samson was a womanizer, but God used 
+him to settle the score with a nation… 
+• David was a cheater and murderer, but God 
+recognized him as a “man after His own 
+heart”… 
+• Paul was a ruthless maniac, but became an 
+Apostle of the New Testament Church… 
+• Peter was a filthy mouthed fisherman, but 
+God used him to take the message of Christ 
+to the gentiles… 
+• The Philippian jailer was a sleaze bag, but 
+God saved his entire household in one 
+terrific night… 
+
+• John was an average fisherman, but God 
+used him to write the greatest revelation 
+ever known to man… 
+ 
+How long are we going to allow our past to 
+cripple our present and dictate our future? 
+ 
+The things that are behind are a part of our 
+story, but they are not the whole story! 
+ 
+Romans 8:28 (NKJV) “And we know that all 
+things work together for good to those who 
+love God, to those who are the called 
+according to His purpose.” (Use Braden’s train 
+track to illustrate this) 
+ 
+God is making the entirety of your story count, 
+even the ugly parts. 
+ 
+God wrote our stories, then tailor made us to 
+live it out. The timing of our destiny is 
+dependent on several factors: 
+• Can we forget the past? 
+
+• Can we learn from our mistakes? 
+• Can we trust God enough to embrace today? 
+• Can we confidently reach into our future 
+while not allowing the shadow of the past to 
+cloud the plan of God? 
+ 
+Jeremiah 29:10-11 (MSG) “This is GOD’s 
+Word on the subject: “As soon as Babylon’s 
+seventy years are up and not a day before, I’ll 
+show up and take care of you as I promised 
+and bring you back home. I know what I’m 
+doing. I have it all planned out—plans to take 
+care of you, not abandon you, plans to give 
+you the future you hope for.” 
+ 
+The story of our lives and ministries, as it 
+stands today, is in part but not in whole! Better 
+days are ahead! 
+ 
+(Tell my story) 
+
+## III. (This would be a fantastic place to share
+your story.) 
+ 
+ 
+ 
+Sermon 4: Those Things Behind God 
+ 
+
+## I. My forgiven past is behind God.
+Isaiah 38:17 
+Isaiah 43:25 
+Romans 8:33 
+ 
+
+## II. God is in charge of my destiny.
+I was formed for this moment. 
+Mordecai to Esther…” And who knows but that 
+you have come to your royal position for such a 
+time as this?” (Esther 4:14) 
+
+I can handle this moment. 
+1 Corinthians 10:13 
+Philippians 4:13 
+ 
+ 
+
+## III. My life is not my own.
+I was bought with a price. 
+a. 1 Corinthians 6:20 
+b. 1 Corinthians 7:23 
+c. 1 Peter 1:18

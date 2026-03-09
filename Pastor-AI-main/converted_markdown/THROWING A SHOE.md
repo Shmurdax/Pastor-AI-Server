@@ -1,0 +1,47 @@
+Scriptures:  Deut.  25:9-10\
+Ruth 4:7-8, Psalms 60:8 and Psalms 108:9\
+\
+I Chronicles 16:15 says Be ye mindful always of his covenant; the word
+which he commanded to a thousand generations.  Covenant means
+(everlasting enduring forever, eternal)\
+\
+In the messagebible it says HE KEEPS HIS COMMITMENTS ACROSS THOUSANDS OF
+GENERATIONS, THE COVENANT HE COMMANDED.  Covenant is a formal,  binding
+agreement.\
+\
+It was a custom in Israel that when a man gave up a piece of property he
+took off his shoe in the gate before the  elders as a sign that the one
+to whom he sold it had the ONLY LEGAL right to walk on the property.  It
+was a symbol of the transfer of ownership.  Once the shoe was tossed,
+the property and all the rights thereof belonged to the person it was
+transferred to.  In your case, you are transferring the rights to God
+the Father, and the Holy Spirit is the Realtor and Jesus is the
+attorney. \
+\
+The transfer of the property in Psalms means you waive all the rights of
+the property, it is passed from one owner to the other.  The elders
+witnessing the transaction are like the jurors.\
+\
+The whole setting is like a courtroom. \
+\
+Psalsms 60:8 Moab is my washpot oover Edom will I cas out my shoe,
+Philistia, triumphs because of me. (To triumph means to take victory
+over, in Hebrew roo-ah (rawa)  to mar by BREAKING-shout for joy,
+destroy, sound an alarm. The word "over is an "idiom: which means
+taking possession,   When a one bought a piece of property in olden
+times he rec\'d the shoe of the seller in the presence of the elders of
+Israel as a sign of a change in possession.  It symbolized the right to
+tread upon.  The soil belongs to the new owner, hence the transfer of
+the sandal was to be as a token of the transfer of ownership. \
+\
+Therefore,\
+\
+When you cast your shoe, you are decreeing God\'s covenant and enacting
+it upon the situation.  God is the judge of the courtroom.  The elders
+or witnesses are the same as the people who act as a notary when a legal
+and binding agreement is taking place such as in a courtroom or
+attorney\'s office.  The people being prayed for are the one\'s pleading
+their case to the covenant owner.  God says he honors his WORD above his
+name.  Jesus is a paracleate/or attorney representing the case. \
+\
+In the mouth of two more more witnesses everything is established.

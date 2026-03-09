@@ -5,7 +5,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 
 # === CONFIG ===
-DATA_DIR = r'C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\converted_markdown\converted_markdown'  
+DATA_DIR = r'C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\converted_markdown'  
 DB_DIR = "./sermon_brain_db"
 
 # 1. Load all Markdown files

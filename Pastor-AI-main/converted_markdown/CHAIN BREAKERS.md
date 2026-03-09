@@ -1,0 +1,878 @@
+# CHAIN BREAKERS
+ 
+ Blue denotes ppt slide 
+ Brown denotes instructions to 
+ technician 
+ 
+
+TEXT: 2 kings 13:14-19 (NKJV) “Elisha 
+had become sick with the illness of which 
+he would die. Then Joash the king of Israel 
+came down to him, and wept over his face, 
+and said, “O my father, my father, the 
+chariots of Israel and their horsemen!” 
+15 And Elisha said to him, “Take a bow 
+and some arrows.” So he took himself a 
+bow and some arrows. 16 Then he said to 
+the king of Israel, “Put your hand on the 
+bow.” So he put his hand on it, and Elisha 
+put his hands on the king’s hands. 17 And 
+he said, “Open the east window”; and he 
+opened it. Then Elisha said, “Shoot”; and 
+he shot. And he said, “The arrow of the 
+Lord’s deliverance and the arrow of 
+deliverance from Syria; for you must strike 
+
+the Syrians at Aphek till you have 
+destroyed them.” 18 Then he said, “Take 
+the arrows”; so he took them. And he said 
+to the king of Israel, “Strike the ground”; 
+so he struck three times, and stopped. 
+19 And the man of God was angry with 
+him, and said, “You should have struck 
+five or six times; then you would have 
+struck Syria till you had destroyed it! But 
+now you will strike Syria only three times.” 
+ 
+
+INTRO: This passage of scripture is very 
+unusual for many reasons, but especially 
+because it provides us with a window to peer 
+into the deathbed actions of one of the 
+greatest prophets the world has ever known. 
+ 
+In this passage, Elisha is sick with a disease 
+from which he would not recover. 
+ 
+To set the stage for the story line, I must 
+take you back to a king by the name of 
+Jeroboam. Jeroboam was such an infamous 
+
+character, that four times the scripture says a 
+successor “Followed after the sins of 
+Jeroboam.” Twelve times it is mentioned 
+that “Jeroboam made Israel to sin.” That is 
+pretty strong language. The fact is, 
+Jeroboam opened some doors of moral and 
+spiritual destruction that remained open for 
+hundreds of years. The sins of Jeroboam 
+wreaked havoc on the nation and ultimately 
+brought about the death of thousands of 
+individuals. 
+ 
+It is also important to acknowledge that 
+twenty five times the scripture introduces 
+Jeroboam as “The son of Nebat” (Nay-bat). 
+It is for certain the scripture is tying the bad 
+character of Jeroboam to his father. A child 
+gets 80% of their identity from their father. 
+If you want to know who Nebat (Nay-bat) 
+was, all you have to do is look at Jeroboam. 
+ 
+The name Nebat (Nay-bat) means “He who 
+opposes the people.” 
+
+Either Nebat (Nay-bat) was a devil or he 
+allowed his son to act like the devil, so that 
+his son was solely responsible for the 
+spiritual and moral demise of a nation. The 
+damage done by Jeroboam would be felt for 
+more that two hundred years as one king 
+after another would parade in and out of the 
+throne, always following after the poor 
+example of Jeroboam who “made Israel 
+sin”. 
+ 
+In our text, Jehoahaz, (Ju-ho-uh-haz) the son 
+of Jehu, became King and reigned over 
+Israel for seventeen years. During this time 
+things went from bad to worse. 
+ 
+Hazael, (Has-eel) King of Syria, followed by 
+his son Benhadad, systematically stole from 
+Israel taking property and possessions from 
+them. They stole Israel blind, confiscating 
+most of the property that lay east of the 
+Jordan. 
+
+The rule of Hazael (Haz-eel) and Benhadad 
+negatively impacted Israel to the point that 
+the entire military might of Jehoahaz (Ju-ho-
+uh-haz) consisted of: 
+• 10 chariots… 
+• 50 calvary troops… 
+• 10,000 foot soldiers… 
+ 
+Make no mistake about it, the design of the 
+enemy is to reduce each of us to an 
+incompetent, poorly trained, misguided and 
+unquestionably impotent group of folks. 
+ 
+During the reign of Jehoahaz, (Ju-ho-uh-
+haz) the King recognized that unless he 
+called upon the Lord, he was about to 
+preside over the utter collapse of a nation. 
+ 
+The raw material of a breakthrough is 
+desperation! 
+
+Please allow me to show you how willing 
+God is to get involved, even when there 
+have been decades of sinful behavior. 
+Verses 4 – 5 “Jehoahaz (Ju-ho-uh-haz) 
+prayed to the LORD for help, and the LORD 
+saw how terribly Hazael (Has-eel) was 
+treating the Israelites. He answered 
+Jehoahaz (Ju-ho-uh-haz) 5 by sending Israel 
+a leader who rescued them from the 
+Syrians, and the Israelites lived in peace as 
+they had before.” 
+ 
+Most people feel that God will not hear them 
+because they have messed up too many 
+times; but He stands ready for us to turn our 
+situations over to Him! His constant pattern 
+of activity is rescue! 
+ 
+The interesting thing here is that even 
+though God heard the cry of a less than 
+righteous King and sent deliverance, neither 
+the King nor the people turned their hearts 
+completely over to God. 
+
+Jehoash succeeded Jehoahaz (Ju-ho-uh-haz) 
+as King and ruled for sixteen years. During 
+the reign of Jehoash, Benhadad took even 
+more of the land and Israel became even 
+weaker. 
+ 
+During the reign of Jehoash, word came to 
+the King that the prophet Elisha was on his 
+deathbed. As wicked as the king was and as 
+far as the country was from God, the King 
+paid a visit to the deathbed of the prophet 
+Elisha. 
+ 
+For all the miracles Elisha had performed 
+and for all the powerful words he had 
+spoken in times of national crisis, the 
+prophet had not been heard from for forty -
+five years. It is believed that Elisha could 
+have been somewhere around one hundred 
+twenty years old when Jehoash made this 
+visit. 
+
+When Jehoash walked into the room where 
+the man of God was, he cried out “O my 
+father, my father, the chariots of Israel and 
+their horsemen!” Two things were being 
+declared here: 
+• Before you leave, can you do something 
+about the weakened condition of the 
+military? 10 chariots – 50 calvary troops 
+– 10,000 foot soldiers 
+• What will we do without you? The fact 
+is they had been operating independently 
+of the man of God for four and a half 
+decades! 
+ 
+Four things happen here: 
+ 
+
+## I. AN ARROW WAS SHOT TOWARD
+SYRIA 
+Look at this! After four and a half decades 
+of being ignored, the man of God was 
+willing to bless Israel and a less than perfect 
+King. 
+
+You may feel you have sinned too greatly 
+for God to send deliverance and blessing 
+into your life, but if you will call on Him, 
+He stands ready to bless you now. 
+ 
+2 Kings 13:15-17 (NKJV) “And Elisha said 
+to him, “Take a bow and some arrows.” So 
+he took himself a bow and some arrows. 
+16 Then he said to the king of Israel, “Put 
+your hand on the bow.” So he put his hand 
+on it, and Elisha put his hands on the 
+king’s hands. 17 And he said, “Open the 
+east window”; and he opened it. Then 
+Elisha said, “Shoot”; and he shot. And he 
+said, “The arrow of the Lord’s deliverance 
+and the arrow of deliverance from Syria…” 
+ 
+ILLUSTRATION: (HAVE JAMES 
+WADLEY SHOOT AN ARROW OUT 
+OF THE BALCONY) 
+ 
+The prophet: 
+
+• Placed his hands over the hands of the 
+King… (Divine presence is of ultimate 
+importance) (Moses – if your presence 
+goes not with us – carry us not up hence) 
+• Shot an arrow toward the east… (Syria 
+was to the east) (The land they had lost 
+was to the east) 
+• Declared the arrow to be an arrow of 
+deliverance…(God – Has delivered – 
+Does deliver – Will deliver) 
+• Specifically named the arrow a token of 
+Israel’s deliverance from Syria… (Name 
+your arrow) 
+ 
+Some of us need to shoot an arrow toward 
+the things that have: 
+• Robbed us… 
+• Come against us… 
+• Kept us back… 
+ 
+I’ve come into this house today to shoot 
+arrows of deliverance. 
+
+The chain breaker is in the house today! 
+ 
+The prophet specifically shot the arrow out 
+the window facing East. The Syrians were to 
+the east! Syria means exalted. Exalted 
+means to raise to a higher realm or position 
+of power. 
+ 
+If something is exalted it has become 
+enthroned and when something receives 
+such license in your life it eliminates 
+(Pushes out) everything else. 
+ 
+I call on some folks today to raise a window 
+in your life and shoot an arrow of 
+deliverance at the things that have become 
+exalted in your life! Shoot an arrow of 
+deliverance at: 
+• Drug addiction… 
+• Sexual perversion… 
+• Personal agendas… 
+• Religious spirits… 
+
+By shooting the arrow at Syria the prophet 
+was saying, strike it in the heart. 
+ 
+God is looking for some people that will 
+stand up and strike a blow in the heart of the 
+enemy. Stop: 
+• Ignoring it… 
+• Coddling it… 
+• Playing with it… 
+ 
+Strike at the heart of the matter! Break the 
+chain! 
+ 
+If we are not careful we exalt: 
+• Family problems… 
+• Relational problems… 
+• Financial problems… 
+• Spiritual problems… 
+ 
+Exalted things have lied to, stolen from and 
+robbed us. Strike it in the heart! 
+
+Psalm 18:46 (NKJV) “The Lord lives! 
+Blessed be my Rock! Let the God of my 
+salvation be exalted.” 
+ 
+I declare to you: There are things that were 
+exalted in your life when you walked in here 
+today that will not exist when you walk out! 
+Break the chains! 
+ 
+How do you break the chains? Exalt Him 
+and demolish the chains that have held you 
+captive! 
+ 
+
+## II. THE KING WAS INSTRUCTED TO
+STRIKE THE SYRIANS AT APHEK… 
+First the King was instructed to shoot arrows 
+toward the east and specifically at Syria. 
+Syria means exalted. God was speaking to 
+the King to attack the things that had 
+become exalted. 
+ 
+God wants us to do battle against anything 
+that has been improperly exalted in our 
+
+lives. “Thou shalt have no other god’s 
+before me.” 
+ 
+The King was then instructed that he	
+  “… 
+must strike the Syrians at Aphek till you 
+have destroyed them.” Aphek was a city of 
+the tribe of Asher. It was the scene of the 
+licentious worship of the Syrian God, 
+Aphrodite. Aphek means stronghold or tight 
+place. 
+ 
+A tight place causes one to: 
+• Feel closed in and claustrophobic… 
+• Be unable to function to full potential… 
+• Feel trapped by the circumstances… 
+ 
+There are people in this room today that feel 
+closed in by: 
+• An addiction… 
+• A relationship… 
+• Health issues… 
+• Career choices… 
+• Financial difficulty… 
+
+• Spiritual deficiencies… 
+ 
+A little living in Aphek will cause one to be 
+desperate for deliverance. 
+ 
+There are people in your life who have tried 
+to hem you in, telling you: 
+• You can’t become… 
+• You can’t do… 
+• You can’t succeed… 
+ 
+Someone needs to wake up this morning and 
+decide to not allow the dissenters, who have 
+moved us to and required us to live in 
+Aphek, to rule the day any longer! We need 
+to kick the dissenters to the curb and 
+determine not to allow a dissenter to be a 
+decider! 
+ 
+Somebody shout, “You’re not keeping me in 
+this tight place anymore!” 
+
+Anybody feeling crowded in here today? 
+Anybody feeling restricted in here today? 
+Anybody feeling closed in, in here today? 
+ 
+“Can’t” never did anything and “wait” is 
+what broke the bridge down! 
+ 
+What you need is a chain breaker! Are you 
+ready for God to bust a move in your life? 
+ 
+We need to quit thinking in terms of what 
+someone told us we can’t do; we serve a big 
+God and we need to get delivered from 
+small thinking! 
+ 
+Someone shout, “I am finished with living in 
+this tight place!” 
+ 
+I can do little things by myself and with the 
+help of others! What I need is for God to 
+show up and help me drive a stake into the 
+heart of Aphek! 
+
+Psalm 118:5 (NKJV) “I called on the Lord 
+in distress; The Lord answered me and set 
+me in a broad place.” It drives me crazy to 
+make a call and not get an answer! (Staff – 
+Been with people when someone calls and 
+they look at the call and click ignore – I 
+know they have done the same thing to me!) 
+(I can’t stand to call a business and talk to a 
+machine during business hours!) The 
+Psalmist said. “I called – He answered!” (A 
+guy asked me, “Why is it I can get in 
+contact with you almost anytime and I can’t 
+get a return call from staff members?”) 
+ 
+The Psalmist was making this call in a tight 
+place, and when God answered he found 
+himself in a large place! If you will call on 
+Him in your tight place, He will take you to 
+a large place! 
+ 
+Someone say, “I am about to emerge from 
+this tight place!” 
+
+When God called Moses to deliver the 
+Children of Israel out of Egypt He told 
+Moses, “I have truly seen the oppression of 
+My people who are in Egypt, and have 
+heard their cry because of their 
+taskmasters, for I know their sorrows. (8) 
+So I have come down to deliver them out of 
+the hand of the Egyptians, and to bring 
+them up from that land to a good and large 
+land, to a land flowing with milk and 
+honey, to the place of the Canaanites and 
+the Hittites and the Amorites and the 
+Perizzites and the Hivites and the 
+Jebusites.” Exodus 3:8 (NKJV) 
+ 
+Five spies from the tribe of Dan inquired of 
+the Lord about possessing their inheritance 
+and the Lord said, “When you go you will 
+come to a secure people and a large land. 
+For God has given it into your hands, a 
+place where there is no lack of anything 
+that is on the earth.” Judges 18:10 (NKJV) 
+
+Someone high five your neighbor and say 
+“I’m coming out of this tight place.” 
+ 
+I believe this is the place God is trying to get 
+His people to, but in order for us to live in a 
+large place we MUST attack the restrictions 
+in our lives! Are you going to take a passive 
+posture toward your tight place or are you 
+ready to aggressively attack the restrictions 
+of the past? 
+ 
+Somebody shout, “I’m done with living in 
+this tight place!” 
+ 
+Through the prophet, God was telling the 
+King that if he wanted to get the country out 
+of the restricted place they were in and 
+expand their boundaries, they “must strike 
+the Syrians at Aphek till you have 
+destroyed them.” Someone in this house 
+needs to strike the places in your life that 
+have closed you in. 
+
+If you are in a tight place: 
+• With sinful behavior...call on Jehovah – 
+Yahweh – The God of your salvation. 
+• Attempting to break habitual practices… 
+call on Jehovah Maccaddesh – The God 
+who will sanctify you. 
+• Needing guidance in your life...call on 
+Jehovah Rohi – The God who will 
+shepherd you. 
+• With feelings of loneliness…call on 
+Jehovah Shammah – The God who is 
+present. 
+• Struggling with health problems…call 
+on Jehovah Rapha – The Lord our 
+healer. 
+• Struggling with low self-esteem…call on 
+Jehovah Tsidkenu - The God who makes 
+us righteous. 
+• With financial tension…call on Jehovah 
+Jireh – The God who provides. 
+• With figuring out who you really are… 
+call on Jehovah Nissi – The Lord our 
+banner. 
+
+• With turmoil in your life…call on 
+Jehovah Shalom – The God who brings 
+peace. 
+• Leadership in your life…call on Jehovah 
+Sabbaoth – The Lord of Hosts. 
+• Not being able to understand an 
+undeserved reversal…call on Jehovah 
+Gmolah – The God of recompense. 
+ 
+Who in this place is ready to finally strike 
+the things that have closed you in? 
+ 
+Shout it with me, “No more living in this 
+tight place!” 
+ 
+
+## III. IN STRIKING AT APHEK THEY
+WERE TARGETING BENHADAD 
+KING OF SYRIA… 
+By the time Israel got around to actually 
+striking Syria, Benhadad the son of 
+Hazael (Haz-eel) had become king of Israel. 
+
+The identifying characteristic of Benhadad 
+was that he was a loud mouth. Anytime you 
+identify a loud mouth you can count on one 
+thing, they are always a bully. A bully is a 
+person who hurts; frightens; or browbeats 
+those who are smaller or weaker. (10 spies –
+“grasshoppers in our own sight.”) 
+ 
+The greatest enemy of our life is noise. In 
+reality because of what Jesus did at Calvary, 
+all the devil has is noise. Never be surprised 
+by the noise of the enemy. When you start 
+pursuing your destiny he runs his motor 
+mouth ninety to nothing. 
+ 
+He says: 
+• You won’t succeed… 
+• If you try that, you will fail… 
+• You won’t get that job… 
+• You can’t start that business… 
+• You are going to embarrass yourself… 
+• You are going to die prematurely 
+because… 
+
+Somebody tell the devil to shut up! 
+ 
+If you ever let a bully know that you are 
+weak or timid about a thing, you will pay for 
+the rest of your life in that area! He will 
+hound you, pick on you, and browbeat you 
+in that area again and again! 
+ 
+A bully watches for your reaction! A bully is 
+usually very perceptive when it comes to 
+body language. Never let him see you sweat! 
+Don’t sweat the small stuff and if God is on 
+your side, everything is small stuff. 
+ 
+A good example of this is that when Ahab 
+was King of Israel, Benhadad had a heyday 
+shouting insults, and those insults turned to 
+real life reversals for the people of the land. 
+ 
+When we entertain the insults of the loud 
+mouth enemy they will turn to reversals in 
+
+our lives and the dumbing-down of personal 
+and corporate destinies. 
+ 
+Look at what occurred between Ahab and 
+Benhadad. (PLACE THE SCRIPTURES 
+ON THE SCREEN A FEW VERSES AT 
+A TIME BUT DON’T INCLUDE THE 
+COMMENTS IN BLACK) 1 Kings 20:1-
+14 (CEV) “King Benhadad of Syria called 
+his army together. He was joined by thirty-
+two other kings with their horses and 
+chariots, and together they marched to 
+Samaria and attacked. (A bully never 
+stands alone, he always recruits inferior 
+chickens to join him) 2 Benhadad sent a 
+messenger (He never showed up – he just 
+sent his voice) to tell King Ahab of Israel, 
+3 “Ahab, give me your silver and gold, your 
+wives, and your strongest sons!” 4 “Your 
+Majesty,” Ahab replied, “everything I have 
+is yours, including me.”(Really? Without 
+having one shot fired, Ahab was ready to 
+give away the treasury; his wives and 
+
+children; as well as the families of his 
+soldiers!) (Ahab was not only sinful he was 
+a chicken!) (Don’t ever accept what you 
+should be refusing) 5 Later, Benhadad sent 
+another messenger to say to Ahab, “I 
+already told you to give me your silver and 
+gold, your wives, and your children. 6 But 
+tomorrow at this time, I will send my 
+officials into your city to search your 
+palace and the houses of your officials. 
+They will take everything else that you 
+own.” (What a bully! What a loud mouth! 
+He was not going to be satisfied with the 
+surrender of people and things. Because 
+Ahab was not moving fast enough he 
+decided to come in and do a house to house 
+search and take everything he wanted!) 
+7 Ahab called a meeting with the leaders of 
+Israel and said, “Benhadad is causing real 
+trouble. (You think?) He told me to give 
+him my wives and children, as well as my 
+silver and gold. And I agreed.” (Can you 
+imagine the mood in the room at this point? 
+
+Without ever saying anything to his leaders 
+or troops the king had agreed to give their 
+wives and sons away to this tyrant!) 
+8 “Don’t listen to him!” they answered. 
+“You don’t have to do what he says.” (The 
+commoners were smarter and braver than 
+the chicken king.) 9 So Ahab sent someone 
+to tell Benhadad, “Your Majesty, I’ll give 
+you my silver and gold, and even my wives 
+and children. But I won’t let you have 
+anything else.” (What? Seriously? Even 
+with the pledged support of his leaders and 
+troops this chicken king couldn’t muster 
+enough bravery to stand up to this loud 
+mouth.) When Benhadad got his answer, 
+10 he replied, “I’ll completely destroy 
+Samaria! There won’t even be enough of it 
+left for my soldiers to carry back in their 
+hands. If I don’t do it, I pray that the gods 
+will punish me terribly.” (The loud mouth 
+bully was hurling threats he couldn’t deliver 
+– Isn’t that always the way it is?) 11 Ahab 
+then answered, “Benhadad, don’t brag 
+
+before the fighting even begins. Wait and 
+see if you live through it.” (Did I just see a 
+little sliver of bravery here?) 12 Meanwhile, 
+Benhadad and the other kings had been 
+drinking in their tents. But when Ahab’s 
+reply came, he ordered his soldiers to 
+prepare to attack Samaria, and they all got 
+ready. (Don’t let your nerve evaporate at the 
+first sign of danger) 13 At that very moment, 
+a prophet ran up to Ahab and said, “You 
+can see that Benhadad’s army is very 
+strong. But the LORD has promised to help 
+you defeat them today. Then you will know 
+that the LORD is in control.” (It’s a glad day 
+when the Lord shows up on the eve of 
+battle.) 14 “Who will fight the battle?” Ahab 
+asked. (LOL He thought he might have to 
+get personally involved.) The prophet 
+answered, “The young bodyguards who 
+serve the district officials.” “But who will 
+lead them into battle?” You gotta be 
+kidding – He is the king!!!) Ahab asked. 
+“You will!” the prophet replied.” 
+
+If we are going to destroy the loud mouth 
+bullies in our lives we must always get 
+personally involved! 
+ 
+Somebody tell the devil to shut up! 
+ 
+The devil always sends his voice in the form 
+of a bad report: (Talk to the hand) 
+• Your mom died of cancer – You will 
+too… 
+• Your parents marriage didn’t last – 
+Neither will yours… 
+• Your husband is late coming home from 
+work – He’s having an affair… 
+• Your kid’s didn’t meet curfew – They 
+have been in an accident… 
+• The bills are past due – You and your 
+family are going to be homeless… 
+• Someone failed to shake your hand – 
+They hate like you… 
+
+Ahab offered no resistance! We must take a 
+stand against the loud mouth bully of our 
+souls! James 4:7 (CEV) “Surrender to God! 
+Resist the devil, and he will run from you.” 
+ 
+Benhadad came the second time, demanding 
+more. If we offer no resistance against the 
+thief we can bet he will be back talking 
+louder and demanding more. John 10:10 
+(CEV) “A thief comes only to rob, kill, and 
+destroy. I came so that everyone would 
+have life, and have it in its fullest.” 
+ 
+Listen to what the writer of Proverbs said 
+about not standing up to the loud-mouthed 
+bully. Proverbs 24:10 (NKJV) “If you faint 
+in the day of adversity,Your strength is 
+small.” The reason our strength is small is 
+because we have got our exercise jumping to 
+conclusions and looking for places to hide 
+from the enemy! 
+
+You cannot bargain with a bully, you have 
+to bully a bully! Deuteronomy 33:27 
+(NKJV) “The eternal God is your refuge, 
+And underneath are the everlasting arms; 
+He will thrust out the enemy from before 
+you, And will say, ‘Destroy!’” 
+ 
+When the Prophet told Jehoash to fire the 
+arrows toward Syria he was in effect saying: 
+• Shoot the loud mouth… 
+• Shoot the negative mouth… 
+• Shoot the doubting mouth… 
+• Shoot the confusing mouth… 
+• Shoot the disruptive mouth… 
+ 
+It is time to stand up to the bully and tell 
+him to shut up! Matthew 28:18 (NKJV) “All 
+authority has been given to Me in heaven 
+and on earth.” God has all authority. He has 
+given us access to His authority. Luke 10:19 
+(NKJV) “Behold, I give you the authority 
+to trample on serpents and scorpions, and 
+over all the power of the enemy, and 
+
+nothing shall by any means hurt you.” If 
+one has authority, they have the right to 
+access the power that comes with it. 
+(Policeman – Semi) 
+ 
+Somebody say, devil I am shutting you 
+down! (Tom Dietz grandson, “You’re going 
+down today.”) 
+ 
+I challenge you today to pull your arrow 
+back, while thinking about everything that's 
+speaking against your destiny and fire that 
+arrow with the velocity of a passionate push 
+of finally shutting the mouth of the bully in 
+your life. 
+ 
+Aim your fully automatic, rapid firing 
+gospel gun and start shooting bullets that 
+say: 
+• As for me, and my house… 
+• Greater is he that is in me… 
+• No weapon formed against me.... 
+
+• If my people will humble themselves 
+and pray... 
+• You shall decide and decree a thing and 
+it shall be established for you… 
+ 
+Somebody tell the loud-mouthed bully of a 
+devil to shut up! 
+ 
+
+## IV. THE KING WAS TOLD TO STRIKE
+THE GROUND… 
+The last thing the man of God instructed the 
+King to do seems very strange indeed. 2 
+Kings 13:18 (NKJV) “Then he (Elisha) 
+said, “Take the arrows”; so he took them. 
+And he said to the king of Israel, “Strike 
+the ground;” so he struck three times, and 
+stopped.” 
+ 
+The striking of the ground with the arrows 
+signified the number of times Israel would 
+defeat Syria. When the King struck the 
+ground three times and stopped, the Prophet, 
+though on his deathbed, was incensed. 
+
+The fact that the King only struck the 
+ground three times exposed his lack of anger 
+and passion for recovering what had been 
+taken from them! The King was not thinking 
+restitution; he was thinking relief! 
+ 
+Most of the time we are looking for relief 
+from trouble, but God is focused on 
+complete victory and restitution for us! 
+ 
+This was the case for the Children of Israel 
+when the ten plagues were being released 
+upon the Egyptians. Moses and the Israelites 
+just wanted out - God wanted them repaid 
+with interest! God hardened Pharaoh’s heart 
+to keep him from letting the Children of 
+Israel go after: 
+• The plague of boils… Exodus 9:12 
+• The plague of hail… Exodus 10:1 
+• The plague of locusts… Exodus 10:20 
+• The plague of darkness… Exodus 10:27 
+• While the Children of Israel were 
+hemmed in by the sea… Exodus 14:8 
+
+What was God thinking? Did He not want 
+the Israelites out of Egypt? Certainly He 
+wanted them out, but the quickest path of 
+escape is not always the best exit strategy! 
+Exodus 3:21-22 (NKJV) “I will give this 
+people favor in the sight of the Egyptians; 
+and it shall be, when you go, that you shall 
+not go empty-handed. 22 But every woman 
+shall ask of her neighbor, namely, of her 
+who dwells near her house, articles of 
+silver, articles of gold, and clothing; and 
+you shall put them on your sons and on 
+your daughters. So you shall plunder the 
+Egyptians.” Though God’s idea for Israel 
+was certainly deliverance, His ultimate 
+purpose was restitution. 
+ 
+Elisha became angry at the King. 2 Kings 
+13:19 (NKJV) “The man of God was angry 
+with him, and said, “You should have 
+struck five or six times; then you would 
+have struck Syria till you had destroyed it! 
+
+But now you will strike Syria only three 
+times.” 
+ 
+The man of God looked beyond what 
+actually happened, to what was behind the 
+failure to go crazy striking the ground. This 
+was a passionless pursuit of an end to a 
+national dilemma. 
+ 
+Will you be satisfied with: 
+• A loveless marriage? 
+• Just enough finances to get by? 
+• Cutting back on a bad habit? 
+• Stealing less from your employer? 
+• Losing your temper less frequently? 
+ 
+Or, are you ready to go into the presence of 
+a God who wants you to win complete 
+victory and take the arrows of deliverance 
+and beat the tar out of the devil? 
+ 
+There are far too many Christians that are 
+content to coexist with habits and vices and 
+
+living far beneath their privileges in God. It 
+is time for a remnant to arise and take the 
+arrows of deliverance and decide to deal 
+with the devil once and for all. 
+ 
+Strike the enemy: 
+• In faith… 
+• In prayer… 
+• Through obedience… 
+• Through the Word… 
+• With steadfastness… 
+• With tenaciousness… 
+ 
+I don’t just want to be delivered; I want 
+everything the devil has stolen from me 
+back...with interest! 
+ 
+While it’s great to win a battle, it’s better to 
+win the war! Douglas McArthur said, “In 
+war, there’s no substitute for victory!” 
+ 
+To King Joash, defeating Syria three times 
+was a big deal, but God had so much more 
+
+in mind. Joash would be happy with three 
+defeats of Syria. The man of God wanted to 
+trounce them until there was nothing left! 
+ 
+Incidentally, Israel only defeated Syria three 
+times and had to deal with the abuse 
+inflicted upon them from these people for 
+perpetual generations. 
+ 
+Whatever you desire from God, keep 
+striking again, and again, and again! If need 
+be, strike the enemy until you have achieved 
+not just a victory, but the victory! Don’t stop 
+short of total victory! 
+ 
+The fact is: 
+• If you blink, you lose… 
+• If you flinch, you lose… 
+• If you quit, you lose… 
+• If you stop short, you lose… 
+• If you chicken out, you lose… 
+
+God is looking for some people who will 
+take the arrows of deliverance in hand and 
+run the devil out of the county. Will you be 
+one of those people, or are you going to live 
+your life with just enough victory to make 
+your life bearable? 
+ 
+It is time for the people of God to rise up 
+and break the chains that have had them 
+bound! 
+ 
+PLACES PREACHED: 
+ 
+CT Church, Houston TX 9/13

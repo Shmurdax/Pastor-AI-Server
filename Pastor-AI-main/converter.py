@@ -124,6 +124,6 @@ def save_md(path, content):
         f.write('\n'.join(processed_lines))
 
 if __name__ == "__main__":
-    INPUT = r"D:\Pastor Ai\Pastor-AI-main\Pastor-AI-main\my_docs"
-    OUTPUT = r"D:\Pastor Ai\Pastor-AI-main\Pastor-AI-main\converted_markdown"
+    INPUT = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\Pastor-Data"
+    OUTPUT = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\converted_markdown"
     master_converter(INPUT, OUTPUT)

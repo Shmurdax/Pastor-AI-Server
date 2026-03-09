@@ -1,0 +1,364 @@
+The Heart of a Volunteer 
+ 
+I plan to use the word “servant” today, in place of the 
+term “volunteer.” 
+ 
+"Don't just do what you have to do to get by, but work 
+heartily, as Christ's servants doing what God wants you 
+to do. And work with a smile on your face, always 
+keeping in mind that no matter who happens to be giving 
+the orders, you're really serving God" (Ephesians 6:6, The 
+Message). 
+ 
+ Matthew 20:25-28 
+ 
+ 
+ 
+ In the Bible, greatness is defined by servant-hood. 
+ 
+We talk about “serving God,” but this phrase can be a 
+bit nebulous (vague or ill-defined). Serving God means 
+loving and serving others. 
+ 
+Having the heart of a servant is incredibly important. 
+ 
+God shaped you for service, not for self-centeredness. 
+ 
+Without a servant’s heart, you will be tempted to misuse 
+
+your gifts and abilities for personal gain. You will also 
+be tempted to use it as an excuse to exempt yourself 
+from meeting some needs. 
+ 
+Your servant’s heart will reveal your depth of maturity. 
+The measure is our willingness to serve. God often tests 
+our hearts by asking us to serve in ways we’re not used 
+to. 
+ 
+It is possible to serve in church for a lifetime without 
+ever being a servant. This is because to be a servant, 
+you must have a servant’s heart. 
+ 
+How can you know if you have the heart of a servant? 
+To check ourselves, let us look at six points: 
+ 
+ 
+
+1. Real Servants Make Themselves Available. 
+ 
+2 Timothy 2:4 
+No soldier in active service entangles himself in the 
+affairs of everyday life, so that he may please the one 
+who enlisted him as a soldier. 
+ 
+Servants don’t fill up their time with other pursuits that 
+could limit their availability. We can say in general that 
+servants make themselves available to their masters. 
+They want to be ready to jump into service when called 
+on. A soldier is always ready, even ready to get up 
+
+at 2am at boot camp. 
+ 
+If you only serve when it’s convenient for you, you’re not 
+a real servant. Real servants do what’s needed, even 
+when it’s inconvenient. 
+ 
+A good test: Are you available to God any time? Can he 
+mess up your plans without you becoming resentful? 
+ 
+Being a servant means giving up the right to control your 
+schedule and allowing God to interrupt it whenever He 
+needs to. 
+ 
+If you will remind yourself at the start of every day that 
+you are God’s servant, interruptions won’t frustrate you 
+as much, because your agenda will be whatever God 
+wants to bring into your life. 
+ 
+Remember all your time, every moment, belongs to 
+God. It is all right to have plans but be ready and 
+willing for God to upset them. 
+ 
+Servants see interruptions as divine appointments for 
+ministry and are happy for the opportunity to practice 
+serving. 
+ 
+ 
+
+2. Real Servants Pay Attention To Needs. 
+
+Servants are always on the lookout for ways to help 
+others and always sensitive to others’ cries. 
+ 
+When they see a need, they seize the moment to 
+meet it, just as the Bible commands us: 
+ 
+Galatians 6:10 Therefore, as we have opportunity, let us 
+do good to all people, especially to those who belong to 
+the family of believers. 
+ 
+When God puts someone in need right in front of 
+you, He is giving you the opportunity to grow in 
+servanthood. Opportunity comes – and goes. We can 
+soon lose it if we don’t seize it. 
+ 
+We miss many occasions for serving because we lack 
+sensitivity and spontaneity. 
+ 
+Great opportunities to serve never last long. They 
+pass quickly, sometimes never to return. You 
+may only get one chance to serve that person, so 
+take advantage of the moment. Think about 
+last week: were there opportunities to help which 
+you did not seize? 
+ 
+ 
+
+3. Real Servants Do Their Best With What They Have. 
+ 
+Servants don’t make excuses, procrastinate, or 
+
+wait for better circumstances. Servants never say, 
+“One of these days” or “When the time is right.” 
+They just do what needs to be done. 
+ 
+Ecclesiastes 11:4 Whoever watches the wind will not 
+plant; whoever looks at the clouds will not reap. (NIV) 
+ 
+Ecclesiastes 11:4 If you wait for perfect conditions, you 
+will never get anything done. (TLB) 
+ 
+God expects you to do what you can, with what 
+you have, wherever you are. 
+ 
+Less-than- perfect service is always better than 
+the best intention. 
+ 
+One reason many people never serve is that they fear 
+they are not good enough to serve. 
+ 
+You may have heard it said, “If it can’t be done with 
+excellence, don’t do it.” Well, Jesus never said that! The 
+truth is, almost everything we do is done poorly when we 
+first start doing it - that’s how we learn. None of us can 
+do a perfect job. If you want to wait until you are 
+perfect you’ll never start. 
+ 
+You may not have much, but offer what you have. Grow 
+with it as you do it, whether it be praying for the sick, 
+leading in prayer, preaching or whatever. As God’s call is 
+
+there, His hand is there. 
+ 
+ 
+
+4. Real Servants Do Every Task With Equal Dedication. 
+ 
+Colossians 3:23 
+Whatever you do, work at it with all your heart, as 
+working for the Lord, not for men. 
+ 
+Whatever they do, servants “do it with all their heart” 
+The size of the task is irrelevant. The only issue is, does 
+it need to be done? 
+ 
+You will never arrive at the state in life where you’re too 
+important to help with menial tasks. God will never 
+exempt you from the mundane (dull, boring, everyday, 
+unexciting, routine, monotonous). It’s a vital part of 
+your character building. 
+ 
+“If you think you are too important to help someone in 
+need, you are only fooling yourself. You are really a 
+nobody” (Galatians 6:3, NLT). 
+ 
+It is in these small services that we grow like 
+Christ. Jesus specialized in menial tasks that everyone 
+else tried to avoid: 
+washing feet, 
+helping children, 
+fixing breakfast, 
+
+and serving lepers. 
+ 
+Nothing was beneath him, because he came to serve. It 
+wasn’t in spite of his greatness that he did these 
+things, but because of it, and he expects us to follow his 
+example (John 13:15). 
+ 
+If we are not willing it means we do not have a servant’s 
+heart. 
+ 
+Small tasks often show a big heart. Your servant’s heart 
+is revealed in little acts that others don’t think of doing. 
+ 
+Here is an example - Paul gathered brushwood for a fire 
+to warm everyone after a shipwreck (Acts 28:3). He was 
+just as exhausted as everyone else. 
+ 
+No task is beneath you when you have a servant’s heart. 
+ 
+Great opportunities often disguise themselves in small 
+tasks. 
+The little things in life determine the big things. 
+Don’t look for great tasks to do for God. Just do the 
+not-so-great stuff, and God will assign you whatever 
+he wants you to do. Before attempting the 
+extraordinary, try serving in ordinary ways 
+(Luke 16:10-12). 
+ 
+There will always be more people willing to do 
+
+“great” things for God than there are people willing 
+to do the little things. 
+ 
+It is God who will promote you when you can do the 
+small things willingly. When you can do the small things 
+He can trust you with more. 
+ 
+ 
+
+5. Real Servants Are Faithful To Their Ministry. 
+ 
+Servants finish their tasks, 
+fulfill their responsibilities, 
+keep their promises 
+and complete their commitments. 
+They don’t leave a job half undone. 
+They don’t quit when they get discouraged. 
+They are trustworthy and dependable. 
+ 
+Many people don’t know the meaning of commitment. 
+These days, commitments are often too lightly made. 
+ 
+People make commitments casually, then break them for 
+the slightest reason without any hesitation, remorse or 
+regret. Every week, churches and other 
+organizations must improvise because 
+volunteers didn’t prepare, didn’t show up, or 
+didn’t even call to say they weren’t coming. 
+ 
+Can you be counted on by others? 
+
+Are there promises you need to keep, vows you need to 
+fulfill, or commitments you need to honor? This is a test. 
+God is testing your faithfulness. 
+ 
+Small things are important. Being faithful in them is 
+important. Maybe you only really enjoy 20% of what you 
+do in ministry but never mind, still be faithful. 
+ 
+Abraham, Moses, Samuel, David, Daniel, 
+Timothy and Paul were all called “faithful” 
+servants of God. If you pass the test, you’re in 
+good company. 
+ 
+Your reward is in eternity. 
+ 
+ 
+
+6. Real Servants Maintain A Low Profile. 
+ 
+Servants don’t promote or call attention to themselves. 
+Instead of acting to impress and dressing for success, 
+they “put on the apron of humility, to serve one another” 
+(1 Peter 5:5, TEV). If recognized for their service, they 
+humbly accept it but don’t allow the recognition to 
+distract them from their work. 
+ 
+Eye-service is serving in order to impress people with 
+how spiritual we are. 
+ 
+This was a sin of the Pharisees. They turned helping 
+
+others, giving, and even prayer into a performance for 
+others. Jesus hated this attitude and warned, “When 
+you do good deeds, don’t try to show off. If you do, you 
+won’t get a reward from your Father in heaven” 
+(Matthew 6:1, CEV). 
+ 
+Self-promotion and servant-hood don’t mix. Real 
+servants don’t serve for the approval or applause of 
+others. They live for an audience of One. Paul said: “If I 
+were still trying to please men, I would not be a servant 
+of Christ” 
+(Galatians 1:10). 
+ 
+Real servants are content with quietly serving in the 
+shadows. 
+ 
+Joseph is a great example. He didn’t draw attention to 
+himself, but quietly served Potiphar, then his jailer, then 
+Pharaoh’s baker and wine taster, and God blessed that 
+attitude. 
+ 
+If you are serving in obscurity in some small place, 
+feeling unknown and unappreciated - God knows you. 
+You are where you are for a purpose! He has every hair 
+on your head numbered. He knows what you do. 
+ 
+ 
+# CONCLUSION
+1 Corinthians 15:58 Therefore, my dear brothers, stand 
+
+firm. Let nothing move you. Always give yourselves fully 
+to the work of the Lord, because you know that your 
+labor in the Lord is not in vain. 
+ 
+Do you want to give honor and joy to the Lord? 
+ 
+Ask God to give you a servant’s heart. 
+ 
+Do what God has called you to do. 
+ 
+Humble yourself before Him. 
+ 
+Do it all for His praise, not for the praise of others. 
+ 
+ 
+ 
+Love people; Be friendly. 
+ 
+Be committed! 
+ 
+Be consistent. Find your rhythm. 
+ 
+Be diligent. (Don’t spread yourself too thin). 
+ 
+Be involved. 
+ 
+Find a place to serve. 
+• Start where you are with what you have. 
+Be a blessing: 
+good attitude, 
+do well what you do, 
+
+serve with a positive attitude. 
+ 
+• Don’t drain your leaders’ tank – fill it up! 
+ 
+• You want the leaders you serve to be glad to see 
+you coming. 
+ 
+Have a higher motive than recognition or the 
+applause of men. 
+ 
+• Leaders don’t moan about the sacrifice – losers 
+do. 
+ 
+ 
+Greet people, smile at people, speak clearly and 
+remember and use names. 
+ 
+• Be given to hospitality! Use your house if you 
+can, if you cannot use someone else’s! 
+ 
+ 
+Finding a place to serve: 
+ 
+What energizes you? 
+• Hands-on-service is serving God – it is not just 
+about preaching and laying hands on the sick. 
+Is there a particular staff person to whom you are 
+drawn? 
+Is there something you would love to learn about?

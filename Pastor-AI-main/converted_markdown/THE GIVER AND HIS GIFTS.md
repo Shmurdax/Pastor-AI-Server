@@ -1,0 +1,3673 @@
+# THE GIVER AND HIS GIFTS
+
+\ Blue denotes ppt slide
+
+\ Brown denotes instructions to technician
+
+TEXT: 1 Corinthians 12:1-11 (NKJV) "Now concerning spiritual
+gifts, brethren, I do not want you to be ignorant: 2 You know that you
+were Gentiles, carried away to these dumb idols, however you were led. 3
+Therefore I make known to you that no one speaking by the Spirit of God
+calls Jesus accursed, and no one can say that Jesus is Lord except by
+the Holy Spirit. 4 There are diversities of gifts, but the same Spirit.
+5 There are differences of ministries, but the same Lord. 6 And there
+are diversities of activities, but it is the same God who works all in
+all. 7 But the manifestation of the Spirit is given to each one for the
+profit of all: 8 for to one is given the [word of wisdom]{.underline}
+through the Spirit, to another the [word of knowledge]{.underline}
+through the same Spirit, 9 to another [faith]{.underline} by the same
+Spirit, to another [gifts of healings]{.underline} by the same Spirit,
+10 to another the [working of miracles]{.underline}, to another
+[prophecy]{.underline}, to another [discerning of spirits]{.underline},
+to another [different kinds of tongues]{.underline}, to another the
+[interpretation of tongues]{.underline}. 11 But one and the same Spirit
+works all these things, distributing to each one individually as He
+wills."
+
+INTRO: The study we are about to embark upon will quite possibly be
+one of the most important teachings you have ever been a part of. If you
+can grasp the material that is about to be given to you, your life will
+never be the same.
+
+The gifts of the Spirit were given to the [first]{.underline}
+[century]{.underline} church and were intended to continue as a feature
+of the [New]{.underline} [Testament]{.underline} church until the coming
+of our Lord. Some have questioned whether the gifts were intended for
+the twenty first century church but I challenge anyone considering this
+notion to produce Scriptural evidence of their retraction.
+
+Many people attempt to explain their underestimation of the importance
+of Spiritual gifts by saying "we should be seeking the giver, not the
+gift". While it is true that we should seek the Giver (the Lord) more
+than His gifts, we must also remember that the Giver has something
+wonderful to give, or He would not be a giver. The Giver has at least
+[nine]{.underline} perfect, precious, and powerful gifts to give to all
+of His children. Luke 11:13 (NKJV) "If you then, being evil, know how
+to give good gifts to your children, how much more will your heavenly
+Father give the Holy Spirit to those who ask Him!"
+
+Some people question whether it is possible to talk about spiritual
+gifts without also including information on the fruit of the Spirit.
+Galatians 5:22-23 (NKJV) "But the fruit of the Spirit is love, joy,
+peace, longsuffering, kindness, goodness, faithfulness, 23 gentleness,
+self-control. Against such there is no law."
+
+Spiritual [gifts]{.underline} and the [fruit]{.underline} of the
+[Spirit]{.underline} are actually a part of each other. They should
+never be separated from one another.
+
+Ideally, they should be connected one to another with [love]{.underline}
+as the union binding them both tightly together. The nine gifts and the
+nine components of the fruit of the Spirit are a compliment to each
+other and one without the other is incomplete (Use illustration of an
+apple). The gifts without the fruit are like a car without gas: it is no
+good without that which it takes to cause it to run properly. In this
+case, love is that ingredient.
+
+As we move through this study you will hear me refer to various
+components of the fruit of the Spirit as a necessary part of the
+exercising of the gifts. The exercising of gifts without the fruit is
+dangerous and can be deadly.
+
+While some would emphasize the importance of the fruit of the Spirit,
+they also deemphasize the importance of the gifts of the Spirit. The
+gifts and the fruit are both vitally important, in fact Paul pens these
+words, 1 Corinthians 12:31 (KJV) "Covet earnestly the best
+gifts." Again he say\'s in 1 Corinthians 14:1(KJV) "Desire
+spiritual gifts." Finally in verse seven of our text he says "But
+the manifestation of the Spirit is given to each one for the profit of
+all."
+
+The gifts are extremely important to each individual believer, but they
+are crucial to the body of Christ. If I do not operate in the gifts you
+get robbed, in the same way, if you refuse to operate in the gifts I get
+robbed.
+
+What if your liver decided not to function, or take a year off? The rest
+of the body would be history in a matter of days! Every time you or I
+quench the Spirit, we cause irreparable harm to the remainder of the
+body! Every time we fail to exercise the gifts within their proper
+regulation, we also do irreparable damage. Knowing the proper regulation
+for the use of the gift is as important as receiving the gift.
+
+Great damage can be sustained when a well- intentioned individual
+attempts to operate in a gift without doing so in a loving way or
+without properly following the regulation of the Gift. 1 Corinthians
+14:32 (NKJV) "And the spirits of the prophets are subject to the
+prophets."
+
+A note of interest I would like to point out: (PLACE ON SCREEN ONE AT A
+TIME)
+
+- Chapter 12 is all about [Gifts]{.underline}...
+
+- Chapter 13 is all about [love]{.underline}...
+
+- Chapter 14 is all about [regulation]{.underline} of Gifts...
+
+Gifts without love and regulations can often cause more harm than good.
+Gifts properly handled in a spirit of love and compassion is capable of
+taking a believer or body of believers to heights they have never even
+dreamed of!
+
+God has provided these spiritual gifts and each gift has its unique
+place in the body of Christ as well as in the House of God.
+
+One of the greatest misconceptions with regard to gifts centers around 1
+Corinthians 12:31 (NKJV) "But earnestly desire the best gifts."
+Misinterpretation of this Scripture has created much controversy over
+which gifts are the "Best Gifts." God would not have provided
+all nine of these gifts if some of them were [unimportant]{.underline}
+or [inconsequential]{.underline}. (In such a case there would have been
+eight, seven, six etc...)
+
+It is not proper or possible to give a [poll]{.underline}
+[rating]{.underline} to these nine Spiritual Gifts. James 1:17 (KJV)
+states, "Every good and every perfect gift is from above, and cometh
+down from; the Father of lights, with whom is no variableness, neither
+shadow of turning." God is telling us that every gift He has to offer
+is "good" and "perfect". We should never downgrade or falsely rate a
+gift from divine hands as [inferior]{.underline} or
+[unimportant]{.underline}.
+
+If we are not to rate them in order of importance, why are they listed
+in the Bible as they are and why does the Bible say to "earnestly
+desire the best gifts?" Consider this: When you list anything that
+has nine components, all nine items cannot be listed first. Just because
+something is last is no indication that it is unimportant:
+
+- Is Genesis more important than Revelation?
+
+- Is the Old Testament more important than the New Testament?
+
+- Is the first commandment more important than the last commandment?
+
+- Is the Word of Wisdom more important than the Interpretation of
+ Tongues?
+
+1 Corinthians 12:31, says to "covet earnestly the best
+[gifts]{.underline}." Notice that the word "gifts" is plural.
+This shows us there is more than one in the "best gift" category;
+in fact, they are all of equal importance.
+
+Two chapters later it would appear that Paul contradicts himself and the
+idea of all gifts being equal in importance. 1 Corinthians 14:1 (NKJV)
+"Desire spiritual gifts, but rather that ye may prophesy." Here
+he brings the sixth gift listed up to the top, into the "best
+gifts" class. Then he compares the sixth (Prophesy) with the eighth
+gift (divers kinds of tongues), and declares that the sixth is greater
+than the eighth, but with one exception, and that is 1 Corinthians
+14:1-5 (KJV) "Follow after charity and desire spiritual gifts, but
+rather that ye may prophesy. For he that speaketh in an unknown tongue
+speaketh not unto men, but unto God; for no man understandeth him;
+howbeit in the Spirit he speaketh mysteries. But he that prophesieth
+speaketh unto men to edification, and exhortation, and comfort. He that
+speaketh in an unknown tongue edifieth himself; but he that prophesieth
+edifieth the church. I would that ye all spake with tongues, but rather
+that ye prophesied; for [greater is he that prophesieth than he that
+speaketh with tongues, except he inter­pret]{.underline}, that the church
+may receive edifying." When the eighth and ninth are working
+together, "divers kinds of tongues" and "interpretation of
+tongues" then it becomes co-equal with prophesy which has been
+raised to the "best gift" level.
+
+If we take this at face value we would be extremely confused, but the
+clarifying factor is to understand that I Corinthians 12 is all about
+gifts and I Corinthians 14 is all about the regulation of gifts in
+public places. The reason prophesy is considered better than speaking in
+tongues in a public church service is because the person speaking in
+tongues is edifying himself, but the person who is prophesying is
+edifying the entire body.
+
+I think it would be safe to conclude the best gift is the gift that is
+needed at the time: (PLACE ON SCREEN ONE AT A TIME)
+
+- If one needs a word from the Lord a [Word]{.underline} of
+ [wisdom]{.underline} is better than [healing]{.underline}!
+
+- If one needs a miracle, [working]{.underline} of
+ [miracles]{.underline} is better than a [word]{.underline} of
+ [knowledge]{.underline}!
+
+- If one needs divine direction, [prophesy]{.underline} is better than
+ [tongues]{.underline}!
+
+- If one needs to be able to detect what spirit is in operation,
+ [discerning]{.underline} of [spirits]{.underline} is better than
+ [faith]{.underline}!
+
+All nine gifts are important and they are of equal importance.
+
+It think it is safe to say that many shy away from spiritual gifts
+because of the misuse of gifts by some members of the body of Christ.
+The misuse of gifts has prejudiced a large part of the general church
+population against seeking them. The misuse of gifts is not the
+[givers]{.underline} fault nor an inadequacy on the part of the
+[gift]{.underline}. In fact, we are given direct orders with regard to
+the regulations concerning gifts. 1 Corinthians 14:40 (KJV) "Let all
+things be done decently and in order."
+
+The responsibility of correcting infractions against these wonderful
+gifts in public services is to be the charge of the
+[pastor]{.underline}. This should always be done with love, tact, and
+wisdom. 2 Timothy 4:2 (KJV) "Preach the word; be instant in season,
+out of season; reprove, rebuke, exhort with all longsuffering and
+doctrine."
+
+Several reactions surface when leaders consider the responsibility of
+correcting infractions against proper operation of the gifts:
+
+- They take the time to correct disorderly manifestations in a
+ scriptural manner...
+
+- They correct disorderly manifestations in an un-scriptural manner...
+
+- They abandon and forbid the use of gifts altogether...
+
+There are scriptural methods of correcting disorderly manifestations;
+however, forbidding the operation of gifts is not a biblical practice. 1
+Corinthians 14:39 (NKJV) "Therefore, brethren, desire earnestly to
+prophesy, and do not forbid to speak with tongues."
+
+These nine Spiritual gifts are a vital part of our spiritual equipment
+for spreading the gospel around the world. They are also vital to the
+establishment of unity, spiritual health, and spiritual growth in the
+local congregation. Wherever these gifts are absent or lacking in a
+church, it often has many spiritual ills and the church is crippled by a
+lack of unity, slow spiritual growth, and displays of carnality.
+
+Spiritual gifts are not [toys]{.underline} to be played with, but
+[tools]{.underline} to work with.
+
+If every Christian would only realize how dependent we are on the Holy
+Spirit and then truly depend on Him, we would become:
+
+- Healthy...
+
+- Happy...
+
+- Free...
+
+- Victorious...
+
+- Useful...
+
+- Equipped...
+
+- Strong...
+
+A prominent question people ask regarding the gifts: are the gifts of
+the spirit meant for [today]{.underline}? There are many who teach that
+the gifts of the spirit are not for today. The strongest arguments used
+to prove their point are that the manifest­ations of the Holy Spirit
+through the gifts were withdrawn at the close of the
+[apostolic]{.underline} [age]{.underline}.
+
+We must ask: on what authority is this daring assertion made? This
+theological assertion is certainly not made on the authority of the New
+Testament. There is not one line in the [New]{.underline}
+[Testament]{.underline} to indicate God intended to withdraw any of
+these gifts. In fact, quite the contrary is true. Romans 11:29 (NKJV)
+"For the gifts and the calling of God are irrevocable." Hebrews
+13:8 (NKJV) "Jesus Christ is the same yesterday, today, and
+forever."
+
+There is one passage that seems to lend credence to the supposition that
+some of the gifts of the Spirit are not for today. It is the statement
+in 1 Corinthians 13:8 (NKJV) "Love never fails. But whether there
+are prophecies, they will fail; whether there are tongues, they will
+cease; whether there is knowledge, it will vanish away." Look at
+this passage in its proper context; 1 Corinthians 13:8-12 (NKJV)
+"Love never fails. But whether there are [prophecies, they will
+fail]{.underline}; whether there are [tongues, they will
+cease]{.underline}; whether there is [knowledge, it will vanish
+away]{.underline}. 9 For we know in part and we prophesy in part. 10 But
+[when that which is perfect has come, then that which is in part will be
+done away]{.underline}." When I was a child, I spoke as a child, I
+understood as a child, I thought as a child; but when I became a man, I
+put away childish things. 12 For now we see in a mirror, dimly, but
+[then face to face]{.underline}. [Now I know in part]{.underline}, but
+then I shall know just as I also am known."
+
+Who are the gifts of the Spirit [intended]{.underline} for? 1
+Corinthians 12:11 (NKJV) "But one and the same Spirit works all
+these things, distributing to [each one]{.underline} individually as [He
+wills]{.underline}."
+
+The purpose of the gifts: (PLACE ON SCREEN ONE AT A TIME)
+
+- During His earthly ministry Jesus operated in all the gifts. His plan
+ for building His church was to empower us through the dynamics of the
+ Holy Spirit in [Pentecostal]{.underline} fashion.
+
+- The church Jesus intended to build was to have a
+ [supernatural]{.underline} [witness]{.underline}. Its central point
+ was to give testimony to a risen Christ who has ascended to the
+ Father\'s right hand in Heaven, but still contin­uing to work with and
+ through His people, thus perpetuating what He had only begun during
+ His earthly ministry. Acts 1:1-8 (NKJV) "The former account I
+ made, O Theophilus, of all that Jesus [began]{.underline} both to do
+ and teach, 2 until the day in which He was taken up, after He through
+ the Holy Spirit had given commandments to the apostles whom [He had
+ chosen]{.underline}, 3 to whom He also presented Himself alive after
+ His suffering by many infallible proofs, being seen by them during
+ forty days and speaking of the things pertaining to the kingdom of
+ God. 4 And being assembled together with them, He commanded them not
+ to depart from Jerusalem, but to wait for the [Promise of the
+ Father]{.underline}, "which," He said, "you have heard from Me; 5 "for
+ John truly baptized with water, but you shall be baptized with [the
+ Holy Spirit]{.underline} not many days from now." 6 Therefore, when
+ they had come together, they asked Him, saying, "Lord, [will You at
+ this time restore the kingdom to Israel]{.underline}?" 7 And He said
+ to them, "It is not for you to know times or seasons which the Father
+ has put in His own authority. 8 "But [you shall receive power when the
+ Holy Spirit has come upon you]{.underline}; and you shall be witnesses
+ to Me in Jerusalem, and in all Judea and Samaria, and to the end of
+ the earth."
+
+- Jesus left no doubt -- the church was intended to have a
+ [supernatural]{.underline} order of ministry from its inception. John
+ 14:12 (NKJV) "Most assuredly, I say to you, he who believes in Me,
+ the works that I do he will do also; and greater works than these he
+ will do, because I go to My Father." How is it possible that the
+ church would do greater works than Jesus? It is possible to do greater
+ works because the Spirit is working through more people. (Jesus did
+ all miracles as a man anointed by the Holy Spirit) Acts 2:38-39 (NKJV)
+ "Then Peter said to them, "Repent, and let every one of you be
+ baptized in the name of Jesus Christ for the remission of sins; and
+ [you shall receive the gift of the Holy Spirit]{.underline}. 39 "For
+ the promise is to [you]{.underline} and to [your
+ children]{.underline}, and to [all who are afar off]{.underline}, as
+ many as the Lord our [God will call]{.underline}." I think it is
+ significant that Jesus did not set aside a certain group of people to
+ pour His Spirit out on, but He made this experience available to every
+ believer.
+
+- As a result of the Spirit\'s outpouring, spiritual gifts were given to
+ provide a spiritual [capability]{.underline} far greater than natural
+ abilities could ever offer. Every believer was intended to have a
+ [supernatural]{.underline} order of ministry. Gifts were not intended
+ to operate in public church services exclusively but to empower
+ individual believers.
+
+- Gifts were intended to be a sign to [unbelievers]{.underline}. Several
+ times in Scripture we are reminded that a particular gift was used to
+ convince an unbeliever of the authenticity of the power of God. 1
+ Corinthians 14:21-22 (NKJV) "In the law it is written: "With men
+ of other tongues and other lips I will speak to this people; And yet,
+ for all that, they will not hear Me," says the Lord. 22 Therefore
+ [tongues are for a sign]{.underline}, not to those who believe but [to
+ unbelievers]{.underline}; but prophesying is not for unbelievers but
+ for those who believe." (Acts 13, 19, 28)
+
+Endued with the gifts of the Spirit, the first century church was made
+strong to face the bitterest persecution, and endure the rigors of war,
+because she had a supernatural grip upon the unseen and eternal. The
+crafty devices of the enemy, when he would come as "an angel of
+light," were also instantly detected.
+
+The ultimate and full purpose of spiritual gifts: (PLACE ON THE SCREEN
+ONE AT A TIME)
+
+- They are to bring men face to face with the reality of the
+ [invisible]{.underline} God...
+
+- To make the church realize that the Holy Spirit is ever
+ [present]{.underline}...
+
+- All true ministry springs from Him who is the only source of
+ [life]{.underline} and [power]{.underline}...
+
+- To make the unbeliever equally conscious that God cannot be
+ [forgotten]{.underline}, and that sin dare not be
+ [trifled]{.underline} with...
+
+The ideal, and the scriptural model, is a perfect blending of liberty
+for all to share in [spiritual]{.underline} ministry, with recognition
+that some are [divinely]{.underline} appointed to offices of leadership
+and divinely gifted for outstanding ministries as apostles, prophets,
+evangelists, pastors, and teachers.
+
+When once again the church is en­joying her divine equipment, the
+utilization of every one of the Spirit\'s gifts, she will truly be;
+"looking forth as the morning, Fair as the moon, clear as the sun,
+Awesome as an army with banners?" Song of Solomon 6:10 (NKJV)
+
+There are three classifications of these nine gifts of the Spirit; they
+can be categorized under three headings: (PLACE ON THE SCREEN ONE AT A
+TIME)
+
+The [Detection]{.underline}/[Revelation]{.underline} Gifts:
+
+1\) The word of [Wisdom]{.underline}...
+
+2\) The word of [Knowledge]{.underline}...
+
+3\) Discerning of [Spirits]{.underline}...
+
+The [Vocal]{.underline} Gifts:
+
+1\) [Prophecy]{.underline}...
+
+2\) [Tongues]{.underline}...
+
+3\) Interpretation of [Tongues]{.underline}...
+
+The [Power]{.underline} Gifts:
+
+1\) [Faith]{.underline}...
+
+2\) [Miracles]{.underline}...
+
+3\) [Gifts]{.underline} of [Healings]{.underline}...
+
+FACILITATORS QUESTIONS:
+
+1) How long did God intend for His gifts to endure? (From Pentecost
+ until the coming of the Lord)
+
+2) How many Gifts of the Spirit are mentioned in 1 Corinthians 12?
+ (Nine)
+
+3) What are the classifications of the gifts? (Detection/reveleation,
+ vocal and power gifts)
+
+4) 1 Corinthians 12 commands us to "Desire earnestly the best
+ gifts." What gifts are the best gifts? (The gift that is needed
+ at the time)
+
+5) What is the ingredient that makes the gifts most effective? (Love)
+
+6) Who is responsible for the proper operation of the gifts in
+ corporate gatherings? (The pastor or leader of the group)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+DETECTION/REVELATION GIFTS
+
+THE WORD OF WISDOM - Vs. 8
+
+According to our text, wisdom is a gift from God. This is a gift to the
+believer who [asks]{.underline} for it and is willing to
+[receive]{.underline} it. 1 Corinthians 12:8 (NKJV) "For to one is
+given the word of wisdom through the Spirit..."
+
+Wisdom is an extremely important ingredient in the life of the believer
+especially in these complicated days. Proverbs 4:7 (NKJV) "Wisdom is
+the principal thing; Therefore get wisdom. And in all your getting, get
+understanding."
+
+The gift of the Word of Wisdom is a wise or skillful way of making best
+use of knowledge and is the second list­ed gift of the Spirit. It is the
+divine ability to assemble the components of the word of knowledge in a
+way that allows for the resolution of an otherwise impossible problem or
+obstacle.
+
+The apostle James describes in eight points this heavenly wisdom in
+James 3:17, "But the wisdom that is from above is first..."
+(PLACE ON THE SCREEN ONE AT A TIME)
+
+- [Pure]{.underline}... No ulterior motives - Nathaniel "Behold an
+ Israelite in whom there is no guile (deceit)"
+
+- [Peaceable]{.underline}... Seeks peace above all else - "Blessed
+ are the peacemakers for they shall be called the children of God"
+
+- [Gentle]{.underline}... "Wise as serpents, as harmless as
+ doves"
+
+- Easy to be [entreated]{.underline}... Don\'t have to walk around them
+ on eggshells
+
+- Full of [mercy]{.underline}... More inclined to give the benefit of
+ doubt than to judge
+
+- Full of good [fruit]{.underline}... "Love, joy, peace,
+ longsuffering, gentleness, goodness, faith, meekness,
+ self-control"
+
+- Without [partiality]{.underline}... Does not play favorites
+
+- Without [hypocrisy]{.underline}... Does not pretend to be something
+ they are not - Transparent - What you see is what you get - Real
+
+Who is this gift for? All believers can [operate]{.underline} in this
+gift. James 1:5 (NKJV) "If any of you lacks wisdom, let him ask of
+God, who gives to all liberally and without reproach (Does not
+begrudge what He has given us), and it will be given to him." Jesus
+promised this gift in Luke 21:15 (NKJV) "For I will give you a mouth
+and wisdom which all your adversaries will not be able to contradict or
+resist." This tells me that everyone who is born again and has a
+mouth is a candidate for the gift of wisdom.
+
+Wouldn\'t it be nice if everyone in the church who has a mouth also had
+wisdom?
+
+Can you imagine what kind of world this would be, or what kind of church
+this would be, if everyone operated in this one gift of the Spirit? I
+would be unemployed!
+
+If you can imagine this, you have a pretty good idea of what the
+millennial reign of Christ will be like!
+
+It is God\'s will for each of us to operate in this wonderful and
+necessary gift.
+
+The operation of the gift of wisdom is the responsibility of the
+[Spirit]{.underline}, not the [believer]{.underline}! It is the
+believer\'s responsibility to ask for the gift at necessary intervals
+and to allow divine wisdom to supersede natural wisdom.
+
+For the believer the crucial point is: (PLACE ON SCREEN ONE AT A TIME)
+
+- Discerning when [natural]{.underline} wisdom will be inadequate...
+
+- Recognizing the need for a [higher]{.underline} level of wisdom...
+
+- Hearing accurately the [instructions]{.underline} of divine wisdom...
+
+- Walking in divine wisdom whether you understand all the
+ [dynamics]{.underline} of it or not...
+
+The Gift of Wisdom is not:
+
+- Some bright-idea of ours which flows from a superior degree of
+ intelligence...
+
+- Following the steps learned in a psychology class... This gift
+ operates independent of our skills.
+
+- It is not being clever or shrewd...
+
+If this gift were reliant on our intelligence, skills, or natural
+ability sinners would probably be better at operating in this gift than
+Christians. According to Jesus "The children of this world are wiser
+in their generation than the children of light." Jesus is basically
+saying that the world is normally more educated and in possession of a
+greater degree of knowledge than those in the household of faith.
+
+Those of us who know Christ and are pursuing a higher dimension are
+regularly faced with situations that proceed beyond our understanding
+and require divine wisdom.
+
+While it is true the children of this world normally have more resources
+than those who have trusted Christ, the wisdom of the world is not all
+that it has been billed to be! James 3:15 "This wisdom does not
+descend from above, but is..." (PLACE ON SCREEN ONE AT A TIME)
+
+- [Earthly]{.underline}... Applauded and accepted by those who have no
+ spiritual understanding - Found to be inadequate by those who are
+ spiritual.
+
+- [Sensual]{.underline}... Appeals to the senses - Taste, touch, sight,
+ smell, and hearing.
+
+- [Demonic]{.underline}... Chooses the wrong path of correction --
+ Airliner off course.
+
+Examples of the gift of the word of wisdom: (PLACE ON SCREEN ONE AT A
+TIME)
+
+- [Solomon]{.underline} was blessed with this spiritual ability... Two
+ women who were arguing over the parenthood of a newborn -- Solomon
+ said "Cut the baby in half" -- Thus establishing the true
+ identity of the mother.
+
+- [Jesus]{.underline} operated in this area of giftedness... At 12 He
+ was able to debate the rulers of the synagogue.
+
+- [Peter]{.underline} operated in this gift... Sent to the house of
+ Cornelius - He did not come up with this on his own.
+
+- All of the [Apostles]{.underline} operated in this gift from time to
+ time...
+
+- The first [century]{.underline} [church]{.underline} was accustomed to
+ allowing this gift to operate... The selection of Deacons.
+
+PRACTICAL APPLICATION:
+
+If this gift is available to all of us how do we reach the point that we
+allow this gift to operate through us? (PLACE ON SCREEN ONE AT A TIME)
+
+- [Walk]{.underline} as closely to God as possible...
+
+- Listen closely enough to the spirit to detect when
+ [rational]{.underline} direction is not right direction... (He that
+ hath an ear let him hear what the Spirit is saying)
+
+- When feelings of [discomfort]{.underline} arise ask the Spirit for
+ divine wisdom...
+
+- Follow the voice of the Spirit no matter how opposite it may be when
+ compared to [natural]{.underline} [wisdom]{.underline}... (God often
+ speaks to us through impressions)
+
+- Exercise [faith]{.underline} at all times... Work at overcoming
+ feelings of fear. (Young man at Palestine - Migranes)
+
+FACILITATORS QUESTIONS:
+
+1) How would you define the Word of Wisdom? (Wisdom is a wise or
+ skillful way of making best use of knowledge)
+
+2) What are the eight characteristics of the Word of Wisdom? (Pure,
+ peaceable, gentle, easy to be entreated, full of mercy, full of good
+ works, without partiality, and without hypocrisy)
+
+3) What are the identifying marks of earthly wisdom? (Earthly, sensual
+ and demonic)
+
+THE GIVER AND HIS GIFTS
+
+(1 Corinthians 12: 1-11)
+
+THE WORD OF KNOWLEDGE -- Vs. 8
+
+I want to call your attention to verse eight of our text. I Corinthians
+12:8 (NKJV) "To another the word of knowledge by the same
+Spirit."
+
+In last week's study we learned the word of wisdom can be most
+accurately understood as receiving divine direction concerning a
+particular situation. The word of knowledge is the divine ability to
+know [facts]{.underline} that are not otherwise [apparent]{.underline}.
+Even though the word of knowledge and the word of wisdom are two
+distinct gifts, they often operate in tandem.
+
+When an individual is going through a particularly perplexing situation,
+what could be better than for God to reveal certain facts that would be
+impossible to otherwise know and then reveal the pattern for the
+solution?
+
+This can happen in: (PLACE ON SCREEN ONE AT A TIME)
+
+- The [first]{.underline} person... Receive it yourself.
+
+- The [second]{.underline} person... Another person speaks a word of
+ knowledge over you.
+
+- The [third]{.underline} person... God speaks a word of knowledge to
+ someone who passes the information along to you through another
+ person.
+
+If it is the intention of the Heavenly Father to reveal the solution to
+difficult situations through the word of wisdom, what importance does
+the word of knowledge play in such a scenario? (PLACE ON SCREEN ONE AT A
+TIME)
+
+- Births [faith]{.underline} in the heart of the person who is going
+ through the difficulty...
+
+- Confirmation that God is [walking]{.underline} through the difficulty
+ with them...
+
+- Increases the [faith]{.underline} [level]{.underline} to where the
+ individual can receive the word of wisdom...
+
+- Increases the faith level to a point where the individual is willing
+ to follow the [instructions]{.underline} of the word of wisdom...
+
+- Increases the faith of the individual whom the gift is
+ [operating]{.underline} through...
+
+Though we live in the information age and knowledge is increasing at a
+mind boggling pace, the knowledge of the world is terribly inferior to
+the knowledge of God. The knowledge of this world does not qualify an
+individual to operate in the gift of the word of knowledge. No amount of
+studying and education can bring about this wonderful gift!
+
+The word of knowledge operates through divine [revelation]{.underline};
+it is not what we suspect; it is not what we have observed; it is not
+what we have conjured up through analyzing another human being; it is
+not the gift of suspicion; it is facts revealed through the Spirit.
+
+The word of knowledge can and should be a powerful tool in the hands of
+the modern day church. This gift is closely related to the gift of
+discerning of spirits.
+
+This 12th chapter of I Corinthians opened with these words, 1
+Corinthians 12:1 (NKJV) "Now concerning spiritual gifts, brethren, I
+do not want you to be [ignorant]{.underline}." This expression is
+often re­peated in the New Testament: Romans 11:25; I Corinthians 10:1; 2
+Corinthians 1:8; Thessalonians 4:13; 2 Peter 3:8.
+
+Ignorance in any arena can be extremely [frustrating]{.underline} for
+both the participant and the by-stander; it can also be very
+[damaging]{.underline}.
+
+Someone said, "What you don\'t know won\'t hurt you." Who are we
+kidding? What you don\'t know can kill you!
+
+- When you are crossing a railroad track what if you don\'t know a train
+ is coming?
+
+- What if a cancer cell gets loose in your body and you are not aware of
+ it?
+
+- What if a close friend has a highly communicable disease and you know
+ nothing of it?
+
+I want to use a very common modern day occurrence to demonstrate a very
+important spiritual lesson -- driving. Most of us take it for granted
+and do it so often that we rarely give it a second thought. Driving is a
+[privilege]{.underline} not an [entitlement]{.underline}.
+
+There are safe drivers and there are drivers who are a menace to
+everyone else on the roadway. (I don\'t know how all of them knew to
+relocate to Houston!)
+
+Despite the fact they are not operating out of malice or animosity, a
+person who attempts to drive an automobile without the necessary
+knowledge or skills can be a very real danger to all other drivers and
+passengers. A friendly unskilled driver can kill you just as quick as an
+angry unskilled driver!
+
+Before you are issued a driver\'s license, you must demonstrate a
+certain level of [knowledge]{.underline} and [skill]{.underline}.
+
+You must pass a written test that includes a general knowledge of the
+road, its rules, and signs.
+
+You must pass a driving test in which you must demonstrate the skills
+necessary for the safe operation of a motor vehicle.
+
+If you cannot satisfactorily demonstrate knowledge that exceeds the
+minimum standard set by the state, you cannot legally operate an
+automobile.
+
+Any unauthorized operation of such a vehicle is subject to the penalties
+of the law of the land.
+
+The requirements of operation for a motor vehicle are designed to
+protect the operator as well as every other person who frequents the
+roadways.
+
+If you have a license but choose to go outside the boundaries of
+operating a motor vehicle in a safe manner, you are in danger of the
+penalty of the law.
+
+Paul is saying to the Corinthian Christians here that God desires to
+give each of His children a group of spiritual gifts that will enhance
+our trip to heaven. He is also saying that if you are to receive these
+gifts you should commit yourself to acquiring the skill and knowledge
+necessary for the proper operation of the gift. Unauthorized or
+irresponsible use of the gifts will be [penalized]{.underline}.
+
+The polar opposite of knowledge is ignorance. In this passage of
+Scripture, we are being told to become knowledgeable of the proper
+operation of the gifts, including the gift of knowledge.
+
+God does not want his children to operate out of ignorance. If we
+operate in ignorance, we have, by an act of our own will, chosen to do
+so. We have been given the five-fold ministry gifts: apostles, prophets,
+evangelists, pastors, and teachers. These gifts have been placed in the
+body for the "...perfecting of the saints, and the work of the
+ministry." Jeremiah 3:15 (NKJV) "And I will give you shepherds
+according to My heart, who will feed you with knowledge and
+understanding."
+
+The final outcome is often the same whether a person is ignorant,
+vicious, or over zealous.
+
+We will be held responsible for the damage we inflict on others and
+ourselves. I don\'t want to strike fear in your heart regarding the
+framework and operation of the gifts of the Spirit, but improper
+operation of gifts can be more damaging than helpful.
+
+When the church is [ignorant]{.underline} of the scriptures,
+[uninformed]{.underline} or [misinformed]{.underline} on vital
+doctrines, much harm is done to the cause of Christ. 2 Peter 3:16 (NKJV)
+"... some things are hard to understand, which untaught and
+unstable people twist to their own destruction, as they do also the rest
+of the Scriptures." Hosea 4:6 (NKJV) "My people are destroyed
+for lack of knowledge. Because you have rejected knowledge, I also will
+reject you from being priest for Me; Because you have forgotten the law
+of your God, I also will forget your children."
+
+Several illustrations in scripture reveal the word of knowledge in
+[operation]{.underline}: (PLACE ON SCREEN ONE AT A TIME)
+
+- [2 Kings 6:9-12]{.underline} - God revealed the military plans and
+ secret maneuvers of the Syrians to the prophet Elisha.
+
+- [John 1:47-51]{.underline} - Jesus exercised this gift when he engaged
+ in a conversation with Nathaniel. "Jesus saw Nathanael coming to
+ him, and saith of him, Behold an Israelite indeed, in whom is no
+ guile! Nathanael saith unto him, Whence knowest thou me? Jesus
+ answered and said unto him, Before that Philip called thee, when thou
+ wast under the fig tree, I saw thee. Nathanael answered and saith
+ unto him, Rabbi, thou art the Son of God; thou art the King of Israel.
+ Jesus answered and said unto him, Because I said unto thee, I saw
+ thee under the fig tree, believest thou? thou shalt see greater things
+ than these. And he saith unto him, Verily, verily, I say unto you,
+ Hereafter ye shall see heaven open, and the angels of God ascending
+ and descending upon the Son of man."
+
+- [Acts 5:1-10]{.underline} - God revealed to the apostle Peter the
+ scheming of Ananias & Sapphira.
+
+- [Acts 9:10-18]{.underline} - God revealed to Ananias (not the same
+ person that is mentioned in Acts 5) the where­abouts of one called Saul
+ of Tarsus. He also revealed what Saul was doing, and what God had in
+ mind for this new con­vert -- immediately, and in the future.
+
+- [Acts 27]{.underline} - God revealed to Paul that the storm on the sea
+ would not result in the loss of life as long as everyone stayed in the
+ ship. This is the word of knowledge accompanied with the word of
+ wisdom.
+
+PRACTICAL APPLICATION:
+
+How are we to allow this gift to operate through us? We must first
+develop a [listening]{.underline} ear. There is no substitute for
+sensitivity to the Spirit. The seven churches of revelation were no
+doubt set in different eras and various cultures... some were
+difficult; some were wicked; some were doctrinally unsound; but one
+statement was made to all of them: "He that hath an ear let him hear
+what the Spirit is saying to the church."
+
+Be [aware]{.underline} of how God speaks. God speaks through His Word;
+He speaks through people; He speaks through impressions. We should do
+the following: (PLACE ON SCREEN ONE AT A TIME)
+
+- Pray to be [sensitive]{.underline} enough to hear His voice...
+
+- Obey - [speaking]{.underline} what He has given us...
+
+- As with any other gift or ability we will become more
+ [comfortable]{.underline} and [confident]{.underline} with
+ experience...
+
+FACILITATORS QUESTIONS:
+
+1) How would you define the Word of Knowledge? (The word of knowledge
+ is the divine ability to know facts that are not otherwise
+ apparent.)
+
+2) How is a Word of Knowledge different from natural knowledge? (A Word
+ of Knowledge is information revealed by the Holy Spirit, natural
+ knowledge is based on facts that we can see that can be very
+ deceptive)
+
+3) Who is responsible for the proper operation of this gift? (The
+ individual through whom the gift is flowing? The pastor/leader who
+ is supposed to be in charge)
+
+THE GIVER AND HIS GIFTS
+
+(1 Corinthians 12:1-11)
+
+DISCERNING OF SPIRITS - Vs. 10
+
+In order to group the gifts by threes -- revelation gifts; power gifts;
+utterance gifts; we are going to take the gift of discerning of spirits
+out of the chronological order in which it is listed in I Corinthians
+
+12. The revelation gifts are: (PLACE ON SCREEN ONE AT A TIME)
+
+- Word of [wisdom]{.underline}...
+
+- Word of [knowledge]{.underline}...
+
+- [Discerning]{.underline} of [spirits]{.underline}...
+
+The study of discerning of spirits will conclude our study of revelation
+gifts.
+
+Discerning of spirits is the seventh gift listed and can be found in 1
+Corinthians 12:10 (NKJV) "to another the working of miracles, to
+another prophecy, to another [discerning of spirits]{.underline}, to
+another different kinds of tongues, to another the interpretation of
+tongues."
+
+This gift must not be confused with a critical spirit, analytical
+ability, telepathy, mind reading, or suspicion. It is in no way a
+psychic ability; it is, in the truest sense of the word, a gift that
+allows our spirit to bear witness with another person\'s spirit. In the
+event our spirit does not bear witness, this gift allows us to know what
+spirit is in operation.
+
+As is the case with all other gifts, this gift is not given to make us
+look super-spiritual, but allows for a marked [advantage]{.underline} in
+our battle against the enemy by being able to detect the specific spirit
+behind each [attack]{.underline}, allowing the believer to target a
+spirit rather than a personality.
+
+This generation has become so enamored with the supernatural and having
+someone to foresee the future, that many so called Christians consult
+psychics, read their horoscopes, play with Ouija boards, and constantly
+seek out individuals to receive a word about their future. This pursuit
+includes information about employment, relationships, health issues,
+financial obligations, investment strategies, and anything regarding the
+future.
+
+There is certainly nothing wrong with allowing a person of God to speak
+into our lives, but we better make sure about the character and the
+spiritual connectedness of the person who is doing the speaking. This is
+why we feel it is so important to train and screen altar workers.
+
+It is certainly not necessary for the person doing the speaking to be
+perfect, none of us are, but the source of the word must be from the
+throne of God. If it is not, it will do far more damage than good.
+
+If a false word is spoken, it can alter the course of one's life in a
+very negative way and quite possibly circumvent the destiny God has in
+mind for the individual. For instance: If God were calling a person to
+be a banker and someone prophesied to them that God wanted them to be a
+pastor, if that person were not a discerning person, they might go in a
+wrong direction and live a frustrated life. (Pastor who hated being a
+pastor)
+
+In a case like this, an individual's whole life could be frustrated
+because they pursued a destiny they weren\'t called to. In such a case
+both the individual who received an erroneous word as well as everyone
+they minister to suffer from the mistake.
+
+A person whose source is not from above could attempt to speak a curse
+on what God intended to bless.
+
+A good rule of thumb for the revelation gifts is that God will never
+surprise us with a [new]{.underline} [word]{.underline}; the word He
+gives will only [confirm]{.underline} what He has already been speaking
+to us.
+
+Discerning of spirits allows the believer to be able to detect what kind
+of spirit or spirits are in operation in any given situation. (Security
+at the airport)
+
+This gift is intended to go much further than just simple detection of a
+spirit. It is intended to: (PLACE ON SCREEN ONE AT A TIME)
+
+- Bring the person to a place of [repentance]{.underline}...
+
+- Correct wrong [actions]{.underline}...
+
+- Provide a new course of [action]{.underline}...
+
+The word "discerning" (Greek, diakrisis) means to judge or be able to
+sort through the [evidence]{.underline}, eventually reaching a correct
+understanding of the [facts]{.underline}. The intention of this gift is
+to be able to look beyond the outward to see what is not readily
+apparent in the invisible world of the spiritual, then forming a
+judgment based on that insight.
+
+This gift is important to every Christian but it is absolutely essential
+to those who serve in responsible positions of church government.
+
+It cannot be stated too emphatically that this spiritual gift operates
+only through born again believers. 1 Corinthians 2:14-15 (NKJV) "But
+the natural man does not receive the things of the Spirit of God, for
+they are foolishness to him; nor can he know them, because they are
+spiritually discerned. 15 But he who is spiritual judges all things, yet
+he himself is rightly judged by no one."
+
+This gift is intended for two reasons: (PLACE ON SCREEN ONE AT A TIME)
+
+- Detection of [demonic]{.underline} spirits operating through
+ unbelievers... One of the unique features of the ministry of Jesus was
+ casting demons out of those who were bound. Legion - Mt. 8 - The dumb
+ man - Mt. 9 - The dumb and blind man - Mt.12 - Little Canaanite girl
+ vexed with a devil whose mother sought Jesus out - Mt. 15 - A young
+ man who is described as a lunatic whose father sought Jesus out (The
+ boy would cast himself in the fire or in the water) - Mt. 17 - Man in
+ the synagogue with an unclean spirit - Mk. 1 - Mary Magdalene
+ delivered of seven devils - Luke - 8 Casting out evil spirits was also
+ a feature of the apostolic ministry as well as that of the New
+ Testament church - Acts 16:16-18 (NKJV) "Now it happened, as we
+ went to prayer, that a certain slave girl possessed with a spirit of
+ divination met us, who brought her masters much profit by
+ fortune-telling.17 This girl followed Paul and us, and cried out,
+ saying, "[These men are the servants of the Most High
+ God]{.underline}, who proclaim to us the way of salvation."18 And
+ [this she did for many days]{.underline}. But Paul, greatly annoyed,
+ turned and said to the spirit, "[I command you in the name of Jesus
+ Christ to come out of her]{.underline}." [And he came out that very
+ hour]{.underline}." Casting out demons is supposed to be a feature
+ of the modern day church - Mark 16:15-20 (NKJV) "And He said to
+ them, "Go into all the world and preach the gospel to every
+ creature.16 "He who believes and is baptized will be saved; but he who
+ does not believe will be condemned.17 "And these signs will follow
+ those who believe: In My name [they will cast out demons]{.underline};
+ they will speak with new tongues;18 "they will take up serpents; and
+ if they drink anything deadly, it will by no means hurt them; they
+ will lay hands on the sick, and they will recover." 19 So then, after
+ the Lord had spoken to them, He was received up into heaven, and sat
+ down at the right hand of God.20 [And they went out and preached
+ everywhere, the Lord working with them and confirming the word through
+ the accompanying signs]{.underline}. Amen." (Story of young lady
+ in Malvern on a Sunday morning)
+
+- Detection of [demonic]{.underline} spirits attempting to influence
+ Christians... Let me explain right up front that I do not believe a
+ Christian can be demon possessed, but I do believe Christians can be
+ influenced by demonic spirits. When demonic spirits operate through
+ sinners we call that possession; when they influence Christians we
+ call that oppression. (Explain the difference between possession and
+ oppression - Afghanistan and the Taliban - The difference in dealing
+ with the two - In possession you cast the devil out - In oppression
+ you cast the spirit down) (My first experience with this was dealing
+ with a young lady who was being vexed by a spirit of infirmity) You
+ don\'t have to believe me, all you have to do is look at the ministry
+ of Jesus and the Apostles. (1) When James and John saw the rejection
+ of the ministry of Jesus by the people of a Samaritan village, they
+ were so angry they attempted to call down fire from heaven to consume
+ the people. Notice how Jesus responded to their actions. Luke 9:55-56
+ (NKJV) "But He turned and rebuked them, and said, "[You do not
+ know what manner of spirit you are of]{.underline}.56 "For the Son of
+ Man did not come to destroy men's lives but to save them." (2) In
+ Matthew 16 Jesus told His disciples of all the things He was about to
+ face and he told them that in Jerusalem He would suffer reproach,
+ humiliation, and eventually death. Peter couldn't take it any longer
+ and spoke up, decrying the words Jesus was speaking. Matthew 16:22
+ (NKJV) "Then Peter took Him aside and began to rebuke Him, saying,
+ "Far be it from You, [Lord; this shall not happen to
+ You]{.underline}!" Peter was no doubt trying to do a good thing;
+ our motives can be good but our influence from the wrong source!
+ Notice how Jesus responded to Peter. Matthew 16:23 (NKJV) "But He
+ turned and said to Peter, "[Get behind Me, Satan]{.underline}! You are
+ an offense to Me, for you are not mindful of the things of God, but
+ the things of men." (3) Philip, Peter, and John were at Samaria and
+ Simon the sorcerer received Christ! Acts 8:13 (NKJV) "Then [Simon
+ himself also believed]{.underline}; and when [he was
+ baptized]{.underline} he continued with Philip, and was amazed, seeing
+ the miracles and signs which were done." In verse 18 he offered
+ the Apostles money for the gift of laying hands on people to receive
+ the gift of the Holy Ghost. Acts 8:20-24 (NKJV) "But Peter said to
+ him, "Your money perish with you, because you thought that the gift of
+ God could be purchased with money!21 "You have neither part nor
+ portion in this matter, for [your heart is not right in the sight of
+ God]{.underline}.22 "[Repent]{.underline} therefore of this your
+ wickedness, and pray God if perhaps the thought of your heart may be
+ forgiven you.23 "For I see that [you are poisoned by bitterness and
+ bound by iniquity]{.underline}."24 Then Simon answered and said, "Pray
+ to the Lord for me, that none of the things which you have spoken may
+ come upon me."
+
+The following is a list of 16 strongholds and the scripture references
+to back them up. These strongholds can affect an unbeliever as well as
+the life and spiritual walk of a believer: (PLACE ON SCREEN ONE AT A
+TIME)
+
+- Stronghold of [anti]{.underline}-[Christ]{.underline} - 1 John 4:3
+
+- Stronghold of [bondage]{.underline} - Romans 8:15
+
+- [Deaf]{.underline} and [dumb]{.underline} stronghold - Mark 9:17-29
+
+- Stronghold of [death]{.underline} - Revelation 20:13-14
+
+- Stronghold of [divination]{.underline} - Acts 16:16-18
+
+- Stronghold of [error]{.underline} - 1 John 4:6
+
+- [Familiar]{.underline} stronghold - Leviticus 19:31
+
+- Stronghold of [fear]{.underline} - 2 Timothy 1:7
+
+- Stronghold of [haughtiness]{.underline} (pride) - Proverbs 16:18
+
+- Stronghold of [heaviness]{.underline} - Isaiah 61:3
+
+- Stronghold of [infirmity]{.underline} - Luke 13:11-13
+
+- Stronghold of [jealousy]{.underline} - Numbers 5:14
+
+- Stronghold of [lying]{.underline} - 2 Chronicles 18:22
+
+- Stronghold of [perversion]{.underline} - Isaiah 19:14
+
+- Stronghold of [seduction]{.underline} - 1 Timothy 4:1
+
+- Stronghold of [whoredom]{.underline} - Hosea 4:12
+
+The very name of this gift reveals its true character and scope. It is
+discerning of spirits, not the actions of individuals. This gift reveals
+the plans, purposes, activities, and manifestations of both the Spirit
+of God and spirits that are not of God.
+
+This gift reveals the inward activity of demonic forces that would
+normally escape the recognition of most Christians. (My own experience
+with anger - story of young lady who saw demons lined up on her curb)
+
+It is extremely important to have this gift operating in your life
+because the Word reveals that Satan and his ministers would come as
+wolves dressed in sheep\'s clothing. 2 Corinthians 11:13-15 (NKJV)
+"For such are false apostles, deceitful workers, [transforming
+themselves]{.underline} into apostles of Christ.14 And no wonder! For
+[Satan himself transforms himself into an angel of light]{.underline}.15
+Therefore it is no great thing if [his ministers also transform
+themselves into ministers of righteousness]{.underline}, whose end will
+be according to their works."
+
+This gift of discerning of Spirits will rip off the Devil's mask of
+deception and expose his devices. Satan hates the manifestation of the
+gifts of the Spirit; he especially hates the gift of discerning of
+spirits because it carries with it the ability to [thwart]{.underline}
+his plans even before they have the opportunity to
+[succeed]{.underline}.
+
+All previously mentioned spirits can probably be categorized into three
+categories: (PLACE ON SCREEN ONE AT A TIME)
+
+- [Holy]{.underline} Spirit...
+
+- [Evil]{.underline} spirits...
+
+- [Human]{.underline} spirits...
+
+What can be done about these three spirits?
+
+If the Holy Spirit is in operation we must do one of two things: (PLACE
+ON SCREEN ONE AT A TIME)
+
+- Get out of the way, allowing Him to do His [work]{.underline}...
+
+- Obey His [instructions]{.underline}...
+
+If an evil spirit is in operation we must do one of three things: (PLACE
+ON SCREEN ONE AT A TIME)
+
+- Discern what spirit is in [operation]{.underline}...
+
+- Pray very [specifically]{.underline} against the spirit commanding it
+ to cease its activities...
+
+- Cast it [out]{.underline} or cast it [down]{.underline} depending on
+ whether it is possession or oppression...
+
+If a human spirit is in operation we must do the following things:
+(PLACE ON SCREEN ONE AT A TIME)
+
+- Pray for [grace]{.underline} to show the kindness of Christ...
+
+- Never allow our spirit to become [frustrated]{.underline}...
+
+- Pray for the individual to [adopt]{.underline} the mind of Christ...
+
+The mere existence of such a gift as discerning of spirits reveals the
+real existence of evil and deceiving spirits manifesting themselves
+through human beings.
+
+As more of God\'s Spirit is in operation in us, there will be a keener
+awareness as to the operation of satanic power.
+
+The gift of discerning of spirits, just like the other eight spiritual
+gifts is not a product of reasoning, or of our natural abilities. God
+will not entrust this or any of His gifts to serve as a means of
+entertainment to satisfy the curiosity of carnal Christians. These gifts
+are not given for personal gain or to satisfy some selfish ambition.
+
+God supplies His gifts to [accelerate]{.underline} the ministry of
+imperfect but authentic Christians, who are attempting to
+[minister]{.underline} in an imperfect world.
+
+The preaching of the gospel should go forth with such anointing as to
+make un-Christ-like spirits uncomfortable. When the gifts of the spirit
+are in full operation in the church some people will grow increasingly
+uncomfortable because they sense they are losing control or they feel
+they are in danger of being exposed. Demonic spirits will never be able
+to remain undetected in a spiritual church. Satan wants to covertly
+operate evil spirits in God\'s house to do several things:
+
+- To hinder church services...
+
+- To sow discord within the body...
+
+- To stir up confusion...
+
+- To contaminate the pattern of the Christian walk... (Making good look
+ evil and evil look good)
+
+PRACTICAL APPLICATION:
+
+There may be individuals in this audience who have identified portions
+of their behavior with the manifestations of a spirit that is not like
+Christ, and as a result you may be concerned about your standing and
+relationship with God. Because you can identify yourself with a
+un-Christ-like manifestation does not mean you are demon possessed. It
+could be that one or more of these spirits are influencing, harassing,
+or manipulating you.
+
+I have good news! You can experience freedom in Jesus!
+
+Once you have been made aware of the influence, harassment, and
+manipulation of the enemy, to persist in those behavior patterns is the
+equivalent of signaling to that particular spirit to invade your life
+with all kinds of other vexing problems.
+
+If you willingly open the door, the tormenting spirits of darkness will
+attack you without mercy, causing you to be weak, discouraged, and
+defeated.
+
+To allow this gift of discerning of spirits to operate freely in your
+life, the following things will be absolutely necessary: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- Have a [personal]{.underline} relationship with Jesus...
+
+- Be baptized in the [Holy]{.underline} [Spirit]{.underline}...
+
+- Be a person of [prayer]{.underline}...
+
+- Be a person of the [Word]{.underline}...
+
+- Be aware of the [spirit]{.underline} world...
+
+- Listen to the [voice]{.underline} of the Holy Spirit...
+
+- Attack the [spirit]{.underline} not the [person]{.underline}...
+
+FACILITATORS QUESTIONS:
+
+1) In your own words, how would you define Discerning of Spirits? (It
+ is a gift that allows our spirit to bear witness with another
+ person\'s spirit)
+
+2) What is the purpose of Discerning of Spirits? (To bring individuals
+ to a place of repentance, to correct wrong actions, and provide a
+ new course of action)
+
+3) Can a Christian be demon possessed? (No -- Christians can suffer
+ from depression or oppression)
+
+4) What three spirits should we be aware of? (Holy spirit, human
+ spirits and evil spirits)
+
+5) What should we do when we detect one of the aforementioned spirits?
+ (Holy Spirit -- Obey His instructions. Human Spirits -- Show the
+ love of Christ, pray for grace to endure the situation. Evil Spirits
+ -- Plead the blood of Jesus against it -- Take authority over it in
+ the name of Jesus -- Stand on the authority of the Word of God)
+
+POWER GIFTS
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+THE GIFT OF FAITH - Vs. 9
+
+The first three gifts in this series, we classified as revelation gifts:
+the word of wisdom, the word of knowledge, and discerning of spirits.
+The next three gifts: faith, healing and miracles, I would like to
+classify as power gifts.
+
+First of all, we are going to study the gift of faith. In postmodern
+times, faith is a frequently preached but rarely practiced theological
+truth.
+
+Contrary to popular belief within the church one need not be saved to
+possess and exercise faith:
+
+- Every time a person steps on an airplane, they are exercising faith in
+ the pilot and the equipment!
+
+- Every time a person steps into an elevator, they are exercising faith
+ in the manufacturer and the machine!
+
+- Every time a person gets into their automobile, they are exercising
+ faith in their own ability and the ability of the vehicle!
+
+It is not necessary to be [saved]{.underline} to exercise this kind of
+faith. Romans 12:3 (KJV) "For I say, through the grace given unto
+me, to every man that is among you, not to think of himself more highly
+than he ought to think; but to think soberly, according as [God hath
+dealt to every man the measure of faith.]{.underline}" (Thomas
+Jefferson - The Declaration of Independence - "We hold these truths to
+be self evident, that all men are created equal, that they are endowed
+by their Creator with certain unalienable rights, that among these are
+life, liberty, and the pursuit of happiness." Thomas Jefferson was no
+doubt a good man and I agree with the theory that in America every
+person should have an equal chance at success, but all of us are
+obviously not created equal:
+
+- The DNA of every individual is unique to that person...
+
+- Every fingerprint is original and cannot be duplicated...
+
+- The iris in the eye is different with every person...
+
+- Some are stronger and some are weaker...
+
+- Some are smarter and some are not as smart...
+
+- Some are pretty and some are not as pretty...
+
+While the abilities and intellect of each person is very different, it
+is true that initially all men have been given exactly the same
+[measure]{.underline} of faith. If it is true that each person has been
+given the same faith as all other people - when and where did we receive
+this faith and how did this occur to begin with? In this lesson we are
+going to study three venues from which we receive faith: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- Faith is [imparted]{.underline}...
+
+- Faith is given as a [fruit]{.underline} of the [spirit]{.underline}...
+
+- Faith is given as a [gift]{.underline}...
+
+If we are to please God and live up to our potential, fulfilling our
+reason for being on this earth, we must receive faith from all three
+venues. Hebrews 11:6 (NKJV) "But without faith it is impossible to
+please him: for he that cometh to God must believe that He is, and that
+He is a rewarder of them that diligently seek Him."
+
+IMPARTED FAITH The impartation of this gift occurs at the moment of
+[conception]{.underline}. To prove my point, allow me to take you on a
+practical and scriptural journey. Why are you alive?
+
+You are alive because God empowered your mother and father to reproduce.
+
+Reproduction in and of itself is a mind- boggling miracle, but allow me
+to simplify the matter by saying God breathed into your nostrils the
+breath of life. Genesis 2:7 (KJV) "And the LORD God formed man of
+the dust of the ground, and breathed into his nostrils the breath of
+life; and man became a living soul." The word "breathed" as
+it is used here comes from the Hebrew word "naphach" (naw-fakh\')
+and means to puff, to inflate to blow hard. The word "breath"
+comes from the Hebrew word "neshamah" (nesh-aw-maw\') and means a
+puff; a violent breath; divine intellect or inspiration. We could
+paraphrase this Scripture by saying, "And the Lord God formed man
+from the dust of the ground, and blew into his nostrils, divine
+intellect; and man became a living person."
+
+If this is true, abortion does more than stop a beating heart; it kills
+divine intellect. (Too bad for the abortionists that it is not possible
+to make it retroactive) A watermelon seed has resident within it: the
+vine, the leaves, the rind, the meat, and the power to reproduce itself.
+To take a life from the womb kills everything God intended for that
+individual.
+
+The reason we were not stillborn is because God, with His breath, blew
+divine [intellect]{.underline} into our nostrils and commanded us to
+live!
+
+Listen to this, 2 Timothy 3:16-17 (NKJV) "All scripture is given by
+[inspiration]{.underline} of God, and is profitable for doctrine, for
+reproof, for correction, for instruction in righteousness: 17 That the
+man of God may be perfect, thoroughly furnished unto all good
+works." The life and breath that we have points up the fact that
+behind all the pretense and façade, there is within our genetic makeup,
+faith that was imparted to us from Father God! An atheist who chooses to
+believe there is no God points up the fact there really is a God.
+
+Please understand that the intellect does not produce faith, but gives
+man the capacity to [receive]{.underline}, [possess]{.underline},
+[exercise]{.underline} and [cultivate]{.underline} faith.
+
+We are commanded to develop our intellect to its maximum potential so we
+can offer it to God for His use. 2 Timothy 2:15 (KJV) "Study to shew
+thyself approved unto God, a workman that needeth not to be ashamed,
+rightly dividing the word of truth."
+
+On the other hand, no matter how intelligent we become in the natural,
+how high or low our IQ may be, when oxygen ceases to flow to our brains
+we lose all ability to think and function. Why does this happen? Because
+Satan, through the fall (not just Adam\'s sin - all of our sin)
+perverted the seed of faith placed in us at conception. Because of the
+seed of sin, imparted faith is [temporary]{.underline} and leaves much
+to be desired.
+
+THE FRUIT OF FAITH Faith is not only imparted at conception, it is
+planted as a seed at [conversion]{.underline}. In Luke 8 Jesus gives the
+parable of the sower and the seed. In verse 11 He explains the parable,
+"Now the parable is this: [The seed is the word of
+God]{.underline}."
+
+Listen to this: John 1:10-14 (NKJV) "He was in the world, and the
+world was made by him, and the world knew him not. 11 He came unto his
+own, and his own received him not. 12 But [as many as received him, to
+them gave he power to become the sons of God]{.underline}, even to them
+that believe on his name: 13 Which were [born]{.underline}, not of
+blood, nor of the will of the flesh, nor of the will of man, but [of
+God]{.underline}. 14 And the Word was made flesh, and dwelt among us,
+(and we beheld his glory, the glory as of the only begotten of the
+Father,) full of grace and truth."
+
+If I interpret the scripture correctly the miracle that happens at
+conversion simply put is this: The seed of God is planted within us.
+What happens when we plant a seed?
+
+- It sprouts and grows...
+
+- It withers and dies...
+
+- It comes to maturity...
+
+(My experience as a teenager in a peach orchard)
+
+Galatians 5:22-25 (NKJV) "But the fruit of the Spirit is love, joy,
+peace, longsuffering, gentleness, goodness, [faith]{.underline}, 23
+Meekness, temperance: against such there is no law. 24 And they that are
+Christ's have crucified the flesh with the affections and lusts. 25 If
+we live in the Spirit, let us also walk in the Spirit."
+
+At conversion the seed of the fruit of the spirit is deposited in our
+life. Whether or not that fruit ever comes to maturity depends totally
+on how the individual responds to it and cultivates it. Faith is a
+component of the fruit of the spirit.
+
+If faith as a fruit is deposited in our lives at
+[conversion,]{.underline} then it is up to us to tend that seed,
+develop, cultivate, and bring it to full [maturity]{.underline}. Once
+the seed of faith has been planted, the responsibility for its
+development resides with the recipient. How are we to faithfully execute
+this very important responsibility? Romans 10:17 (NKJV) "So then
+faith cometh by hearing, and hearing by the word of God."
+
+Once the seed of faith has been planted at conversion, we begin the
+process of developing faith into mature fruit through the study,
+memorization, and practice of the Word of God.
+
+The development of fruit is a day-by-day [maturation]{.underline}
+process. This is the very reason we believe in progressive
+sanctification.
+
+Always remember: this can only be done while the growing season lasts.
+Even so, we are given a season for developing, maturing, and utilizing
+the gift of God in our life.
+
+Every day counts! We must view today as a gift and maximize each day
+through developing and utilizing every facet of His generosity,
+especially the seed of faith that has been deposited within us.
+
+To sit around and wait for God to do something through us is the
+equivalent of our children refusing to utilize the gifts we have given
+them unless and until we agree to unwrap and press them into service on
+their behalf!
+
+James 2:17-18 (NKJV) "Even so faith, if it hath not works, is dead,
+being alone. 18 Yea, a man may say, Thou hast faith, and I have works:
+shew me thy faith without thy works, and I will shew thee my faith by my
+works."
+
+James 2:26 (NKJV) "For as the body without the spirit is dead, so
+faith without works is dead also."
+
+We are saved by faith, not by works. But once we are converted, we
+continually receive faith-lifts by mixing faith with works.
+
+Fruit does not grow unless there is some variation in the temperature,
+an adequate amount of sunshine, substantial periods of darkness, and
+ample rainfall that is often accompanied by storms.
+
+The fruit never makes demands on the [husbandman]{.underline}, but the
+work of the [husbandman]{.underline} always determines the marketability
+of the full-grown fruit. (Pruning - fertilizing - applying pesticides -
+breaking up the ground - etc...)
+
+Imparted faith and intellect was perfect at the point of impartation,
+but became fragmented by the fall. The first thing sin did was to bring
+the knowledge of a wrong done. Genesis 3:1-6 (NKJV) "Now the serpent
+was more cunning than any beast of the field which the
+[Lord]{.smallcaps} God had made. And he said to the woman, "[Has God
+indeed said]{.underline}, 'You shall not eat of every tree of the
+garden'?"2 And the woman said to the serpent, "We may eat the fruit of
+the trees of the garden;3 "but of the fruit of the tree which is in the
+midst of the garden, God has said, 'You shall not eat it, nor shall you
+touch it, lest you die.' "4 Then the serpent said to the woman, "[You
+will not surely die]{.underline}.5 "For God knows that in the day you
+eat of it your eyes will be opened, and you will be like God, knowing
+good and evil."6 So when the woman saw that the tree was good for food,
+that it was pleasant to the eyes, and a tree desirable to make one wise,
+she took of its fruit and ate. She also gave to her husband with her,
+and he ate."
+
+The second thing sin did was to bring about fear. Genesis 3:9-10 (NKJV)
+"Then the [Lord]{.smallcaps} God called to Adam and said to him,
+"Where are you?"10 So he said, "I heard Your voice in the garden, and [I
+was afraid]{.underline} because I was naked; and I hid myself."
+
+According to these passages of scripture, sin directly assaults our
+intellect and our faith.
+
+When we give in to sin, we allow our intellect and our faith to become
+fragmented. 1 Corinthians 13:8-13 (NKJV) "Love never fails. But
+whether there are prophecies, they will fail; whether there are tongues,
+they will cease; whether there is knowledge, it will vanish away.9 For
+we know in [part]{.underline} and we prophesy in [part]{.underline}.10
+But when that which is perfect has come, then that which is in
+[part]{.underline} will be done away.11 When I was a child, I spoke as a
+child, I understood as a child, I thought as a child; but when I became
+a man, I put away childish things.12 For now we see in a mirror, dimly,
+but then face to face. Now I know in [part]{.underline}, but then I
+shall know just as I also am known.13 And now abide faith, hope, love,
+these three; but the greatest of these is love." The word
+"part" here means fragment.
+
+The fruit of faith is a process of putting the pieces back together. The
+efforts of the child of God and the work of the Holy Spirit are to pick
+up the pieces of the fragmentation and build our intellect and faith
+until we are made into the image of His dear Son. When we are made into
+the image of God, we do His work and produce His fruit.
+
+If the fruit inspector were to walk into this house tonight and demand
+an evaluation of the fruit of our life, especially that which our faith
+has produced, I wonder what his report would look like tomorrow?
+(Experience grading peaches in the peach orchard)
+
+Do we look forward to the day of reckoning or do we dread the
+confrontation? If you do not look forward to such an encounter with
+excitement and anticipation, when will you change the activity of your
+life that is producing such substandard results? Will you make the
+necessary changes today, tomorrow? If not, when?
+
+WARNING: The fruit inspector is in the house and the day of
+reckoning is at hand!
+
+THE GIFT OF FAITH God wants us as His children to have faith, so
+much so that He has provided it for us through many
+[sources]{.underline} and [channels]{.underline}. From Paradise to
+Patmos, faith is the common denominator of Christ honoring, God pleasing
+people. Hebrews 11:6 (NKJV) "But [without faith it is impossible
+to please him]{.underline}: for he that cometh to God must believe that
+he is (exists), and that he is a rewarder of them that diligently seek
+him."
+
+Faith is the only ingredient mentioned in both the Galatian list of
+fruit and the Corinthian list of gifts.
+
+Just as the fruit of faith is different from imparted (natural) faith,
+the gift of faith is different from the fruit of faith. The gift of
+faith can only be received following the experience of the Baptism in
+the Holy Spirit.
+
+The fruit of faith is what God does [through]{.underline} us; walking
+out His Word, learning to stand on His promises; the gift of faith is
+what God does [for]{.underline} us.
+
+Through the fruit of faith we have discovered that God is able to bring
+us through the trials and tests that the enemy places in our pathway.
+The gift of faith goes far beyond just believing God is
+[able]{.underline}, to the point of speaking things into existence that
+seem totally [irrational]{.underline} to the human mind.
+
+Faith receives things by the Spirit and "calls those things that are
+not as though they were." This kind of faith moves you into a place
+where God honors your word as his own and miraculously brings it to
+pass. Mark 11:23-24 (NKJV) "For assuredly, I say to you, whoever
+[says to this mountain]{.underline}, 'Be removed and be cast into the
+sea,' [and does not doubt]{.underline} in his heart, but
+[believes]{.underline} that those things he says will be done, [he will
+have whatever he says]{.underline}.24 "Therefore I say to you, [whatever
+things you ask when you pray, believe that you receive them, and you
+will have them]{.underline}." Job 22:27-28 (NKJV) "You will make
+your prayer to Him, He will hear you, And you will pay your vows. 28
+[You will also declare a thing, And it will be established for
+you]{.underline}; So light will shine on your ways."
+
+Let us look at such an occurrence in the Old Testament and a couple of
+instances in the New Testament.
+
+Ezekiel 37:1-10 (NKJV) "The hand of the [Lord]{.smallcaps} came upon
+me and brought me out in the Spirit of the [Lord,]{.smallcaps} and set
+me down in the midst of the valley; and it was full of bones.2 Then He
+caused me to pass by them all around, and behold, there were very many
+in the open valley; and indeed they were very dry.3 And He said to me,
+"[Son of man, can these bones live]{.underline}?" So I answered, "[O
+Lord [God,]{.smallcaps} You know]{.underline}."4 Again He said to me,
+"[Prophesy to these bones]{.underline}, and say to them, 'O dry bones,
+hear the word of the [Lord]{.smallcaps}! 5 'Thus says the Lord
+[God]{.smallcaps} to these bones: "Surely I will cause breath to enter
+into you, and you shall live.6 "I will put sinews on you and bring flesh
+upon you, cover you with skin and put breath in you; and you shall live.
+Then you shall know that I am the [Lord]{.smallcaps}.7 [So I prophesied
+as I was commanded]{.underline}; and as I prophesied, there was a noise,
+and suddenly a rattling; and the bones came together, bone to bone.8
+Indeed, as I looked, the sinews and the flesh came upon them, and the
+skin covered them over; but there was no breath in them.9 Also He said
+to me, "[Prophesy to the breath]{.underline}, prophesy, son of man, and
+say to the breath, 'Thus says the Lord [God:]{.smallcaps} "Come from the
+four winds, O breath, and breathe on these slain, that they may live.10
+[So I prophesied as He commanded me]{.underline}, and breath came into
+them, and they lived, and stood upon their feet, an exceedingly great
+army."
+
+Acts 12:1-11 (NKJV) "Now about that time Herod the king stretched
+out his hand to harass some from the church.2 Then he killed James the
+brother of John with the sword.3 And because he saw that it pleased the
+Jews, [he proceeded further to seize Peter also]{.underline}. Now it was
+during the Days of Unleavened Bread.4 [So when he had arrested him, he
+put him in prison]{.underline}, and delivered him to four squads of
+soldiers to keep him, intending to bring him before the people after
+Passover. 5 Peter was therefore kept in prison, but constant [prayer was
+offered to God for him by the church]{.underline}.6 And when Herod was
+about to bring him out, that night [Peter was sleeping, bound with two
+chains between two soldiers; and the guards before the door were keeping
+the prison]{.underline}.7 Now behold, an angel of the Lord stood by him,
+and a light shone in the prison; and he struck Peter on the side and
+raised him up, saying, "Arise quickly!" And [his chains fell off his
+hands]{.underline}.8 Then the angel said to him, "Gird yourself and tie
+on your sandals"; and [so he did]{.underline}. And he said to him, "Put
+on your garment and follow me."9 [So he went out and followed
+him]{.underline}, and did not know that what was done by the angel was
+real, but thought he was seeing a vision.10 When they were past the
+first and the second guard posts, they came to [the iron gate that leads
+to the city, which opened to them of its own accord]{.underline}; and
+they went out and went down one street, and immediately the angel
+departed from him.11 And when Peter had come to himself, he said, "Now I
+know for certain that the Lord has sent His angel, and has delivered me
+from the hand of Herod and from all the expectation of the Jewish
+people."
+
+Paul and Silas at Philippi: Acts 16:22-30 (KJV) "And the multitude
+rose up together against them: and the magistrates rent off their
+clothes, and commanded to beat them. 23 And when they had laid many
+stripes upon them, they cast them into prison, charging the jailor to
+keep them safely: 24 Who, having received such a charge, thrust them
+into the inner prison, and made their feet fast in the stocks. 25 And
+[at midnight Paul and Silas prayed, and sang praises unto
+God]{.underline}: and the prisoners heard them. 26 And [suddenly there
+was a great earthquake]{.underline}, so that the foundations of the
+prison were shaken: and [immediately all the doors were opened, and
+every one's bands were loosed]{.underline}. 27 And the keeper of the
+prison awaking out of his sleep, and seeing the prison doors open, he
+drew out his sword, and would have killed himself, supposing that the
+prisoners had been fled. 28 But Paul cried with a loud voice, saying, Do
+thyself no harm: for we are all here. 29 Then he called for a light, and
+sprang in, and came trembling, and fell down before Paul and Silas, 30
+And brought them out, and said, Sirs, what must I do to be saved?"
+
+Faith as a gift deals with the [unseen]{.underline} world and has far
+more to do with [reality]{.underline} than the [physical]{.underline}
+realm. Hebrews 11:1 (KJV) "Now faith is the substance (title
+deed-assurance) of things hoped for, the evidence of things not
+seen."
+
+Faith as a gift is far superior to human reasoning or natural
+understanding. Neither human reasoning nor natural understanding can
+compel faith to [function]{.underline}; in fact, it is the
+[enemy]{.underline} of faith. Romans 8:5-9 (NKJV) "For those who
+live according to the flesh [set their minds on the things of the
+flesh]{.underline}, but [those who live according to the Spirit, the
+things of the Spirit]{.underline}.6 For [to be carnally minded is
+death]{.underline}, but [to be spiritually minded is life and
+peace]{.underline}.7 Because [the carnal mind is enmity against
+God]{.underline}; for [it is not subject to the law of God, nor indeed
+can be]{.underline}.8 So then, [those who are in the flesh cannot please
+God]{.underline}.9 But you are not in the flesh but in the Spirit, if
+indeed the Spirit of God dwells in you. Now if anyone does not have the
+Spirit of Christ, he is not His."
+
+The gift of faith produces a confidence in God and His word that defies
+human reasoning, satanic obstacles, doubt, and unbelief. It says I will
+believe no matter what, simply because God said it. When the gift of
+faith is functioning properly, it will produce the following things:
+(PLACE ON SCREEN ONE AT A TIME)
+
+- Supernatural [blessing]{.underline}...
+
+- Supernatural [protection]{.underline}...
+
+- Supernatural [provision]{.underline}...
+
+- Supernatural [strength]{.underline}...
+
+Faith is the switch that opens God\'s powerhouse. Faith sees the
+invisible, believes the incredible, and claims the impossible. Mark
+11:22-24 (NKJV) "So Jesus answered and said to them, "[Have faith in
+God]{.underline}.23 "For assuredly, I say to you, whoever says to this
+mountain, 'Be removed and be cast into the sea,' [and does not doubt in
+his heart, but believes that those things he says will be done, he will
+have whatever he says]{.underline}.24 "Therefore I say to you, [whatever
+things you ask when you pray, believe that you receive them, and you
+will have them]{.underline}."
+
+Faith is not a guarantee against [problems]{.underline}... it is a
+guarantee against [defeat]{.underline}!
+
+Faith is not a state of mind, but a state of the heart toward God\'s
+Word. Romans 10:9-10 (KJV) "With the heart man believeth unto
+righteousness; and with the mouth confession is made unto salvation"
+
+PRACTICAL APPLICATION:
+
+How are we to allow faith to operate in our lives? (PLACE ON SCREEN ONE
+AT A TIME)
+
+- Develop [imparted]{.underline} faith as far as it will take us...
+ Study, educate yourself, take advantage of all educational
+ opportunities.
+
+- Develop the [fruit]{.underline} of [faith]{.underline} in our lives...
+ Pray, Study His Word! Consume His Word! Stand on God\'s Word! Put God
+ to the test!
+
+- Discover His [faithfulness]{.underline}...
+
+- Ask God to allow the gift of faith to [operate]{.underline} through
+ us...
+
+- Respond to the [instructions]{.underline} of the Holy Spirit...
+
+- Speak faith into [faithless]{.underline} situations...
+
+FACILITATORS QUESTIONS:
+
+1) What are the three ways one receives faith? (Imparted faith -- Faith
+ as a fruit of the Spirit -- Faith as a Gift of the Spirit)
+
+2) Can the intellect produce faith? (No each person is born with THE
+ measure of faith -- Think how much trust an infant puts in those
+ around them -- From birth the intellect is in the process of killing
+ faith -- People become not only untrusting, if left to themselves
+ they also become cynical)
+
+3) Can faith as a fruit of the Spirit be developed? (Yes - Whether or
+ not that fruit ever comes to maturity depends totally on how the
+ individual responds to it and cultivates it)
+
+4) How does one cultivate faith as a fruit of the Spirit? (Faith comes
+ by hearing, hearing by the Word of God. Romans 10:17)
+
+5) What is the one prerequisite of receiving the gift of Faith? (The
+ gift of faith can only be received following the experience of the
+ Baptism in the Holy Spirit)
+
+6) Does faith guarantee that we will not encounter problems? (No -- It
+ guarantees we will not be defeated)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+THE GIFTS OF HEALINGS - Vs. 9
+
+During this study I want to attempt to address several commonly asked
+questions regarding this wonderful gift: (PLACE ON SCREEN ONE AT A TIME)
+
+- Is [healing]{.underline} for today?
+
+- Is it Gods will to heal [everyone]{.underline}?
+
+- Why do certain [people]{.underline} receive their healing and others
+ do not?
+
+- Are the gifts of healings a one-size-fits-all
+ [proposition]{.underline}?
+
+- How do I allow this wonderful gift to [operate]{.underline} in my
+ life?
+
+First of all, is healing for today? Some people believe that the gifts
+ceased at the close of the apostolic age. Those who believe this
+normally use the following scripture to prove their point: 1 Corinthians
+13:8-10 (NKJV) "Love never fails. But whether there are prophecies,
+[they will fail]{.underline}; whether there are tongues, [they will
+cease]{.underline}; whether there is knowledge, [it will vanish
+away]{.underline}.9 For we know in part and we prophesy in part.10 But
+[when that which is perfect has come, then that which is in part will be
+done away]{.underline}." Those who use this scripture to support
+their view of the gifts, also believe what the scripture is referring to
+when it says "when that which is perfect is come," is the Bible.
+
+I believe the Bible to be inerrant, but the Bible is certainly not what
+this scripture is speaking of. If this view were correct, not only would
+gifts have ceased with the completion of Holy Scripture, but knowledge
+would have been stymied as well. None of us could embrace a belief that
+says knowledge has not increased since the completion of the canon of
+scripture, yet many persist in believing gifts have ceased. If knowledge
+is increasing, the use of gifts should be increasing as well.
+
+Healing is a [cardinal]{.underline} doctrine of the Word of God. Exodus
+15:26 (KJV) "If thou wilt diligently hearken to the voice of the
+LORD thy God, and wilt do that which is right in his sight, and wilt
+give ear to his commandments, and keep all his statutes, I will put none
+of these diseases upon thee, which I have brought upon the Egyptians:
+for [I am the LORD that healeth thee]{.underline}."
+
+This word "healeth" means the continuation of healing. He does
+not heal once and say, "that\'s all you get" but He
+"forgiv[eth]{.underline} all thine iniquities, and He
+heal[eth]{.underline} all thy diseases." This is a continuous action
+verb and means that as long as the need for forgiveness or healing
+exists, the gift will continue to be an active, viable gift.
+
+Secondly, is it God\'s will to heal everyone? I am convinced the answer
+to this question is absolutely yes. From the fiery serpent in the
+wilderness through the apostolic age, there is iron clad scriptural
+proof that God\'s intentions were and are to heal everyone.
+
+The following is a list of scriptures to consider:
+
+- Numbers 21:8 Note the words "every one."
+
+- Matthew 12:15 "He healed them all."
+
+- Luke 4:40 "He laid His hands on every one of them, and healed
+ them."
+
+- Luke 6:19 "He healed them all."
+
+- Luke 9:6 The Apostles "preached the Gospel and healed
+ everywhere."
+
+- Luke 9:11 Jesus "healed them that had need of healing."
+
+- Acts 5:14-16 Multitudes who were sick and vexed with devils came to
+ the ministry of Peter and vs. 16 says "and they were healed every
+ one."
+
+The very first covenant the Lord made with the children of Israel after
+they left the land of Egypt was the Covenant of [Healing]{.underline}.
+Exodus 15:26 (NKJV) "If you diligently heed the voice of the
+[Lord]{.smallcaps} your God and do what is right in His sight, give ear
+to His commandments and keep all His statutes, [I will put none of the
+diseases on you which I have brought on the Egyptians]{.underline}. For
+I am the [Lord]{.smallcaps} who heals you." This covenant was a
+conditional covenant.
+
+There were four conditions set forth for their healing: (PLACE ON SCREEN
+ONE AT A TIME)
+
+- Hear and obey the [voice]{.underline} of the Lord thy God...
+
+- Do that which is [right]{.underline} in the [sight]{.underline} of the
+ Lord...
+
+- Listen to his [commandments]{.underline}...
+
+- Keep all his [laws]{.underline}...
+
+God told them that if they would behave themselves and keep their end of
+the bargain, that He would keep His end of the covenant by taking care
+of their bodies. They struggled in fulfilling their part of the
+covenant, but God kept His part of the agreement. David tells us in
+Psalm 105:37(KJV) "He brought them forth also with silver and gold;
+and [there was not one feeble person among their
+tribes]{.underline}."
+
+It is apparent that on multiple occasions all were healed. If this is
+true, then all can be healed now! Hebrews 13:8 (NKJV) "Jesus Christ
+is the same yesterday, today, and forever."
+
+Thirdly, why do some people get healed and others do not?
+
+The only scriptural reasons I can find for people not being healed are a
+lack of [faith]{.underline}, too much [doubt]{.underline},
+[unbelief]{.underline}, or it is their [time]{.underline} to go. Even
+Jesus could not do many miracles in Nazareth because of the abundance of
+unbelief.
+
+It is God\'s will to save everyone, but everyone is not saved. "He
+is not willing that any should perish, but that all should come to
+repentance." All are not saved because:
+
+- Some have never heard that Jesus saves...
+
+- Many have not been taught that He heals...
+
+- Some do not believe salvation is for them...
+
+- Some do not believe healing is for them...
+
+- Unbelief doesn\'t bring healing any more than it brings salvation...
+
+- Some fail to get saved because they refuse to meet the conditions set
+ forth in the Word of God...
+
+- Some do not get healed because they fail to meet the requirements of
+ the Word of God...
+
+- Some do not get saved because they cannot bring themselves to believe
+ the finished work of Christ to be sufficient to forgive their sins...
+
+- Some do not get healed because they cannot believe the work of Christ
+ can become personal...
+
+As born again believers, we should believe Christ is not only able to
+heal, but is also willing to heal. He is at least as willing as He is
+able!
+
+Healing is provided for in the [atonement]{.underline}. Isaiah 53:5
+(NKJV) "But He was wounded for our transgressions, He was bruised
+for our iniquities; The chastisement for our peace was upon Him, And [by
+His stripes we are healed]{.underline}."
+
+Are the Gifts of Healings a one-size-fits-all proposition? The answer to
+this question is no, absolutely not!
+
+In 1 Corinthians 12, this gift is mentioned three times: in verse nine;
+in verse twenty-eight; and in verse thirty. In the King James Version
+the first noun is plural and the second is singular, but in the
+original, all three times, both appear in the plural form. The plurality
+of both nouns in the sentence seems to point up the possibility of many
+gifts of healings for many different diseases.
+
+The use of every day examples to teach spiritual truth can be risky and
+somewhat inadequate but Jesus found it necessary to resort to such
+tactics in order to impart spiritual truth. So allow me to use the
+following example. In the medical field there are general practitioners
+and there are specialists. A family doctor is more than likely a general
+practitioner and unless we have a serious or prolonged illness, he will
+normally be able to walk us through most of our health issues. However,
+when our health problems go beyond normal and routine maladies, our
+primary care physician will refer us to a specialist.
+
+If we break a foot we do not go to see our good friend who is an
+oncologist, we go to see an orthopedic surgeon.
+
+One of the problems with the modern day church is that we have a
+tendency to generalize, painting everything with a really broad brush.
+We like our religion in a one- size-fits-all package. We deal in
+generalities far too often, setting ourselves up for failure to seize
+and receive the miraculous. God desires to allow us to see the
+miraculous but He normally reserves the miraculous for those who deal
+with Him in [specifics]{.underline} rather than
+[generalities]{.underline}.
+
+Following the miracle of the loaves and the fish, Jesus sent His
+disciples away by ship on the Sea of Galilee. During the course of their
+voyage, an unexpected wind began to threaten the ship. Jesus saw them
+"straining at rowing" and walks on the sea in close proximity to
+the ship. Notice St. Mark\'s description of the event: Mark 6:48-49
+(NKJV) "Then He saw them straining at rowing, for the wind was
+against them. Now about the fourth watch of the night He came to them,
+walking on the sea, and [would have passed them by]{.underline}.49 And
+when they saw Him walking on the sea, they supposed it was a ghost, and
+[cried out]{.underline};"
+
+Look at the story of the Leper in Matthew chapter eight: Matthew 8:1-3
+(NKJV) "When He had come down from the mountain, great multitudes
+followed Him.2 And behold, a leper came and worshiped Him, saying,
+"[Lord, if You are willing, You can make me clean]{.underline}."3 Then
+Jesus put out His hand and touched him, saying, "[I am willing; be
+cleansed]{.underline}." [Immediately his leprosy was
+cleansed]{.underline}."
+
+Again, the Gifts of Healings, as you can readily see, are in the double
+plural tense. It is the only one of the nine spiritual gifts
+grammatically constructed in this way. My experience in kingdom work
+lets me know that those who function in a gift of healing often feel
+more drawn to pray with persons with a particular disease than to pray
+for various other diseases. This is certainly not set in stone, but is
+normally the case. Here is the revelation of my understanding: there are
+as many gifts of healing as there are diseases. Within every body of
+believers there should be a gift of healing for every disease.
+
+There are no incurable diseases with the Lord. No one is hopeless,
+nothing is too hard for the Lord, and all things are possible to those
+who believe.
+
+God can certainly manifest any one of His gifts through anyone who will
+yield to it. Because we are human, we may have a greater level of faith
+to pray for one disease over another. In such a case it becomes even
+more important that all function in the area of their giftedness.
+
+There are some who know they have a healing ministry, yet become grieved
+and burdened when all manner of sicknesses and diseases do not yield to
+their prayers or commands.
+
+I think we could say with a definite degree of certainty that the gifts
+of healings are certainly not a one-size-fits-all proposition.
+
+How are we to allow this wonderful gift to operate in our lives and
+ministries? In order to discover the proper usage of this gift, we need
+only to look at the life and ministry of Jesus.
+
+One of the interesting features of the ministry of Jesus is that the
+scripture repeatedly points up the fact that He was "moved with
+compassion" toward the plight of others. Nine times in the four
+gospels the word [compassion]{.underline} is used to describe Jesus\'
+dealings with individuals or multitudes. Oftentimes this resulted in
+people receiving their healing:
+
+- Matthew 14:14 (NKJV) "And when Jesus went out He saw a great
+ multitude; and [He was moved with compassion for them, and healed
+ their sick]{.underline}."
+
+- Matthew 20:29-34 (NKJV) "Now as they went out of Jericho, a great
+ multitude followed Him.30 And behold, two blind men sitting by the
+ road, when they heard that Jesus was passing by, cried out, saying,
+ "Have mercy on us, O Lord, Son of David!"31 Then the multitude warned
+ them that they should be quiet; but they cried out all the more,
+ saying, "Have mercy on us, O Lord, Son of David!"32 So Jesus stood
+ still and called them, and said, "What do you want Me to do for
+ you?"33 They said to Him, "Lord, that our eyes may be opened."34 So
+ [Jesus had compassion and touched their eyes. And immediately their
+ eyes received sight, and they followed Him]{.underline}."
+
+- Mark 1:40-42 (NKJV) "Now a leper came to Him, imploring Him,
+ kneeling down to Him and saying to Him, "If You are willing, You can
+ make me clean."41 Then [Jesus, moved with compassion, stretched out
+ His hand and touched him, and said to him, "I am willing; be
+ cleansed."42 As soon as He had spoken, immediately the leprosy left
+ him, and he was cleansed]{.underline}."
+
+Those who have received the gifts of healings must learn to recognize
+the prompting of the Holy Spirit and allow the timely operation of this
+gift in all situations. Those who have received this gift: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- Will know the gift is in [operation]{.underline} in their life...
+
+- Will know what area of [illness]{.underline} they are drawn to pray
+ for...
+
+- Will recognize the [prompting]{.underline} of the Holy Spirit when
+ they are to pray for certain people for certain reasons... (In Jesus\'
+ ministry it was called compassion)
+
+- Will have a genuine desire to be used in the [gift]{.underline}...
+
+- Will seek out [opportunities]{.underline} to allow for the usage of
+ the gift...
+
+The modern day church is in dire need of the manifestation of this
+wonderful gift. It is time for local churches and pastors to train,
+equip, and empower the people to step out in faith especially in the
+operation of the gifts. Matthew 10:5-8 (NKJV) "These twelve Jesus
+sent out and commanded them, saying: "Do not go into the way of the
+Gentiles, and do not enter a city of the Samaritans.6 "But go rather to
+the lost sheep of the house of Israel.7 "And as you go, preach, saying,
+'The kingdom of heaven is at hand.'8 "Heal the sick, cleanse the lepers,
+raise the dead, cast out demons. [Freely you have received, freely
+give]{.underline}."
+
+PRACTICAL APPLICATION:
+
+The following guidelines must be remembered and followed in the usage of
+this wonderful gift: (PLACE ON SCREEN ONE AT A TIME)
+
+- Seek the [gift]{.underline}... (Ask God to allow this gift to work in
+ our lives)
+
+- Before laying hands on an [individual]{.underline} ask for the gift to
+ work [through]{.underline} us...
+
+- Be sensitive to the [prompting]{.underline} of the Holy Spirit and
+ obey, no matter how ridiculous it may seem... (Know when to act and
+ when to be silent)
+
+- Pray in [faith,]{.underline} never allowing [doubt]{.underline} to
+ cloud our thoughts...
+
+- Speak any words of [faith]{.underline} God places in our hearts...
+
+FACILITATORS QUESTIONS:
+
+1) Is healing for today? (Yes -- There is no Scriptural evidence of the
+ withdrawal of the gifts)
+
+2) Is it Gods will to heal everyone? (Our loving Heavenly Father does
+ not desire that His children labor under the burden of sickness and
+ disease -- If He brought the Children of Israel into the land with
+ not one sick among them He can do the same for us)
+
+3) Why do certain people receive their healing and others do not?
+ (There are many reasons but the most common reasons are that human
+ help is so available that we often lean on that rather than trusting
+ the Lord -- Lack of faith)
+
+4) Are the gifts of healings a one-size-fits-all proposition? (No --
+ There are as many gifts of healings as there are diseases)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+THE WORKING OF MIRACLES - Vs. 10, 28-29
+
+The gift we are about to study is a much-needed commodity in our world.
+Everyone I know either needs a miracle or is connected to someone who
+does.
+
+The first thing I would like to point out is the terminology of
+scripture with regard to this wonderful gift. I believe every phrase in
+scripture is thoughtfully and purposefully framed. For instance, in this
+study we learned that the normal way of stating "the gift of
+healing" is improper, and is more properly stated "the gifts of
+healings" because there are as many gifts of healing as there are
+diseases. In this particular instance it is not "the gift of
+miracles", it is "the gift of working of miracles." In this
+study we are going to discover why this gift is termed in such a manner.
+
+The definition of this gift is as follows: (PLACE ON SCREEN ONE AT A
+TIME)
+
+- Working -- Energema (en-erg\'-ay-mah) Active, efficient
+ [operation]{.underline}...
+
+- Miracles -- Dunamis (doo\'-nam-is) Miraculous [power]{.underline} or
+ [ability]{.underline}...
+
+Based on this information, we could define this gift as the active,
+efficient operation of miraculous powers or abilities.
+
+In his book "The Gifts of the Spirit," Harold Horton defines
+miracles in the following ways: (PLACE ON SCREEN ONE AT A TIME)
+
+- "A miracle is a supernatural [act]{.underline} on the natural
+ [plane]{.underline}."
+
+- "Works contrary to [nature]{.underline}, accomplishments, so to
+ speak, of the [impossible]{.underline}, sudden and unaccountable
+ [reversals]{.underline} of the order to which we are accustomed."
+
+- "A miracle is a supernatural intervention in the
+ [ordinary]{.underline} course of nature; a temporary suspension of the
+ [accustomed]{.underline} order; an interruption of the system of
+ [nature]{.underline} as we know it."
+
+- "A miracle is a sovereign act of the Spirit of God irrespective of
+ [laws]{.underline} or [systems]{.underline}."
+
+Before we move on to other things, let me add that the gift of the
+working of miracles has to do with miracles of a non-physical nature
+rather than a physical nature. When we talk about a person having
+experienced a miracle of healing, it could more correctly be identified
+as a gift of healing.
+
+In scripture the gift of the working of miracles would be instances such
+as: (PLACE ON SCREEN ONE AT A TIME)
+
+- God speaking the [world]{.underline} into existence...
+
+- God creating [man]{.underline}...
+
+- Abram\'s [ram]{.underline} caught in a [thicket]{.underline}...
+
+- The [plagues]{.underline} of Egypt...
+
+- The [Red]{.underline} [Sea]{.underline} being parted...
+
+- The [brazen]{.underline} [serpent]{.underline} in the wilderness
+
+- The provision of [food]{.underline} and [water]{.underline} in the
+ wilderness...
+
+- The forty-year life span of [clothing]{.underline} and
+ [sandals]{.underline} in the time of the wilderness wandering...
+
+- Gideon\'s fleece being [wet]{.underline} or [dry]{.underline}...
+
+- Elijah\'s [fire]{.underline} on Carmel...
+
+- The widow\'s [oil]{.underline} being multiplied...
+
+- Jesus turning [water]{.underline} into [wine]{.underline}...
+
+- Tax money being found in the mouth of a [fish]{.underline}...
+
+- The stormy [sea]{.underline} being stilled with three words...
+
+- The apostles being [freed]{.underline} from [prison]{.underline}...
+
+We all know God to be a God of miracles. To be used in this important
+gift, we must move beyond the belief that He is able to believing He
+wants to use us to work His miracles. The most important thing for us to
+understand concerning this gift is that the gift has more to do with the
+worker of miracles than it does with the need for a miracle or the
+willingness on God\'s part to furnish the power for the miracle.
+
+No doubt about it, God desires to furnish miracles in our midst and
+there is certainly an overabundance of needs for miracles. So the
+question becomes, how do I get myself into a position to be used in the
+working of miracles?
+
+Miracles go beyond the [natural]{.underline} to the
+[supernatural]{.underline}. Having said that, I must also say that God
+is not the only one who can operate in the supernatural:
+
+- Pharaoh\'s magicians were able to cause their rods to become snakes...
+
+- Pharaoh\'s magicians were able to turn the water to blood...
+
+- Pharaoh\'s magicians were able to bring frogs upon the land...
+
+- Pharaoh\'s magicians were able to turn dust into lice...
+
+Pharaoh\'s magicians had the power to punish the land, but they did not
+have the power to bless it by ridding it of pestilence. Simply put, the
+devil and his cronies can operate in the supernatural, but they cannot
+complete a work that results in good things happening to God\'s people.
+
+In addition, he cannot curse what God has blessed as long as the person
+who has been blessed stays within the protection God has provided. The
+devil can't curse what God has blessed, which means the only way for a
+Christian to be cursed is for them to curse themselves!
+
+Miracles should never in and of themselves be considered proof of the
+Godliness of the person through whom they flow. A person should never be
+considered Godly based solely on the deeds they are able to do. The
+acquisition of the fruit of the Spirit in the life of the individual in
+question and the operation of the gift of discerning of spirits on the
+part of the person doing the questioning is needed to determine the
+spirituality and Godliness of those who claim to be from God.
+
+When the gift of working of miracles is in operation,
+[natural]{.underline} laws are often set aside to bring about the
+provision, protection, and advancement of the people of God.
+
+The working of miracles is a result of God setting aside His laws of
+[nature,]{.underline} allowing the higher Spiritual [laws]{.underline}
+to take control. The reg­ular laws are not abandoned, but merely set
+aside for the time being as the greater laws of God come into operation
+to supersede them:
+
+- The law of conflagration was set-aside in the miracle of the burning
+ bush...
+
+- The law of death was set-aside in the miracle of the translation of
+ Enoch and Elijah...
+
+- The law of process was set-aside in the miracle of water being turned
+ to wine...
+
+- The law of gravity was set-aside in the miracle of the ascension...
+
+These natural laws being [circumvented]{.underline} are not only
+referred to in the Bible as miracles, but also as powers, signs, and
+wonders.
+
+Harold Horton in his book "The Gifts of the Spirit" gives the
+following definitions: (PLACE ON SCREEN ONE AT A TIME)
+
+- Powers - Explosions of [almightiness]{.underline}...
+
+- Signs - The [visible]{.underline} tokens of [invisible]{.underline}
+ power...
+
+- Wonders - Impelling staggering [astonishment]{.underline}...
+
+Harold Horton says "The gift of the working of miracles operates by
+the energy or dynamic force of the spirit in reversals or suspensions of
+natural laws."
+
+The God of the Bible is no doubt almighty and all-powerful. There is
+nothing He cannot do for those who trust Him wholly. When God works a
+miracle, we are awed by His ability to defy human limitations and the
+laws of nature. In God\'s world, performing a miracle, no matter how
+difficult it may seem, is just His natural and normal way of doing
+things. To understand this truth fully, one must understand one
+fundamental, foundational truth: He is not a God who performs miracles;
+He is a God of miracles. It was more natural for Jesus to walk on water
+than not to walk on it!
+
+By His very nature, God is more apt to perform a miracle than not to
+perform it.
+
+I am a minister. Sermon preparation is what I do. I\'ve been preparing
+sermons on a weekly basis for more than thirty-five years, and though it
+takes a little time, sermon preparation is so much a part of my life
+that if I have a week where I am not preparing a sermon, I feel
+incomplete. After thirty-five years of ministry, sermon preparation
+comes naturally for me.
+
+For God, miracles are the natural way of doing things. It does not take
+any more ability and power for God to do the miraculous than it does for
+us to perform the daily duties of our professions.
+
+From Genesis to Revelation, the Bible is full of miracles. The very act
+of [creation]{.underline} was miraculous; the final disposition of the
+[earth]{.underline} will be miraculous; the creation of
+[man]{.underline} was miraculous; and the final fate of
+[man]{.underline} will also be miraculous.
+
+Certainly the incidents of miracles are more prominent in the Old
+Testament than in the New Testament, especially if you exclude physical
+healing from the list. However, there is no question that miracles are
+for [today]{.underline}, and the need for miracles is
+[unprecedented]{.underline}. If miracles are so desperately needed, the
+importance of this gift becomes crucial to the contemporary church.
+
+Notice the terminology of Scripture with regard to this gift:
+
+- 1 Corinthians 12:10 (NKJV) "To another the [working of
+ miracles]{.underline}, to another prophecy, to another discerning of
+ spirits, to another different kinds of tongues, to another the
+ interpretation of tongues."
+
+- 1 Corinthians 12:28-29 (NKJV) "And God has appointed these in the
+ church: first apostles, second prophets, third teachers, after that
+ [miracles]{.underline}, then gifts of healings, helps,
+ administrations, varieties of tongues.29 Are all apostles? Are all
+ prophets? Are all teachers? Are all [workers of
+ miracles]{.underline}?"
+
+Remember, according to Strong\'s Concordance, the word working or worker
+here is Energema (en-erg\'-ay-mah), meaning active, efficient operation.
+In his book "The Gifts of the Spirit," Harold Horton states,
+"Those who produce such works through this gift are strikingly called
+by a word in the Greek that might be rendered \'miraclers\', or, perhaps
+better, \'miraclers\' of miracles." Miracles - Dunamis -
+(doo\'-nam-is) "Miraculous power or ability."
+
+More times than not when a miracle occurred in the Word of God, it
+happened either in direct response to the [Word]{.underline} being
+[spoken]{.underline}, [prayer]{.underline}, or a direct act of
+[obedience]{.underline} on the part of a human being.
+
+- God speaking the world into existence - The Word being spoken...
+
+- God creating man - The Word being spoken - The breath of God...
+
+- Abram\'s ram caught in a thicket - Obedience on the part of Abram...
+
+- The plagues of Egypt - Obedience on the part of Moses and Aaron and
+ the Word being spoken...
+
+- The Red Sea being parted - Obedience on the part of Moses - He
+ stretched his rod out over the sea...
+
+- The brazen serpent in the wilderness - Obedience on the part of
+ Moses...
+
+- The provision of food and water in the wilderness - Obedience on the
+ part of the Israelites - They moved with the cloud and fire...
+
+- The 40 year life span of clothing and sandals in the time of the
+ wilderness wandering - Obedience on the part of the Israelites - They
+ kept moving with the cloud and fire...
+
+- Gideon\'s fleece being wet or dry -- Prayer...
+
+<!-- -->
+
+- Elijah\'s fire on Carmel - Obedience - Speaking the Word of God...
+
+- The widow\'s oil being multiplied - The Word of God being spoken by
+ the prophet Elisha - Obedience on the part of the widow...
+
+- Jesus turning water into wine - Mary made a request and Jesus spoke
+ the Word - Word was spoken - Obedience - He told them to "Fill the
+ water-pots with water," they did so and He said "Draw out now and
+ bear unto the governor of the feast." They did so and the water was
+ changed to wine...
+
+- Tax money being found in the mouth of a fish -- Obedience...
+
+- The stormy sea being stilled with three words - The word was spoken...
+
+- The apostles being freed from prison -- Prayer - Obedience...
+
+Based on this information, I believe we could safely say there are three
+essential ingredients in the DNA of a worker of miracles: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- [Prayer]{.underline}...
+
+- The [Word]{.underline}... (Learn it & speak it)
+
+- [Obedience]{.underline}...
+
+Though the personal lifestyle and commitment of the individual being
+used as a worker of miracles is very important, it is not the deciding
+factor of whether a miracle will occur or will not occur. In the Bible,
+God once used a donkey to do His work and He most certainly used people
+who had feet of clay:
+
+- Abram lied...
+
+- Moses was at times an unwilling worker, and disobeyed in the striking
+ of the rock...
+
+- Gideon doubted...
+
+- Elijah backslid...
+
+- The apostles were at times undependable...
+
+- Peter denied Christ three times in one night and capped it off with
+ foul language...
+
+God is not really looking for perfect people! He is looking for willing,
+yielded vessels.
+
+PRACTICAL APPLICATION:
+
+The following guidelines should be remembered and followed in the usage
+of this wonderful gift: (PLACE ON SCREEN ONE AT A TIME)
+
+- Seek the [gift]{.underline}. Ask God to use us to bring about a
+ [miracle]{.underline}.
+
+- Be [sensitive]{.underline} to the Holy Spirit with regard to when,
+ where, and how He wants to bring about a [miracle]{.underline}.
+
+- Allow [faith]{.underline} rather than [fear]{.underline} to dominate
+ our thoughts.
+
+- Be [obedient]{.underline} to the instructions of the Holy Spirit.
+
+- Speak the Word in [faith]{.underline} with [boldness]{.underline}.
+
+\ Harold Horton, The Gifts of the Spirit - Letchworth Printers LTD.,
+Letchworth, Herts, Englnd
+
+\ Strong\'s exhaustive concordance of the Bible
+
+FACILITATORS QUESTIONS:
+
+1) What is the definition of The Working of Miracles? (Active,
+ efficient, miraculous power or ability)
+
+2) Are miracles associated with inexplicable healings? (No -- Miracles
+ are a sovereign act of the Spirit of God irrespective of laws or
+ systems)
+
+3) Were miracles manifested in the Old Testament? (Yes -- They were
+ more prevalent in the Old Testament than the New Testament)
+
+4) Is it proper to refer to this gift as The Gift of Miracles? (No --
+ This is The Working of Miracles -- This gift has much to do with the
+ faith of the person through whom it flows)
+
+5) What three things are interwoven into the DNA of the Working of
+ Miracles? (Prayer, the Word and obedience)
+
+> THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+UTTERANCE GIFTS
+
+DIVERS KINDS OF TONGUES - vs. 10
+
+The gift we are about to study is possibly the most difficult of all the
+gifts to teach, simply because it is widely practiced by people who have
+a limited understanding of its proper Biblical operation. We would be
+hard pressed to find very many people in a Pentecostal or charismatic
+church who would admit to not knowing the reason for, and the proper
+operation of this gift. A closer study of the aptitude of the general
+public within the same churches would no doubt reveal a huge deficiency
+in the Biblical knowledge of the guidelines that govern the proper
+operation of this gift. As a result of assumed knowledge, this gift is
+probably the most often abused of all the gifts.
+
+Going all the way back to the first family of the human race, it is
+apparent in Scripture that God gave Adam a [mother]{.underline} tongue
+or [universal]{.underline} language with which he communicated with his
+wife and family. Every person born in the line of Adam spoke this
+[universal]{.underline} language. Because of the sin of pride and
+arrogance, God confounded the languages at the tower of Babel. With the
+confounding of the languages, the population of the earth began to be
+segregated into little population pockets of language friendly people.
+This language barrier redefined the geographical locality of the human
+race, causing them to settle their families in previously unexplored
+lands.
+
+Isn\'t it ironic that divers kinds of tongues were first imparted to a
+group of heathens who were attempting to reach heaven fraudulently? An
+interesting note is that divers kinds of tongues were first imparted to
+[heathens]{.underline} who immediately went into all the
+[world]{.underline}.
+
+In the New Testament, Jesus prophesied the arrival of the Holy Spirit
+and stated that when they received Him they would have power to become
+witnesses to the entire world. Acts 1:8 (NKJV) "But you shall receive
+power when the Holy Spirit has come upon you; and you shall be witnesses
+to Me [in Jerusalem]{.underline}, and [in all Judea]{.underline} and
+[Samaria]{.underline}, and [to the end of the earth]{.underline}."
+
+In this study we are going to explore: (PLACE ON SCREEN ONE AT A TIME)
+
+- The initial physical [evidence]{.underline} of Holy Spirit baptism...
+
+- [Unknown]{.underline} tongues...
+
+- [Divers]{.underline} [kind]{.underline}s of tongues...
+
+- The [gift]{.underline} of tongues...
+
+EVIDENCE
+
+I want to begin by talking about the initial physical evidence of Holy
+Spirit baptism. The gift of the Holy Spirit is available to every born
+again believer. The Holy Spirit is not given in response to a threshold
+of personal holiness achieved by the believer.
+
+The Holy Spirit is given to provide the believer with extra power along
+with a host of other reasons, one of which is that the believer could
+communicate with the Father in the Father's language.
+
+The gift of the Holy Spirit is subsequent to salvation. Many believe
+they received the Holy Spirit when they received [Christ]{.underline}.
+This is in part true; when we were converted, the Holy Spirit came along
+side us. He actually seals us against the day of redemption. Ephesians
+1:13-14 (NKJV) "In Him you also trusted, after you heard the word of
+truth, the gospel of your salvation; in whom also, having believed, [you
+were sealed with the Holy Spirit of promise]{.underline},14 who is the
+guarantee of our inheritance until the redemption of the purchased
+possession, to the praise of His glory." John 14:15-17 (NKJV) "If
+you love Me, keep My commandments.16 "And I will pray the Father, and He
+will give you another Helper, that He may abide with you forever---17
+"the Spirit of truth, whom the world cannot receive, because it neither
+sees Him nor knows Him; but [you know Him]{.underline}, for [He dwells
+with you]{.underline} [and will be in you]{.underline}."
+
+Once we are sealed with the Holy Spirit of promise, we are only a step
+away from entering into the [gateway]{.underline} of God\'s giftedness.
+There is strong Scriptural evidence of the Holy Spirit being a
+[second]{.underline} definite work of grace apart from, and subsequent
+to, conversion. Acts 19:1-7 (NKJV) "And it happened, while Apollos
+was at Corinth, that Paul, having passed through the upper regions, came
+to Ephesus. And finding some disciples 2 he said to them, "[Did you
+receive the Holy Spirit when you believed]{.underline}?" So they said to
+him, "[We have not so much as heard whether there is a Holy
+Spirit]{.underline}."3 And he said to them, "Into what then were you
+baptized?" So they said, "Into John's baptism."4 Then Paul said, "John
+indeed baptized with a baptism of repentance, saying to the people that
+they should believe on Him who would come after him, that is, on Christ
+Jesus."5 [When they heard this, they were baptized in the name of the
+Lord Jesus]{.underline}.6 And [when Paul had laid hands on them, the
+Holy Spirit came upon them, and they spoke with tongues and
+prophesied]{.underline}.7 Now the men were about twelve in all."
+
+The initial outpouring in the upper room featured all [120]{.underline}
+present speaking in tongues. Acts 2:1-4 (NKJV) "When the Day of
+Pentecost had fully come, they were all with one accord in one place.2
+And suddenly there came a sound from heaven, as of a rushing mighty
+wind, and it filled the whole house where they were sitting.3 Then there
+appeared to them divided tongues, as of fire, and [one sat upon each of
+them]{.underline}.4 And [they were all filled with the Holy Spirit and
+began to speak with other tongues, as the Spirit gave them
+utterance.]{.underline}"
+
+If I rightly divide Acts 2, the first physical evidence that these
+believers had received the promise of the Father was the fact they spoke
+in tongues.
+
+Why do you suppose the Father chose to use [tongues]{.underline} as the
+initial physical sign of the baptism in the Holy Spirit? James 3:3-9
+(NKJV) "Indeed, we put bits in horses' mouths that they may obey us,
+and we turn their whole body.4 Look also at ships: although they are so
+large and are driven by fierce winds, they are turned by a very small
+rudder wherever the pilot desires.5 Even so the tongue is [a little
+member and boasts great things]{.underline}. See how great a forest a
+little fire kindles! 6 And the tongue is [a fire]{.underline}, [a world
+of iniquity]{.underline}. The tongue is so set among our members that it
+[defiles the whole body]{.underline}, and [sets on fire the course of
+nature]{.underline}; and it is [set on fire by hell]{.underline}.7 For
+every kind of beast and bird, of reptile and creature of the sea, is
+tamed and has been tamed by mankind.8 But [no man can tame the
+tongue]{.underline}. It is [an unruly evil]{.underline}, [full of deadly
+poison]{.underline}.9 With it we bless our God and Father, and with it
+we curse men, who have been made in the similitude of God."
+
+Considering this Scripture, it appears the tongue is the most difficult
+member of the body to bring under subjection to the will of man and of
+God. Thus, if a person can surrender their tongue to God, they have,
+without question, surrendered completely. When a person surrenders
+completely to God, they are baptized in the Holy Spirit and speak in
+tongues.
+
+The question should be asked, is there sufficient Scriptural evidence of
+tongues being the first physical indication of a believer being baptized
+in the Holy Spirit? Take a walk with me through the book of Acts: (PLACE
+ON SCREEN ONE AT A TIME)
+
+- [Acts 2:1-4]{.underline}... The Upper room - They spoke in tongues -
+ (NKJV) "When the Day of Pentecost had fully come, they were all
+ with one accord in one place.2 And suddenly there came a sound from
+ heaven, as of a rushing mighty wind, and it filled the whole house
+ where they were sitting.3 Then there appeared to them divided tongues,
+ as of fire, and one sat upon each of them.4 And [they were all filled
+ with the Holy Spirit and began to speak with other
+ tongues]{.underline}, as the Spirit gave them utterance."
+
+- [Acts 8:15-18]{.underline}... Believers in Samaria - (NKJV) "Now
+ when the apostles who were at Jerusalem heard that Samaria had
+ received the word of God, they sent Peter and John to them,15 who,
+ when they had come down, [prayed for them that they might receive the
+ Holy Spirit]{.underline}.16 For as yet He had fallen upon none of
+ them. [They had only been baptized in the name of the Lord
+ Jesus]{.underline}.17 [Then they laid hands on them, and they received
+ the Holy Spirit]{.underline}.18 And [when Simon saw that through the
+ laying on of the apostles' hands the Holy Spirit was
+ given]{.underline}, he offered them money, 19 saying, "Give me this
+ power also, that anyone on whom I lay hands may receive the Holy
+ Spirit."
+
+- [Acts 9:17-18]{.underline}... The Apostle Paul - (NKJV) "And
+ Ananias went his way and entered the house; and laying his hands on
+ him he said, "Brother Saul, the Lord Jesus, who appeared to you on the
+ road as you came, has sent me that you [may receive your sight and be
+ filled with the Holy Spirit]{.underline}."18 [Immediately there fell
+ from his eyes something like scales, and he received his sight at
+ once; and he arose and was baptized.]{.underline}" This passage
+ does not say that (Saul) Paul spoke in tongues, but listen to his
+ later comments. 1 Corinthians 14:18 (NKJV) "I thank my God, [I
+ speak with tongues more than ye all]{.underline}:"
+
+- [Acts 10:44-46]{.underline}... The house of Cornelius - (NKJV)
+ "While Peter was still speaking these words, [the Holy Spirit fell
+ upon all those who heard the word]{.underline}.45 And those of the
+ circumcision who believed were astonished, as many as came with Peter,
+ because the gift of the Holy Spirit had been poured out on the
+ Gentiles also.46 For [they heard them speak with tongues]{.underline}
+ and magnify God..."
+
+- [Acts 19:1-7]{.underline}... Believers at Ephesus -- (NKJV) "And it
+ happened, while Apollos was at Corinth, that Paul, having passed
+ through the upper regions, came to Ephesus. And finding some
+ disciples he said to them, "Did you receive the Holy Spirit when you
+ believed?" So they said to him, "We have not so much as heard whether
+ there is a Holy Spirit."3 And he said to them, "Into what then were
+ you baptized?" So they said, "Into John's baptism."4 Then Paul said,
+ "John indeed baptized with a baptism of repentance, saying to the
+ people that they should believe on Him who would come after him, that
+ is, on Christ Jesus."5 When they heard this, they were baptized in the
+ name of the Lord Jesus.6 And when [Paul had laid hands on them, the
+ Holy Spirit came upon them, and they spoke with tongues and
+ prophesied]{.underline}.7 Now the men were about twelve in all."
+
+Each time an individual or group of people were baptized in the Holy
+Spirit in the book of Acts, the Scripture either says directly that they
+spoke in tongues, or there was some kind of physical manifestation that
+alerted those in close proximity that they had been filled with the
+Spirit. I believe the physical manifestation was speaking in tongues.
+
+I further believe that every single person who has been filled with the
+Holy Spirit from Acts 2 until today have spoken in tongues immediately.
+
+UNKNOWN TONGUE
+
+Having established that tongues is in fact the first physical evidence
+that a person has actually received the infilling of the Holy Spirit, we
+must ask, what kind of [tongues]{.underline} does the believer receive
+in that [initial]{.underline} experience?
+
+Generally speaking, I believe the individual receives an unknown tongue.
+This in turn establishes a prayer language for the believer to use, to
+build themselves up in their most holy faith. Jude 20-21 (NKJV) "But
+you, beloved, building yourselves up on your most holy faith, praying in
+the Holy Spirit,21 keep yourselves in the love of God, looking for the
+mercy of our Lord Jesus Christ unto eternal life."
+
+The initial outpouring of the Holy Spirit in the upper room featured the
+[120]{.underline} actually speaking in divers kinds of tongues. Acts
+2:1-8 (KJV) "And when the day of Pentecost was fully come, they were
+all with one accord in one place. 2 And suddenly there came a sound from
+heaven as of a rushing mighty wind, and it filled all the house where
+they were sitting. 3 And [there appeared unto them cloven tongues like
+as of fire, and it sat upon each of them]{.underline}. 4 And [they were
+all filled with the Holy Ghost, and began to speak with other tongues,
+as the Spirit gave them utterance]{.underline}. 5 "And there were
+dwelling at Jerusalem Jews, devout men, out of every nation under
+heaven. 6 Now [when this was noised abroad, the multitude came
+together]{.underline}, and were confounded, because that [every man
+heard them speak in his own language]{.underline}. 7 And they were all
+amazed and marveled, saying one to another, Behold, [are not all these
+which speak Galilaeans? 8 And how hear we every man in our own tongue,
+wherein we were born?]{.underline}"
+
+This is the only place I can find in the Bible that new believers speak
+in anything other than an unknown tongue. Every occasion subsequent to
+this initial outpouring in the upper room, where the Scripture records
+that an individual received the infilling of the Holy Spirit, there is
+no reference made to anyone present understanding the language they were
+speaking.
+
+After careful study, I believe there may have been three separate things
+happening in Acts 2: (PLACE ON SCREEN ONE AT A TIME)
+
+- These people were filled with the Holy Spirit in the upper room - I
+ can\'t say for sure, but I believe they initially spoke in an
+ [unknown]{.underline} tongue -Acts 2:4 (NKJV) "And they were all
+ filled with the Holy Spirit and began to [speak with other
+ tongues]{.underline}, as the Spirit gave them utterance."
+
+- They [vacated]{.underline} the upper room and [attracted]{.underline}
+ the public - Acts 2:6 (KJV) "Now [when this was noised abroad, the
+ multitude came together]{.underline}..."
+
+- Once they left the Upper Room and entered the streets of Jerusalem,
+ the general public heard them speak in various languages - The Gift of
+ Tongues employing the use of [divers]{.underline} [kinds]{.underline}
+ of tongues is obviously in operation here - Acts 2:6-8 (KJV) "Now
+ when this was noised abroad, the multitude came together, and were
+ confounded, because that [every man heard them speak in his own
+ language]{.underline}. 7 And they were all amazed and marveled, saying
+ one to another, Behold, are not all these which speak Galileans? 8 And
+ [how hear we every man in our own tongue, wherein we were
+ born]{.underline}?"
+
+The unknown tongue is exactly as it is stated in the Bible: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- It is unknown to the [believer]{.underline}...
+
+- It is unknown to those [present]{.underline}...
+
+- It is unknown to all other [nationalities]{.underline}...
+
+- It is unknown to the [enemy]{.underline}...
+
+DIVERS KINDS OF TONGUES
+
+Very simply put, divers kinds of tongues, is the use of the
+[languages]{.underline} of the world through an individual who has never
+studied or committed to memory that particular [language]{.underline}.
+
+As you know, learning a second language can be very difficult and
+requires a commitment of time and resources. Some of you are fluent in
+multiple languages, and you can appreciate the effort and time that goes
+into being bilingual
+
+If I were to tell those of you who are bilingual that in the natural I
+can fluently speak English, Spanish, and French without ever having
+studied the languages, you would laugh me out of the room. It would
+literally be impossible to do such a thing in the natural.
+
+Remember, that which is impossible in the natural is oftentimes made
+possible in the spiritual.
+
+The l[anguages]{.underline} of the world are employed through the
+knowledge of the Holy Spirit during the [implementation]{.underline} of
+the gift of divers kinds of tongues.
+
+The Scripture makes reference to tongues being a sign to the unbeliever.
+1 Corinthians 14:22 (NKJV) "Therefore [tongues are for a
+sign]{.underline}, not to those who believe but [to
+unbelievers]{.underline}; but prophesying is not for unbelievers but for
+those who believe."
+
+How is this possible? When a believer speaks in tongues it is a sign to
+the unbeliever that the individual has been baptized in the Holy Spirit.
+
+A believer speaking in a language they have never learned, which happens
+to be the native language of the unbeliever, can have a very effective
+impact on the unbeliever (HAVE BRO. RIEKERT GIVE HIS TESTIMONY)
+
+A believer speaking in a language they have never learned, followed by
+the gift of interpretation of tongues, often speaks directly to the
+unbeliever concerning particular events in their life
+
+THE GIFT OF TONGUES
+
+The gift of tongues is a gift apart from the [infilling]{.underline} of
+the Holy Spirit. There is strong Scriptural authentication that when a
+person is baptized in the Holy Spirit they speak in tongues. The gift of
+tongues is a separate gift of the Spirit that God has offered to all
+believers.
+
+While speaking in an unknown tongue is given to edify the individual
+believer, the gift of tongues is given for the reason of
+[edifying]{.underline} the church. 1 Corinthians 14:1-4 (KJV)
+"Follow after charity, and desire spiritual gifts, but rather that
+ye may prophesy. 2 For he that speaketh [in an unknown
+tongue]{.underline} speaketh not unto men, but unto God: for no man
+understandeth him; howbeit [in the spirit he speaketh
+mysteries]{.underline}. 3 But he that prophesieth speaketh unto men to
+edification, and exhortation, and comfort. 4 [He that speaketh in an
+unknown tongue edifieth himself]{.underline}; but he that prophesieth
+edifieth the church" In this Scripture we see the distinction
+between an unknown tongue and diverse kinds of tongues being manifested
+as the gift of tongues. The use of diverse kinds of tongues is employed
+in the operation of the gift of tongues because it is to be followed by
+the gift of interpretation of tongues.
+
+If one is to be used in this wonderful gift, the following procedures
+should be closely followed:
+
+- Pray to be used in this [important]{.underline} gift...
+
+- Pray for special sensitivity to the Holy Spirit to know when to
+ [speak]{.underline} and when to be [silent]{.underline}...
+
+- Remember, God will never interrupt one [anointing]{.underline} with
+ another [anointing]{.underline}...
+
+- When one gives a message in tongues they are to [silently]{.underline}
+ [await]{.underline} the interpretation...
+
+- When one has given a message in tongues and there is no
+ interpretation, they are to pray that the Holy Spirit would give them
+ the [interpretation]{.underline}...
+
+When one has given a message in tongues and there is no interpretation
+and they have prayed that the Holy Spirit would give them the
+interpretation and He has not; they should [not]{.underline}
+[repeat]{.underline} the message in tongues without there first being an
+interpretation. I Corinthians 14:27 (NKJV) "If any man speak in an
+unknown tongue, let it be by two, or at the most by three, and that by
+course; and let one interpret."
+
+PRACTICAL APPLICATION:
+
+Remember the following facts concerning tongues: (PLACE ON SCREEN ONE AT
+A TIME)
+
+- Tongues are the [initial]{.underline} [physical]{.underline} evidence
+ of Holy Spirit baptism...
+
+- Speaking in an unknown tongue is essential to the
+ [spiritual]{.underline} [development]{.underline} of the believer... 1
+ Corinthians 14:4 (NKJV) "He who speaks in a tongue [edifies
+ himself]{.underline}, but he who prophesies edifies the church."
+ Jude 20 (NKJV) "But you, beloved, [building yourselves
+ up]{.underline} on your most holy faith, [praying in the Holy
+ Spirit]{.underline},"
+
+- Speaking in an unknown tongue is to be [limited]{.underline} in the
+ corporate church... 1 Corinthians 14:28 (NKJV) "But if there is no
+ interpreter, let him keep silent in church, and let him speak to
+ himself and to God."
+
+- The unknown tongue should be frequently [employed]{.underline} in the
+ private prayer time of each believer... 1 Corinthians 14:18 (NKJV)
+ "I thank my God, [I speak with tongues more than ye
+ all]{.underline}:" During my walk with God as a Spirit filled
+ believer, there have been several times that the gift of tongues
+ operated in my private prayer time followed by the interpretation -
+ each time this occurred, I received Divine direction concerning
+ specific situations.
+
+- The gift of tongues can be employed in [small]{.underline} groups...
+
+- The gift of tongues should be employed in the [corporate]{.underline}
+ church...
+
+- When the gift of tongues is employed in the corporate church, the
+ number of occurrences is limited by Scriptural
+ [mandate]{.underline}... 1 Corinthians 14:27-29 (NKJV) "If anyone
+ speaks in a tongue, let there be [two or at the most
+ three]{.underline}, [each in turn, and let one
+ interpret]{.underline}.28 But if there is no interpreter, let him keep
+ silent in church, and let him speak to himself and to God.29 Let two
+ or three prophets speak, and let the others judge."
+
+FACILITATORS QUESTIONS:
+
+1) What language did Adam and Eve speak? (A mother tongue or universal
+ language)
+
+2) What did the confusion of languages at the tower of Babel do? (It
+ caused people to go into all the world and gather according to
+ language groups)
+
+3) What is the first sign a person has received the baptism in the Holy
+ Spirit? (Speaking in tongues)
+
+4) What is one of the most powerful features of the Spirit filled life?
+ (Extra power to become witnesses -- Acts 1:8)
+
+5) Who can understand what a person is saying when they are speaking in
+ an Unknown Tongue? (No one, except God)
+
+6) How is Divers Kinds of Tongues different from Unknown Tongues?
+ (Divers Kinds of Tongues is a language that is spoken somewhere in
+ the world --Unknown Tongues is the language of Heaven only)
+
+7) What distinguishes the Gift of Tongues from Unknown Tongues and
+ Divers Kinds of Tongues? (The Gift of Tongues is always followed by
+ Interpretation of Tongues - This is not true of the others)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+INTERPRETATION OF TONGUES - Vs. 10
+
+Interpretation of tongues is the supernatural ability to interpret a
+language that we have never learned. This gift is certainly not the
+translation of a language that has been learned in advance by the person
+doing the interpreting; it is the divine ability to translate from a
+language not known by the [interpreter]{.underline} to a language known
+both by the [interpreter]{.underline} and all others within the
+audience.
+
+For a person to be able to translate a language he does not himself
+understand is nothing short of a gift from God; this gift always follows
+an utterance of divers kinds of tongues, thus, we refer to it as the
+gift of interpretation of tongues.
+
+An extremely interesting note is that seven of these gifts were
+periodically [manifested]{.underline} in the Old Testament and
+frequently employed in the New Testament. The seven include: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- The word of [wisdom]{.underline}...
+
+- The word of [knowledge]{.underline}...
+
+- [Discerning]{.underline} of spirits...
+
+- The gift of [faith]{.underline}...
+
+- Gifts of [healings]{.underline}...
+
+- The gift of [miracles]{.underline}...
+
+- The gift of [prophesy]{.underline}...
+
+[Tongues]{.underline} and [interpretation]{.underline} of
+[tongues]{.underline} are exclusive to the New Testament. When Jesus
+established His church, he gifted it to have a supernatural order of
+ministry. In so doing, He gifted it with the giftedness that had been an
+identifying mark of His presence in the Old Testament, and then added
+these two wonderful gifts: tongues and interpretation of tongues.
+
+Because of the gifts He gave, His church would then be adequate to any
+task it was called upon to perform. The church is never as powerful as
+it is when it is flowing in the giftedness and power of the Holy Spirit.
+The church is genetically engineered to rely on a
+[supernatural]{.underline} order of ministry to accomplish its
+[purpose]{.underline} in the earth.
+
+Because of its supernatural gifting, Jesus had this to say of his
+church... Matthew 16:18-19 (KJV) "And I say also unto thee, that
+thou art Peter, and upon this rock I will build my church; and [the
+gates of hell shall not prevail against it]{.underline}. 19 And I will
+give unto thee the keys of the kingdom of heaven: and [whatsoever thou
+shalt bind on earth shall be bound in heaven: and whatsoever thou shalt
+loose on earth shall be loosed in heaven]{.underline}."
+
+The gift of interpretation of tongues is one of the nine spiritual gifts
+God programmed into the [genetic]{.underline} [makeup]{.underline} of
+His church to give it a marked advantage in its battle against sin. The
+supernatural ability to translate or interpret the language that has
+been spoken in other tongues is nothing short of a modern day miracle.
+
+The aspect of this gift that makes it very different from an interpreter
+who is translating a language he has mastered in the
+[natural]{.underline} is the fact that, apart from the Holy Spirit, the
+interpreter cannot [comprehend]{.underline} the language that has been
+used to bring forth the message in tongues.
+
+Even though the interpreter cannot grasp the meaning of the message that
+has been given with his intellect, the Holy Spirit reveals the
+interpretation to him. Therefore, it is not necessary for him to
+understand the message in order to interpret it!
+
+I realize this sounds extreme, but God is not limited by our
+[intellect]{.underline}! Balaam's donkey in the Old Testament book of
+Numbers can powerfully illustrate this truth. Balaam agreed to go with
+Balak to Moab even though he knew it was not God\'s will for him to do
+so... Numbers 22:22-31 (NKJV) "Then God's anger was aroused because
+he went, and the Angel of the [Lord]{.smallcaps} took His stand in the
+way as an adversary against him. And he was riding on his donkey, and
+his two servants were with him.23 Now the donkey saw the Angel of the
+[Lord]{.smallcaps} standing in the way with His drawn sword in His hand,
+and [the donkey turned aside out of the way and went into the
+field]{.underline}. So Balaam struck the donkey to turn her back onto
+the road.24 Then the Angel of the [Lord]{.smallcaps} stood in a narrow
+path between the vineyards, with a wall on this side and a wall on that
+side.25 And [when the donkey saw the Angel of the [Lord,]{.smallcaps}
+she pushed herself against the wall and crushed Balaam's foot against
+the wall]{.underline}; so he struck her again.26 Then the Angel of the
+[Lord]{.smallcaps} went further, and stood in a narrow place where there
+was no way to turn either to the right hand or to the left.27 And [when
+the donkey saw the Angel of the [Lord,]{.smallcaps} she lay down under
+Balaam]{.underline}; so Balaam's anger was aroused, and he struck the
+donkey with his staff.28 [Then the [Lord]{.smallcaps} opened the mouth
+of the donkey, and she said to Balaam]{.underline}, "[What have I done
+to you, that you have struck me these three times?]{.underline}"29 And
+Balaam said to the donkey, "Because you have abused me. I wish there
+were a sword in my hand, for now I would kill you!"30 So [the donkey
+said to Balaam,]{.underline} "[Am I not your donkey on which you have
+ridden, ever since I became yours, to this day? Was I ever disposed to
+do this to you?]{.underline}" And he said, "No."(The KJV say\'s
+"NAY") 31 Then the [Lord]{.smallcaps} opened Balaam's eyes, and he
+saw the Angel of the [Lord]{.smallcaps} standing in the way with His
+drawn sword in His hand; and he bowed his head and fell flat on his
+face."
+
+As with all the other gifts, this gift is not about the
+[intelligence]{.underline} or [worthiness]{.underline} of the individual
+being used... it is about God\'s attempts to [communicate]{.underline}
+with his people.
+
+The modern day church has focused more on the personalities and
+qualifications of the gifted rather than focusing on the validity and
+usefulness of the gift!
+
+Tongues always precede interpretation of tongues; however,
+interpretation of tongues does not always follow after tongues (Unknown
+tongues). Therefore, tongues are not dependent on interpretation of
+tongues but interpretation of tongues is solely dependent upon tongues.
+Tongues as a gift of the spirit are absolutely dependent on
+interpretation of tongues.
+
+In 1 Corinthians Paul goes to great lengths to establish
+[perimeters]{.underline} for the [regulations]{.underline} of these
+gifts. 1 Corinthians 14:1-5 (KJV) "Follow after charity, and desire
+spiritual gifts, but rather that ye may prophesy. 2 For he that speaketh
+in an unknown tongue [speaketh not unto men, but unto God]{.underline}:
+for no man understandeth him; howbeit in the spirit he speaketh
+mysteries. 3 But he that prophesieth [speaketh unto men to edification,
+and exhortation, and comfort]{.underline}. 4 [He that speaketh in an
+unknown tongue edifieth himself]{.underline}; but [he that prophesieth
+edifieth the church]{.underline}. 5 I would that ye all spake with
+tongues, but rather that ye prophesied: for [greater is he that
+prophesieth than he that speaketh with tongues]{.underline}, [except he
+interpret]{.underline}, [that the church may receive
+edifying]{.underline}."
+
+The [regulations]{.underline} of the gifts are established with the
+[edification]{.underline} of the body at the heart of the entire matter.
+
+God never suffocates the [personality]{.underline},
+[temperament]{.underline}, [training]{.underline}, or natural
+[gifts]{.underline} of an individual when using them to communicate His
+message.
+
+For instance:
+
+- Moses\' training in the palace of Egypt was beneficial to his role as
+ a leader during forty plus years of wilderness wandering.
+
+- David\'s training as a shepherd comes shining through in the Psalms.
+
+- Luke\'s training as a physician reveals itself in his gospel.
+
+- Paul\'s religious training reveals itself from time to time in his
+ epistles.
+
+- Matthew, Mark, Luke, and John tell the same basic stories in four very
+ different ways.
+
+While these gifts do not flow out of the intellect, the personality, the
+temperament, the training, and the natural gifts, all of these will
+certainly come shining through during the operation of the gifts.
+
+As a pastor, oftentimes I have had the following experiences. A message
+in tongues is given in a public service - I received the interpretation
+but did not feel that I was the one to give the interpretation.
+
+Someone else interpreted the message in tongues, but the interpretation
+was not word for word what I received, but the general message was the
+same.
+
+Why does this happen? God is operating his gift through a vessel that
+has its own personality, temperament, training, and natural gifts, and
+he will never suffocate those things when communicating his message.
+
+The general message was revealed to me as the human authority over that
+particular body of believers for the purpose of judging the message in
+light of the Scripture and the revelation of the Holy Spirit.
+
+The revelation of an interpretation of tongues can be received in many
+ways. The following list will identify some of them: (PLACE ON SCREEN
+ONE AT A TIME)
+
+- A Scripture will come to the [remembrance]{.underline} of an
+ individual and the word will be built around that particular
+ [passage]{.underline}...
+
+- A few sentences will be revealed and the rest will come as the
+ individual [obediently]{.underline} speaks what has been given to
+ him...
+
+- An entire [line]{.underline} of [thought]{.underline} will be revealed
+ all the individual has to do is say exactly what he has been given to
+ say...
+
+- On very rare occasions a person may not know at all what they are
+ about to say, they just give the Spirit a [voice]{.underline} to
+ [speak]{.underline} the message of God... (My personal experience in
+ Fouke) It is my opinion that no one except the Pastor should engage in
+ such a risky practice)
+
+As with all other gifts, interpretation of tongues requires
+[obedience]{.underline} to be mixed with [faith]{.underline} in the
+successful implementation of the proper operation of this gift.
+
+PRACTICAL APPLICATION:
+
+The following guidelines should be adhered to in the operation of this
+very important gift:
+
+- The individual should pray to know the [voice]{.underline} of the Holy
+ Spirit...
+
+- The individual should be absolutely certain they have
+ [heard]{.underline} from God before they [speak]{.underline}...
+
+- The individual should make certain their [words]{.underline} line up
+ completely with [Scripture]{.underline}...
+
+- The individual should wait to begin the interpretation until the
+ [message]{.underline} in [tongues]{.underline} has been completed...
+
+- The individual should give the interpretation as [quickly]{.underline}
+ as possible following the completion of the message in tongues...
+
+- The Individual should always give the interpretation in the
+ [third]{.underline} person, rather than the [first]{.underline} or
+ [second]{.underline} person... Rather than saying "I the Lord" or
+ "Thus says the Lord" the individual should say, "The Lord would
+ have you to know."
+
+- The individual should not prolong the message by attempting to insert
+ their own [interpretation]{.underline}; they should say what has been
+ revealed; nothing [more]{.underline}, nothing [less]{.underline}...
+
+FACILITATORS QUESTIONS:
+
+1) What two gifts were not manifested in the Old Testament? (Tongues
+ and Interpretation of Tongues)
+
+2) What is the definition of the Interpretation of Tongues? (The divine
+ ability to translate from a language not known by the interpreter to
+ a language known both by the interpreter and all others within the
+ audience)
+
+3) What two things are required on the part of a person being used in
+ this gift? (Obedience and faith)
+
+4) What gift should precede the gift of Interpretation of Tongues? (The
+ Gift of Tongues)
+
+5) Should this gift be given in the first, second or third person?
+ (Third person)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+PROPHECY - Vs. 10
+
+The gift we are about to study is a very important gift in the life of
+the corporate church and the individual believer. Participation in this
+particular gift is encouraged in Scripture more than any of the others.
+Various forms of the word prophecy are used twenty-two times in the four
+chapters surrounding our text (chapters 11-14).
+
+To most people the gift of prophecy is too complex to delve into,
+therefore they ignore it all together. To ignore this very important
+gift is to miss out completely on something wonderful God has provided
+for the edification, exhortation, and comfort of the corporate church
+body, and the confirmation of direction for the individual believer.
+
+In an effort to better understand the [purpose]{.underline} and proper
+[operation]{.underline} of this wonderful gift, the following things
+must be completely understood by the individual believer: (PLACE ON
+SCREEN ONE AT A TIME)
+
+- The gift of [prophecy]{.underline} and the office of a
+ [Prophet]{.underline} are two different gifts that oftentimes are
+ resident within the same believer...
+
+- The office of a Prophet is one of the
+ [five]{.underline}-[fold]{.underline} ministry gifts given to the
+ church... Ephesians 4:11-12 (NKJV) "And He Himself gave some to be
+ apostles, some [prophets]{.underline}, some evangelists, and some
+ pastors and teachers, 12 for the equipping of the saints for the work
+ of ministry, for the edifying of the body of Christ."
+
+- The gift of prophecy is one of the [nine]{.underline} spiritual gifts
+ given to the general church body; it is listed [sixth]{.underline}
+ among spiritual gifts...
+
+- The office of Prophet is listed [second]{.underline} among ministry
+ gifts...
+
+- The gift of prophecy is not [relegated]{.underline} to certain
+ individuals -- All the Lord's people are capable of prophesying. I
+ Corinthians 14:1, 5, 24 & 31 The Prophet Joel stated that our
+ "Sons and daughters would prophesy." (Joel 2:28)
+
+- The office of Prophet is always tied to a particular
+ [individual]{.underline}...
+
+- The gift of prophecy does not carry with it the component of
+ [prediction]{.underline} except in the sense of confirming what God
+ has already revealed to the individual...
+
+- When prediction is employed at least three gifts are being pressed
+ into service at the same time: the word of [wisdom]{.underline}, the
+ word of [knowledge]{.underline}, and [prophecy]{.underline}...
+
+- The gift of prophecy does not indicate the person through whom the
+ gift is [flowing]{.underline} is a Prophet...
+
+- The office of a Prophet always [utilizes]{.underline} the gift of
+ prophecy...
+
+- The predictions of Old Testament Prophets differ from New Testament
+ Prophets in the fact that the Prophets in the Old Testament
+ [predicted]{.underline} things the people did not have a clue about...
+
+- The predictions of New Testament Prophets only confirm
+ [direction]{.underline} to the believer. The words of each prophecy
+ will always line up with the written Word of God...
+
+- In the Old Testament the general public did not have the
+ [advantage]{.underline} of the written Word or the witness of the Holy
+ Spirit...
+
+- The New Testament believer has the [advantage]{.underline} of the
+ written Word as well as the ability to have a personal relationship
+ with God through the Holy Spirit... We also have the added benefit of
+ His work in our life and spiritual walk.
+
+- Neither the words of a prophecy, nor the words of a Prophet should
+ ever carry as much [weight]{.underline} or [authority]{.underline} as
+ the written Word of God...
+
+- When the words of a prophecy conflict with the written Word or the
+ witness of the believer's spirit, the words are to be
+ [set]{.underline} [aside]{.underline}...
+
+- When the words of a Prophet conflict with the written Word or the
+ witness of the believer's spirit, the words are to be
+ [set]{.underline} [aside]{.underline}...
+
+The difference between the gift of prophecy and the office of a Prophet
+can be clearly discovered by defining both words. The word Prophet comes
+from two Hebrew words: (PLACE ON SCREEN ONE AT A TIME)
+
+- Naba... (Naw-baw) Meaning - To speak or sing by inspiration in
+ prediction or simple [disclosure]{.underline}...
+
+- Nabiy\'... (Naw-bee\') Meaning - An [inspired]{.underline} person...
+ So the word Prophet means an individual who is inspired of God to
+ speak or sing predictions or to make disclosures.
+
+In order to fully understand this gift one must take into consideration
+four Greek terms: (PLACE ON SCREEN ONE AT A TIME)
+
+- Pro, meaning fore, which means in [front]{.underline} of or
+ [prior]{.underline} to...
+
+- Phemi (Fay-mee\'), meaning to show or make known ones
+ [thoughts]{.underline}...
+
+- Prophetes (Prof-ay\'-tace), an [inspired]{.underline} speaker...
+
+- Propheteia (Prof-ay-ti\'-ah), meaning [prediction]{.underline}...
+
+So the word prophecy means to be inspired to make known ones thoughts
+without any prior [prompting]{.underline}. The only element of
+prediction indicated here is in confirming to the individual what God
+has already spoken to them.
+
+In the interest of time, the focus of our study will not allow us to
+completely define the office of the Prophet, but rather will focus on
+the gift of prophecy.
+
+The gift of prophecy has three specific components that cause this gift
+to benefit the [corporate]{.underline} church as well as the
+[individual]{.underline} believer. 1 Corinthians 14:1-3 (KJV)
+"Follow after charity, and desire spiritual gifts, but rather that
+ye may [prophesy]{.underline}. 2 For he that speaketh in an unknown
+tongue speaketh not unto men, but unto God: for no man understandeth
+him; howbeit in the spirit he speaketh mysteries. 3 But he that
+[prophesieth]{.underline} speaketh unto men to
+[edification]{.underline}, and [exhortation]{.underline}, and
+[comfort]{.underline}."
+
+Let\'s take a look at these three words and how they affect this gift
+and its operation: (PLACE ON SCREEN ONE AT A TIME)
+
+- Edification... This word comes from the Greek word Oikodome
+ (Oy-kod-om-ay\'), meaning to [build]{.underline} up in the same way an
+ architect would visualize, draft, and oversee the plans of a building.
+
+- Exhortation... This word comes from the Greek word Paraklesia
+ (Par-ak\'-lay-sis), meaning to [inspire]{.underline},
+ [invite]{.underline}, [invoke]{.underline}, to call
+ [near]{.underline}.
+
+- Comfort... This word comes from the Greek word Paramuthia
+ (Par-am-oo-thee\'-ah), meaning consolation or [words]{.underline} of
+ encouragement.
+
+This aspect of the gift is often employed when the church or individual
+believer is enduring times of distress.
+
+By definition, the operation of this gift should encourage, inspire and
+build up the church or individual in the same way an architect would
+visualize, plan and oversee the construction of a building.
+
+It should be noted that in the New Testament, this gift never carried
+with it the element of [correction]{.underline}! The office of the Old
+Testament Prophet certainly encompassed the responsibility of
+[correction]{.underline}, but in the New Testament that responsibility
+is solely the responsibility of the [Pastor]{.underline}. The only
+person who has the right to correct a church is the [Pastor]{.underline}
+of that church!
+
+As we have already discovered, the gift of prophecy is available to all
+who have been baptized in the Holy Spirit, but the office of Prophet is
+more narrowly defined as that of an individual whose primary purpose is
+to prophesy. When a Prophet prophesies, his prophecy almost always
+carries with it the element of prediction.
+
+Occasionally those who fit into one of the five ministry gifts as
+defined in Ephesians 4 (Apostle, Prophet, Evangelist, Pastor, Teacher)
+will be used in the gift of prophecy as defined in 1 Corinthians 12.
+Because a person has been used in this way does not necessarily make
+them a Prophet.
+
+A good example of this is my primary ministry gift is an Apostle. An
+Apostle is someone who initiates ministries and oversees the ministry of
+others. While I am primarily an Apostle, that gift has found its
+expression through the office of Pastor. While I have at times
+functioned in the prophetic, been an evangelist and teacher, my dominant
+ministry gift is that of an Apostle,
+
+Does the fact that I have occasionally flowed in the other ministry
+gifts make me a Prophet? An Evangelist? A Teacher? No, I am an Apostle
+who is the Pastor of a local congregation! It has been necessary for me
+to flow in the other ministry gifts, but when that has occurred, it has
+been to enhance my ability to fulfill my primary role of being an
+Apostle.
+
+I think we could accurately say that just because a person prophesies
+from time to time does not make them a Prophet.
+
+As is the case with all the other gifts, this gift is to be regulated
+and judged. We will discuss in detail the regulations for this gift as
+we conclude this lesson.
+
+The proper judgment of this gift should be handled according to the
+following pattern: (PLACE ON SCREEN ONE AT A TIME)
+
+- All words of prophecy must line up with the [written]{.underline} Word
+ of God...
+
+- All prophecy must be given in the right [spirit]{.underline} with the
+ right [attitude]{.underline}...
+
+- All prophecy must carry with it the [elements]{.underline} of
+ edification, exhortation, and comfort...
+
+- A prophecy should never carry with it the element of correction unless
+ it comes through the [Pastor]{.underline} of the church...
+
+- If a person gives a prophecy that is out of order or does not line up
+ with the aforementioned guidelines, the [Pastor]{.underline} of the
+ church should be the one to deal with the individual...
+
+- If an inappropriate prophecy is given it does not necessarily mean
+ that the person is a [false]{.underline} Prophet... Deuteronomy 18:22
+ (NKJV) "When a prophet speaks in the name of the
+ [Lord,]{.smallcaps} if the thing does not happen or come to pass, that
+ is the thing which the [Lord]{.smallcaps} has not spoken; [the prophet
+ has spoken it presumptuously; you shall not be afraid of
+ him]{.underline}."
+
+The receiving and giving of a prophecy is very similar to the gift of
+interpretation of tongues.
+
+A prophecy can be received in the following ways: (PLACE ON SCREEN ONE
+AT A TIME)
+
+- A Scripture will come to the [remembrance]{.underline} of an
+ individual and the word will be built around that particular
+ [passage]{.underline}...
+
+- A few sentences will be revealed and the rest will come as the
+ individual [obediently]{.underline} speaks what has been given to
+ him...
+
+- An entire [line]{.underline} of [thought]{.underline} will be
+ revealed; all the individual has to do is say exactly what he has been
+ given to say...
+
+- On very rare occasions a person may not know at all what they are
+ about to say, they just give the Spirit a [voice]{.underline} to
+ [speak]{.underline} the message of God. It is my opinion that no one
+ except the [Pastor]{.underline} should engage in such a risky
+ practice...
+
+- Prophecy requires [obedience]{.underline} to be mixed with
+ [faith]{.underline} in the successful implementation of the proper
+ operation of this gift...
+
+It should be said that oftentimes a word of prophecy will only be
+completely understood by those for whom it is intended.
+
+PRACTICAL APPLICATION:
+
+The following regulations should be adhered to in the operation of this
+very important gift: (PLACE ON THE SCREEN ONE AT A TIME)
+
+- The individual should pray to know the [voice]{.underline} of the Holy
+ Spirit...
+
+- The individual should be absolutely certain they have
+ [heard]{.underline} from God before they [speak]{.underline}...
+
+- The individual should make certain their [words]{.underline} line up
+ completely with [Scripture]{.underline}...
+
+- The individual should be sensitive to the element of
+ [timing]{.underline} within the context of the meeting...
+
+- The Individual should always give the prophecy in the
+ [third]{.underline} person, rather than the [first]{.underline} or
+ [second]{.underline} person... Rather than saying "I the Lord
+ would say" or "Thus says the Lord," the individual should
+ say "The Lord would have you to know."
+
+- The individual should not prolong the prophecy by attempting to insert
+ their own words; they should say what has been revealed - nothing
+ [more]{.underline}, nothing [less]{.underline}...
+
+As with tongues and interpretation of tongues, the Scriptural limitation
+of [two]{.underline} or [three]{.underline} prophesies per meeting
+should be observed. 1 Corinthians 14:29 (NKJV) "Let [two or three
+prophets speak]{.underline}, and let the others judge." (This
+regulation has to do with prophecies spoken over the corporate church --
+This has nothing to do with prophecies spoken over individuals at the
+altar)
+
+Regulations are given to encourage the [frequency]{.underline} of the
+proper use of these gifts not to [suppress]{.underline} them.
+
+FACILITATORS QUESTIONS:
+
+1) What is the definition of the Gift of Prophecy? (The word prophecy
+ means to be inspired to make known ones thoughts without any prior
+ prompting)
+
+2) Are the office of prophet and the Gift of Prophecy one and the same?
+ (No -- They are two very different things -- One is an office the
+ other is a Gift)
+
+3) What three characteristics always accompany this gift? (Edification,
+ exhortation and comfort)
+
+4) What two ingredients are necessary to make this gift work?
+ (Obedience and faith)
+
+THE GIVER AND HIS GIFTS
+
+1 Corinthians 12:1-11
+
+MAKING THE GIFTS WORK
+
+1 Corinthians 13:1-13 (NKJV) "Though I speak with the tongues of men
+and of angels, but have not love, I have become sounding brass or a
+clanging cymbal.2 And though I have the gift of prophecy, and understand
+all mysteries and all knowledge, and though I have all faith, so that I
+could remove mountains, but have not love, I am nothing.3 And though I
+bestow all my goods to feed the poor, and though I give my body to be
+burned, but have not love, it profits me nothing. 4 Love suffers long
+and is kind; love does not envy; love does not parade itself, is not
+puffed up;5 does not behave rudely, does not seek its own, is not
+provoked, thinks no evil;6 does not rejoice in iniquity, but rejoices in
+the truth;7 bears all things, believes all things, hopes all things,
+endures all things.8 Love never fails. But whether there are prophecies,
+they will fail; whether there are tongues, they will cease; whether
+there is knowledge, it will vanish away.9 For we know in part and we
+prophesy in part.10 But when that which is perfect has come, then that
+which is in part will be done away.11 When I was a child, I spoke as a
+child, I understood as a child, I thought as a child; but when I became
+a man, I put away childish things.12 For now we see in a mirror, dimly,
+but then face to face. Now I know in part, but then I shall know just as
+I also am known.13 And now abide faith, hope, love, these three; but the
+greatest of these is love."
+
+In the last several weeks, we have studied nine of the wonderful gifts
+God has provided for the encouragement, exhortation and comfort of the
+individual believer, as well as that of the corporate body of Christ:
+
+- The word of wisdom...
+
+- The word of knowledge...
+
+- Discerning of spirits...
+
+- The gift of faith...
+
+- The gifts of healings...
+
+- The gift of miracles...
+
+- The gift of tongues...
+
+- Interpretation of tongues...
+
+- The gift of prophecy...
+
+While each of these gifts are extremely important to the spiritual well
+being of the body of Christ, there is one character trait that is to be
+desired above all else, and that is Love. We will not spend an
+exorbitant amount of time defining love in this lesson, as we will begin
+studying the fruit of the spirit within the next several weeks.
+
+There are several kinds of love but the love we will be discussing here
+will be [agape]{.underline} love, which is an undeserved, selfless love.
+Agape love is the love God has displayed in His relationship with man.
+Agape love is the love we have been commanded to shower upon everyone
+within our circle of influence.
+
+The focus of this lesson will be the effect of love on the operation of
+the gifts of the Spirit. Contrary to popular belief, Love is not
+something we are [born]{.underline} with or without. It is a
+[choice]{.underline}! The acquisition of the capability to truly offer
+love comes through a [choice]{.underline}; the [choice]{.underline} to
+accept the love of God! John 3:16 (NKJV) "For [God so loved the
+world]{.underline} that He gave His only begotten Son, that whoever
+believes in Him should not perish but have everlasting life."
+
+Once we become a believer, we choose to love others or elect to withhold
+love. We are commanded in Scripture to [dispense]{.underline} that which
+we have [received]{.underline}. Matthew 10:5-8 (NKJV) "These twelve
+Jesus sent out and commanded them, saying: "Do not go into the way of
+the Gentiles, and do not enter a city of the Samaritans.6 "But go rather
+to the lost sheep of the house of Israel.7 "And as you go, preach,
+saying, 'The kingdom of heaven is at hand.'8 "Heal the sick, cleanse the
+lepers, raise the dead, cast out demons. [Freely you have received,
+freely give]{.underline}." To receive unconditional love and fail to
+dispense it is no doubt a sin. As a believer, we are genetically
+engineered to be rivers rather than reservoirs.
+
+The love of God will [produce]{.underline} at least three things in the
+life of the believer: Matthew 22:37-40 (NKJV) "Jesus said to him,
+"You shall love the [Lord]{.smallcaps} your God with all your heart,
+with all your soul, and with all your mind.'38 "This is the first and
+great commandment.39 "And the second is like it: '[You shall love your
+neighbor as yourself]{.underline}.'40 "On these two commandments hang
+all the Law and the Prophets." (PLACE ON SCREEN ONE AT A TIME)
+
+- Love for [God]{.underline}...
+
+- Love for [self]{.underline}... If one does not have self-love he
+ rejects the crowning creation of God.
+
+- Love for [others]{.underline}... It is not possible for one to love
+ others more than one loves himself.
+
+I want us to look closely at how spiritual gifts and love are
+interrelated. In 1 Corinthians 12, Paul introduces the gifts; in 1
+Corinthians 14 he regulates and sets boundaries for the proper operation
+of the gifts. It is no accident that 1 Corinthians 13, which deals
+exclusively with love, ties the two chapters together.
+
+Paul states in a very confident way that to operate in a gift while
+failing to walk in love is not only [futile]{.underline}, but also
+counterproductive. 1 Corinthians 13:1-3 (NKJV) "Though I speak with
+the tongues of men and of angels, but [have not love]{.underline}, I
+have become [sounding brass or a clanging cymbal]{.underline}.2 And
+though I have the gift of prophecy, and understand all mysteries and all
+knowledge, and though I have all faith, so that I could remove
+mountains, but [have not love]{.underline}, [I am nothing]{.underline}.3
+And though I bestow all my goods to feed the poor, and though I give my
+body to be burned, but [have not love]{.underline}, [it profits me
+nothing]{.underline}."
+
+While gifts are necessary and even imperative to the believer and the
+corporate body of the church, they will never accomplish the purpose God
+has in mind unless the gift is accompanied by love.
+
+Some reasons love is so important to the successful operation of the
+gifts include: (PLACE ON SCREEN ONE AT A TIME)
+
+- When one does not walk in love, people will not receive the
+ [message]{.underline} of the gift...
+
+- When one does not walk in love, people will [reject]{.underline} the
+ gifts...
+
+- When one does not walk in love, the gift becomes
+ [tarnished]{.underline} in the spirit of the carrier of the gift...
+
+- When one does not walk in love, the delivery of the gift tends to be
+ [abrasive]{.underline}...
+
+- When one does not walk in love, the gift will not [flow]{.underline}
+ long term...
+
+- When one does not walk in love, the tendency is to attempt to operate
+ the gift through the [flesh]{.underline}...
+
+Love is the element that bridges the gap between a gift and its proper
+operation. Love causes the gift to be plausible and acceptable. Without
+love the gifts will be detested and possibly even discarded.
+
+How do we to know whether we are walking in love? (PLACE ON SCREEN ONE
+AT A TIME)
+
+- Love is [patient]{.underline} with people...
+
+- Love is [kind]{.underline} and [good]{.underline}... Showing and
+ showering favors.
+
+- Love does not allow for [envy]{.underline} or
+ [jealousy]{.underline}...
+
+- Love does not brag or seek [recognition]{.underline} from others...
+
+- Love does not [feel]{.underline} or [act]{.underline} better than
+ others...
+
+- Love is not [rude]{.underline}...
+
+- Love is not touchy or quick [tempered]{.underline}...
+
+- Love does not keep record of [wrongs]{.underline} done...
+
+- Love allows for no gloating over the [wrongdoing]{.underline} or
+ [misfortune]{.underline} of others...
+
+- Love is satisfied only with [truth]{.underline}...
+
+- Love is sturdy under heavy responsibility and is willing to
+ [cover]{.underline} for weaker Christians...
+
+- Love chooses to [trust]{.underline}...
+
+- Love believes the [best]{.underline} in all situations...
+
+- Love never loses [hope]{.underline}...
+
+- Love remains faithful in spite of repeated [attacks]{.underline}...
+
+- Love never [quits]{.underline}...
+
+- Love is [perfect]{.underline} and [complete]{.underline}...
+
+- Love displays [maturity]{.underline} rather than
+ [immaturity]{.underline}...
+
+- Love [handles]{.underline} others as if it were [handling]{.underline}
+ God...
+
+PRACTICAL APPLICATION:
+
+If we desire to operate in the giftedness of God and do so at the
+highest level of effectiveness possible, we must do the following
+things: (PLACE ON SCREEN ONE AT A TIME)
+
+- Make a choice to love God with our whole [heart]{.underline}; love our
+ self as the [crowning]{.underline} creation of God; love others with
+ the same level of [intensity]{.underline} as we love ourselves.
+
+- Constantly take inventory of our lives to make sure we are walking in
+ the love of God, bearing in mind that the effectiveness of the gift
+ can be hampered by a [deficiency]{.underline} of love.
+
+- Make a commitment to allow the components of love not only to be
+ present, but [dominant]{.underline} in our lives.
+
+Remember, no matter how many gifts seem to operate in our lives, if we
+do not have love as a companion we will never accomplish all the giver
+of the gift intended.
+
+If you and I are to be used of God to distribute His gifts to His
+children, we must speak and act in the spirit of the Giver. To do the
+work of God, we must operate in the Spirit of God. We must distribute
+His gifts in love.
+
+Is it reasonable to assume that a God of love, who desires to gift a
+gift to a child He loves, would not put His gift at the disposal of a
+person who acts harshly, speaks critically, seeks to take credit for the
+outcome, and misrepresents the intent and heart of a loving Father.
+
+FACILITATORS QUESTIONS:
+
+1) What is the definition of agape love? (Undeserved, selfless love)
+
+2) Are we born with love? (No -- We were born selfish -- Love is a
+ choice)
+
+3) What three things does the love of God produce? (Love for God --
+ Love for self -- Love for others)
+
+4) Why is it important to walk in love when operating in the gifts? (If
+ we do not, we cheapen the gift and tarnish the reputation of the
+ giver of the gift)
+
+5) What two things does 1 Corinthians 13:1-3 warn will happen if we
+ attempt to operate in the gifts without walking in love? (Our work
+ will be futile and counterproductive)

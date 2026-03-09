@@ -3,8 +3,8 @@ import re
 import os
 
 # === CONFIG ===
-PDF_PATH = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI\Pastor-AI-main\Pastor-Data\The Holy Bible - New King James Version - NKJV (DOC).pdf"
-OUTPUT_MD = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI\Pastor-AI-main\converted_markdown\nkjv_bible.md"
+PDF_PATH = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\Pastor-Data\The Holy Bible - New King James Version - NKJV (DOC).pdf"
+OUTPUT_MD = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\converted_markdown\nkjv_bible.md"
 
 # Common Bible book names (uppercase for matching)
 BIBLE_BOOKS_UPPER = {b.upper() for b in [

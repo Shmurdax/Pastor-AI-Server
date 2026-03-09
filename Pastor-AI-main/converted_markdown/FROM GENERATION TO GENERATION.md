@@ -1,0 +1,277 @@
+# FROM GENERATION
+TO GENERATION 
+ 
+ 
+
+INTRO: In the latter part of the book of First 
+Chronicles, King David was coming to the close 
+of his forty-year reign over Israel. 
+ 
+Under the reign of David Israel knew days of 
+exhilarating victories, and devastating defeats! 
+(Not to uncommon for a leader) From bringing 
+the Ark home to Jerusalem, to 70,000 people 
+dying because he numbered the people against 
+the known will of God! 
+ 
+David’s own personal life paralleled that of the 
+Kingdom! From killing Goliath, to sinning with 
+Bathsheba! 
+ 
+In the latter part of the book of First Chronicles 
+David was preparing to coronate his son 
+Solomon. As he addressed the people, he made 
+a statement that should be a shining light to all 
+
+leaders and people. "So now I charge you in 
+the sight of all Israel and of the assembly of 
+the Lord, and in the hearing of our God: Be 
+careful to follow all the commands of the Lord 
+your God, that you may possess this good land 
+and pass it on as an inheritance to your 
+descendants forever.” 
+ 
+David’s passion to make sure the next 
+generation did not have to repeat his failures and 
+fight his giants, should be a constant reminder in 
+the mind of every one of us. 
+ 
+David wanted to make sure a proper 
+generational exchange happened between he 
+and his son, as well as between his son and his 
+son’s descendants. 
+ 
+The word “exchange” is defined in the 
+following way: “To give something in return for 
+something received.” 
+
+Forty years earlier, David received a deeply 
+divided, war torn nation, and over the next four 
+decades he guided it into a position of peace and 
+prosperity. Over the forty-year period of his 
+reign, David had secured the support of his son 
+Solomon, and Solomon’s generation. Great 
+leaders ALWAYS invest in, and garner the 
+support, of the next generation. 
+ 
+David’s gift of the Kingdom to the next 
+generation did not come without strings 
+attached. A generational exchange always 
+comes with strings attached. 1 Chronicles 28:9-
+10 (NIV) “So now I charge you in the sight of 
+all Israel and of the assembly of the Lord, and 
+in the hearing of our God: Be careful to follow 
+all the commands of the Lord your God, that 
+you may possess this good land and pass it on 
+as an inheritance to your descendants 
+forever.” 10 Consider now, for the LORD has 
+chosen you to build a house as the sanctuary. 
+Be strong and do the work.” 
+
+In my generation I was handed a sacred trust of 
+keeping the message pure. I have not failed that 
+test! I am sure there are methods that my 
+father’s generation is not excited about, but I 
+have kept the sacred trust of the message! 
+ 
+How can we affect a proper Generational 
+Exchange? 
+ 
+
+## I. CAPITALIZE ON WHAT WE HAVE
+RECEIVED FROM THE PAST… 
+The Kingdom is bigger than any individual 
+person. Generation after generation has passed 
+from the stage of action, but the work of God 
+goes on, from generation to generation. 
+ 
+(Story of CT Church – Oaklawn, Magnolia 
+Park, Christian Temple – E.M. Yates 52 years – 
+O. C. Bates 25 years – Don Nordin going on 23 
+years) (PLACE PICTURES OF MAGNOLIA 
+PARK & OAKLAWN - E.M. YATES & O.C. 
+BATES ON THE SCREEN ) 
+
+Regarding Community Transformation Church, 
+I’m not sure that those who met in Magnolia 
+Park, or the Oaklawn churches, fully understood 
+the impact of what they were beginning. But 
+they were faithful to do what they could do, and 
+then passed it on to us. We are going to do what 
+we can, and then gracefully pass it on to the 
+next generation. 
+ 
+ 
+Those early pioneers who were a part of 
+Oaklawn and Magnolia Park, couldn’t have 
+imagined the structure we are meeting in today! 
+(Or 8 campuses in 2 states – 8 residential 
+treatment centers in 5 states – A ranch that 
+rescues 8 to year-old girls that have been 
+trafficked…) 
+ 
+Do you think they could have imagined the 
+impact this church would have on the world 
+through missions? I seriously doubt it! But they 
+were faithful in what had been placed in their 
+
+hands, and when the time came, they made a 
+generational exchange. 
+ 
+What will history record of us? Will it record, 
+they used up what was given to them and left 
+the next generation to fend for themselves? Or 
+will we provide something better for our 
+children and grandchildren? 
+ 
+John F. Kennedy said, “We have the power to 
+make this the best generation of mankind in the 
+history of the world, or to make it the last.” I 
+issue the following challenge: Let us rise and 
+capitalize on what has been given to us! 
+ 
+Are we up for a generational exchange? 
+ 
+
+## II. SEIZE THE OPPORTUNITIES
+AVAILABLE IN THE PRESENT... 
+King David was painfully aware of all the 
+responsibilities and pitfalls of life in leadership. 
+David was also cognizant of the fact that when 
+you assume the role of leadership over a group 
+
+of people, it will become necessary to exercise 
+authority from time to time. 
+ 
+If we are going to seize the opportunities 
+available in the present, we must do five things: 
+• Discover Gods will for us as a corporate 
+body of believers… 
+• Shut out the distractions and ignore the 
+detractors that threaten to derail us… 
+• Look to God for the ability to rise to the 
+challenge… 
+• Call the necessary resources into our 
+hands… (Material resources - Human 
+resources – Divine resources - We can call 
+those things that are not as though they 
+were!) 
+• Place the resources where they belong… (I 
+release a spirit of generosity and liberality 
+on this congregation!) 
+ 
+A generational exchange cannot be done 
+without these factors being in play. If we are 
+unwilling to do these things now, we will find 
+
+ourselves empty-handed at the generational 
+exchange ceremony! (As we speak, this is where 
+the baby-boomers & America are headed) 
+ 
+Martin Luther King said, “We will have to 
+repent in this generation not merely for the 
+vitriolic words and actions of the bad people, 
+but for the appalling silence of the good 
+people. “ 
+ 
+The twelve spies were never asked to decide 
+whether Israel could or should conquer the 
+Promised Land! They were sent to develop a 
+military strategy that would insure the transfer 
+of ownership from illegal squatters to rightful 
+owners! (Can anyone name the two spies that 
+gave a good report? – Can anyone name the ten 
+spies that gave a bad report?) Do you want to be 
+a Caleb or Joshua, or do you want to be one of 
+those other cats? 
+ 
+Are we up to a generational exchange? 
+
+## III. PROVIDE SOMETHING BETTER FOR
+THE FUTURE… 
+David provided something better to Solomon, 
+than he received from Saul. But we must 
+remember, he did not do it alone. Contributors 
+to David’s lifelong vision included: 
+• Family and friends… (When David killed 
+Goliath, Saul asked, “Whose son is this?) 
+• Trusted advisors… 
+• His mighty men… 
+• The army and arsenal of Israel… 
+• The constant help of the Lord… 
+ 
+A generational exchange is not as easy as it 
+sounds – That is why so few people do it well! 
+ 
+In the generational exchange between David and 
+Solomon: 
+• The Priests and Levites were prepared to 
+assist in the construction of this place of 
+worship… 
+• Every skilled person in the nation was ready 
+to help… (Carpenters, plumbers, 
+
+electricians, welders, painters, heavy 
+equipment operators, landscapers, interior 
+decorators, cooks, bottle washers, butlers, 
+bankers, bakers, and candlestick makers 
+etc...) 
+• The leaders were prepared to get their hands 
+dirty in the work… 
+• The people were ready to follow 
+directives… 
+• David was prepared to place his uninhibited 
+support behind Solomon… 
+ 
+This church has been brought to this point 
+because the people of the past have given 
+sacrificially of themselves. Can you imagine 
+how many resources; gifts; and abilities have 
+been contributed over time so this church could 
+be where it is today? 
+ 
+If those who have gone before us were called 
+upon to do what they could (Make sacrifices), 
+we must be willing to make the same kind of 
+
+sacrifice so that we can provide something 
+significant in this generational exchange! 
+ 
+Are we up to a generational exchange? 
+ 
+
+CONCLUSION: 
+David issued a challenge to the people in the 
+form of a question. 1 Chronicles 29:5 (NIV) 
+“Who is willing to consecrate himself today to 
+the Lord?" 
+ 
+Notice the response of the people. 1 Chronicles 
+29:6 (NIV) “Then the leaders of families, the 
+officers of the tribes of Israel, the commanders 
+of thousands and commanders of hundreds, 
+and the officials in charge of the king's work 
+gave willingly.” 
+ 
+What a response! This is exactly the kind of 
+response we must have if we hope to conduct a 
+successful generational exchange. 
+
+Are we up to a generational exchange? Better 
+yet, are you up to a generational exchange? Am 
+I up to a generational exchange? 
+ 
+To please God, we must buy into a vision 
+somewhere. Can you think of a better vision in 
+this City? Do you think there is another church 
+that wants to reach this city more than 
+Community Transformation does? 
+ 
+I urge you to reach out by faith and get a 
+handful of this vision, do what you can to 
+improve on it, and then gracefully hand it to the 
+next generation. 
+• Disciple… 
+• Empower… 
+• Serve… 
+• Send…

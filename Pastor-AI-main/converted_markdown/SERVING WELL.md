@@ -1,0 +1,163 @@
+# SERVING WELL
+ 
+
+TEXT: I Peter 4:10-12 (CEV) “Each of you 
+has been blessed with one of God's many 
+wonderful gifts to be used in the service of 
+others. So use your gift well. 11 If you have the 
+gift of speaking, preach God's message. If you 
+have the gift of helping others, do it with the 
+strength that God supplies. Everything should 
+be done in a way that will bring honor to God 
+because of Jesus Christ, who is glorious and 
+powerful forever. Amen.” Ecclesiastes 9:10 
+(NKJV) “Whatever your hand finds to do, do it 
+with your might; for there is no work or device 
+or knowledge or wisdom in the grave where 
+you are going.” 
+
+INTRO: Someone said, “It is true that most 
+people would like to serve God, but only in an 
+advisory capacity!” 
+Do you know anyone like that? I am not talking 
+about anyone here today but I’m sure most of 
+you know people who want to serve God and 
+the church, if they could serve in an advisory 
+capacity! (Anonymous letter) 
+There are two non-negotiable elements to 
+serving: 
+• Serving requires hands-on activity... (Use a 
+towel here – You know you have become a 
+servant leader when your worship becomes 
+serving others) 
+• Serving requires commitment... 
+At times, many of us attempt to avoid a 
+Commitment to serve the Lord and the Church. 
+(Chicken & Pig Missions Breakfast) 
+
+Most people are willing to serve in some 
+capacity: 
+• If it is convenient... 
+• If we feel adequate to the task... 
+• If we weren’t afraid of success or failure... 
+(The two unpardonable sins of life and 
+ministry – Success & failure) 
+There are at least three things that go into 
+finding our place to serve Lord and others: 
+• Gift Discovery... 
+• Gift Giving... 
+• Gift Deployment... 
+
+## I. GIFT DISCOVERY...
+Before I launch into this, let me say that in 
+ministry, there will be times that we will need to 
+engage in service outside our gift plex. 
+In our Commitment to serve, we must be 
+constantly on the lookout for ways that God has 
+
+gifted us. When it comes to gifts, it is the 
+responsibility of the believer to: 
+• Discover the gift... 
+• Develop the gift... 
+• Properly use the gift... 
+giftstest.com 
+Don’t be afraid to make a short-term 
+commitment in various areas until you find your 
+place in the body of Christ! But for God’s sake, 
+and the sake of His Kingdom, stop being a 
+spectator and start being a participator. 
+Once you discover where you are suited to serve, 
+make a long-term commitment. My dad would 
+say, “There is no time like the present.” “We are 
+burning daylight” The King James say’s it this 
+way - “We must work while it is yet day, for the 
+night is coming in which no one will be able to 
+work.” 
+
+## II. GIFT DEVELOPMENT
+
+It is one thing to have a gift and to identify what 
+the gift is, it is something completely different 
+to develop the gift. 
+I fly all the time. There are many reasons there 
+is a pilot and a co-pilot. One of the main reasons 
+is that the co-pilot is logging hours and being 
+developed, so that one day he can be trusted 
+with his own crew. He is not going to be the 
+captain until his skills have been properly 
+developed. And for that I say, “Thank you Jesus. 
+Thank you United. Thank you Southwest…” 
+I became a Pastor when I was 19 years old! 
+How many of you know that I needed a little 
+gift development at 19? (Marriage counseling – 
+Parenting) 
+My church owes a great debt of gratitude to 
+those who helped develop me! 
+Gift development: 
+• Takes time... 
+
+• Requires a commitment on the part of the 
+gifted... 
+• Requires patience on the part of the 
+instructor... 
+• Involves a process of trial and error... “He 
+who has never made a mistake has never 
+done anything. Doing nothing is the biggest 
+mistake of all” 
+
+## III. GIFT DEPLOYMENT...
+I Peter 4:10 (CEV) “Each of you has been 
+blessed with one of God's many wonderful gifts 
+to be used in the service of others. So use your 
+gift well.” 
+Charles Kingsley said, “Have your tools ready 
+and God will find you some work.” 
+The Lord told J. Hudson Taylor, "I am going to 
+evangelize China, and if you walk with me, I 
+will do it through you." 
+
+For Kingdom expansion to occur, it is urgent for 
+all believers to deploy their gifts! Will this 
+church be built on the capacity of the pastor and 
+his family, or the capacity of the body 
+collectively? 
+We all need to be deployed now! Wilbert Welch 
+chancellor of Grand Rapids Baptist College said, 
+"It’s time we stopped staring up the steps and 
+started steadily stepping up the stairs!" 
+We have already been commissioned, Jesus said, 
+“Go and make disciples of all nations...” 
+Sadly, the want ads in the modern-day church 
+look like this: 
+• For Sale – One cross, almost new, top heavy, 
+cramps my style as I am trying to keep up 
+with the world... 
+• For Sale - One talent, slightly shelf-worn 
+unused for several years, may need a little 
+updating... 
+
+• For Sale - One bundle of seldom used 
+opportunities, among these; church 
+attendance; personal witnessing; tithing; 
+and serving... 
+• For Sale - Badly used influence, buyer will 
+need to make repairs and use it more 
+carefully... 
+These items may be seen any time in the 
+basement of my home at the corner of Careless 
+Avenue and Neglect Street. Signed: 
+Careless Christian 
+
+CONCLUSION: 
+You don’t have to wait until you can serve 
+perfectly, just make a commitment to start 
+serving! You should start serving where you are 
+and start serving now! 
+You are released for ministry! Deploy now! 
+(Failure to launch) 
+
+Ecclesiastes 9:10 (NKJV) 
+“Whatever your hand finds to do, do it with 
+your might; for there is no work or device or 
+knowledge or wisdom in the grave where you 
+are going.”
