@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.so
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment (Matches your 3.12 venv)
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# Database & Secrets
+.env
+db.sqlite3
+db.sqlite3-journal
+*.log
+sermon_brain_db.sqlite3
+sermon_brain_db/
+*.sqlite3
+chroma.sqlite3
+# Docker
+.docker/

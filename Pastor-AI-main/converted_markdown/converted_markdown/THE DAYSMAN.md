@@ -1,0 +1,186 @@
+# THE DAYSMAN
+
+\ Blue denotes PPT slide
+
+\ Brown denotes instructions to technician
+
+TEXT: Job 9:32-33 (KJV) "For he is not a man, as I am, that I
+should answer him, and we should come together in judgment. {33} Neither
+is there any [daysman]{.underline} betwixt us, that might lay his hand
+upon us both."
+
+INTRO: In our text Job finds himself in a perplexing predicament.
+Most of his life had been lived on easy street, but much to his dismay
+he is experiencing unprecedented trouble. Sorrow, sickness and
+difficulty were threatening life as he knew it.
+
+Of all the pain and loss Job encountered, it appears the worst of his
+trauma was the feeling of alienation from God. Many times when an
+individual goes through tough times, they feel as if they are estranged
+from God. But the truth is, He is never closer than when we are walking
+through difficult times. Someone said, "Tough times don't last, but
+tough people do." "When the going gets tough, the tough get going."
+
+Job's friends, who are introduced to us as "comforters", magnified his
+pain and feelings of alienation! In addition, his wife seemed to side
+with those who felt that Job must have brought his troubles upon himself
+through some secret sin. It is in the middle of this perplexity that Job
+cries out for what he calls a Daysman!
+
+In Old Testament times a Daysman was an arbitrator or mediator. When a
+dispute would arise between two individuals, the Daysman would take a
+neutral stand and listen to each person plead his case. He was called a
+Daysman because he was the individual who was charged with the
+responsibility of choosing the day that the dispute would be settled.
+The parties would agree to abide by the decisions of the Daysman in
+advance. The hearing of the case between two individuals was very
+similar to what we know as arbitration.
+
+The Daysman was to be one who was considered to be wise and one who
+could be neutral in the dispute, thus the Daysman's knowledge would
+exceed the knowledge of all concerned parties. The Bible states our
+position in relation to God. Isaiah 55:8-9 (KJV) "For my thoughts are
+not your thoughts, neither are your ways my ways, saith the LORD. {9}
+For as the heavens are higher than the earth, so are my ways higher than
+your ways, and my thoughts than your thoughts."
+
+When Job failed in his attempts to help his three friends, Bildad,
+Eliphaz and Zophar, see that he was innocent before God, he recognized
+his true limitations as a human being and his ultimate need for a
+Daysman.
+
+## I. JOB'S CONDITION...
+
+All of us have heard of Job's steadfast faith, and I do not mean to take
+away from the fact that he was a man of great faith, but Job did reach a
+point where he felt that all things were against him. Job 9:28-29 (NLT)
+"I would dread all the pain he would send. For I know you will not
+hold me innocent, O God. 29 Whatever happens, I will be found guilty. So
+what's the use of trying?"
+
+This tells us that even a man of such great faith as Job can reach a
+point where desperation sets in. When this occurs we begin questioning
+our own relationship with the Lord. This is a dangerous place to be in!
+
+Job states in these verses that there is nothing he can do on his own to
+make himself presentable and acceptable to God. Paul says much the same.
+Romans 7:18-19 (KJV) "For I know that in me (that is, in my flesh,)
+dwelleth no good thing: for to will is present with me; but how to
+perform that which is good I find not. {19} For the good that I would I
+do not: but the evil which I would not, that I do." Romans 7:24 (KJV)
+"O wretched man that I am! Who shall deliver me from the body of this
+death?"
+
+## II. MAN'S POSITION...
+
+Job let's us know that the Daysman he desired was not a normal Daysman!
+Job 9:32 (KJV) "For he is not a man, as I am, that I should answer
+him, and we should come together in judgment." Job was careful to
+make the distinction between a human Daysman and a divine Daysman! An
+earthly Daysman is capable of misjudging a situation, but this Daysman
+is a one-hundred-percenter.
+
+The dilemma we face as mortals is that the ways of God are much higher
+than our ways. The condition of man is inferior; the position of the
+Daysman is superior. The transition between thinking and acting on a
+temporal plain rather than thinking and acting on a spiritual plain is
+difficult to say the least. This is not an easy assignment because we
+become emotionally attached to the situation. (If you are ever on trial,
+you want me on your jury because I don't think anyone is guilty.)
+
+The real problem is not a disagreement of how to bridge the gap between
+the parties and the Daysman; it is a problem of the guilt of the
+parties! As we all know, there are three sides to every story: His side;
+her side; and the truth! Isaiah 59:2 (KJV) "But your iniquities have
+separated between you and your God, and your sins have hid his face from
+you, that he will not hear."
+
+## III. GOD'S PROVISION...
+
+In the midst of his dilemma, Job cried out for a Daysman. "That he
+(the Daysman) might lay his hand upon us both..."
+
+Mankind could not find a Daysman who was qualified to settle the sin
+question, but God did - and His name is Jesus! John 1:14 (KJV) "And
+the Word was made flesh, and dwelt among us, (and we beheld his glory,
+the glory as of the only begotten of the Father,) full of grace and
+truth." Philippians 2:5-7 (KJV) "Let this mind be in you, which
+was also in Christ Jesus: {6} Who, being in the form of God, thought it
+not robbery to be equal with God: {7} But made himself of no reputation,
+and took upon him the form of a servant, and was made in the likeness of
+men:"
+
+Because this superior Daysman has been assigned to our case, we can no
+longer claim that God does not understand. In becoming flesh, this
+heavenly Daysman can identify with every difficulty we face:
+
+- Sickness...
+
+- Loneliness...
+
+- Poverty...
+
+- Pain...
+
+- Rejection...
+
+Because He became flesh, Christ earned the right to become at least
+three things to us:
+
+- Advocate... Advocate means comforter. 1 John 2:1 (KJV) "My little
+ children, these things write I unto you, that ye sin not. And if any
+ man sin, we have an advocate with the Father, Jesus Christ the
+ righteous." Jesus did not become our Daysman to help us avoid the
+ charges; He became our Daysman to administer grace rather than
+ justice. (Woman who complained to the photographer about her photos...
+ The woman said, "These pictures do not do me justice..." The
+ photographer said, "You don't need justice, you need mercy!")
+
+- Mediator... A mediator is one who stands between two opposing parties
+ with the idea of resolving a disagreement. 1 Timothy 2:5 (KJV) "For
+ there is one God, and one mediator between God and men, the man Christ
+ Jesus." (Illustrate this by having two people from the audience
+ come up and lay hands on each of them and bring them together)
+
+- Intercessor... Hebrews 7:25 (KJV) "Wherefore he is able also to
+ save them to the uttermost that come unto God by him, seeing he ever
+ liveth to make intercession for them." Luke 22:31-32 (KJV) "And
+ the Lord said, Simon, Simon, behold, Satan hath desired to have you,
+ that he may sift you as wheat: {32} But that I prayed for thee that
+ thy faith fail not: and when thou art converted, strengthen thy
+ brethren."
+
+CONCLUSION:
+
+This world is in dire need of a Daysman:
+
+- Congress is split down the middle... We need a Daysman...
+
+- The Supreme Court renders morally deficient decisions... We need a
+ Daysman...
+
+- More than fifty percent of marriages end in divorce... We need a
+ Daysman...
+
+- Christianity is under attack at home and abroad... We need a
+ Daysman...
+
+ILLUSTRATION: A recent newspaper report said that "Samantha Engelhardt,
+23, broke into the flaming first floor bedroom of her 3-year-old son,
+Jamie and 18-month-old daughter, Kyra and threw them out a window to
+safety," according to Aurora, Colorado authorities. They added...
+"The mother was hospitalized in serious condition." When she was
+reunited with her children two days later, "they cried because they
+could not recognize her."
+
+Isaiah 53:3 (KJV) "He is despised and rejected of men; a man of
+sorrows, and acquainted with grief: and we hid as it were our faces from
+him; he was despised, and we esteemed him not."
+
+Jesus heard my cry for a Daysman and came and rescued me from the
+flames... He is my hero and I will walk according to His instructions
+all the days of my life...
+
+PLACES PREACHED:
+
+CT Church Houston TX 7/18/13
