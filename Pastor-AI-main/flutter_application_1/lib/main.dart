@@ -46,134 +46,139 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   bool _isFirstMessage = true;
 
-  final String apiUrl = "/api/chat/";
   final String sessionId = const Uuid().v4();
 
   Future<void> _sendMessage() async {
-  if (_controller.text.trim().isEmpty) return;
+    if (_controller.text.trim().isEmpty) return;
 
-  String userText = _controller.text;
-  setState(() {
-    _messages.add({"role": "user", "text": userText});
-    _isLoading = true;
-    _isFirstMessage = false;
-  });
-  _controller.clear();
-
-  try {
-    // Calling your new ApiService!
-    final data = await _apiService.sendMessage(userText, sessionId);
-
+    String userText = _controller.text;
     setState(() {
-      _messages.add({
-        "role": "ai",
-        "text": data['answer'],
-        "sources": List<String>.from(data['sources'] ?? []),
+      _messages.add({"role": "user", "text": userText});
+      _isLoading = true;
+      _isFirstMessage = false;
+    });
+    _controller.clear();
+
+    try {
+      final data = await _apiService.sendMessage(userText, sessionId);
+      setState(() {
+        _messages.add({
+          "role": "ai",
+          "text": data['answer'],
+          "sources": List<String>.from(data['sources'] ?? []),
+        });
       });
-    });
-  } catch (e) {
-    setState(() {
-      _messages.add({"role": "ai", "text": "Error: Could not connect to the server."});
-    });
-  } finally {
-    setState(() { _isLoading = false; });
+    } catch (e) {
+      setState(() {
+        _messages.add({"role": "ai", "text": "Error: Could not connect to the server."});
+      });
+    } finally {
+      setState(() { _isLoading = false; });
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
+    // Check if the viewport is mobile-sized
+    final bool isMobile = MediaQuery.of(context).size.width < 800;
+
     return Scaffold(
       backgroundColor: Colors.white,
+      // On mobile, the sidebar becomes a Drawer
+      drawer: isMobile ? Drawer(child: _buildSidebar(isMobile: true)) : null,
       appBar: AppBar(
         centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
-        toolbarHeight: 120,
-      title: Padding(
-        padding: const EdgeInsets.only(top: 20.0, left: 40.0), // Moves text down and right
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-      Text(
-        "THE", 
-        style: GoogleFonts.openSans(
-          color: const Color(0xFF1B264F),
-          fontSize: 16,
-          fontWeight: FontWeight.w300,
-          letterSpacing: 2.0,
+        toolbarHeight: isMobile ? 80 : 120,
+        // The menu icon (hamburger) automatically appears on mobile because of the 'drawer'
+        title: Padding(
+          padding: EdgeInsets.only(
+            top: 20.0, 
+            left: isMobile ? 0 : 40.0, 
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "THE", 
+                style: GoogleFonts.openSans(
+                  color: const Color(0xFF1B264F),
+                  fontSize: isMobile ? 12 : 16,
+                  fontWeight: FontWeight.w300,
+                  letterSpacing: 2.0,
+                ),
+              ),
+              Text(
+                "NORDINS", 
+                style: GoogleFonts.playfairDisplay(
+                  color: const Color(0xFF1B264F),
+                  fontSize: isMobile ? 28 : 38,
+                  fontWeight: FontWeight.w400,
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      Text(
-        "NORDINS", 
-        style: GoogleFonts.playfairDisplay(
-          color: const Color(0xFF1B264F),
-          fontSize: 38,
-          fontWeight: FontWeight.w400,
-          fontStyle: FontStyle.italic,
-          letterSpacing: 0.5,
-        ),
-      ),
-    ],
-  ),
-),
       ),
       body: Row(
         children: [
-          _buildSidebar(), 
+          // Sidebar only shows permanently on Desktop
+          if (!isMobile) _buildSidebar(isMobile: false),
           Expanded(
-            child: _buildChatInterface(),
+            child: _buildChatInterface(isMobile),
           ),
         ],
       ),
     );
   }
 
-Widget _buildSidebar() {
-  return Container(
-    width: 260,
-    // Increased 'top' to 50 to end it lower at the top
-    margin: const EdgeInsets.only(left: 20, bottom: 30, top: 50), 
-    padding: const EdgeInsets.all(24),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(32),
-      gradient: const LinearGradient(
-        colors: [Color(0xFFa1375a), Color(0xFF1B264F)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+  Widget _buildSidebar({required bool isMobile}) {
+    return Container(
+      width: 260,
+      // No floating margins in Drawer mode (Mobile)
+      margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: 30, top: 20), 
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: isMobile ? BorderRadius.zero : BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          colors: [Color(0xFFa1375a), Color(0xFF1B264F)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-      boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5)),
-      ],
-    ),
-    // ... rest of the sidebar code remains the same
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Sermon Library",
-            style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Container(height: 2, width: 40, color: const Color(0xFFD4AF37)),
-          const Expanded(child: SizedBox()),
-          Center(
-            child: Text(
-              "AI",
-              style: GoogleFonts.figtree(
-                color: const Color(0xFFD4AF37),
-                fontWeight: FontWeight.w900,
-                letterSpacing: 2.0,
-                fontSize: 24,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Sermon Library",
+              style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Container(height: 2, width: 40, color: const Color(0xFFD4AF37)),
+            const Expanded(child: SizedBox()),
+            Center(
+              child: Text(
+                "AI",
+                style: GoogleFonts.figtree(
+                  color: const Color(0xFFD4AF37),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.0,
+                  fontSize: 24,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildChatInterface() {
+  Widget _buildChatInterface(bool isMobile) {
     return Column(
       children: [
         Expanded(
@@ -183,11 +188,11 @@ Widget _buildSidebar() {
                 child: Container(
                   constraints: const BoxConstraints(maxWidth: 1100),
                   child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final msg = _messages[index];
-                      return _buildChatBubble(msg, msg["role"] == "user");
+                      return _buildChatBubble(msg, msg["role"] == "user", isMobile);
                     },
                   ),
                 ),
@@ -195,8 +200,8 @@ Widget _buildSidebar() {
               if (_isFirstMessage)
                 Center(
                   child: Container(
-                    constraints: const BoxConstraints(maxWidth: 650),
-                    margin: const EdgeInsets.all(30),
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    margin: const EdgeInsets.all(20),
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: Colors.white,
@@ -209,16 +214,20 @@ Widget _buildSidebar() {
                       children: [
                         const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 40),
                         const SizedBox(height: 16),
-                        const Text(
+                        Text(
                           "Welcome to the Nordins AI Assistant",
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1B264F)),
+                          style: TextStyle(
+                            fontSize: isMobile ? 18 : 22, 
+                            fontWeight: FontWeight.bold, 
+                            color: const Color(0xFF1B264F)
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           "This tool is trained on sermon notes and resources. Please verify insights with your Bible.",
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.figtree(fontSize: 15, color: Colors.black54),
+                          style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                         ),
                       ],
                     ),
@@ -228,29 +237,26 @@ Widget _buildSidebar() {
           ),
         ),
         if (_isLoading)
-          const SizedBox(
-            width: 800,
-            child: LinearProgressIndicator(color: Color(0xFFD4AF37), backgroundColor: Colors.transparent),
-          ),
-        _buildInputArea(),
+          const LinearProgressIndicator(color: Color(0xFFD4AF37), backgroundColor: Colors.transparent),
+        _buildInputArea(isMobile),
       ],
     );
   }
 
- Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser) {
+  Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile) {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
+        // On mobile, bubbles can take up 85% width; on PC, only 70%
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * (isMobile ? 0.85 : 0.7),
+        ),
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          // Logic: Apply gradient for user, solid color for AI
           gradient: isUser 
             ? const LinearGradient(
-                colors: [
-                  Color(0xFFa1375a), // Purple/Maroon
-                  Color(0xFF1B264F), // Navy
-                ],
+                colors: [Color(0xFFa1375a), Color(0xFF1B264F)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ) 
@@ -262,40 +268,35 @@ Widget _buildSidebar() {
             bottomLeft: Radius.circular(isUser ? 16 : 0),
             bottomRight: Radius.circular(isUser ? 0 : 16),
           ),
-          // Adding a subtle shadow to make the prompt "float" like the sidebar
           boxShadow: isUser ? [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            )
+            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
           ] : [],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            MarkdownBody(
-              data: msg["text"],
-              styleSheet: MarkdownStyleSheet(
-                p: GoogleFonts.figtree(
-                  fontSize: 15, 
-                  color: isUser ? Colors.white : Colors.black87,
-                ),
-                strong: GoogleFonts.figtree(
-                  fontWeight: FontWeight.bold, 
-                  color: isUser ? Colors.white : Colors.black,
-                ),
-              ),
+        child: MarkdownBody(
+          data: msg["text"],
+          styleSheet: MarkdownStyleSheet(
+            p: GoogleFonts.figtree(
+              fontSize: 15, 
+              color: isUser ? Colors.white : Colors.black87,
             ),
-          ],
+            strong: GoogleFonts.figtree(
+              fontWeight: FontWeight.bold, 
+              color: isUser ? Colors.white : Colors.black,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInputArea() {
+  Widget _buildInputArea(bool isMobile) {
     return Container(
-      padding: const EdgeInsets.only(bottom: 30, left: 20, right: 20, top: 10),
+      padding: EdgeInsets.only(
+        bottom: isMobile ? 15 : 30, 
+        left: isMobile ? 10 : 20, 
+        right: isMobile ? 10 : 20, 
+        top: 10
+      ),
       child: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 1100),
@@ -311,7 +312,7 @@ Widget _buildSidebar() {
                 child: TextField(
                   controller: _controller,
                   decoration: const InputDecoration(
-                    hintText: "How can I help you today?",
+                    hintText: "How can I help you?",
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(horizontal: 16),
                   ),
@@ -324,9 +325,7 @@ Widget _buildSidebar() {
                   width: 40, height: 40,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFa1375a), Color(0xFF1B264F)],
-                    ),
+                    gradient: LinearGradient(colors: [Color(0xFFa1375a), Color(0xFF1B264F)]),
                   ),
                   child: IconButton(
                     icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
