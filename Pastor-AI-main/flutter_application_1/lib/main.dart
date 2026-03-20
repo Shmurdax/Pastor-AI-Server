@@ -43,6 +43,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
+  
+  // NEW: State variable to hold the sermon titles for the library
+  List<String> _librarySermons = []; 
+  
   bool _isLoading = false;
   bool _isFirstMessage = true;
 
@@ -67,6 +71,14 @@ class _ChatScreenState extends State<ChatScreen> {
           "text": data['answer'],
           "sources": List<String>.from(data['sources'] ?? []),
         });
+        
+        // NEW: Update the library with the sources returned from the AI
+        // We take the first 5 unique sources and clean up the '.md' extension if present
+        _librarySermons = List<String>.from(data['sources'] ?? [])
+            .map((s) => s.replaceAll('.md', '')) // Clean up file names
+            .toSet() // Remove duplicates
+            .take(5) // Limit to 5
+            .toList();
       });
     } catch (e) {
       setState(() {
@@ -136,10 +148,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildSidebar({required bool isMobile}) {
+Widget _buildSidebar({required bool isMobile}) {
     return Container(
       width: 260,
-      // No floating margins in Drawer mode (Mobile)
       margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: 30, top: 20), 
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -156,11 +167,51 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Text(
               "Sermon Library",
-              style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: GoogleFonts.figtree(
+                color: Colors.white, 
+                fontSize: 20, 
+                fontWeight: FontWeight.bold
+              ),
             ),
             const SizedBox(height: 8),
             Container(height: 2, width: 40, color: const Color(0xFFD4AF37)),
-            const Expanded(child: SizedBox()),
+            const SizedBox(height: 20),
+            
+            // MODIFIED: This section now dynamically lists the sermons
+            Expanded(
+              child: _librarySermons.isEmpty 
+                ? Text(
+                    "Relevant sermons will appear here after you ask a question.",
+                    style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
+                  )
+                : ListView.builder(
+                    itemCount: _librarySermons.length,
+                    itemBuilder: (context, index) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.menu_book, color: Color(0xFFD4AF37), size: 16),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _librarySermons[index],
+                                style: GoogleFonts.figtree(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+            ),
+            
+            const SizedBox(height: 20),
             Center(
               child: Text(
                 "AI",

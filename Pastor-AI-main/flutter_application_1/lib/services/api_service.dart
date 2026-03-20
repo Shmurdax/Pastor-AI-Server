@@ -25,7 +25,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // Tip: Ensure this matches the IP your server is listening on!
-  final String baseUrl = "http://10.60.170.73:8001/api/chat/";
+  final String baseUrl = "http://10.60.170.73/api/chat/";
 
   Future<Map<String, dynamic>> sendMessage(String query, String sessionId) async {
     try {
@@ -56,3 +56,4 @@ class ApiService {
     }
   }
 }
+
