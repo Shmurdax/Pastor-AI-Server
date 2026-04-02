@@ -3,6 +3,12 @@ import re
 import subprocess
 import fitz  # PyMuPDF
 import pypandoc
+import pandas as pd
+import spacy
+
+# Load NLP model
+nlp = spacy.load("en_core_web_sm")
+BIBLICAL_NAMES = pd.read_csv("Person.csv")["person_name"].tolist()
 
 # --- CONFIGURATION ---
 # Change this to where YOUR LibreOffice is installed if different
@@ -14,15 +20,15 @@ def master_converter(input_dir, output_dir):
     # PASS 1: Modernize Legacy Files (.doc and .wps)
     print("🛠️  Pass 1: Modernizing legacy files using LibreOffice...")
     for filename in os.listdir(input_dir):
-        if filename.lower().endswith(('.doc', '.wps', '.rtf')):
+        if filename.lower().endswith(('.doc', '.docx', '.wps', '.rtf')):
             file_path = os.path.join(input_dir, filename)
-            print(f"   > Converting {filename} to .docx...")
+            print(f"   > Converting {filename} to .pdf...")
             try:
                 # Use LibreOffice 'headless' command to convert
                 subprocess.run([
                     LIBREOFFICE_PATH, 
                     '--headless', 
-                    '--convert-to', 'docx', 
+                    '--convert-to', 'pdf', 
                     '--outdir', input_dir, 
                     file_path
                 ], check=True, capture_output=True)
@@ -57,9 +63,40 @@ def master_converter(input_dir, output_dir):
 
     print("\n✅ All done! Check your 'converted_markdown' folder.")
 
+def censor_non_biblical_names(text):
+    
+    #Identifies names (PERSON entity) and replaces them with [CENSORED] if they are not found in the BIBLICAL_NAMES set.
+    
+    doc = nlp(text)
+    offset = 0
+    new_text = text
+    
+    # We iterate through 'ents' (entities) found by spaCy
+    for ent in doc.ents:
+        if ent.label_ == "PERSON":
+            # Check if any part of the name is in our Bible list
+            # (e.g., 'John Smith' would be checked)
+            name_parts = ent.text.split()
+            is_biblical = any(part in BIBLICAL_NAMES for part in name_parts)
+            
+            if not is_biblical:
+                start = ent.start_char + offset
+                end = ent.end_char + offset
+                replacement = "[CENSORED]"
+                
+                # Slice the string to replace the name
+                new_text = new_text[:start] + replacement + new_text[end:]
+                
+                # Update offset because [CENSORED] might be longer/shorter than the original name
+                offset += len(replacement) - (end - start)
+                
+    return new_text
+
 def normalize_text(text):
     # 1. Normalize line endings to standard Unix style
     text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    text = censor_non_biblical_names(text)
 
     # 2. Strip Markdown Bold and Italics 
     # Must do this FIRST so the script can see the "naked" structural markers
@@ -124,6 +161,6 @@ def save_md(path, content):
         f.write('\n'.join(processed_lines))
 
 if __name__ == "__main__":
-    INPUT = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\Pastor-Data"
-    OUTPUT = r"C:\Users\MC_Mill\Documents\GitHub\Pastor-AI-GUI\Pastor-AI-main\converted_markdown"
+    INPUT = r"D:\Pastor Ai\Pastor-AI-Server-master\Pastor-AI-Server-master\Pastor-AI-main\Testing-Data"
+    OUTPUT = r"D:\Pastor Ai\Pastor-AI-Server-master\Pastor-AI-Server-master\Pastor-AI-main\Testing-Markdown"
     master_converter(INPUT, OUTPUT)
