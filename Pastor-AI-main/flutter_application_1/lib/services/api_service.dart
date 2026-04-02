@@ -24,8 +24,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Tip: Ensure this matches the IP your server is listening on!
-  final String baseUrl = "http://10.60.170.73/api/chat/";
+  // Tip: Ensure this matches the IP your server is listening on! // Changed the baseURL from server IP to relative path for Nginx deployment
+  final String baseUrl = "/api/chat/";
 
   Future<Map<String, dynamic>> sendMessage(String query, String sessionId) async {
     try {
@@ -56,4 +56,3 @@ class ApiService {
     }
   }
 }
-

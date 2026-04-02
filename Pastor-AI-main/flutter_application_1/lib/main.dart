@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:uuid/uuid.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const SermonBrainApp());
@@ -38,21 +39,90 @@ class ChatScreen extends StatefulWidget {
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
-
 class _ChatScreenState extends State<ChatScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _controller = TextEditingController();
+  
+  // NEW: Added this controller
+  final ScrollController _scrollController = ScrollController();
+
   final List<Map<String, dynamic>> _messages = [];
-  
-  // NEW: State variable to hold the sermon titles for the library
   List<String> _librarySermons = []; 
-  
+  List<String> _previousSermons = [];
   bool _isLoading = false;
   bool _isFirstMessage = true;
+  
+  // NEW: Added this toggle
+  bool _showBackToBottomButton = false;
 
   final String sessionId = const Uuid().v4();
 
-  Future<void> _sendMessage() async {
+Future<void> _launchSermonDoc(String sermonName) async {
+  // 1. Your GitHub permalink base URL (Notice 'tree' is changed to 'blob')
+  final String baseUrl = "https://github.com/Shmurdax/Pastor-AI-Server/blob/ab5913f6d76dc38d97a8e947193230ef956b0737/Pastor-AI-main/Pastor-Data/";
+  
+  // 2. Combine the base URL, the sermon name, and the file extension.
+  // IMPORTANT: Ensure '.docx' matches the actual file types in your GitHub folder. 
+  // If they are markdown files, change this to '.md'.
+  final String fullUrl = '$baseUrl$sermonName.docx';
+  
+  final Uri url = Uri.parse(fullUrl);
+
+  try {
+    if (await canLaunchUrl(url)) {
+      // This will open a new browser tab directly to the file on GitHub
+      await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication, 
+      );
+    } else {
+      debugPrint("Could not launch $fullUrl");
+    }
+  } catch (e) {
+    debugPrint("Error opening GitHub link: $e");
+  }
+}
+
+@override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(() {
+      // Check if the user is more than 300 pixels away from the bottom
+      // maxScrollExtent is the total length of the list
+      bool isFarFromBottom = _scrollController.offset < 
+                             (_scrollController.position.maxScrollExtent - 300);
+
+      // We only call setState if the status actually changes to avoid lag
+      if (isFarFromBottom && !_showBackToBottomButton) {
+        setState(() => _showBackToBottomButton = true);
+      } else if (!isFarFromBottom && _showBackToBottomButton) {
+        setState(() => _showBackToBottomButton = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  // <--- SECTION 1 STOPS HERE. The next line in your code should be:
+  // Future<void> _sendMessage() async { ...
+ Future<void> _sendMessage() async {
     if (_controller.text.trim().isEmpty) return;
 
     String userText = _controller.text;
@@ -63,6 +133,9 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _controller.clear();
 
+    // 1. Scroll immediately after the user's message is added to the list
+    _scrollToBottom();
+
     try {
       final data = await _apiService.sendMessage(userText, sessionId);
       setState(() {
@@ -71,19 +144,30 @@ class _ChatScreenState extends State<ChatScreen> {
           "text": data['answer'],
           "sources": List<String>.from(data['sources'] ?? []),
         });
-        
-        // NEW: Update the library with the sources returned from the AI
-        // We take the first 5 unique sources and clean up the '.md' extension if present
+
+        // Move the OLD current sermons to the PREVIOUS list
+        // We use .toSet() to ensure we don't have duplicates in the history
+        _previousSermons = [..._librarySermons, ..._previousSermons].toSet().toList();
+
+        // Set the NEW sermons as the current list
         _librarySermons = List<String>.from(data['sources'] ?? [])
-            .map((s) => s.replaceAll('.md', '')) // Clean up file names
-            .toSet() // Remove duplicates
-            .take(5) // Limit to 5
+            .map((s) => s.replaceAll('.md', '').replaceAll('.docx', '').trim().replaceAll('.pdf', ''))
+            .toSet()
+            .take(5)
             .toList();
       });
+
+      // 2. Scroll again after the AI response is rendered
+      _scrollToBottom();
+      
     } catch (e) {
       setState(() {
         _messages.add({"role": "ai", "text": "Error: Could not connect to the server."});
       });
+
+      // 3. Scroll if an error message appears so the user sees it
+      _scrollToBottom();
+
     } finally {
       setState(() { _isLoading = false; });
     }
@@ -179,57 +263,66 @@ Widget _buildSidebar({required bool isMobile}) {
             
             // MODIFIED: This section now dynamically lists the sermons
             Expanded(
-              child: _librarySermons.isEmpty 
-                ? Text(
-                    "Relevant sermons will appear here after you ask a question.",
-                    style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
-                  )
-                : ListView.builder(
-                    itemCount: _librarySermons.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.menu_book, color: Color(0xFFD4AF37), size: 16),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                _librarySermons[index],
-                                style: GoogleFonts.figtree(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
+              child: _librarySermons.isEmpty && _previousSermons.isEmpty
+                  ? Text(
+                      "Relevant sermons will appear here after you ask a question.",
+                      style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
+                    )
+                  : ListView(
+                      children: [
+                        // --- SECTION 1: CURRENT SOURCES ---
+                        ..._librarySermons.map((sermon) => _buildSermonLink(sermon)),
+
+                        // --- SECTION 2: DIVIDER & HISTORY ---
+                        if (_previousSermons.isNotEmpty) ...[
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              const Expanded(child: Divider(color: Colors.white24)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                child: Text(
+                                  "Last Question's Sources",
+                                  style: GoogleFonts.figtree(
+                                    color: const Color(0xFFD4AF37),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                              const Expanded(child: Divider(color: Colors.white24)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          // Display previous sermons with slightly more transparency
+                          ..._previousSermons.map((sermon) => Opacity(
+                                opacity: 0.7,
+                                child: _buildSermonLink(sermon),
+                              )),
+                        ],
+                      ],
+                    ),
             ),
-            
-            const SizedBox(height: 20),
-            Center(
-              child: Text(
-                "AI",
-                style: GoogleFonts.figtree(
-                  color: const Color(0xFFD4AF37),
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2.0,
-                  fontSize: 24,
-                ),
+          
+          const SizedBox(height: 20),
+          Center(
+            child: Text(
+              "AI",
+              style: GoogleFonts.figtree(
+                color: const Color(0xFFD4AF37),
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2.0,
+                fontSize: 24,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Widget _buildChatInterface(bool isMobile) {
+Widget _buildChatInterface(bool isMobile) {
     return Column(
       children: [
         Expanded(
@@ -239,6 +332,8 @@ Widget _buildSidebar({required bool isMobile}) {
                 child: Container(
                   constraints: const BoxConstraints(maxWidth: 1100),
                   child: ListView.builder(
+                    // LINKED: This tells the list to use your scroll logic
+                    controller: _scrollController,
                     padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
@@ -248,6 +343,30 @@ Widget _buildSidebar({required bool isMobile}) {
                   ),
                 ),
               ),
+
+              // NEW: The floating "Scroll to Bottom" button logic
+              if (_showBackToBottomButton)
+                // NEW: Smooth Animated Scroll to Bottom Button
+              Positioned(
+                bottom: 20,
+                right: 20,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return ScaleTransition(scale: animation, child: child);
+                  },
+                  child: _showBackToBottomButton
+                      ? FloatingActionButton.small(
+                          key: const ValueKey('scrollBtn'), // Necessary for AnimatedSwitcher
+                          backgroundColor: const Color(0xFF1B264F),
+                          foregroundColor: const Color(0xFFD4AF37),
+                          onPressed: _scrollToBottom,
+                          child: const Icon(Icons.arrow_downward),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+
               if (_isFirstMessage)
                 Center(
                   child: Container(
@@ -266,7 +385,7 @@ Widget _buildSidebar({required bool isMobile}) {
                         const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 40),
                         const SizedBox(height: 16),
                         Text(
-                          "Welcome to the Nordins AI Assistant",
+                          "Welcome to the Nordin's AI Assistant",
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: isMobile ? 18 : 22, 
@@ -340,7 +459,7 @@ Widget _buildSidebar({required bool isMobile}) {
     );
   }
 
-  Widget _buildInputArea(bool isMobile) {
+Widget _buildInputArea(bool isMobile) {
     return Container(
       padding: EdgeInsets.only(
         bottom: isMobile ? 15 : 30, 
@@ -353,25 +472,29 @@ Widget _buildSidebar({required bool isMobile}) {
           constraints: const BoxConstraints(maxWidth: 1100),
           decoration: BoxDecoration(
             color: const Color(0xFFF4F4F9),
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: BorderRadius.circular(24), 
             border: Border.all(color: Colors.grey.shade300),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end, 
             children: [
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  minLines: 1, 
+                  maxLines: 5, // Allows the box to grow as text wraps naturally
+                  textInputAction: TextInputAction.send, // Tells the keyboard "Enter" means send
+                  onSubmitted: (_) => _sendMessage(), // Fires the send function when Enter is pressed
                   decoration: const InputDecoration(
                     hintText: "How can I help you?",
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                    contentPadding: EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 14),
                   ),
-                  onSubmitted: (_) => _sendMessage(),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(4.0),
+                padding: const EdgeInsets.only(bottom: 6.0, right: 4.0, left: 4.0),
                 child: Container(
                   width: 40, height: 40,
                   decoration: const BoxDecoration(
@@ -390,4 +513,37 @@ Widget _buildSidebar({required bool isMobile}) {
       ),
     );
   }
-}
+  // ... existing _buildInputArea method above ...
+
+  Widget _buildSermonLink(String sermonTitle) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _launchSermonDoc(sermonTitle),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.description_outlined, color: Color(0xFFD4AF37), size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  sermonTitle,
+                  style: GoogleFonts.figtree(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white38,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+} // This is the very last closing brace of your _ChatScreenState class

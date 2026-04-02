@@ -37,6 +37,8 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # This was added for the url_launcher package, which allows us to open links in the browser
+  url_launcher: ^6.1.7 
 
 dev_dependencies:
   flutter_test:

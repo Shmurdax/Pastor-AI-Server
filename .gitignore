@@ -37,5 +37,7 @@ sermon_brain_db.sqlite3
 sermon_brain_db/
 *.sqlite3
 chroma.sqlite3
+Pastor Don Documents/
+
 # Docker
 .docker/
