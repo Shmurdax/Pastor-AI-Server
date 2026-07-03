@@ -81215,7 +81215,7 @@ break}l=f
 m.ao(new A.ahz(m,l))
 g.qU(B.O6)
 p=4
-g=A.fF("https://hyperthyroid-tyesha-cheerier.ngrok-free.dev/api/chat/",0,null)
+g=A.fF("/api/chat/",0,null)
 f=t.N
 i=A.am(["Content-Type","application/json"],f,f)
 s=7

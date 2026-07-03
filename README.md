@@ -1,7 +1,28 @@
-This Pastor-AI-main folder should be able to run the AI and UI through Django and NGROK.
-TIPS: 
-- Make sure Ngrok is downloaded and running via "ngrok http 8000".
-- Make sure django is downloaded and running via "py manage.py runserver".
-- Double check file paths.
-- Django, Ollama, and Ngrok should be the only things that need to be open.
-- use inspect (f12) on the webpage to help with troubleshooting errors.
+# Pastor-AI-Server
+
+RunPod deployment for the Pastor AI chat app with fine-tuned **Qwen2.5-14B Christian AI**.
+
+## Quick start (RunPod)
+
+```bash
+cd /workspace
+git clone https://github.com/Shmurdax/Pastor-AI-Server.git pastor-ai/Pastor-AI-Server
+cd pastor-ai/Pastor-AI-Server
+cp config.env.example config.env   # add HF_TOKEN
+bash setup.sh
+```
+
+**After pod restart:** `bash restart.sh`
+
+See **[RUNPOD.md](RUNPOD.md)** for full rebuild guide.
+
+## What runs
+
+- Django + Flutter web UI (`:8000`)
+- Qdrant vector DB (`:6333`) — sermon/Bible RAG
+- Fine-tuned Qwen2.5-14B via Unsloth (GPU)
+- Cloudflare tunnel for public HTTPS access
+
+## Local dev (Windows)
+
+The `Pastor-AI-main` folder can run locally with Django + Ollama — see `Pastor-AI-main/README.md`. Production RunPod uses Qwen instead of Llama.
