@@ -77,6 +77,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       Tween<double>(begin: 0.2, end: 1.0).animate(
     CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
   );
+  
+  String _boldBibleReferences(String text) {
+  // Matches: BookName Chapter:Verse or Chapter:Verse-Verse
+  // Handles multi-word books (e.g., "1 Kings", "Song of Solomon")
+  // Handles ranges (e.g., 3:1-14) and optional translation tags (e.g., (NKJV))
+final bibleRefRegex = RegExp(
+    r'((?:1|2|3)\s)?'                // optional numeric prefix like "1 ", "2 "
+    r'[A-Z][a-z]+'                   // book name first word (capitalized)
+    r'(?:\s[A-Z][a-z]+)*'            // optional additional capitalized words
+    r'\s\d+'                         // chapter number
+    r'(?:-\d+)?'                     // optional chapter range (e.g., 2-4)
+    r'(?::\d+(?:-(?:\d+:\d+|\d+))?)?' // optional :verse, :verse-endverse, or :verse-chapter:verse
+    r'(?:\s\([A-Z]+\))?',            // optional translation (e.g., (NKJV))
+    caseSensitive: true,
+  );
+
+  return text.replaceAllMapped(bibleRefRegex, (match) {
+    final ref = match.group(0)!;
+    if (text.substring(
+      match.start > 2 ? match.start - 2 : 0,
+      match.start
+    ).endsWith('**')) return ref;
+    return '**$ref**';
+  });
+}
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
   @override
@@ -256,16 +281,18 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 
       // 2. Add the new message to the chat
       _messages.add({
-        "role": "ai",
-        "text": data['answer'],
-        "sources": List<String>.from(data['sources'] ?? []),
-      });
+         "role": "ai",
+         "text": _boldBibleReferences(data['answer'] as String),
+         "sources": List<String>.from(data['sources'] ?? []),
+    });
       
-      // 3. Update the current library with the NEW sources
-      _librarySermons = _parseSources(data['sources']);
-      
-      // 4. Clean up: If a sermon is in 'Current', remove it from 'Previous'
-      _previousSermons.removeWhere((s) => _librarySermons.contains(s));
+      // 3. Only update the library if the response actually used sermon sources
+      final newSources = _parseSources(data['sources']);
+      if (newSources.isNotEmpty) {
+        _librarySermons = newSources;
+        // 4. Clean up: If a sermon is in 'Current', remove it from 'Previous'
+        _previousSermons.removeWhere((s) => _librarySermons.contains(s));
+      }
     });
     _scrollToBottom();
   } catch (e) {
@@ -504,7 +531,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            "This tool is trained on sermon notes and resources. The AI may occasionally produce inaccurate information. Please verify insights with your Bible.",
+                            "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information. Please verify insights with your Bible.",
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),
