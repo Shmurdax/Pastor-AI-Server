@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     
     # These are the ones we added
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
     'api', 
 ]
@@ -118,6 +119,14 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authtoken.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    # No DEFAULT_PERMISSION_CLASSES set on purpose — ChatAPI stays open to
+    # guests, and the new auth views set permission_classes explicitly.
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
