@@ -202,19 +202,33 @@ log "Postgres ready (${POSTGRES_DB})"
 # Python venv + deps
 # ---------------------------------------------------------------------------
 section "Python environment"
+export TMPDIR="${TMPDIR:-/workspace/tmp}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
+mkdir -p "$TMPDIR" "$PIP_CACHE_DIR"
 if [[ ! -x "$VENV_DIR/bin/python" ]]; then
   python3 -m venv "$VENV_DIR"
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 pip install -q --upgrade pip
-pip install -q -r "$APP_DIR/requirements.txt"
+pip install -q --cache-dir "$PIP_CACHE_DIR" -r "$APP_DIR/requirements.txt"
+
+# CUDA-matched PyTorch first (RunPod L4/4090 images are typically CUDA 12.8)
+pip install -q --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # vLLM (GPU inference) — may take a few minutes on first install
 if ! python -c "import vllm" 2>/dev/null; then
   log "Installing vLLM (first time can take several minutes)..."
-  pip install -q vllm || warn "vLLM pip install failed — try: pip install vllm"
+  pip install -q --cache-dir "$PIP_CACHE_DIR" vllm || warn "vLLM pip install failed — try: pip install vllm"
 fi
+# Guard against pip pulling a CUDA 13 torch wheel onto a CUDA 12.8 driver
+python - <<'PY' || warn "torch CUDA check failed"
+import torch
+print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available())
+ver = (torch.version.cuda or "").split(".")[0:2]
+if ver and int(ver[0]) >= 13:
+    raise SystemExit("Torch CUDA 13+ on CUDA 12.8 driver — reinstall cu128 wheels")
+PY
 log "Python env ready"
 
 # ---------------------------------------------------------------------------
