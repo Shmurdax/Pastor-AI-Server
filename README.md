@@ -26,3 +26,11 @@ See **[RUNPOD.md](RUNPOD.md)** for full rebuild guide.
 ## Local dev (Windows)
 
 The `Pastor-AI-main` folder can run locally with Django + Ollama — see `Pastor-AI-main/README.md`. Production RunPod uses Qwen instead of Llama.
+
+## RunPod one-command install
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/GavWrecker/Pastor-AI-Server/master/install.sh)
+```
+
+See [RUNPOD.md](RUNPOD.md) for details. After a pod restart: `bash /workspace/pastor-ai/start.sh`.

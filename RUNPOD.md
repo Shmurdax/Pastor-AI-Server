@@ -1,78 +1,50 @@
-# Pastor-AI on RunPod
+# Pastor-AI — RunPod one-command deploy
 
-Christian theology chat app: **Flutter web UI** + **Django API** + **Qdrant RAG** + **fine-tuned Qwen2.5-14B** (Unsloth LoRA).
+Christian theology chat: **Flutter web UI** + **Django** + **Qdrant RAG** + **vLLM (Llama 3.1 8B)**.
 
-## New pod (first time)
-
-1. Create a RunPod pod with:
-   - **GPU:** RTX 4090 or similar (24 GB+ VRAM)
-   - **Network volume:** attach your volume (e.g. 200 GB) mounted at `/workspace`
-
-2. SSH in and run:
+## One command (fresh RunPod)
 
 ```bash
-cd /workspace
-git clone https://github.com/Shmurdax/Pastor-AI-Server.git pastor-ai/Pastor-AI-Server
-cd pastor-ai/Pastor-AI-Server
-cp config.env.example config.env
-nano config.env   # set HF_TOKEN=hf_...
-bash setup.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/GavWrecker/Pastor-AI-Server/master/install.sh)
 ```
 
-3. When setup finishes, open the **Cloudflare URL** printed at the end (also saved to `/workspace/pastor-ai/public_url.txt`).
-
-**First chat message takes 1–3 minutes** while the 14B model loads into GPU memory.
-
-## Pod restart (fast — ~30 seconds)
-
-Everything important lives on the **network volume** at `/workspace/pastor-ai/`:
-
-| Path | What |
-|------|------|
-| `christianai-lora/` | Fine-tuned LoRA weights (~150 MB) |
-| `qdrant/storage/` | Sermon vector database |
-| `venv/` | Python environment |
-| `.cache/huggingface/` | Base model cache |
-| `logs/` | Service logs |
+Or after cloning this repo onto `/workspace`:
 
 ```bash
-cd /workspace/pastor-ai/Pastor-AI-Server
-bash restart.sh
+bash /workspace/pastor-ai/install.sh
 ```
 
-The Cloudflare URL **changes** each restart — check `public_url.txt` or `logs/cloudflared.log`.
-
-## Configuration (`config.env`)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `HF_TOKEN` | Yes | Hugging Face token with read access to your private LoRA |
-| `CHRISTIANAI_HF_REPO` | No | Default: `apophaticai/qwen2.5-14b-christianai-v1` |
-| `TUNNEL` | No | `cloudflared` (default) or `ngrok` |
-| `NGROK_AUTH_TOKEN` | If ngrok | Only if using ngrok tunnel |
-| `NGROK_DOMAIN` | If ngrok | Reserved ngrok domain |
-
-## Useful commands
+Optional secrets:
 
 ```bash
-screen -list                          # running services
-tail -f /workspace/pastor-ai/logs/django.log
-tail -f /workspace/pastor-ai/logs/cloudflared.log
-curl -s -X POST http://localhost:8000/api/chat/ \
-  -H "Content-Type: application/json" \
-  -d '{"query":"What is faith?"}'
+HF_TOKEN=hf_xxx NGROK_AUTH_TOKEN=xxx TUNNEL=ngrok bash install.sh
 ```
 
-## Reinstall from scratch
+## After pod restart (~30 seconds)
 
 ```bash
-rm /workspace/pastor-ai/.setup_complete
-FORCE_SETUP=1 bash setup.sh
+bash /workspace/pastor-ai/start.sh
 ```
 
-## Stack
+## What gets installed
 
-- **LLM:** Qwen2.5-14B-Instruct + Christian AI LoRA (Unsloth, 4-bit)
-- **RAG:** Qdrant + `all-MiniLM-L6-v2` embeddings over sermon markdown
-- **Tunnel:** Cloudflare quick tunnel (works when ngrok is blocked)
-- **UI:** Flutter web app served by Django on port 8000
+| Path | Contents |
+|------|----------|
+| `/workspace/pastor-ai/backend/` | `server-dev` branch (Django + ingestion) |
+| `/workspace/pastor-ai/frontend/` | `front_end_backup` branch (Flutter web build) |
+| `/workspace/pastor-ai/venv/` | Python env (Django, LangChain, vLLM) |
+| `/workspace/pastor-ai/qdrant_storage/` | Vector DB |
+| `/workspace/pastor-ai/hf_cache/` | Model cache |
+| `/workspace/pastor-ai/config.env` | Secrets + ports |
+| `/workspace/pastor-ai/public_url.txt` | Current public URL |
+
+## Branches used
+
+- Backend: `Shmurdax/Pastor-AI-Server` → `server-dev`
+- Frontend: `Shmurdax/Pastor-AI-Server` → `front_end_backup`
+
+## Notes
+
+- Docker is **not** required (RunPod images often block nested Docker).
+- Public access defaults to **Cloudflare quick tunnel**; set `TUNNEL=ngrok` for a reserved ngrok domain.
+- First chat waits for the 8B model to load into GPU VRAM.
