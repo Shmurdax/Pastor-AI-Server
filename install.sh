@@ -216,19 +216,13 @@ pip install -q --cache-dir "$PIP_CACHE_DIR" -r "$APP_DIR/requirements.txt"
 # CUDA-matched PyTorch first (RunPod L4/4090 images are typically CUDA 12.8)
 pip install -q --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
-# vLLM (GPU inference) — may take a few minutes on first install
+# vLLM (GPU inference) — pin a CUDA 12.x-compatible release (0.25+ needs cudart 13)
 if ! python -c "import vllm" 2>/dev/null; then
-  log "Installing vLLM (first time can take several minutes)..."
-  pip install -q --cache-dir "$PIP_CACHE_DIR" vllm || warn "vLLM pip install failed — try: pip install vllm"
+  log "Installing vLLM 0.8.5 (CUDA 12.x compatible)..."
+  pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.8.5" \
+    || pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.7.3" \
+    || warn "vLLM pip install failed"
 fi
-# Guard against pip pulling a CUDA 13 torch wheel onto a CUDA 12.8 driver
-python - <<'PY' || warn "torch CUDA check failed"
-import torch
-print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available())
-ver = (torch.version.cuda or "").split(".")[0:2]
-if ver and int(ver[0]) >= 13:
-    raise SystemExit("Torch CUDA 13+ on CUDA 12.8 driver — reinstall cu128 wheels")
-PY
 log "Python env ready"
 
 # ---------------------------------------------------------------------------
