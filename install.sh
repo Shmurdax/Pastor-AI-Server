@@ -31,7 +31,7 @@ FRONTEND_REPO="${FRONTEND_REPO:-https://github.com/Shmurdax/Pastor-AI-Server.git
 FRONTEND_BRANCH="${FRONTEND_BRANCH:-front_end_backup}"
 
 VLLM_MODEL="${VLLM_MODEL:-RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16}"
-VLLM_PORT="${VLLM_PORT:-8001}"
+VLLM_PORT="${VLLM_PORT:-8010}"
 DJANGO_PORT="${DJANGO_PORT:-8000}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
 TUNNEL="${TUNNEL:-cloudflared}"

@@ -18,7 +18,8 @@ mkdir -p "$LOG_DIR" "${QDRANT_STORAGE:-$WS/qdrant_storage}" "${HF_HOME:-$WS/hf_c
 
 QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
-VLLM_PORT="${VLLM_PORT:-8001}"
+# Avoid 8001 — RunPod's host nginx often binds it and fools health checks.
+VLLM_PORT="${VLLM_PORT:-8010}"
 DJANGO_PORT="${DJANGO_PORT:-8000}"
 VLLM_MODEL="${VLLM_MODEL:-RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16}"
 TUNNEL="${TUNNEL:-cloudflared}"
@@ -28,6 +29,12 @@ warn() { echo -e "\033[1;33m[!]\033[0m $*"; }
 die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 
 stop_screen() { screen -S "$1" -X quit 2>/dev/null || true; }
+
+vllm_healthy() {
+  local body
+  body="$(curl -sf --max-time 3 "http://127.0.0.1:${VLLM_PORT}/v1/models" 2>/dev/null || true)"
+  [[ "$body" == *'"object"'* ]] || [[ "$body" == *'"data"'* ]]
+}
 
 echo ""
 echo "=== Pastor-AI start ==="
@@ -66,9 +73,10 @@ else
 fi
 
 # vLLM
-if ! curl -sf "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
+if ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
   stop_screen vllm
+  : > "${LOG_DIR}/vllm.log"
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
@@ -85,7 +93,7 @@ if ! curl -sf "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
   "
   log "vLLM starting on :${VLLM_PORT} (first load downloads model — check ${LOG_DIR}/vllm.log)"
 else
-  log "vLLM already running"
+  log "vLLM already running on :${VLLM_PORT}"
 fi
 
 # Django
