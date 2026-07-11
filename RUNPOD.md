@@ -48,3 +48,13 @@ bash /workspace/pastor-ai/start.sh
 - Docker is **not** required (RunPod images often block nested Docker).
 - Public access defaults to **Cloudflare quick tunnel**; set `TUNNEL=ngrok` for a reserved ngrok domain.
 - First chat waits for the 8B model to load into GPU VRAM.
+
+## Tokens (quick update)
+
+```bash
+cd /workspace/pastor-ai
+cp tokens.env.example tokens.env
+nano tokens.env          # paste HF / GitHub / ngrok tokens
+bash apply-tokens.sh     # writes into config.env
+bash apply-tokens.sh --restart   # also restarts services
+```

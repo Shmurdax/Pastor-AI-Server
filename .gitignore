@@ -41,4 +41,4 @@ chroma.sqlite3
 Pastor Don Documents/
 
 # Docker
-.docker/
+.docker/tokens.env
