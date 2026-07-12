@@ -1,0 +1,70 @@
++-----------------------------------------------------------------------+
+| Several years ago someone talked me into running a K (6.4 mile) |
+| race. Before the race started, everyone was excited. Some were |
+| talking about how good of shape they were in, others were bragging |
+| about how fast they were going to run and some were just jumping |
+| around and acting crazy. |
+| |
+| When they announced that the race would soon begin, people started to |
+| line up. The faster runners pushed toward the front while the slower |
+| runners headed toward the rear. I hate to be behind, so I moved to |
+| the front with the world class runners. Needless to say, that was the |
+| last time I saw them. |
+| |
+| I was doing pretty good until about the third mile when my muscles |
+| started aching. I was tired and weak, my side started hurting and I |
+| felt dehydrated. My body began to get numb and said, "Just Quit," but |
+| something inside of me said, "Don\'t focus on your flesh, focus on |
+| the finish line." Even though I couldn\'t see it with my eyes, I |
+| could see it in my mind. |
+| |
+| I decided to push past my feelings and keep running. Before long I |
+| had passed the six mile marker and could see the finish line ahead. |
+| Once the finish line was in sight my adrenaline started to kick in. I |
+| got my second wind and I sprinted to the finish. I actually ran |
+| faster at the end of the race than I did at the beginning. |
+| |
+| Recently while praying, I heard in my spirit the phrase, "Finish |
+| Strong." The only way to finish strong is to have your spiritual |
+| adrenaline kick in. Your spiritual adrenaline is JOY. For the joy |
+| of the Lord is your strength, (Nehemiah 8:10 NIV). Joy is a |
+| powerful force that works on the inside to strengthen you and help |
+| you accomplish great things. |
+| |
+| You may have some setbacks and stumbling blocks to overcome this year |
+| on your way to victory. Whether you are trying to expand your |
+| ministry, receive healing or break the spirit of debt...Joy is your |
+| answer. It will cause you to finish strong and receive the victors\' |
+| crown. |
+| |
+| Don't quit, throw in the towel or fall by the way side. God wants you |
+| to complete all that He has put in your heart to do. |
+| |
+| Paul faced many obstacles on his way, but he said, none of these |
+| things move me; ...so that I may finish my race with joy, (Acts |
+| 20:24 NKJV). Even in the midst of many tribulations, Paul said, I |
+| am overflowing with joy, (II Corinthians 7:4 Amplified Bible). |
+| |
+| Where does joy come from, and how do we receive it? Acts 2:28 says, |
+| You make me full of joy in Your presence, (NKJV). |
+| |
+| So, stay in God's presence a little longer today. You are about to |
+| get your second wind, and "Finish Strong." |
+| |
+| Great victories await you this year. The dreams and desires that you |
+| thought were out of reach will be yours. Impossibilities will become |
+| possibilities. The things which are impossible with men are |
+| possible with God, (Luke 18:27 NKJV). |
+| |
+| For God ...is able to \[carry out His purpose and\] do |
+| superabundantly, far over and above all that we \[dare\] ask or think |
+| \[infinitely beyond our highest prayers, desires, thoughts, hopes, or |
+| dreams\], (Ephesians 3:20 Amplified Bible). |
+| |
+| Remember, God will not always put the grapes in your mouth, but He |
+| will put them within your reach, so, "Finish Strong." |
++-----------------------------------------------------------------------+
+| Finishing Strong, |
+| |
+| Joey Hipp |
++-----------------------------------------------------------------------+

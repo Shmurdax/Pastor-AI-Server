@@ -1,44 +1,26 @@
-# Python
-__pycache__/
-*.so
-env/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment (Matches your 3.12 venv)
-venv/
-.venv/
-ENV/
-env.bak/
-venv.bak/
-
-# VS Code
-.vscode/
-*.code-workspace
-.history/
-
-# Database & Secrets
+# Secrets / caches / runtime
 .env
 config.env
-db.sqlite3
-db.sqlite3-journal
+tokens.env
 *.log
-sermon_brain_db.sqlite3
-sermon_brain_db/
+venv/
+.venv/
+__pycache__/
+*.pyc
 *.sqlite3
-chroma.sqlite3
-Pastor Don Documents/
+hf_cache/
+qdrant_storage/
+qdrant_brain_db/
+christianai-lora/
+postgres_data/
+uploads/
+storage/
+public_url.txt
+.docker/
+.history/
+.vscode/
+*.egg-info/
 
-# Docker
-.docker/tokens.env
+# Large / local-only
+Pastor Don Documents/
+unsloth_compiled_cache/

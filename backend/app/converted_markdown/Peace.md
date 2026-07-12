@@ -1,0 +1,265 @@
+SermonCentral.com\
+(use browser\'s print feature to print out this page)\
+\
+If you had only known what would bring you peace by Mike Wilkins\
+\
+Luke 19:28-19:44\
+\
+Luke 19 Palm Sunday, March 20, 2005\
+If you had only known what would bring you peace\
+\
+I am most often drawn to the Luke telling of the Palm Sunday Triumphal
+Entry into Jerusalem. The reason why is this juxtaposition that begins
+at verse 41. All the people are shouting and praising and excited about
+Jesus riding into the city, and Jesus, the one that the parade is thrown
+for is crying! It is like the Santa Claus parade and old Saint Nick is
+there in his sleigh in tears.\
+\
+He is crying because He knows that in 5 days, the shouts of "Hosanna!"
+will turn to "Crucify! Crucify!" The amazing thing is that he is not
+crying for the pain and rejection that he will endure, he is crying
+because of what the city's rejection of him will mean to them.\
+This is what he says:\
+"If you, even you, had only known on this day what would bring you
+peace--but now it is hidden from your eyes. The days will come upon
+you when your enemies will build an embankment against you and encircle
+you and hem you in on every side. They will dash you to the ground,
+you and the children within your walls. They will not leave one stone on
+another, because you did not recognize the time of God's coming to
+you."\
+\
+This is not the first time that the people of Jerusalem have missed the
+peace that God wanted to bring to them. In Isaiah 30, Jerusalem was
+being threatened by Assyria. Many of the small nations around them had
+made alliances with Egypt to protect them from Assyria, and people in
+Jerusalem also wanted to put their trust in Egypt for their protection
+instead of God.\
+Isaiah writes:\
+Isaiah 30\
+15 This is what the Sovereign LORD , the Holy One of Israel, says:\
+\
+"In repentance and rest is your salvation,\
+in quietness and trust is your strength,\
+but you would have none of it.\
+16 You said, 'No, we will flee on horses.'\
+Therefore you will flee!\
+You said, 'We will ride off on swift horses.'\
+Therefore your pursuers will be swift!\
+17 A thousand will flee\
+at the threat of one;\
+at the threat of five\
+you will all flee away,\
+till you are left\
+like a flagstaff on a mountaintop,\
+like a banner on a hill."\
+\
+Jerusalem wanted to trust in Egypt's horses for their peace -- they were
+the tanks of the day. But God says, it's only when you trust in me
+quietly that you will have true peace.\
+\
+When they got it right, they wrote things like Psalm 20:\
+6 Now I know that the LORD saves his anointed;\
+he answers him from his holy heaven\
+with the saving power of his right hand.\
+7 Some trust in chariots and some in horses,\
+but we trust in the name of the LORD our God.\
+8 They are brought to their knees and fall,\
+but we rise up and stand firm.\
+\
+\
+In Jesus' time the Romans ran Jerusalem, but there was a certain amount
+of peace -- Pax Romana. As long as no one got out of line, the brute
+force of Rome was not used. It was an uneasy peace -- peace without
+freedom. But it was a certain peace.\
+\
+While the Pharisees and other leaders stirred up the crowd against Jesus
+on Friday because of jealousy, they also did it to keep the peace with
+Rome. If the Romans thought that this Jesus was going to lead the Jewish
+people in a revolt against Rome, it could lead to a crack-down and they
+could lose the peace they had. That is one of the reasons that they tell
+Jesus to silence his disciples when they are shouting "Hosanna!" - What
+if the Romans hear?\
+\
+Jesus cries because they are doing it again -- God is offering them true
+peace and they are rejecting it for the peace of a tyrant.\
+\
+The peace that God is offering is not just a lack of war -- "Shalom" is
+much deeper than that: it is "well-being" in every area of life. Shalom
+is one of the greatest blessings that we can wish on someone.\
+PEACE: "shalom" - absence of strife, "well being" completeness,
+wholeness, harmony, fulfillment.\
+Safety, Justice, good economics\
+\
+How do we seek after peace outside of God in our own personal lives? In
+our culture? Corporately?\
+\
+A four-year-old and a six-year-old presented their mom with a
+houseplant.\
+They had used their own money to buy it and she was thrilled.\
+The older of them said with a sad face, "There was a bouquet at the
+flower shop that we wanted to give you. It was real pretty but it was
+too expensive. It had a ribbon on it that said 'Rest In Peace,' and we
+thought it would be just perfect since you are always asking for a
+little peace so that you can rest.\
+\
+The Peace God Offers\
+\
+Peace with God.\
+At our core, any lack of peace that we might feel stems from lack of
+peace with God. We are created to be in communion with our creator, and
+when that intimate connection was broken, we lost our peace; our sense
+of well-being.\
+\
+Without God, nothing works, and all the places that we go looking for
+peace, sooner or later come up short.\
+\
+Bryan Adams could have been singing about God when he sings:\
+baby when you're gone - i realize i'm in love\
+the days go on and on - and the nights just seem so long\
+even food don't taste that good - drink ain't doing what it should\
+things just feel so wrong - baby when you're gone\
+\
+Without God nothing works, but with him everything is put into
+perspective.\
+\
+The difficulty is that we can get really used to the lack of peace in
+our world and ignore the longing for something better -- like people
+living in a war zone who sooner or later just get on with their life,
+learning to run between buildings, to not get rattled by the sound of
+gunfire, to live with constant threat of quick or slow death.\
+Many of the people in my small group at God at the Pub mentioned that
+they had drifted away from faith, but lately they have noticed that
+there is something missing in their life -- their soul is no longer at
+peace. It is like the population of a war torn city waking up and saying
+"what is going on here, this is just not right! And there are times for
+us when we wake up and say "I'm tired of fighting with God! I want
+peace!\
+\
+Jesus puts us back into right relationship with the Father -- he gives
+us peace.\
+\
+Ephesians 2:1-5\
+Made Alive in Christ\
+As for you, you were dead in your transgressions and sins, in which you
+used to live when you followed the ways of this world and of the ruler
+of the kingdom of the air, the spirit who is now at work in those who
+are disobedient. All of us also lived among them at one time, gratifying
+the cravings of our sinful nature and following its desires and
+thoughts. Like the rest, we were by nature objects of wrath. But because
+of his great love for us, God, who is rich in mercy, made us alive with
+Christ even when we were dead in transgressions--it is by grace you have
+been saved.\
+\
+Jesus brings us into peace by bringing us from the enemy's side, on to
+the side of God.\
+\
+Mark Winter writes: "In the NT, the word for peace means "to reconcile
+or join." Some missionary Bible translators were working very hard to
+find a word for peace in a particular tribal language. At last, a native
+who was working with them found a combination of words that captured the
+concept---"a heart that sits down." When the heart sits down with
+Jesus---when we join with God through his Son---there is peace."\
+\
+What Peace with God gives us.\
+\
+Peace within\
+\
+One person wrote...\
+"My therapist told me the way to achieve true inner peace is to finish
+what I start.\
+So far today, I have finished 2 bags of chips and a chocolate cake.\
+I feel better already."\
+\
+Phil 4\
+ Rejoice in the Lord always. I will say it again: Rejoice! Let your
+gentleness be evident to all. The Lord is near. Do not be anxious about
+anything, but in everything, by prayer and petition, with thanksgiving,
+present your requests to God. And the peace of God, which transcends
+all understanding, will guard your hearts and your minds in Christ
+Jesus.\
+\
+Doesn't say that he will rescue us from all trouble, but he does promise
+us a peace that transcends all understanding while we go through those
+times. Graham Cooke says that when God really wants to teach us about
+peace, he takes us out into the storm.\
+\
+Peace is a fruit of the Spirit, and as we allow the Spirit to plant
+seeds in us, and as we are filled daily with the Spirit, and keep in
+step with Him, we are able to have that peace that passes all
+understanding. So our friends can say to us "I just don't understand how
+you can have peace when so much is going on!\
+\
+Peace with others\
+Through Jesus example of forgiveness, and our awareness of his
+forgiveness toward us, and through the power of the Spirit, we are able
+to practice forgiveness and live at peace with those around us\
+\
+This is not an instant peace -- but it is something that we work at, in
+partnership with God. We need to work at it especially within the
+church.\
+Ephesians 4\
+Unity in the Body of Christ\
+ As a prisoner for the Lord, then, I urge you to live a life worthy of
+the calling you have received. Be completely humble and gentle; be
+patient, bearing with one another in love. Make every effort to keep
+the unity of the Spirit through the bond of peace. There is one body
+and one Spirit--just as you were called to one hope when you were
+called-- 5one Lord, one faith, one baptism; 6one God and Father of all,
+who is over all and through all and in all.\
+\
+Peace with creation\
+This is area that we are just rediscovering. But creation is a part of
+the curse in Gen. 3, so it is also a part of the blessing of the Kingdom
+under Christ. Healing is a part of this blessing, as is learning to care
+for creation\
+\
+When we start to follow God's ways, and give up greed and selfish
+ambition, it clears the way for us to live in peace with our environment
+as well. In stead of warring against the rest of creation, we can care
+for it in partnership with the creator.\
+\
+The terms of peace\
+There is one other place in the New Testament where the phrase "The
+things that make for peace" it is in Luke 14 where Jesus is telling a
+parable:\
+\
+Luke 14:31,32: "Or suppose a king is about to go to war against another
+king. Will he not first sit down and consider whether he is able with
+ten thousand men to oppose the one coming against him with twenty
+thousand? If he is not able, he will send a delegation while the other
+is still a long way off and will ask for terms of peace. In the same
+way, any of you who does not give up everything he has cannot be my
+disciple.\
+\
+"Terms of peace" is the same phrase translated "things that make for
+peace" in Luke 19:42.\
+\
+Jesus is saying if you only knew the terms of peace that the king is
+offering. The terms on peace Jesus gives are found in 14:33 -- give up
+everything.\
+Give up everything that you are relying on to give you peace -- give it
+over to the King, and he will give you true peace. Give over to him the
+ways that you try to create your own security -- this doesn't mean that
+you stop locking you door at night, or that you give up a regular pay
+check -- but give these things over to the king, and lean on him alone
+for you peace.\
+\
+Surrender\
+I'm giving you my heart, and all that is within\
+I lay it all down for the sake of you my King\
+I'm giving you my dreams, I'm laying down my rights\
+I'm giving up my pride for the promise of new life\
+\
+And I surrender all to you, all to you\
+And I surrender all to you, all to you\
+\
+I'm singing You this song, I'm waiting at the cross\
+And all the world holds dear, I count it all as loss\
+For the sake of knowing You for the glory of Your name\
+To know the lasting joy, even sharing in Your pain\
+\
+©2000 Vineyard Songs (UK/Eire)\
+Words and Music by Marc James\
+\
+Is God visiting you today? Is he calling you to peace -- give up the
+things you are holding on to and come to him for true peace!

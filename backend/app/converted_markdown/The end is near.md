@@ -1,0 +1,20 @@
+> Reverend Boudreaux was the part-time pastor of the local Cajun  
+> Baptist Church and Pastor Thibodaux was the minister of the Covenant
+> Church across the road.
+>
+> They were both standing by the road, pounding a sign into the ground,
+> that read:
+>
+> \'Da End is Near
+>
+> Turn Yo Sef \'Roun Now
+>
+>  Afore It Be Too Late!\'
+>
+> As a car sped past them, the driver leaned out his window and yelled,
+> \'You religious nuts!\'
+>
+> From the curve they heard screeching tires, and a big splash...
+>
+> Boudreaux turns to Thibodaux and asks, \'Do ya tink maybe da sign
+> should jussay.....\'Bridge Out?\'

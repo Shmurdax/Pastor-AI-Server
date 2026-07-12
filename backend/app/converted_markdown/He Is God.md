@@ -1,0 +1,105 @@
+\~He Is God\~\
+\> \> \>\
+\> \> \>             He is the First and Last,\
+\> \> \>             The Beginning and the End!\
+\> \> \>\
+\> \> \>             He is the keeper of Creation and the Creator of
+all!\
+\> \> \>             He is the Architect of the universe and the Manager
+of all\
+\> \>                times.\
+\> \> \>             He always was, He always is, and He always will be
+...\
+\> \> \>             unmoved, Unchanged, Undefeated, and never Undone!\
+\> \> \>\
+\> \> \>             He was bruised and brought healing!\
+\> \> \>             He was pierced and eased pain!\
+\> \> \>             He was persecuted and brought freedom!\
+\> \> \>             He was dead and brought life!\
+\> \> \>             He is risen and brings power!\
+\> \> \>             He reigns and brings Peace!\
+\> \> \>             The world can\'t understand him,\
+\> \> \>             The armies can\'t defeat Him,\
+\> \> \>             The schools can\'t explain Him, and The leaders
+can\'t\
+ignore\
+\> \>                 Him.\
+\> \> \>             Herod couldn\'t kill Him, The Pharisees couldn\'t
+confuse\
+Him,\
+\> \> \>             and The people couldn\'t hold Him!\
+\> \> \>             Nero couldn\'t crush Him, Hitler couldn\'t silence
+Him,\
+\> \> \>             The New Age can\'t replace Him, and "Oprah"
+can\'t explain\
+Him\
+\> \> \>             away!\
+\> \> \>\
+\> \> \>             He is light, love, longevity, and Lord.\
+\> \> \>             He is goodness, Kindness, Gentleness, and God.\
+\> \> \>             He is Holy, Righteous, mighty, powerful, and pure.\
+\> \> \>\
+\> \> \>             His ways are right,\
+\> \> \>             His word is eternal,\
+\> \> \>             His will is unchanging, and His mind is on me.\
+\> \> \>             He is my Savior,\
+\> \> \>             He is my guide, and He is my peace!\
+\> \> \>             He is my Joy,\
+\> \> \>             He is my comfort,\
+\> \> \>             He is my Lord, and He rules my life!\
+\> \> \>\
+\> \> \>             I serve Him because His bond is love,\
+\> \> \>             His burden is light, and His goal for me is
+abundant life.\
+\> \> \>\
+\> \> \>             I follow Him because He is the wisdom of the wise,\
+\> \> \>             the power of the powerful,\
+\> \> \>             the ancient of days, the ruler of rulers, the
+leader of\
+\> \> \>             leaders, the overseer of the overcomers, and is to
+come.\
+                     And if that seems impressive to you, try this for
+size.\
+\> \> \>             His goal is a relationship with ME!\
+\> \> \>             He will never leave me,\
+\> \> \>             never forsake me,\
+\> \> \>             never mislead me,\
+\> \> \>             never forget me,\
+\> \> \>             never overlook me and\
+\> \> \>             never cancel my appointment in His appointment
+book!\
+\> \> \>\
+\> \> \>             When I fall, He lifts me up!\
+\> \> \>             When I fail, He forgives!\
+\> \> \>             When I am weak, He is strong!\
+\> \> \>             When I am lost, He is the way!\
+\> \> \>             When I am afraid, He is my courage!\
+\> \> \>             When I stumble, He steadies me!\
+\> \> \>             When I am hurt, He heals me!\
+\> \> \>             When I am broken, He mends me!\
+\> \> \>             When I am blind, He leads me!\
+\> \> \>             When I am hungry, He feeds me!\
+\> \> \>             When I face trials, He is with me!\
+\> \> \>             When I face persecution, He shields me!\
+\> \> \>               When I face problems, He comforts me!\
+\> \> \>             When I face loss, He provides for me!\
+\> \> \>             When I face Death, He carries me Home!\
+\> \> \>\
+\> \> \>             He is everything for everybody everywhere, every
+time, and\
+\> \> \>            every way.\
+\> \> \>\
+\> \> \>             He is God, He is faithful. I am His, and He is
+mine!\
+\> \> \>\
+\> \> \>             My Father in heaven can whip the father of this
+world.\
+\> \> \>             So, if you\'re wondering why I feel so secure,
+understand\
+\> \> \>             this...\
+\> \> \>             He said it and that settles it.\
+\> \> \>             God is in control, I am on His side,\
+\> \> \>             and that means all is well with my soul.\
+\> \> \>\
+\> \> \>\
+\> \> \>             Everyday is a blessing for GOD

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Database
+db.sqlite3
+/qdrant_data/
+app/qdrant_storage/
+
+# Django
+static/
+staticfiles/
+media/
+
+# IDEs
+.vscode/
+.idea/
+
+# Flutter/Mobile
+.dart_tool/
+.packages
+build/
+
+# Hugging Face
+hf_cache/

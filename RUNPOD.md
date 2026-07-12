@@ -1,60 +1,54 @@
-# Pastor-AI — RunPod one-command deploy
+# Pastor-AI on RunPod
 
-Christian theology chat: **Flutter web UI** + **Django** + **Qdrant RAG** + **vLLM (Llama 3.1 8B)**.
+## Layout on the network volume
 
-## One command (fresh RunPod)
+```
+/workspace/pastor-ai/
+  backend/              # Django (server-dev)
+  frontend/             # Flutter web build
+  christianai-lora/     # HF LoRA download (not in git)
+  venv/
+  hf_cache/
+  qdrant_storage/
+  config.env            # generated / secrets
+  tokens.env            # paste tokens here
+  install.sh start.sh apply-tokens.sh ingest_sermons.sh
+```
+
+## Fresh install
 
 ```bash
+export HF_TOKEN=hf_...
 bash <(curl -fsSL https://raw.githubusercontent.com/GavWrecker/Pastor-AI-Server/master/install.sh)
 ```
 
-Or after cloning this repo onto `/workspace`:
-
-```bash
-bash /workspace/pastor-ai/install.sh
-```
-
-Optional secrets:
-
-```bash
-HF_TOKEN=hf_xxx NGROK_AUTH_TOKEN=xxx TUNNEL=ngrok bash install.sh
-```
-
-## After pod restart (~30 seconds)
+## Restart after stop/start
 
 ```bash
 bash /workspace/pastor-ai/start.sh
 ```
 
-## What gets installed
+## Common issues
 
-| Path | Contents |
-|------|----------|
-| `/workspace/pastor-ai/backend/` | `server-dev` branch (Django + ingestion) |
-| `/workspace/pastor-ai/frontend/` | `front_end_backup` branch (Flutter web build) |
-| `/workspace/pastor-ai/venv/` | Python env (Django, LangChain, vLLM) |
-| `/workspace/pastor-ai/qdrant_storage/` | Vector DB |
-| `/workspace/pastor-ai/hf_cache/` | Model cache |
-| `/workspace/pastor-ai/config.env` | Secrets + ports |
-| `/workspace/pastor-ai/public_url.txt` | Current public URL |
+### Ghost GPU memory (~19GB used, no processes)
+Fully **Stop** the pod in RunPod (not just restart), wait 30s, Start, then `start.sh`.
 
-## Branches used
+### Port 8001
+RunPod host nginx often binds **8001**. vLLM uses **8010**.
 
-- Backend: `Shmurdax/Pastor-AI-Server` → `server-dev`
-- Frontend: `Shmurdax/Pastor-AI-Server` → `front_end_backup`
+### Docker
+Some RunPod images cannot run a Docker daemon (iptables/netfilter). `install.sh` still installs Docker when possible, then uses the **native** path that matches production.
 
-## Notes
+### Chat “Could not connect”
+Usually empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
 
-- Docker is **not** required (RunPod images often block nested Docker).
-- Public access defaults to **Cloudflare quick tunnel**; set `TUNNEL=ngrok` for a reserved ngrok domain.
-- First chat waits for the 8B model to load into GPU VRAM.
+### Private LoRA 404
+`HF_TOKEN` must belong to an account with access to `apophaticai/qwen2.5-14b-christianai-v1`.
 
-## Tokens (quick update)
+## Skip ingest (faster install)
 
 ```bash
-cd /workspace/pastor-ai
-cp tokens.env.example tokens.env
-nano tokens.env          # paste HF / GitHub / ngrok tokens
-bash apply-tokens.sh     # writes into config.env
-bash apply-tokens.sh --restart   # also restarts services
+SKIP_INGEST=1 bash install.sh
+# later:
+bash /workspace/pastor-ai/ingest_sermons.sh
 ```

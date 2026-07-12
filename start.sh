@@ -41,8 +41,20 @@ echo "=== Pastor-AI start ==="
 echo "Workspace: $WS"
 echo ""
 
-# Postgres
+# Postgres (container restarts wipe apt packages — reinstall if needed)
+if ! command -v psql >/dev/null 2>&1; then
+  warn "PostgreSQL missing — installing..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq postgresql postgresql-contrib >/dev/null || warn "postgres apt install failed"
+fi
 service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || true
+# Ensure app role/db exist (idempotent)
+if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
+  su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" 2>/dev/null | grep -q 1 \
+    || su -s /bin/bash postgres -c "psql -c \"CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}' CREATEDB;\"" 2>/dev/null || true
+  su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" 2>/dev/null | grep -q 1 \
+    || su -s /bin/bash postgres -c "psql -c \"CREATE DATABASE ${POSTGRES_DB} OWNER ${POSTGRES_USER};\"" 2>/dev/null || true
+fi
 
 # Qdrant
 if ! curl -sf "http://127.0.0.1:${QDRANT_PORT}/readyz" >/dev/null 2>&1 \
@@ -75,19 +87,45 @@ fi
 # vLLM
 if ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
+  FREE_MIB="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || echo 0)"
+  if [[ "${FREE_MIB:-0}" -lt 8000 ]]; then
+    warn "GPU has only ${FREE_MIB:-?} MiB free (need ~8GB+). Ghost VRAM from dead host processes?"
+    warn "In RunPod: Stop this pod fully → wait 30s → Start again, then re-run start.sh"
+  fi
   stop_screen vllm
   : > "${LOG_DIR}/vllm.log"
+  HF_TOK="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
+  if [[ -z "$HF_TOK" || "$HF_TOK" == *paste* ]]; then
+    warn "HF_TOKEN empty — gated model download will fail. Edit tokens.env && bash apply-tokens.sh"
+  fi
+  # Fine-tuned Qwen Christian LoRA (default) or plain VLLM_MODEL path
+  LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
+  BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
+  SERVED_NAME="${VLLM_MODEL:-christianai}"
+  MAX_LEN="${VLLM_MAX_MODEL_LEN:-4096}"
+  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+  LORA_ARGS=""
+  if [[ -f "$LORA_DIR/adapter_model.safetensors" ]]; then
+    LORA_ARGS="--enable-lora --lora-modules ${SERVED_NAME}=${LORA_DIR} --max-lora-rank 16"
+    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}'"
+  else
+    BASE_MODEL="${SERVED_NAME}"
+    warn "LoRA missing at $LORA_DIR — starting base/model id only: $BASE_MODEL"
+  fi
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
-    export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
-    export HF_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
+    export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
+    export HF_TOKEN='${HF_TOK}' &&
+    export HF_HUB_ENABLE_HF_TRANSFER=0 &&
     python -m vllm.entrypoints.openai.api_server \
-      --model '${VLLM_MODEL}' \
+      --model '${BASE_MODEL}' \
+      --served-model-name '${SERVED_NAME}' \
+      ${LORA_ARGS} \
       --host 127.0.0.1 \
       --port ${VLLM_PORT} \
-      --max-model-len 8192 \
-      --gpu-memory-utilization 0.7 \
+      --max-model-len ${MAX_LEN} \
+      --gpu-memory-utilization ${GPU_UTIL} \
       --trust-remote-code \
       >> '${LOG_DIR}/vllm.log' 2>&1
   "
