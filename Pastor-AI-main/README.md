@@ -1,61 +1,55 @@
-# Pastor-AI
+# Pastor-AI — do these steps in order
 
-## Install Flutter (Windows)
-If `flutter --version` fails with "not recognized", Windows PATH does not include your SDK's `bin` folder. Having Flutter extracted under `C:\src\flutter` (or `C:\srs\flutter`) is enough — you do **not** need another copy.
+## 0) Enable Windows Developer Mode (required once)
+```powershell
+start ms-settings:developers
+```
+Turn **Developer Mode** ON, then reopen PowerShell.
 
-### If Flutter is already extracted (including nested zip path)
-Your bat may be at `C:\src\flutter\flutter\bin\flutter.bat` (extra `flutter` folder from zip extract). The SDK root is the folder that **contains** `bin`:
+## 1) Pull the latest fix (missing Flutter packages + rebuild script)
+In a new PowerShell:
 
 ```powershell
-Test-Path C:\src\flutter\flutter\bin\flutter.bat
-.\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter\flutter"
-flutter --version
-.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
+cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server
+git fetch origin
+git checkout cursor/flutter-web-deploy-ui-0001
+git pull
+cd Pastor-AI-main
 ```
 
-Or call the bat directly (no PATH needed):
-
+## 2) Rebuild the web UI into Django's static folder
 ```powershell
-& C:\src\flutter\flutter\bin\flutter.bat --version
-.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
+.\rebuild_web.ps1
 ```
 
-(`install_flutter_windows.ps1 -FlutterRoot ...` only adds that folder's `bin` to PATH; it will not re-download if the SDK is found.)
+That script uses `C:\src\flutter\flutter\bin\flutter.bat` automatically.
 
-### If you do not have Flutter yet
+## 3) Start Django
 ```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\install_flutter_windows.ps1 -InstallDir "C:\src"
-flutter --version
-```
-
-## Why the UI can look "old"
-Django does **not** serve Flutter source from `flutter_application_1/lib/`.
-It serves the **pre-built web bundle** in `static/` (`index.html`, `main.dart.js`, etc.).
-
-If you change Flutter code but skip a web rebuild + copy into `static/`,
-`python manage.py runserver` will keep showing the previous UI.
-
-## Refresh the UI after Flutter changes (Windows)
-From `Pastor-AI-main`:
-
-```powershell
-.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
+python manage.py migrate
 python manage.py runserver
 ```
 
-Then hard-refresh the browser (`Ctrl+Shift+R`).
-If it still looks cached: DevTools → Application → Service Workers → Unregister,
-and clear site data for `localhost` / your ngrok URL.
+Open http://127.0.0.1:8000/ and press **Ctrl+Shift+R**.
 
-## Python / AI packages
+---
+
+### What went wrong in your last attempt
+1. `pubspec.yaml` was missing packages (`provider`, `shared_preferences`, `flutter_secure_storage`, `google_sign_in`) — build failed.
+2. Because the build failed, wiping `static\` left the site half-broken (404s).
+3. `deploy_flutter_web.ps1` was not on your local branch yet.
+4. `flutter` on PATH is optional; the rebuild script calls the bat file directly.
+
+### Manual rebuild (if you prefer not to use the script)
+```powershell
+cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server\Pastor-AI-main\flutter_application_1
+& C:\src\flutter\flutter\bin\flutter.bat pub get
+& C:\src\flutter\flutter\bin\flutter.bat build web --release --base-href /static/ --no-wasm-dry-run
+Remove-Item -Recurse -Force ..\static\*
+Copy-Item -Recurse -Force .\build\web\* ..\static\
+cd ..
+python manage.py migrate
+python manage.py runserver
 ```
-pip install langchain-core langchain-classic langchain-huggingface langchain-chroma langchain-ollama chromadb sentence-transformers
-```
 
-Make sure Ollama is running in the background.
-
-## Tips
-- Ngrok: `ngrok http 8000`
-- Django: `python manage.py runserver`
-- Use browser DevTools (F12) when troubleshooting API / UI issues.
+Run **one command at a time**. Do not paste the whole block as one `>>` continued command until the build succeeds.

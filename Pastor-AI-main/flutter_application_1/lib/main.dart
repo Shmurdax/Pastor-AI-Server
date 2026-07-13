@@ -35,7 +35,7 @@ class TokenStorage {
       await prefs.setString(_userKey, userJson);
       return;
     }
-    const storage = FlutterSecureStorage();
+    final storage = FlutterSecureStorage();
     await storage.write(key: _tokenKey, value: token);
     await storage.write(key: _userKey, value: userJson);
   }
@@ -48,7 +48,7 @@ class TokenStorage {
       if (token == null || userJson == null) return (token: null, user: null);
       return (token: token, user: AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>));
     }
-    const storage = FlutterSecureStorage();
+    final storage = FlutterSecureStorage();
     final token = await storage.read(key: _tokenKey);
     final userJson = await storage.read(key: _userKey);
     if (token == null || userJson == null) return (token: null, user: null);
@@ -62,7 +62,7 @@ class TokenStorage {
       await prefs.remove(_userKey);
       return;
     }
-    const storage = FlutterSecureStorage();
+    final storage = FlutterSecureStorage();
     await storage.delete(key: _tokenKey);
     await storage.delete(key: _userKey);
   }
