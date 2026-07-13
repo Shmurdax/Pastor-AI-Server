@@ -74,11 +74,22 @@ $me = Invoke-Json -Method GET -Url "$BaseUrl/api/auth/me/" -Headers @{
 Write-Host ("   user:  {0} <{1}>" -f $me.user.name, $me.user.email)
 
 Write-Host "5) LOGOUT"
-Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/auth/logout/" -Headers @{
-    Authorization = "Bearer $token"
-    Accept = "application/json"
-} | Out-Null
-Write-Host "   ok"
+try {
+    Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/auth/logout/" -Headers @{
+        Authorization = "Bearer $token"
+        Accept = "application/json"
+    } -UseBasicParsing | Out-Null
+    Write-Host "   ok"
+} catch {
+    # Some PowerShell versions throw on empty 204 bodies; treat 204 as success.
+    $code = $null
+    try { $code = [int]$_.Exception.Response.StatusCode } catch {}
+    if ($code -eq 204) {
+        Write-Host "   ok"
+    } else {
+        throw
+    }
+}
 
 Write-Host "6) ME after logout (should be 401)"
 try {
