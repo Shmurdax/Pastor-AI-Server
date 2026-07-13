@@ -6,11 +6,11 @@
 #   .\install_flutter_windows.ps1
 #   .\deploy_flutter_web.ps1
 #
-# Or point at an existing SDK (example if Flutter lives in C:\src\flutter):
-#   .\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
+# Or point at an existing SDK (nested zip extract is fine):
+#   .\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
 
 param(
-    [string]$FlutterRoot = $(if ($env:FLUTTER_ROOT) { $env:FLUTTER_ROOT } else { "C:\src\flutter" })
+    [string]$FlutterRoot = $(if ($env:FLUTTER_ROOT) { $env:FLUTTER_ROOT } else { "C:\src\flutter\flutter" })
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,8 +28,11 @@ function Find-FlutterBat {
 
     $candidates = @(
         $(if ($PreferredRoot) { Join-Path $PreferredRoot "bin\flutter.bat" } else { $null }),
+        $(if ($PreferredRoot) { Join-Path $PreferredRoot "flutter\bin\flutter.bat" } else { $null }),
         $(if ($env:FLUTTER_ROOT) { Join-Path $env:FLUTTER_ROOT "bin\flutter.bat" } else { $null }),
+        "C:\src\flutter\flutter\bin\flutter.bat",
         "C:\src\flutter\bin\flutter.bat",
+        "C:\srs\flutter\flutter\bin\flutter.bat",
         "C:\srs\flutter\bin\flutter.bat",
         (Join-Path $env:USERPROFILE "develop\flutter\bin\flutter.bat"),
         (Join-Path $env:USERPROFILE "flutter\bin\flutter.bat"),
@@ -49,13 +52,12 @@ if (-not $FlutterBat) {
 
 Flutter was not found ('flutter' is not recognized).
 
-If your SDK is already on disk (e.g. C:\src\flutter), point at it and/or fix PATH:
-  Test-Path C:\src\flutter\bin\flutter.bat
-  .\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter"
-  .\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
+If your bat is at C:\src\flutter\flutter\bin\flutter.bat, use that SDK root:
+  .\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter\flutter"
+  .\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
 
-Or call the bat directly:
-  & C:\src\flutter\bin\flutter.bat --version
+Or call it directly:
+  & C:\src\flutter\flutter\bin\flutter.bat --version
 
 "@
     exit 1

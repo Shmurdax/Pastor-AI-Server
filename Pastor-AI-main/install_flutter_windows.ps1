@@ -20,6 +20,8 @@ function Find-FlutterBat {
         if (-not $root) { continue }
         $candidate = Join-Path $root "bin\flutter.bat"
         if (Test-Path $candidate) { return (Resolve-Path $candidate).Path }
+        # Common zip mistake: extracted into a folder already named flutter
+        # e.g. C:\src\flutter\flutter\bin\flutter.bat
         $nested = Join-Path $root "flutter\bin\flutter.bat"
         if (Test-Path $nested) { return (Resolve-Path $nested).Path }
     }
@@ -55,7 +57,9 @@ Write-Host "Looking for an existing Flutter SDK..."
 $searchRoots = @(
     $FlutterRoot,
     $env:FLUTTER_ROOT,
+    "C:\src\flutter\flutter",
     "C:\src\flutter",
+    "C:\srs\flutter\flutter",
     "C:\srs\flutter",
     (Join-Path $InstallDir "flutter"),
     $InstallDir,

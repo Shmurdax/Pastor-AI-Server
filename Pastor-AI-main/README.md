@@ -3,18 +3,21 @@
 ## Install Flutter (Windows)
 If `flutter --version` fails with "not recognized", Windows PATH does not include your SDK's `bin` folder. Having Flutter extracted under `C:\src\flutter` (or `C:\srs\flutter`) is enough — you do **not** need another copy.
 
-### If Flutter is already in `C:\src\flutter`
+### If Flutter is already extracted (including nested zip path)
+Your bat may be at `C:\src\flutter\flutter\bin\flutter.bat` (extra `flutter` folder from zip extract). The SDK root is the folder that **contains** `bin`:
+
 ```powershell
-Test-Path C:\src\flutter\bin\flutter.bat
-.\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter"
+Test-Path C:\src\flutter\flutter\bin\flutter.bat
+.\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter\flutter"
 flutter --version
+.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
 ```
 
-Or skip PATH and call it directly:
+Or call the bat directly (no PATH needed):
 
 ```powershell
-& C:\src\flutter\bin\flutter.bat --version
-.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
+& C:\src\flutter\flutter\bin\flutter.bat --version
+.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
 ```
 
 (`install_flutter_windows.ps1 -FlutterRoot ...` only adds that folder's `bin` to PATH; it will not re-download if the SDK is found.)
@@ -37,7 +40,7 @@ If you change Flutter code but skip a web rebuild + copy into `static/`,
 From `Pastor-AI-main`:
 
 ```powershell
-.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
+.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter\flutter"
 python manage.py runserver
 ```
 
