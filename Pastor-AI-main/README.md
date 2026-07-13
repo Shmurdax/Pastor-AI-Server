@@ -1,33 +1,30 @@
 # Pastor-AI
 
 ## Install Flutter (Windows)
-If `flutter --version` fails with "not recognized", Flutter is not installed or not on PATH.
+If `flutter --version` fails with "not recognized", Windows PATH does not include your SDK's `bin` folder. Having Flutter extracted under `C:\src\flutter` (or `C:\srs\flutter`) is enough — you do **not** need another copy.
 
-### Easiest fix
-In PowerShell, from `Pastor-AI-main`:
-
+### If Flutter is already in `C:\src\flutter`
 ```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\install_flutter_windows.ps1
+Test-Path C:\src\flutter\bin\flutter.bat
+.\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter"
 flutter --version
 ```
 
-That script downloads the stable Flutter SDK (if needed), adds `...\flutter\bin` to your User PATH, and refreshes the **current** terminal.
-
-### Manual install
-1. Install Git for Windows: https://git-scm.com/download/win
-2. Download Flutter SDK: https://docs.flutter.dev/install/manual
-3. Extract to `%USERPROFILE%\develop\flutter` (example final file: `...\flutter\bin\flutter.bat`)
-4. Add **`...\flutter\bin`** (not the parent folder) to User PATH, then open a **new** PowerShell
-
-Check whether the SDK files exist:
+Or skip PATH and call it directly:
 
 ```powershell
-Test-Path "$env:USERPROFILE\develop\flutter\bin\flutter.bat"
-Get-ChildItem "$env:USERPROFILE\develop\flutter\bin\flutter.bat" -ErrorAction SilentlyContinue
+& C:\src\flutter\bin\flutter.bat --version
+.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
 ```
 
-If that returns `False`, Flutter was never extracted to that folder.
+(`install_flutter_windows.ps1 -FlutterRoot ...` only adds that folder's `bin` to PATH; it will not re-download if the SDK is found.)
+
+### If you do not have Flutter yet
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\install_flutter_windows.ps1 -InstallDir "C:\src"
+flutter --version
+```
 
 ## Why the UI can look "old"
 Django does **not** serve Flutter source from `flutter_application_1/lib/`.
@@ -37,17 +34,11 @@ If you change Flutter code but skip a web rebuild + copy into `static/`,
 `python manage.py runserver` will keep showing the previous UI.
 
 ## Refresh the UI after Flutter changes (Windows)
-From `Pastor-AI-main` (after `flutter --version` works):
+From `Pastor-AI-main`:
 
 ```powershell
-.\deploy_flutter_web.ps1
+.\deploy_flutter_web.ps1 -FlutterRoot "C:\src\flutter"
 python manage.py runserver
-```
-
-If Flutter exists but still is not on PATH:
-
-```powershell
-.\deploy_flutter_web.ps1 -FlutterRoot "$env:USERPROFILE\develop\flutter"
 ```
 
 Then hard-refresh the browser (`Ctrl+Shift+R`).

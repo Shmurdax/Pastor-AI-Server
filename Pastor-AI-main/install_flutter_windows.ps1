@@ -5,9 +5,11 @@
 #
 # Optional:
 #   .\install_flutter_windows.ps1 -InstallDir "C:\src"
+#   .\install_flutter_windows.ps1 -FlutterRoot "C:\src\flutter"   # only fix PATH for existing SDK
 
 param(
-    [string]$InstallDir = (Join-Path $env:USERPROFILE "develop")
+    [string]$InstallDir = "C:\src",
+    [string]$FlutterRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,12 +53,14 @@ function Ensure-UserPathEntry {
 
 Write-Host "Looking for an existing Flutter SDK..."
 $searchRoots = @(
+    $FlutterRoot,
     $env:FLUTTER_ROOT,
+    "C:\src\flutter",
+    "C:\srs\flutter",
     (Join-Path $InstallDir "flutter"),
     $InstallDir,
     (Join-Path $env:USERPROFILE "develop\flutter"),
     (Join-Path $env:USERPROFILE "flutter"),
-    "C:\src\flutter",
     "C:\flutter",
     "C:\tools\flutter"
 )
@@ -64,7 +68,8 @@ $searchRoots = @(
 $flutterBat = Find-FlutterBat -Roots $searchRoots
 
 if (-not $flutterBat) {
-    Write-Host "No Flutter SDK found. Downloading latest stable Windows build..."
+    Write-Host "No Flutter SDK found under C:\src\flutter (or -FlutterRoot)."
+    Write-Host "Downloading latest stable Windows build into $InstallDir ..."
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
     $releasesUrl = "https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json"
