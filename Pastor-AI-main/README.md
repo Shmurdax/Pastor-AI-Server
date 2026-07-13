@@ -1,13 +1,9 @@
-# Pastor-AI — do these steps in order
+# Pastor-AI — update the UI (follow exactly)
 
-## 0) Enable Windows Developer Mode (required once)
-```powershell
-start ms-settings:developers
-```
-Turn **Developer Mode** ON, then reopen PowerShell.
+The old UI stays until `static\main.dart.js` is replaced by a **successful**
+Flutter web build. Editing Dart files alone does not change what Django serves.
 
-## 1) Pull the latest fix (missing Flutter packages + rebuild script)
-In a new PowerShell:
+## Do this now
 
 ```powershell
 cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server
@@ -15,41 +11,39 @@ git fetch origin
 git checkout cursor/flutter-web-deploy-ui-0001
 git pull
 cd Pastor-AI-main
-```
 
-## 2) Rebuild the web UI into Django's static folder
-```powershell
+start ms-settings:developers
+# Turn Developer Mode ON, then close and reopen PowerShell
+
 .\rebuild_web.ps1
 ```
 
-That script uses `C:\src\flutter\flutter\bin\flutter.bat` automatically.
+You must see **`SUCCESS — new UI is in static\`**.
+If the script errors, the UI was NOT updated.
 
-## 3) Start Django
+Verify the new UI is on disk:
+
+```powershell
+Select-String -Path .\static\main.dart.js -Pattern "LoginScreen" -SimpleMatch
+```
+
+If that prints nothing, rebuild failed / wrong files.
+
+Then:
+
 ```powershell
 python manage.py migrate
 python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000/ and press **Ctrl+Shift+R**.
+In the browser:
 
----
+1. Open http://127.0.0.1:8000/
+2. F12 → Application → Service Workers → **Unregister**
+3. Application → Storage → **Clear site data**
+4. Ctrl+Shift+R
 
-### What went wrong in your last attempt
-1. `pubspec.yaml` was missing packages (`provider`, `shared_preferences`, `flutter_secure_storage`, `google_sign_in`) — build failed.
-2. Because the build failed, wiping `static\` left the site half-broken (404s).
-3. `deploy_flutter_web.ps1` was not on your local branch yet.
-4. `flutter` on PATH is optional; the rebuild script calls the bat file directly.
-
-### Manual rebuild (if you prefer not to use the script)
-```powershell
-cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server\Pastor-AI-main\flutter_application_1
-& C:\src\flutter\flutter\bin\flutter.bat pub get
-& C:\src\flutter\flutter\bin\flutter.bat build web --release --base-href /static/ --no-wasm-dry-run
-Remove-Item -Recurse -Force ..\static\*
-Copy-Item -Recurse -Force .\build\web\* ..\static\
-cd ..
-python manage.py migrate
-python manage.py runserver
-```
-
-Run **one command at a time**. Do not paste the whole block as one `>>` continued command until the build succeeds.
+## Why it still looked old
+- Your last `flutter build web` **failed**, so `static\` never got the new app
+- Flutter service workers can keep serving the previous UI even after files change
+- `rebuild_web.ps1` now builds with `--pwa-strategy=none` and checks that `LoginScreen` exists in `static\main.dart.js` before declaring success
