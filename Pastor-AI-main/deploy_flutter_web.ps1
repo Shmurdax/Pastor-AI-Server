@@ -1,9 +1,17 @@
 # Rebuild the Flutter web app and copy it into Django's static/ folder.
-# Run from Pastor-AI-main (or anywhere — paths are resolved from this script).
-#
-# Prerequisites: Flutter SDK on PATH
-# Usage:
+# Run from Pastor-AI-main:
 #   .\deploy_flutter_web.ps1
+#
+# If flutter is not on PATH yet:
+#   .\install_flutter_windows.ps1
+#   .\deploy_flutter_web.ps1
+#
+# Or point at an existing SDK:
+#   .\deploy_flutter_web.ps1 -FlutterRoot "C:\Users\YOU\develop\flutter"
+
+param(
+    [string]$FlutterRoot = $env:FLUTTER_ROOT
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -12,29 +20,58 @@ $FlutterApp = Join-Path $Root "flutter_application_1"
 $BuildWeb = Join-Path $FlutterApp "build\web"
 $StaticDir = Join-Path $Root "static"
 
-if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
+function Find-FlutterBat {
+    param([string]$PreferredRoot)
+
+    $cmd = Get-Command flutter -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+
+    $candidates = @(
+        $(if ($PreferredRoot) { Join-Path $PreferredRoot "bin\flutter.bat" } else { $null }),
+        $(if ($env:FLUTTER_ROOT) { Join-Path $env:FLUTTER_ROOT "bin\flutter.bat" } else { $null }),
+        (Join-Path $env:USERPROFILE "develop\flutter\bin\flutter.bat"),
+        (Join-Path $env:USERPROFILE "flutter\bin\flutter.bat"),
+        "C:\src\flutter\bin\flutter.bat",
+        "C:\flutter\bin\flutter.bat",
+        "C:\tools\flutter\bin\flutter.bat"
+    ) | Where-Object { $_ }
+
+    foreach ($path in $candidates) {
+        if (Test-Path $path) { return (Resolve-Path $path).Path }
+    }
+    return $null
+}
+
+$FlutterBat = Find-FlutterBat -PreferredRoot $FlutterRoot
+if (-not $FlutterBat) {
     Write-Host @"
 
-Flutter was not found on PATH ('flutter' is not recognized).
+Flutter was not found ('flutter' is not recognized).
 
-Install / fix PATH:
-  1. Download Flutter SDK: https://docs.flutter.dev/install/manual
-  2. Extract to e.g. C:\src\flutter
-  3. Add to PATH (PowerShell):
-       [Environment]::SetEnvironmentVariable("Path", `$env:Path + ";C:\src\flutter\bin", "User")
-  4. Close this terminal, open a NEW PowerShell, then run:
-       flutter --version
-       .\deploy_flutter_web.ps1
+Easiest fix — install + fix PATH in this folder:
+  .\install_flutter_windows.ps1
+  .\deploy_flutter_web.ps1
+
+Or if Flutter is already extracted somewhere:
+  .\deploy_flutter_web.ps1 -FlutterRoot "C:\path\to\flutter"
+
+Diagnostic checks:
+  Test-Path `$env:USERPROFILE\develop\flutter\bin\flutter.bat
+  Get-ChildItem Env:Path
 
 "@
     exit 1
 }
 
+Write-Host "Using Flutter: $FlutterBat"
+
 Push-Location $FlutterApp
 try {
     Write-Host "Building Flutter web (base-href=/static/)..."
-    flutter pub get
-    flutter build web --release --base-href /static/
+    & $FlutterBat pub get
+    if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
+    & $FlutterBat build web --release --base-href /static/
+    if ($LASTEXITCODE -ne 0) { throw "flutter build web failed" }
 }
 finally {
     Pop-Location
@@ -46,7 +83,6 @@ if (-not (Test-Path $BuildWeb)) {
 
 Write-Host "Replacing $StaticDir with fresh build..."
 if (Test-Path $StaticDir) {
-    # Keep the folder, wipe contents so we don't leave stale hashed assets behind.
     Get-ChildItem -Force $StaticDir | Remove-Item -Recurse -Force
 } else {
     New-Item -ItemType Directory -Path $StaticDir | Out-Null
