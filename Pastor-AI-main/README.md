@@ -1,49 +1,58 @@
-# Pastor-AI — update the UI (follow exactly)
+# Pastor-AI auth testing
 
-The old UI stays until `static\main.dart.js` is replaced by a **successful**
-Flutter web build. Editing Dart files alone does not change what Django serves.
+## Important
+By default the Flutter web build uses **mock login** (`USE_MOCK_AUTH=true`).
+That means Sign in succeeds in the UI without calling Django.
+To test the real login system, rebuild with `-UseRealApi`.
 
-## Do this now
-
+## A) Test the Django API (no Flutter needed)
+Terminal 1:
 ```powershell
-cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server
-git fetch origin
-git checkout cursor/flutter-web-deploy-ui-0001
-git pull
-cd Pastor-AI-main
-
-start ms-settings:developers
-# Turn Developer Mode ON, then close and reopen PowerShell
-
-.\rebuild_web.ps1
-```
-
-You must see **`SUCCESS — new UI is in static\`**.
-If the script errors, the UI was NOT updated.
-
-Verify the new UI is on disk:
-
-```powershell
-Select-String -Path .\static\main.dart.js -Pattern "LoginScreen" -SimpleMatch
-```
-
-If that prints nothing, rebuild failed / wrong files.
-
-Then:
-
-```powershell
+cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server\Pastor-AI-main
 python manage.py migrate
 python manage.py runserver
 ```
 
-In the browser:
+Terminal 2:
+```powershell
+cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server\Pastor-AI-main
+.\test_auth.ps1
+```
 
+Expected: `API auth flow passed.`
+
+Manual equivalent:
+```powershell
+# register
+Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8000/api/auth/register/ -ContentType application/json -Body '{"name":"Test User","email":"you@example.com","password":"Str0ngPass!"}'
+# login
+Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8000/api/auth/login/ -ContentType application/json -Body '{"email":"you@example.com","password":"Str0ngPass!"}'
+```
+
+## B) Test login in the browser against Django
+```powershell
+cd C:\Users\damia\Source\Repos\Shmurdax\Pastor-AI-Server\Pastor-AI-main
+git pull
+.\rebuild_web.ps1 -UseRealApi
+python manage.py migrate
+python manage.py runserver
+```
+
+Then:
 1. Open http://127.0.0.1:8000/
-2. F12 → Application → Service Workers → **Unregister**
-3. Application → Storage → **Clear site data**
-4. Ctrl+Shift+R
+2. Clear site data / hard refresh
+3. Open Sign in
+4. Create an account (Register) with email + password (8+ chars)
+5. Log out, then log in with the same email/password
+6. Confirm your name appears as signed-in
 
-## Why it still looked old
-- Your last `flutter build web` **failed**, so `static\` never got the new app
-- Flutter service workers can keep serving the previous UI even after files change
-- `rebuild_web.ps1` now builds with `--pwa-strategy=none` and checks that `LoginScreen` exists in `static\main.dart.js` before declaring success
+## C) Quick UI-only mock check (does not hit Django)
+```powershell
+.\rebuild_web.ps1
+python manage.py runserver
+```
+Any email/password will "sign in" because mock auth is on.
+
+## Notes
+- Google Sign-In against a real backend needs `/api/auth/google/` (not implemented yet) plus `GOOGLE_CLIENT_ID`.
+- Email/password register + login + me + logout are the supported real API path.

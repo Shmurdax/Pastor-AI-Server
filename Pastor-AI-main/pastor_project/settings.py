@@ -122,9 +122,8 @@ AUTH_PASSWORD_VALIDATORS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # TokenAuthentication lives in rest_framework.authentication (not
-        # rest_framework.authtoken.authentication — that module does not exist).
-        'rest_framework.authentication.TokenAuthentication',
+        # Flutter sends Authorization: Bearer <token>
+        'api.authentication.BearerTokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     # No DEFAULT_PERMISSION_CLASSES set on purpose — ChatAPI stays open to

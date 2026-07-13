@@ -6,7 +6,8 @@
 #   C:\src\flutter\flutter\bin\flutter.bat
 
 param(
-    [string]$FlutterRoot = "C:\src\flutter\flutter"
+    [string]$FlutterRoot = "C:\src\flutter\flutter",
+    [switch]$UseRealApi
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,9 +46,24 @@ Write-Host "==> flutter pub get"
 & $FlutterBat pub get
 if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
 
-# --pwa-strategy=none avoids Flutter service-worker caching the OLD UI forever.
 Write-Host "==> flutter build web"
-& $FlutterBat build web --release --base-href /static/ --no-wasm-dry-run --pwa-strategy=none
+$dartDefines = @()
+if ($UseRealApi) {
+    Write-Host "    USE_MOCK_AUTH=false (talks to Django /api/auth/*)"
+    $dartDefines += "--dart-define=USE_MOCK_AUTH=false"
+} else {
+    Write-Host "    USE_MOCK_AUTH=true (UI-only mock login; Django is NOT used)"
+}
+
+$buildArgs = @(
+    "build", "web",
+    "--release",
+    "--base-href", "/static/",
+    "--no-wasm-dry-run",
+    "--pwa-strategy=none"
+) + $dartDefines
+
+& $FlutterBat @buildArgs
 if ($LASTEXITCODE -ne 0) { throw "flutter build web failed - UI was NOT updated" }
 
 $BuildWeb = Join-Path $App "build\web"
