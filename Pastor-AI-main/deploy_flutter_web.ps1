@@ -13,7 +13,21 @@ $BuildWeb = Join-Path $FlutterApp "build\web"
 $StaticDir = Join-Path $Root "static"
 
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-    Write-Error "Flutter was not found on PATH. Install Flutter, then re-open your terminal."
+    Write-Host @"
+
+Flutter was not found on PATH ('flutter' is not recognized).
+
+Install / fix PATH:
+  1. Download Flutter SDK: https://docs.flutter.dev/install/manual
+  2. Extract to e.g. C:\src\flutter
+  3. Add to PATH (PowerShell):
+       [Environment]::SetEnvironmentVariable("Path", `$env:Path + ";C:\src\flutter\bin", "User")
+  4. Close this terminal, open a NEW PowerShell, then run:
+       flutter --version
+       .\deploy_flutter_web.ps1
+
+"@
+    exit 1
 }
 
 Push-Location $FlutterApp
