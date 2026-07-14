@@ -324,17 +324,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : Text('Sign in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
-                    label: Text('Sign in with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: _navy),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  if (kGoogleSignInAvailable) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: auth.isLoading ? null : _googleSignIn,
+                      icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
+                      label: Text('Sign in with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: _navy),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: auth.isLoading ? null : () => Navigator.of(context).pop(),
@@ -524,17 +526,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : Text('Create account', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
-                    label: Text('Sign up with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: _navy),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  if (kGoogleSignInAvailable) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: auth.isLoading ? null : _googleSignIn,
+                      icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
+                      label: Text('Sign up with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: const BorderSide(color: _navy),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

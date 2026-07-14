@@ -1,13 +1,13 @@
-# Rebuild Flutter web UI into Django static/ and VERIFY the new UI is present.
-# From Pastor-AI-main, run ONE command:
+# Rebuild Flutter web UI into Django static/ with REAL Django auth enabled.
+# From Pastor-AI-main:
 #   .\rebuild_web.ps1
 #
-# Your Flutter bat path is already the default:
-#   C:\src\flutter\flutter\bin\flutter.bat
+# Optional mock UI-only auth (any password works):
+#   .\rebuild_web.ps1 -UseMockAuth
 
 param(
     [string]$FlutterRoot = "C:\src\flutter\flutter",
-    [switch]$UseRealApi
+    [switch]$UseMockAuth
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,7 +26,6 @@ Assert-Path $FlutterBat "flutter.bat"
 Assert-Path (Join-Path $App "pubspec.yaml") "Flutter app"
 Assert-Path (Join-Path $App "lib\main.dart") "main.dart"
 
-# Confirm the source UI actually has the new login screen before building.
 $mainDart = Get-Content -Raw (Join-Path $App "lib\main.dart")
 if ($mainDart -notmatch "LoginScreen") {
     throw "lib\main.dart does not contain LoginScreen. You may be on the wrong branch/files."
@@ -48,11 +47,12 @@ if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
 
 Write-Host "==> flutter build web"
 $dartDefines = @()
-if ($UseRealApi) {
-    Write-Host "    USE_MOCK_AUTH=false (talks to Django /api/auth/*)"
-    $dartDefines += "--dart-define=USE_MOCK_AUTH=false"
+if ($UseMockAuth) {
+    Write-Host "    USE_MOCK_AUTH=true (UI demo only; Django auth NOT used)"
+    $dartDefines += "--dart-define=USE_MOCK_AUTH=true"
 } else {
-    Write-Host "    USE_MOCK_AUTH=true (UI-only mock login; Django is NOT used)"
+    Write-Host "    USE_MOCK_AUTH=false (real Django /api/auth/*)"
+    $dartDefines += "--dart-define=USE_MOCK_AUTH=false"
 }
 
 $buildArgs = @(
@@ -90,15 +90,16 @@ if ($staticText -notmatch "LoginScreen|Sign in to save|api/auth/login") {
 
 Write-Host ""
 Write-Host "SUCCESS - new UI is in static\"
+if ($UseMockAuth) {
+    Write-Host "  MODE: MOCK auth (any email/password will appear to work)"
+} else {
+    Write-Host "  MODE: REAL Django auth (must Register first, then Sign in)"
+}
 Write-Host ("  main.dart.js size : {0:N0} bytes" -f $staticInfo.Length)
 Write-Host ("  last write time   : {0}" -f $staticInfo.LastWriteTime)
 Write-Host ""
-Write-Host "Next commands (from Pastor-AI-main):"
+Write-Host "Next:"
 Write-Host "  python manage.py migrate"
 Write-Host "  python manage.py runserver"
-Write-Host ""
-Write-Host "Then in Chrome/Edge:"
-Write-Host "  1. Open http://127.0.0.1:8000/"
-Write-Host "  2. Press F12 -> Application -> Service Workers -> Unregister (if any)"
-Write-Host "  3. Application -> Storage -> Clear site data"
-Write-Host "  4. Hard refresh with Ctrl+Shift+R"
+Write-Host "  Open http://127.0.0.1:8000/ -> Clear site data -> Ctrl+Shift+R"
+Write-Host "  Create one (register) -> Sign out -> Sign in with same credentials"

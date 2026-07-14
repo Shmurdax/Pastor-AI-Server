@@ -3,9 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
-const kUseMockAuth = bool.fromEnvironment('USE_MOCK_AUTH', defaultValue: true);
-const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+const kUseMockAuth = bool.fromEnvironment('USE_MOCK_AUTH', defaultValue: false);
+const kGoogleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+
+/// Google button should only show when mock mode is on or a client ID is configured.
+bool get kGoogleSignInAvailable => kUseMockAuth || kGoogleClientId.isNotEmpty;
 
 class AuthUser {
   const AuthUser({
@@ -94,12 +97,12 @@ class AuthService {
   }
 
   Future<AuthResult> signInWithGoogle() async {
-    if (_googleClientId.isEmpty && !kUseMockAuth) {
+    if (kGoogleClientId.isEmpty && !kUseMockAuth) {
       throw AuthException('Google Sign-In is not configured. Set GOOGLE_CLIENT_ID.');
     }
 
     final googleSignIn = GoogleSignIn(
-      clientId: kIsWeb && _googleClientId.isNotEmpty ? _googleClientId : null,
+      clientId: kIsWeb && kGoogleClientId.isNotEmpty ? kGoogleClientId : null,
       scopes: const ['email', 'profile'],
     );
 
