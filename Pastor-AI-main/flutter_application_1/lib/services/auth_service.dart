@@ -184,11 +184,10 @@ class AuthService {
 
   AuthResult _parseAuthResponse(http.Response res) {
     if (res.statusCode == 401 || res.statusCode == 400) {
-      final body = _tryDecode(res.body);
-      throw AuthException(body?['detail'] as String? ?? 'Invalid email or password.');
+      throw AuthException(_formatErrorBody(res.body, fallback: 'Invalid email or password.'));
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw AuthException('Authentication failed (${res.statusCode}).');
+      throw AuthException(_formatErrorBody(res.body, fallback: 'Authentication failed (${res.statusCode}).'));
     }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final token = body['token'] as String?;
@@ -197,6 +196,33 @@ class AuthService {
       throw AuthException('Unexpected response from authentication server.');
     }
     return AuthResult(token: token, user: AuthUser.fromJson(userJson));
+  }
+
+  String _formatErrorBody(String raw, {required String fallback}) {
+    final body = _tryDecode(raw);
+    if (body == null) return fallback;
+
+    final detail = body['detail'];
+    if (detail is String && detail.trim().isNotEmpty) return detail.trim();
+    if (detail is List && detail.isNotEmpty) {
+      return detail.map((e) => '$e').where((e) => e.isNotEmpty).join(' ');
+    }
+
+    // DRF field errors, e.g. {"password":["This password is too common."],"email":[...]}
+    final parts = <String>[];
+    body.forEach((key, value) {
+      if (key == 'detail') return;
+      if (value is List) {
+        for (final item in value) {
+          final text = '$item'.trim();
+          if (text.isNotEmpty) parts.add(text);
+        }
+      } else if (value is String && value.trim().isNotEmpty) {
+        parts.add(value.trim());
+      }
+    });
+    if (parts.isNotEmpty) return parts.join(' ');
+    return fallback;
   }
 
   Map<String, dynamic>? _tryDecode(String body) {
