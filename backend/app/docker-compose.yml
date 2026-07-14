@@ -1,0 +1,104 @@
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_db}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_server
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: always
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    restart: always
+    # Added 'vllm serve' to the start of the command and maintained your 0.8 limit
+    command: >
+      --model RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16
+      --max-num-seqs 20
+      --max-model-len 8192
+      --gpu-memory-utilization 0.7
+      --attention-backend TRITON_ATTN
+      --trust-remote-code
+      --enable-chunked-prefill
+      --quantization gptq
+    volumes:
+      - ./hf_cache:/root/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - LD_LIBRARY_PATH=/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/lib/x86_64-linux-gnu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: "8gb"
+    # Removed ports mapping to hide it from your public IP/Network
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  web:
+    build: .
+    restart: always
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+      exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout ${GUNICORN_TIMEOUT:-1800}"
+    volumes:
+      - .:/code
+      - ${FRONTEND_MOUNT_PATH:-../../Pastor-AI-Server-front_end_backup}:/frontend:ro
+      - ${ADMIN_INGESTION_MOUNT_PATH:-/var/www/pastor_ai/PDF-Data}:/code/uploads/admin_ingestion
+    environment:
+      # This ensures Django talks to the internal container name, not localhost
+      - PYTHONUNBUFFERED=1
+      - VLLM_URL=${VLLM_URL:-http://vllm:8000/v1}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - FRONTEND_BUILD_DIR=/frontend
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-false}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost}
+      - DJANGO_CORS_ALLOW_ALL_ORIGINS=${DJANGO_CORS_ALLOW_ALL_ORIGINS:-false}
+      - DJANGO_CORS_ALLOWED_ORIGINS=${DJANGO_CORS_ALLOWED_ORIGINS:-}
+      - POSTGRES_DB=${POSTGRES_DB:-ai_db}
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - USER=${HOST_USER:-student}
+      - LOGNAME=${HOST_USER:-student}
+      - HOME=${HOST_HOME:-/tmp}
+      - TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor
+    depends_on:
+      - db
+      - vllm
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    environment:
+      - SERVER_NAME=${SERVER_NAME:-localhost}
+      - NGINX_PROXY_TIMEOUT_S=${NGINX_PROXY_TIMEOUT_S:-1800}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  certbot_www:

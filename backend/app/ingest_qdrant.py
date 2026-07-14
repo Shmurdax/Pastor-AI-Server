@@ -74,14 +74,13 @@ def run_ingestion():
 #    )
 
     vectorstore = QdrantVectorStore.from_documents(
-        documents=all_chunks,
-        embedding=embeddings,
-        url="http://localhost:6333",
-        collection_name="sermon_brain"
+    	documents=all_chunks,
+    	embedding=embeddings,
+    	url="http://localhost:6333",
+    	collection_name="sermon_brain"
     )
 
     print(f"✅ DONE! Your 'Sermon Brain' is ready at: {DB_DIR}")
 
 if __name__ == "__main__":
     run_ingestion()
-

@@ -1,9 +1,30 @@
-﻿django>=5.0
-djangorestframework>=3.15
-django-cors-headers>=4.0
+# Base Web Framework
+django>=4.2,<5.0
+djangorestframework
+django-cors-headers
+gunicorn
+whitenoise[brotli]
+
+# Database Drivers (for Postgres)
+psycopg2-binary
+
+# Core LangChain Ecosystem (Version-Synced)
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-core>=0.2.0
+sentence-transformers
+qdrant-client
+langchain-qdrant
+
+# Integration Packages
+langchain-openai
 langchain-huggingface
 langchain-chroma
-langchain-ollama
-langchain-classic
-langchain-core
-langchain-community
+
+# Supporting Libraries
+pydantic>=2.0
+openai
+huggingface-hub
+numpy
+pypdf
+python-docx
