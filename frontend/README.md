@@ -1,7 +1,16 @@
-This Pastor-AI-main folder should be able to run the AI and UI through Django and NGROK.
-TIPS: 
-- Make sure Ngrok is downloaded and running via "ngrok http 8000".
-- Make sure django is downloaded and running via "py manage.py runserver".
-- Double check file paths.
-- Django, Ollama, and Ngrok should be the only things that need to be open.
-- use inspect (f12) on the webpage to help with troubleshooting errors.
+# flutter_application_1
+
+A new Flutter project.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
