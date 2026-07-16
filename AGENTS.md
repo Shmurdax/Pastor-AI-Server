@@ -107,10 +107,18 @@ Django verifies the token with `google-auth` and issues a DRF `Token`.
 
 Required configuration (same Web client ID on both sides):
 1. Create an OAuth 2.0 **Web** client in Google Cloud Console.
-2. Add Authorized JavaScript origins for the hosts you use (`http://localhost:8000`, etc.).
+2. Add Authorized JavaScript origins for the hosts you use. For local Django this
+   **must** include exactly:
+   - `http://localhost:8000`
+   - `http://127.0.0.1:8000`
+   If the origin is missing, the browser console shows
+   `The given origin is not allowed for the given client ID` and the UI gets
+   stuck on `https://accounts.google.com/gsi/transform`.
 3. Put the client ID in the environment **or** in gitignored `Pastor-AI-main/.env` as
    `GOOGLE_CLIENT_ID=....apps.googleusercontent.com` (Django and `publish_frontend.sh` both read it).
 4. Publish the frontend: `./scripts/publish_frontend.sh` (bakes the ID into the local `static/` build).
+5. Django sets `SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"` so
+   the GIS popup can return to the app (default `same-origin` breaks this).
 
 Without `GOOGLE_CLIENT_ID`, the UI reports Google Sign-In as unconfigured and the API returns 503.
 
