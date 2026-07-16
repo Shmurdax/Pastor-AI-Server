@@ -93611,7 +93611,7 @@ q=A.l(q,q)
 if(a)q.m(0,"Content-Type",r)
 q.m(0,"Accept",r)
 s=this.b
-if(s!=null&&s.length!==0)q.m(0,"Authorization","Bearer "+s)
+if(s!=null&&s.length!==0)q.m(0,"Authorization","Token "+s)
 return q},
 ahE(){return this.SV(!1)},
 B3(a,b,c){return this.ar2(a,b,c)},
@@ -93712,7 +93712,7 @@ a2B(a){var s=0,r=A.H(t.u5),q,p=this,o,n,m
 var $async$xJ=A.I(function(b,c){if(b===1)return A.E(c,r)
 for(;;)switch(s){case 0:n=t.N
 s=3
-return A.B(p.a.I6("GET",A.dW(p.zQ("/api/auth/me/"),0,null),A.ae(["Accept","application/json","Authorization","Bearer "+a],n,n)),$async$xJ)
+return A.B(p.a.I6("GET",A.dW(p.zQ("/api/auth/me/"),0,null),A.ae(["Accept","application/json","Authorization","Token "+a],n,n)),$async$xJ)
 case 3:m=c
 n=m.b
 if(n===401)throw A.i(A.yL("Session expired. Please sign in again."))
@@ -93730,7 +93730,7 @@ var $async$CJ=A.I(function(b,c){if(b===1){p.push(c)
 s=q}for(;;)switch(s){case 0:q=3
 n=t.N
 s=6
-return A.B(o.a.mY("POST",A.dW(o.zQ("/api/auth/logout/"),0,null),A.ae(["Accept","application/json","Authorization","Bearer "+a],n,n),null,null),$async$CJ)
+return A.B(o.a.mY("POST",A.dW(o.zQ("/api/auth/logout/"),0,null),A.ae(["Accept","application/json","Authorization","Token "+a],n,n),null,null),$async$CJ)
 case 6:q=1
 s=5
 break

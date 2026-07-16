@@ -29,7 +29,7 @@ From `Pastor-AI-main/`:
 | Define | Default | Notes |
 | --- | --- | --- |
 | `API_BASE_URL` | empty (same-origin) | Set to `http://localhost:8000` for separate :8080 serving |
-| `USE_MOCK_AUTH` | `true` | Use `false` against real Django auth |
+| `USE_MOCK_AUTH` | `false` | Real Django auth by default; set `true` only for UI-only work without a backend |
 | `USE_MOCK_PRAYER` | `true` | Keep true until prayer API exists |
 | `GOOGLE_CLIENT_ID` | empty | Needed for real Google sign-in |
 

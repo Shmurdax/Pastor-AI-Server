@@ -67,7 +67,7 @@ From `Pastor-AI-main/`:
 This builds Flutter web with:
 - `--base-href=/static/` (Django asset path)
 - empty `API_BASE_URL` (same-origin `/api/*` — do **not** bake temporary ngrok hosts)
-- `USE_MOCK_AUTH=false`
+- `USE_MOCK_AUTH=false` (also the Flutter source default; mock auth is opt-in only)
 - `USE_MOCK_PRAYER=true`
 
 Then syncs `flutter_application_1/build/web/` → `static/`.

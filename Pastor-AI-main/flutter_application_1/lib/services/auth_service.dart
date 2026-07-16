@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
-const kUseMockAuth = bool.fromEnvironment('USE_MOCK_AUTH', defaultValue: true);
+const kUseMockAuth = bool.fromEnvironment('USE_MOCK_AUTH', defaultValue: false);
 const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
@@ -139,7 +139,8 @@ class AuthService {
       Uri.parse(_resolveUrl('/api/auth/me/')),
       headers: {
         'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
+        // DRF TokenAuthentication expects "Token <key>", not Bearer.
+        'Authorization': 'Token $token',
       },
     );
     if (res.statusCode == 401) throw AuthException('Session expired. Please sign in again.');
@@ -158,7 +159,8 @@ class AuthService {
         Uri.parse(_resolveUrl('/api/auth/logout/')),
         headers: {
           'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
+          // DRF TokenAuthentication expects "Token <key>", not Bearer.
+          'Authorization': 'Token $token',
         },
       );
     } catch (_) {
