@@ -13,8 +13,8 @@ startup update script).
 | Service | Purpose | Start command (from `Pastor-AI-main/`) | Port |
 | --- | --- | --- | --- |
 | Ollama | Local LLM (`llama3.2`) used by the chat endpoint | `ollama serve` (see AVX512 caveat below) | 11434 |
-| Django | REST API (`/api/chat/`, `/api/auth/*`) + serves committed `static/` build | `source venv/bin/activate && python manage.py runserver 0.0.0.0:8000` | 8000 |
-| Flutter web (dev) | Current frontend source, built for local backend | see "Running the current frontend" | 8080 |
+| Django | REST API (`/api/chat/`, `/api/auth/*`) + serves published `static/` frontend artifact (refresh via `./scripts/publish_frontend.sh`) | `source venv/bin/activate && python manage.py runserver 0.0.0.0:8000` | 8000 |
+| Flutter web (dev) | Current frontend source, built for local backend without publishing | see "Frontend: hybrid source + published static/" | 8080 |
 
 `ngrok` and `qdrant` are NOT needed for local development. `setup.sh` is a RunPod
 deployment script that rewrites `views.py`/`settings.py` to a Qdrant+ngrok setup —
@@ -47,13 +47,44 @@ Note: `api/views.py` builds the RAG chain (embeddings + Chroma + ChatOllama) at
 module import, so the embedding model loads during Django's system checks — the very
 first `manage.py` command after a fresh model cache is slow.
 
-### Running the current frontend (`flutter_application_1`)
+### Frontend: hybrid source + published static/
 
-The committed `static/` build is STALE: it is an older UI (no auth) hardwired to a
-dead ngrok API URL, so it cannot talk to a local backend. To exercise the current
-frontend source against the local Django API, build and serve it separately:
+| Role | Path | When to use |
+| --- | --- | --- |
+| Source of truth | `flutter_application_1/` | Day-to-day UI edits, analyze/test, local iteration |
+| Published artifact | `static/` | What Django serves at `http://localhost:8000/` |
 
+**Rule:** edit Flutter source freely; refresh `static/` only when intentionally publishing a new frontend.
+
+#### Publish a new frontend into `static/`
+
+From `Pastor-AI-main/`:
+
+```bash
+./scripts/publish_frontend.sh
 ```
+
+This builds Flutter web with:
+- `--base-href=/static/` (Django asset path)
+- empty `API_BASE_URL` (same-origin `/api/*` — do **not** bake temporary ngrok hosts)
+- `USE_MOCK_AUTH=false`
+- `USE_MOCK_PRAYER=true`
+
+Then syncs `flutter_application_1/build/web/` → `static/`.
+
+After publishing, restart/reload Django and open `http://localhost:8000/`.
+
+Optional override example:
+
+```bash
+EXTRA_DART_DEFINES='--dart-define=GOOGLE_CLIENT_ID=...' ./scripts/publish_frontend.sh
+```
+
+#### Local frontend iteration without publishing
+
+If you only need to try UI changes against the local Django API without updating `static/`:
+
+```bash
 cd Pastor-AI-main/flutter_application_1
 /opt/flutter/bin/flutter build web --release \
   --dart-define=API_BASE_URL=http://localhost:8000 \
@@ -61,10 +92,7 @@ cd Pastor-AI-main/flutter_application_1
 cd build/web && python3 -m http.server 8080
 ```
 
-Then open http://localhost:8080. API base URL is a compile-time
-`String.fromEnvironment('API_BASE_URL')` (empty = same-origin). `USE_MOCK_AUTH`
-defaults to `true`, so pass `--dart-define=USE_MOCK_AUTH=false` to hit the real
-Django auth endpoints. Cross-origin :8080 -> :8000 works because Django sets
+Then open `http://localhost:8080`. Cross-origin `:8080` → `:8000` works because Django sets
 `CORS_ALLOW_ALL_ORIGINS = True`.
 
 Flutter SDK is at `/opt/flutter` (add `/opt/flutter/bin` to PATH). `pubspec.yaml`

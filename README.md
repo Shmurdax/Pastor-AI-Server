@@ -5,3 +5,8 @@ TIPS:
 - Double check file paths.
 - Django, Ollama, and Ngrok should be the only things that need to be open.
 - use inspect (f12) on the webpage to help with troubleshooting errors.
+
+Frontend:
+- Edit UI in Pastor-AI-main/flutter_application_1/
+- Django serves the published copy in Pastor-AI-main/static/
+- To publish a new UI build: cd Pastor-AI-main && ./scripts/publish_frontend.sh
