@@ -108,10 +108,15 @@ Django verifies the token with `google-auth` and issues a DRF `Token`.
 Required configuration (same Web client ID on both sides):
 1. Create an OAuth 2.0 **Web** client in Google Cloud Console.
 2. Add Authorized JavaScript origins for the hosts you use (`http://localhost:8000`, etc.).
-3. Export `GOOGLE_CLIENT_ID` for Django (`export GOOGLE_CLIENT_ID=....apps.googleusercontent.com`) before `runserver`.
-4. Publish the frontend with the same ID: `GOOGLE_CLIENT_ID=... ./scripts/publish_frontend.sh`.
+3. Put the client ID in the environment **or** in gitignored `Pastor-AI-main/.env` as
+   `GOOGLE_CLIENT_ID=....apps.googleusercontent.com` (Django and `publish_frontend.sh` both read it).
+4. Publish the frontend: `./scripts/publish_frontend.sh` (bakes the ID into the local `static/` build).
 
 Without `GOOGLE_CLIENT_ID`, the UI reports Google Sign-In as unconfigured and the API returns 503.
+
+Do **not** commit a `static/` build that contains `GOOGLE_CLIENT_ID` if that value is managed as a
+secret in this environment (the commit hook will block it). Treat Google-enabled `static/` as a
+local/deploy artifact produced by the publish script at run time.
 
 ### Lint / test
 
