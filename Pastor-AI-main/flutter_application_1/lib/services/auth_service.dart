@@ -182,9 +182,14 @@ class AuthService {
   }
 
   AuthResult _parseAuthResponse(http.Response res) {
-    if (res.statusCode == 401 || res.statusCode == 400) {
+    if (res.statusCode == 401 || res.statusCode == 400 || res.statusCode == 503) {
       final body = _tryDecode(res.body);
-      throw AuthException(body?['detail'] as String? ?? 'Invalid email or password.');
+      throw AuthException(
+        body?['detail'] as String? ??
+            (res.statusCode == 503
+                ? 'Google Sign-In is not configured on the server.'
+                : 'Invalid email or password.'),
+      );
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AuthException('Authentication failed (${res.statusCode}).');

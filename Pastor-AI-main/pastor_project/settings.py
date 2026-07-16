@@ -154,3 +154,8 @@ STATICFILES_DIRS = [
 
 # Allow Flutter to connect during development
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Google Sign-In (Flutter posts a Google ID token to /api/auth/google/).
+# Must match the OAuth 2.0 Web client ID used when building the Flutter web app
+# (--dart-define=GOOGLE_CLIENT_ID=... / EXTRA_DART_DEFINES / env).
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")

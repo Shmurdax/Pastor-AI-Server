@@ -12,10 +12,12 @@
 #   - empty API_BASE_URL       (same-origin /api/* against the Django host)
 #   - USE_MOCK_AUTH=false      (hit real Django auth endpoints)
 #   - USE_MOCK_PRAYER=true     (prayer form stays mock until backend exists)
+#   - GOOGLE_CLIENT_ID from env (when set) for Google Sign-In on web
 #
 # Optional overrides:
 #   FLUTTER_BIN=/path/to/flutter ./scripts/publish_frontend.sh
-#   EXTRA_DART_DEFINES='--dart-define=GOOGLE_CLIENT_ID=...' ./scripts/publish_frontend.sh
+#   GOOGLE_CLIENT_ID=....apps.googleusercontent.com ./scripts/publish_frontend.sh
+#   EXTRA_DART_DEFINES='--dart-define=FOO=bar' ./scripts/publish_frontend.sh
 
 set -euo pipefail
 
@@ -40,6 +42,25 @@ if [[ ! -f "$FLUTTER_APP/pubspec.yaml" ]]; then
   exit 1
 fi
 
+DART_DEFINES=(
+  --dart-define=USE_MOCK_AUTH=false
+  --dart-define=USE_MOCK_PRAYER=true
+)
+
+if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
+  DART_DEFINES+=(--dart-define="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
+  echo "==> Including GOOGLE_CLIENT_ID for Google Sign-In"
+else
+  echo "==> WARNING: GOOGLE_CLIENT_ID unset; Google Sign-In button will report unconfigured."
+fi
+
+# Allow additional defines without clobbering the ones above.
+# shellcheck disable=SC2206
+if [[ -n "${EXTRA_DART_DEFINES:-}" ]]; then
+  EXTRA_ARR=( ${EXTRA_DART_DEFINES} )
+  DART_DEFINES+=("${EXTRA_ARR[@]}")
+fi
+
 echo "==> Using Flutter: $FLUTTER_BIN"
 echo "==> Building web UI from: $FLUTTER_APP"
 cd "$FLUTTER_APP"
@@ -47,16 +68,23 @@ cd "$FLUTTER_APP"
 "$FLUTTER_BIN" pub get
 # Intentionally omit API_BASE_URL so the bundle uses same-origin relative API paths.
 # Do NOT bake temporary ngrok/tunnel hosts into the published static/ build.
-# shellcheck disable=SC2086
 "$FLUTTER_BIN" build web --release \
   --base-href=/static/ \
-  --dart-define=USE_MOCK_AUTH=false \
-  --dart-define=USE_MOCK_PRAYER=true \
-  ${EXTRA_DART_DEFINES:-}
+  "${DART_DEFINES[@]}"
 
 if [[ ! -f "$BUILD_DIR/index.html" ]]; then
   echo "error: build output missing at $BUILD_DIR/index.html" >&2
   exit 1
+fi
+
+# google_sign_in_web also looks for this meta tag as a client-id source.
+if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
+  if grep -q 'google-signin-client_id' "$BUILD_DIR/index.html"; then
+    sed -i "s|content=\"[^\"]*\"\\(.*google-signin-client_id\\)|content=\"${GOOGLE_CLIENT_ID}\"\\1|" "$BUILD_DIR/index.html" 2>/dev/null || true
+  else
+    sed -i "s|<meta name=\"description\"|<meta name=\"google-signin-client_id\" content=\"${GOOGLE_CLIENT_ID}\">\\n  <meta name=\"description\"|" "$BUILD_DIR/index.html"
+  fi
+  echo "==> Injected google-signin-client_id meta into index.html"
 fi
 
 echo "==> Syncing build/web -> $STATIC_DIR"
@@ -70,3 +98,6 @@ fi
 
 echo "==> Published frontend to $STATIC_DIR"
 echo "    Open http://localhost:8000/ after starting Django to verify."
+if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
+  echo "    Remember to authorize JS origins in Google Cloud Console for this host."
+fi

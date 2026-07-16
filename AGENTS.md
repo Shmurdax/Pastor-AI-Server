@@ -100,6 +100,19 @@ was completed with the dependencies the source already imports (`provider`,
 `shared_preferences`, `flutter_secure_storage`, and `google_sign_in` pinned to `^6`
 because `auth_service.dart` uses the v6 `GoogleSignIn().signIn()` API).
 
+### Google Sign-In
+
+Flutter already has the Google buttons and posts `{ "id_token" }` to `POST /api/auth/google/`.
+Django verifies the token with `google-auth` and issues a DRF `Token`.
+
+Required configuration (same Web client ID on both sides):
+1. Create an OAuth 2.0 **Web** client in Google Cloud Console.
+2. Add Authorized JavaScript origins for the hosts you use (`http://localhost:8000`, etc.).
+3. Export `GOOGLE_CLIENT_ID` for Django (`export GOOGLE_CLIENT_ID=....apps.googleusercontent.com`) before `runserver`.
+4. Publish the frontend with the same ID: `GOOGLE_CLIENT_ID=... ./scripts/publish_frontend.sh`.
+
+Without `GOOGLE_CLIENT_ID`, the UI reports Google Sign-In as unconfigured and the API returns 503.
+
 ### Lint / test
 
 - Backend: `python manage.py check` and `python manage.py test` (from `Pastor-AI-main/`, venv active).

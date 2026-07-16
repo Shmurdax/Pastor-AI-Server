@@ -58,3 +58,8 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    """Flutter AuthService.signInWithGoogle() posts { "id_token": "..." }."""
+    id_token = serializers.CharField()

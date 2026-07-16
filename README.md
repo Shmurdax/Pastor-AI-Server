@@ -55,8 +55,20 @@ Do **not** bake temporary ngrok hosts into published builds. The publish script 
 - `POST /api/chat/`
 - `POST /api/auth/register/`
 - `POST /api/auth/login/`
+- `POST /api/auth/google/` (body: `{ "id_token": "..." }`; requires `GOOGLE_CLIENT_ID`)
 - `GET  /api/auth/me/`
 - `POST /api/auth/logout/`
+
+### Google Sign-In
+
+Needs an OAuth 2.0 **Web** client ID from Google Cloud Console (Authorized JavaScript origins must include your app host, e.g. `http://localhost:8000`):
+
+```bash
+export GOOGLE_CLIENT_ID='....apps.googleusercontent.com'
+# Django reads this from the environment
+# Publish Flutter with the same ID baked in:
+cd Pastor-AI-main && GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" ./scripts/publish_frontend.sh
+```
 
 ## Production / tunnel (optional)
 
