@@ -1,16 +1,41 @@
-# flutter_application_1
+# Pastor-AI Flutter UI
 
-A new Flutter project.
+Source of truth for the Pastor-AI web frontend.
 
-## Getting Started
+Django serves a published copy from `../static/`. Edit this package; publish only when shipping a new UI.
 
-This project is a starting point for a Flutter application.
+## Local iteration (without publishing)
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter pub get
+flutter build web --release \
+  --dart-define=API_BASE_URL=http://localhost:8000 \
+  --dart-define=USE_MOCK_AUTH=false
+cd build/web && python3 -m http.server 8080
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Open http://localhost:8080 (Django API on :8000).
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Publish into Django `static/`
+
+From `Pastor-AI-main/`:
+
+```bash
+./scripts/publish_frontend.sh
+```
+
+## Key dart-defines
+
+| Define | Default | Notes |
+| --- | --- | --- |
+| `API_BASE_URL` | empty (same-origin) | Set to `http://localhost:8000` for separate :8080 serving |
+| `USE_MOCK_AUTH` | `true` | Use `false` against real Django auth |
+| `USE_MOCK_PRAYER` | `true` | Keep true until prayer API exists |
+| `GOOGLE_CLIENT_ID` | empty | Needed for real Google sign-in |
+
+## Lint / test
+
+```bash
+flutter analyze
+flutter test
+```
