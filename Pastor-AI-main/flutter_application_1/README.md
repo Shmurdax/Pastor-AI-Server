@@ -34,9 +34,13 @@ From `Pastor-AI-main/`:
 | `GOOGLE_CLIENT_ID` | empty | OAuth 2.0 **Web** client ID; required for Google Sign-In |
 
 Google Sign-In also needs:
-1. The same Web client ID set as Django env `GOOGLE_CLIENT_ID`
+1. The same Web client ID set as Django env / `.env` `GOOGLE_CLIENT_ID`
 2. Authorized JavaScript origins in Google Cloud Console for your app hosts (e.g. `http://localhost:8000`)
-3. A republish with that ID baked in: `GOOGLE_CLIENT_ID=... ./scripts/publish_frontend.sh`
+3. A republish with that ID baked in: `./scripts/publish_frontend.sh`
+
+**Web note:** Flutter web must use Google's official GIS `renderButton` (used by
+`lib/widgets/google_auth_button_web.dart`). Calling `GoogleSignIn.signIn()` on web
+only returns an access token, not a verifiable ID token, and Django will reject it.
 
 ## Lint / test
 

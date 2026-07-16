@@ -131,9 +131,12 @@ class GoogleAuthView(APIView):
                 google_requests.Request(),
                 audience=client_id,
             )
-        except ValueError:
+        except ValueError as exc:
+            detail = "Invalid Google ID token."
+            if settings.DEBUG:
+                detail = f"Invalid Google ID token: {exc}"
             return Response(
-                {"detail": "Invalid Google ID token."},
+                {"detail": detail},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 

@@ -114,6 +114,10 @@ Required configuration (same Web client ID on both sides):
 
 Without `GOOGLE_CLIENT_ID`, the UI reports Google Sign-In as unconfigured and the API returns 503.
 
+**Web gotcha:** `GoogleSignIn.signIn()` on web does **not** provide a real ID token
+(only an access token). The login/register screens use GIS `renderButton` via
+`lib/widgets/google_auth_button_web.dart` so the backend can verify the JWT.
+
 Do **not** commit a `static/` build that contains `GOOGLE_CLIENT_ID` if that value is managed as a
 secret in this environment (the commit hook will block it). Treat Google-enabled `static/` as a
 local/deploy artifact produced by the publish script at run time.

@@ -1,17 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:uuid/uuid.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/services.dart';
-import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter_application_1/widgets/google_auth_button.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const _navy = Color(0xFF1B264F);
@@ -130,6 +134,9 @@ class AuthController extends ChangeNotifier {
   Future<bool> signInWithGoogle() =>
       _authenticate(_authService.signInWithGoogle);
 
+  Future<bool> signInWithGoogleAccount(GoogleSignInAccount account) =>
+      _authenticate(() => _authService.signInWithGoogleAccount(account));
+
   Future<bool> _authenticate(Future<AuthResult> Function() action) async {
     isLoading = true;
     error = null;
@@ -144,8 +151,10 @@ class AuthController extends ChangeNotifier {
       return true;
     } on AuthException catch (e) {
       error = e.message;
-    } catch (_) {
-      error = 'Something went wrong. Please try again.';
+    } catch (e) {
+      // Surface the real error — the old generic message hid web GIS failures.
+      final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      error = msg.isEmpty ? 'Something went wrong. Please try again.' : msg;
     }
     isLoading = false;
     notifyListeners();
@@ -208,12 +217,35 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+  StreamSubscription<GoogleSignInAccount?>? _googleSub;
+  bool _handlingGoogle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Web GIS renderButton authenticates via onCurrentUserChanged (real idToken).
+    if (kIsWeb && AuthService.isGoogleConfigured) {
+      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
+    }
+  }
 
   @override
   void dispose() {
+    _googleSub?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onGoogleUser(GoogleSignInAccount? account) async {
+    if (account == null || _handlingGoogle || !mounted) return;
+    _handlingGoogle = true;
+    final auth = context.read<AuthController>();
+    auth.clearError();
+    final ok = await auth.signInWithGoogleAccount(account);
+    _handlingGoogle = false;
+    if (!mounted) return;
+    if (ok) Navigator.of(context).pop(true);
   }
 
   Future<void> _submit() async {
@@ -229,6 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _googleSignIn() async {
+    // Mobile / non-web only. Web uses GoogleAuthButton → GIS renderButton.
     final auth = context.read<AuthController>();
     auth.clearError();
     final ok = await auth.signInWithGoogle();
@@ -325,16 +358,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         : Text('Sign in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton.icon(
+                  GoogleAuthButton(
+                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
                     onPressed: auth.isLoading ? null : _googleSignIn,
-                    icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
-                    label: Text('Sign in with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: _navy),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+                    label: 'Sign in with Google',
                   ),
+                  if (!AuthService.isGoogleConfigured) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Google Sign-In is not configured (missing GOOGLE_CLIENT_ID).',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: auth.isLoading ? null : () => Navigator.of(context).pop(),
@@ -381,14 +417,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  StreamSubscription<GoogleSignInAccount?>? _googleSub;
+  bool _handlingGoogle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb && AuthService.isGoogleConfigured) {
+      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
+    }
+  }
 
   @override
   void dispose() {
+    _googleSub?.cancel();
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
+  }
+
+  Future<void> _onGoogleUser(GoogleSignInAccount? account) async {
+    if (account == null || _handlingGoogle || !mounted) return;
+    _handlingGoogle = true;
+    final auth = context.read<AuthController>();
+    auth.clearError();
+    final ok = await auth.signInWithGoogleAccount(account);
+    _handlingGoogle = false;
+    if (!mounted) return;
+    if (ok) Navigator.of(context).pop(true);
   }
 
   Future<void> _submit() async {
@@ -525,15 +583,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         : Text('Create account', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton.icon(
+                  GoogleAuthButton(
+                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
                     onPressed: auth.isLoading ? null : _googleSignIn,
-                    icon: const Icon(Icons.g_mobiledata, size: 28, color: _navy),
-                    label: Text('Sign up with Google', style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy)),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: _navy),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+                    label: 'Sign up with Google',
                   ),
                   const SizedBox(height: 16),
                   Row(
