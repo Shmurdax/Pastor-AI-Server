@@ -158,4 +158,23 @@ CORS_ALLOW_ALL_ORIGINS = True
 # Google Sign-In (Flutter posts a Google ID token to /api/auth/google/).
 # Must match the OAuth 2.0 Web client ID used when building the Flutter web app
 # (--dart-define=GOOGLE_CLIENT_ID=... / EXTRA_DART_DEFINES / env).
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+# Also reads Pastor-AI-main/.env (gitignored) so local/dev servers pick it up
+# even when the process environment was not exported.
+def _load_dotenv_value(key: str) -> str:
+    env_path = BASE_DIR / ".env"
+    if not env_path.is_file():
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() == key:
+                return v.strip().strip("'").strip('"')
+    except OSError:
+        return ""
+    return ""
+
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "") or _load_dotenv_value("GOOGLE_CLIENT_ID")

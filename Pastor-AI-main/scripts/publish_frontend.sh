@@ -42,6 +42,16 @@ if [[ ! -f "$FLUTTER_APP/pubspec.yaml" ]]; then
   exit 1
 fi
 
+# Prefer process env; fall back to Pastor-AI-main/.env (gitignored).
+if [[ -z "${GOOGLE_CLIENT_ID:-}" && -f "$ROOT/.env" ]]; then
+  # shellcheck disable=SC1091
+  set -a
+  # Only load GOOGLE_CLIENT_ID from .env (ignore unrelated keys).
+  GOOGLE_CLIENT_ID="$(grep -E '^GOOGLE_CLIENT_ID=' "$ROOT/.env" | head -n1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+  set +a
+  export GOOGLE_CLIENT_ID
+fi
+
 DART_DEFINES=(
   --dart-define=USE_MOCK_AUTH=false
   --dart-define=USE_MOCK_PRAYER=true
@@ -49,7 +59,7 @@ DART_DEFINES=(
 
 if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
   DART_DEFINES+=(--dart-define="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
-  echo "==> Including GOOGLE_CLIENT_ID for Google Sign-In"
+  echo "==> Including GOOGLE_CLIENT_ID for Google Sign-In (len=${#GOOGLE_CLIENT_ID})"
 else
   echo "==> WARNING: GOOGLE_CLIENT_ID unset; Google Sign-In button will report unconfigured."
 fi
