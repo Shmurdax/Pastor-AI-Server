@@ -4,8 +4,10 @@ django-cors-headers>=4.0
 google-auth>=2.0
 requests>=2.31
 langchain-huggingface
-langchain-chroma
+langchain-qdrant
+qdrant-client
 langchain-ollama
 langchain-classic
 langchain-core
 langchain-community
+langchain-text-splitters

@@ -4,14 +4,15 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharac
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
-# === CONFIG (Updated for Linux/Docker) ===
-# Inside the Docker container, the app is usually at /app
-DATA_DIR = "./converted_markdown"
-DB_DIR = "./qdrant_brain_db"
+# === CONFIG ===
+DATA_DIR = os.environ.get("SERMON_MARKDOWN_DIR", "./converted_markdown")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
+QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "sermon_brain")
+
 
 def run_ingestion():
     # 1. Load all Markdown files
-    print("--- 📂 Loading Files from Linux Directory ---")
+    print("--- 📂 Loading Files ---")
     if not os.path.exists(DATA_DIR):
         print(f"❌ Error: The directory {DATA_DIR} does not exist!")
         return
@@ -60,28 +61,19 @@ def run_ingestion():
             split.metadata["source"] = file_name
             all_chunks.append(split)
 
-    # 4. Create the Vector Database
-    print(f"--- 🧠 Creating Vector DB with {len(all_chunks)} chunks ---")
-    # This runs on your 1900X CPU threads
+    # 4. Create / refresh the Qdrant collection
+    print(f"--- 🧠 Writing {len(all_chunks)} chunks to Qdrant ({QDRANT_URL}/{QDRANT_COLLECTION}) ---")
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-
-# This used to be chroma logic keep it here until we have completly swapped to qdrant
-#    vector_db = Chroma.from_documents(
-#        documents=all_chunks,
-#        embedding=embeddings,
-#        persist_directory=DB_DIR
-#    )
-
-    vectorstore = QdrantVectorStore.from_documents(
+    QdrantVectorStore.from_documents(
         documents=all_chunks,
         embedding=embeddings,
-        url="http://localhost:6333",
-        collection_name="sermon_brain"
+        url=QDRANT_URL,
+        collection_name=QDRANT_COLLECTION,
     )
 
-    print(f"✅ DONE! Your 'Sermon Brain' is ready at: {DB_DIR}")
+    print(f"✅ DONE! Sermon brain is in Qdrant collection '{QDRANT_COLLECTION}'.")
+
 
 if __name__ == "__main__":
     run_ingestion()
-
