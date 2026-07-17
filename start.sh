@@ -158,6 +158,7 @@ screen -dmS django bash -c "
   export POSTGRES_HOST='${POSTGRES_HOST:-127.0.0.1}' &&
   export POSTGRES_PORT='${POSTGRES_PORT:-5432}' &&
   export PUBLIC_API_KEY='${PUBLIC_API_KEY:-}' &&
+  export GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' &&
   export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
   export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
   export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&

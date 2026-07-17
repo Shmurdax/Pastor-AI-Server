@@ -1,23 +1,19 @@
 import os
-from rest_framework.views import APIView
+import sys
+
+from rest_framework import permissions, status
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.views import APIView
+
 from .models import PrayerRequest
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
-from langchain_ollama import ChatOllama
-from langchain_classic.chains.retrieval import create_retrieval_chain
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
 
 
 # --- GLOBAL STORE FOR SESSIONS (This is fine here) ---
 store = {}
 
 def get_session_history(session_id: str):
+    from langchain_community.chat_message_histories import ChatMessageHistory
+
     if session_id not in store:
         store[session_id] = ChatMessageHistory()
     return store[session_id]
@@ -30,11 +26,20 @@ _conversational_rag_chain = None
 def get_rag_chain():
     global _conversational_rag_chain
     if _conversational_rag_chain is None:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_chroma import Chroma
+        from langchain_ollama import ChatOllama
+        from langchain_classic.chains.retrieval import create_retrieval_chain
+        from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+        from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
+        from langchain_core.runnables.history import RunnableWithMessageHistory
+
         print("DEBUG: Initializing AI Brain for the first time...")
-        
+
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         vector_db = Chroma(persist_directory="./sermon_brain_db", embedding_function=embeddings)
-        
+
         # Verify database is not empty
         count = vector_db._collection.count()
         print(f"DEBUG: Items in vector store: {count}")
@@ -91,31 +96,32 @@ def get_rag_chain():
 
 # --- 5. THE API VIEW ---
 class ChatAPI(APIView):
+    # Left open so guests can keep chatting without an account.
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request):
         # CHANGE "prompt" TO "query"
-        user_query = request.data.get("query") 
+        user_query = request.data.get("query")
         session_id = request.data.get("session_id", "default_session")
-        
+
         # Add this tiny safety check to prevent the 500 crash in the future
         if not user_query:
             return Response({"error": "No query provided"}, status=400)
-            
+
         brain = get_rag_chain()
-        
-        # ... rest of your code
-        
+
         response = brain.invoke(
             {"input": user_query},
             config={"configurable": {"session_id": session_id}}
         )
-        
+
         sources = []
         # 'context' comes from the retrieval chain
         for doc in response.get("context", []):
             name = os.path.basename(doc.metadata.get("source", "Unknown Sermon"))
             if name not in sources:
                 sources.append(name)
-        
+
         return Response({
             "answer": response["answer"],
             "sources": sources
@@ -124,6 +130,8 @@ class ChatAPI(APIView):
 
 class PrayerRequestAPI(APIView):
     """POST /api/prayer-requests/ — accepts prayer form submissions from Flutter."""
+
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         prayer_text = (request.data.get('prayer_text') or '').strip()
@@ -162,12 +170,17 @@ class PrayerRequestAPI(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-    
-# This forces Django to run the check as soon as the file is loaded
-try:
-    print("--- SERVER STARTUP DATABASE CHECK ---")
-    check_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-    check_db = Chroma(persist_directory="./sermon_brain_db", embedding_function=check_embeddings)
-    print(f"SUCCESS: Found {check_db._collection.count()} sermons in the database.")
-except Exception as e:
-    print(f"ERROR DURING STARTUP: {e}")
+
+
+# Skip heavy RAG startup work during `manage.py test` / migrations.
+if "test" not in sys.argv and "migrate" not in sys.argv:
+    try:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_chroma import Chroma
+
+        print("--- SERVER STARTUP DATABASE CHECK ---")
+        check_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        check_db = Chroma(persist_directory="./sermon_brain_db", embedding_function=check_embeddings)
+        print(f"SUCCESS: Found {check_db._collection.count()} sermons in the database.")
+    except Exception as e:
+        print(f"ERROR DURING STARTUP: {e}")

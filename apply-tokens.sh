@@ -65,6 +65,7 @@ upsert TUNNEL "${TUNNEL:-}"
 upsert DJANGO_SECRET_KEY "${DJANGO_SECRET_KEY:-}"
 upsert POSTGRES_PASSWORD "${POSTGRES_PASSWORD:-}"
 upsert PUBLIC_API_KEY "${PUBLIC_API_KEY:-}"
+upsert GOOGLE_CLIENT_ID "${GOOGLE_CLIENT_ID:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then
