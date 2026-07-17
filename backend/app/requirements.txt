@@ -9,3 +9,6 @@ langchain-ollama
 langchain-classic
 langchain-core
 langchain-community
+langchain-qdrant
+qdrant-client
+sentence-transformers
