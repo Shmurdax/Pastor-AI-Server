@@ -6,13 +6,27 @@ from django.conf import settings
 import os
 
 # 1. The API import (Make sure 'api' has an __init__.py file)
-from api.views import ChatAPI, PrayerRequestAPI 
+from api.auth_views import (
+    GoogleAuthView,
+    LoginView,
+    LogoutView,
+    MeView,
+    RegisterView,
+)
+from api.views import ChatAPI, PrayerRequestAPI
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/chat/', ChatAPI.as_view()),
     path('api/prayer-requests/', PrayerRequestAPI.as_view()),
-    
+
+    # Auth endpoints — match Flutter's AuthService exactly
+    path('api/auth/register/', RegisterView.as_view()),
+    path('api/auth/login/', LoginView.as_view()),
+    path('api/auth/google/', GoogleAuthView.as_view()),
+    path('api/auth/me/', MeView.as_view()),
+    path('api/auth/logout/', LogoutView.as_view()),
+
     # 2. Redirect root requests to the 'static' folder
     # This specifically catches the service worker and manifest that Flutter looks for at /
     re_path(r'^(?P<path>(flutter_service_worker.js|manifest.json|flutter.js.map))$', serve, {

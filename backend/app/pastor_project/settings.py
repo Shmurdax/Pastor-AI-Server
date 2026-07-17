@@ -50,11 +50,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # These are the ones we added
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
-    'api', 
+    'api.apps.ApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -141,3 +142,41 @@ STATICFILES_DIRS = [
 
 # Allow Flutter to connect during development
 CORS_ALLOW_ALL_ORIGINS = True
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        # TokenAuthentication lives in rest_framework.authentication (not
+        # rest_framework.authtoken.authentication — that module does not exist).
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    # No DEFAULT_PERMISSION_CLASSES set on purpose — ChatAPI stays open to
+    # guests, and the auth views set permission_classes explicitly.
+}
+
+# Google Sign-In popups need to hand control back to this window. Django's
+# default COOP ("same-origin") blocks that and can leave GIS stuck on
+# accounts.google.com/gsi/transform after account selection.
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"
+
+
+def _load_dotenv_value(key: str) -> str:
+    env_path = BASE_DIR / ".env"
+    if not env_path.is_file():
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() == key:
+                return v.strip().strip("'").strip('"')
+    except OSError:
+        return ""
+    return ""
+
+
+# Google Sign-In (Flutter posts a Google ID token to /api/auth/google/).
+# Must match the OAuth 2.0 Web client ID used when building the Flutter web app.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "") or _load_dotenv_value("GOOGLE_CLIENT_ID")

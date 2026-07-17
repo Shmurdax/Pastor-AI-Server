@@ -28,8 +28,9 @@ class ApiClient {
         if (json) 'Content-Type': 'application/json',
         'Accept': 'application/json',
         if (_apiKey.isNotEmpty) 'X-API-Key': _apiKey,
+        // DRF TokenAuthentication expects "Token <key>", not Bearer.
         if (_accessToken != null && _accessToken!.isNotEmpty)
-          'Authorization': 'Bearer $_accessToken',
+          'Authorization': 'Token $_accessToken',
       };
 
   Future<Map<String, dynamic>> chat({
