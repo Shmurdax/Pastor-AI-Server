@@ -8,6 +8,10 @@ from rest_framework.views import APIView
 from .models import PrayerRequest
 
 
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
+QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "sermon_brain")
+
+
 # --- GLOBAL STORE FOR SESSIONS (This is fine here) ---
 store = {}
 
@@ -27,22 +31,30 @@ def get_rag_chain():
     global _conversational_rag_chain
     if _conversational_rag_chain is None:
         from langchain_huggingface import HuggingFaceEmbeddings
-        from langchain_chroma import Chroma
+        from langchain_qdrant import QdrantVectorStore
         from langchain_ollama import ChatOllama
         from langchain_classic.chains.retrieval import create_retrieval_chain
         from langchain_classic.chains.combine_documents import create_stuff_documents_chain
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
         from langchain_core.runnables.history import RunnableWithMessageHistory
+        from qdrant_client import QdrantClient
 
         print("DEBUG: Initializing AI Brain for the first time...")
 
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        vector_db = Chroma(persist_directory="./sermon_brain_db", embedding_function=embeddings)
+        client = QdrantClient(url=QDRANT_URL)
+        vector_db = QdrantVectorStore(
+            client=client,
+            collection_name=QDRANT_COLLECTION,
+            embedding=embeddings,
+        )
 
-        # Verify database is not empty
-        count = vector_db._collection.count()
-        print(f"DEBUG: Items in vector store: {count}")
+        try:
+            count = client.get_collection(QDRANT_COLLECTION).points_count
+            print(f"DEBUG: Items in Qdrant collection '{QDRANT_COLLECTION}': {count}")
+        except Exception as exc:
+            print(f"DEBUG: Could not read Qdrant collection count: {exc}")
 
         retriever = vector_db.as_retriever(search_kwargs={"k": 5})
         llm = ChatOllama(model="llama3.2", temperature=0)
@@ -175,12 +187,14 @@ class PrayerRequestAPI(APIView):
 # Skip heavy RAG startup work during `manage.py test` / migrations.
 if "test" not in sys.argv and "migrate" not in sys.argv:
     try:
-        from langchain_huggingface import HuggingFaceEmbeddings
-        from langchain_chroma import Chroma
+        from qdrant_client import QdrantClient
 
         print("--- SERVER STARTUP DATABASE CHECK ---")
-        check_embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        check_db = Chroma(persist_directory="./sermon_brain_db", embedding_function=check_embeddings)
-        print(f"SUCCESS: Found {check_db._collection.count()} sermons in the database.")
+        client = QdrantClient(url=QDRANT_URL)
+        info = client.get_collection(QDRANT_COLLECTION)
+        print(
+            f"SUCCESS: Found {info.points_count} points in Qdrant "
+            f"collection '{QDRANT_COLLECTION}' at {QDRANT_URL}."
+        )
     except Exception as e:
         print(f"ERROR DURING STARTUP: {e}")

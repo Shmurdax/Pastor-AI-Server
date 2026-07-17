@@ -142,6 +142,7 @@ screen -dmS django bash -c "
   cd '${APP_DIR}' &&
   export FRONTEND_BUILD_DIR='${FRONTEND_BUILD_DIR:-$FRONTEND_DIR}' &&
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}' &&
+  export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&
   export DJANGO_DEBUG='${DJANGO_DEBUG:-true}' &&
   export DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' &&
