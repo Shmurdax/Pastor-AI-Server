@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/models/prayer_request.dart';
+
 import 'api_client.dart';
 
 class ApiService {
@@ -38,6 +40,24 @@ class ApiService {
       email: email,
       phone: phone,
       isAnonymous: isAnonymous,
+    );
+  }
+
+  Future<List<PrayerRequestItem>> listPrayerRequests({bool? followedUp}) {
+    return _apiClient.listPrayerRequests(followedUp: followedUp);
+  }
+
+  Future<PrayerRequestItem> updatePrayerRequest(
+    int id, {
+    bool? followedUp,
+    String? pastorNotes,
+    DateTime? contactedAt,
+  }) {
+    return _apiClient.updatePrayerRequest(
+      id,
+      followedUp: followedUp,
+      pastorNotes: pastorNotes,
+      contactedAt: contactedAt,
     );
   }
 }

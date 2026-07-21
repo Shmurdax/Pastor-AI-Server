@@ -13,18 +13,21 @@ class AuthUser {
     required this.email,
     required this.name,
     this.avatarUrl,
+    this.isStaff = false,
   });
 
   final String id;
   final String email;
   final String name;
   final String? avatarUrl;
+  final bool isStaff;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: '${json['id']}',
         email: json['email'] as String? ?? '',
         name: json['name'] as String? ?? '',
         avatarUrl: json['avatar_url'] as String?,
+        isStaff: json['is_staff'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +35,7 @@ class AuthUser {
         'email': email,
         'name': name,
         if (avatarUrl != null) 'avatar_url': avatarUrl,
+        'is_staff': isStaff,
       };
 }
 

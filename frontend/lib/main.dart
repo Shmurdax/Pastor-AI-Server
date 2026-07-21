@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/google_auth_button.dart';
@@ -920,6 +921,14 @@ Future<void> _launchSermonDoc(String sermonName) async {
     }
   }
 
+  void _openPrayerInbox() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PrayerInboxScreen(apiService: _apiService),
+      ),
+    );
+  }
+
   void _showProfileSheet() {
     final auth = context.read<AuthController>();
     final user = auth.user;
@@ -951,6 +960,25 @@ Future<void> _launchSermonDoc(String sermonName) async {
               subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
             ),
             const SizedBox(height: 12),
+            if (user.isStaff) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _openPrayerInbox();
+                  },
+                  icon: const Icon(Icons.volunteer_activism_outlined),
+                  label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _navy,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (kUseMockAuth)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -1114,6 +1142,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ),
         actions: [
+          if (auth.isAuthenticated && auth.user!.isStaff)
+            Padding(
+              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              child: IconButton(
+                tooltip: 'Prayer inbox',
+                onPressed: _openPrayerInbox,
+                icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
+              ),
+            ),
           if (auth.isAuthenticated)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),

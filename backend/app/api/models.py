@@ -28,6 +28,9 @@ class PrayerRequest(models.Model):
     is_anonymous = models.BooleanField(default=False)
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
+    followed_up = models.BooleanField(default=False)
+    pastor_notes = models.TextField(blank=True)
+    contacted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']

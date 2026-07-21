@@ -13,12 +13,13 @@ from api.auth_views import (
     MeView,
     RegisterView,
 )
-from api.views import ChatAPI, PrayerRequestAPI
+from api.views import ChatAPI, PrayerRequestDetailAPI, PrayerRequestListCreateAPI
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/chat/', ChatAPI.as_view()),
-    path('api/prayer-requests/', PrayerRequestAPI.as_view()),
+    path('api/prayer-requests/', PrayerRequestListCreateAPI.as_view()),
+    path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view()),
 
     # Auth endpoints — match Flutter's AuthService exactly
     path('api/auth/register/', RegisterView.as_view()),

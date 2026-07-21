@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:http/http.dart' as http;
 
 /// When false, POSTs to Django `POST /api/prayer-requests/` with body:
 /// `{ name, email, phone, prayer_text, is_anonymous }` -> `{ success, id, message }`
-const kUseMockPrayer = bool.fromEnvironment('USE_MOCK_PRAYER', defaultValue: true);
+const kUseMockPrayer = bool.fromEnvironment('USE_MOCK_PRAYER', defaultValue: false);
 
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
@@ -112,6 +113,39 @@ class ApiClient {
     );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<List<PrayerRequestItem>> listPrayerRequests({bool? followedUp}) async {
+    final qp = <String, String>{};
+    if (followedUp != null) qp['followed_up'] = followedUp ? 'true' : 'false';
+    final uri = Uri.parse(_resolveUrl('/api/prayer-requests/')).replace(queryParameters: qp.isEmpty ? null : qp);
+    final res = await _client.get(uri, headers: _headers());
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = body['results'] as List<dynamic>? ?? [];
+    return results
+        .map((e) => PrayerRequestItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<PrayerRequestItem> updatePrayerRequest(
+    int id, {
+    bool? followedUp,
+    String? pastorNotes,
+    DateTime? contactedAt,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (followedUp != null) payload['followed_up'] = followedUp;
+    if (pastorNotes != null) payload['pastor_notes'] = pastorNotes;
+    if (contactedAt != null) payload['contacted_at'] = contactedAt.toUtc().toIso8601String();
+
+    final res = await _client.patch(
+      Uri.parse(_resolveUrl('/api/prayer-requests/$id/')),
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
+    );
+    _ensureOk(res);
+    return PrayerRequestItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   void _ensureOk(http.Response res) {

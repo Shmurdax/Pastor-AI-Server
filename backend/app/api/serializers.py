@@ -2,17 +2,19 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
+from .models import PrayerRequest
+
 
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
-    { id, email, name, avatar_url }
+    { id, email, name, avatar_url, is_staff }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "name", "avatar_url"]
+        fields = ["id", "email", "name", "avatar_url", "is_staff"]
 
     def get_name(self, obj):
         full_name = obj.get_full_name()
@@ -63,3 +65,54 @@ class LoginSerializer(serializers.Serializer):
 class GoogleAuthSerializer(serializers.Serializer):
     """Flutter AuthService.signInWithGoogle() posts { "id_token": "..." }."""
     id_token = serializers.CharField()
+
+
+class PrayerRequestSerializer(serializers.ModelSerializer):
+    submitter_user_email = serializers.SerializerMethodField()
+    submitter_user_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrayerRequest
+        fields = [
+            "id",
+            "name",
+            "email",
+            "phone",
+            "prayer_text",
+            "is_anonymous",
+            "created_at",
+            "followed_up",
+            "pastor_notes",
+            "contacted_at",
+            "submitter_user_email",
+            "submitter_user_name",
+        ]
+        read_only_fields = [
+            "id",
+            "name",
+            "email",
+            "phone",
+            "prayer_text",
+            "is_anonymous",
+            "created_at",
+            "followed_up",
+            "pastor_notes",
+            "contacted_at",
+        ]
+
+    def get_submitter_user_email(self, obj):
+        if obj.user_id is None:
+            return None
+        return obj.user.email
+
+    def get_submitter_user_name(self, obj):
+        if obj.user_id is None:
+            return None
+        full = obj.user.get_full_name()
+        return full or obj.user.username
+
+
+class PrayerRequestStaffUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrayerRequest
+        fields = ["followed_up", "pastor_notes", "contacted_at"]

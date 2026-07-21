@@ -70,3 +70,81 @@ class GoogleAuthViewTests(TestCase):
     def test_unconfigured_server_returns_503(self):
         res = self.client.post(self.url, {"id_token": "x"}, format="json")
         self.assertEqual(res.status_code, 503)
+
+
+class PrayerRequestAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.list_url = "/api/prayer-requests/"
+        self.staff = User.objects.create_user(
+            username="pastor@church.org",
+            email="pastor@church.org",
+            password="StaffPass123!",
+            is_staff=True,
+        )
+        self.staff_token = Token.objects.create(user=self.staff).key
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+        )
+        self.member_token = Token.objects.create(user=self.member).key
+
+    def test_public_can_submit_prayer_request(self):
+        res = self.client.post(
+            self.list_url,
+            {
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "phone": "555-0100",
+                "prayer_text": "Please pray for my family during this season.",
+                "is_anonymous": False,
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(res.data["success"])
+
+    def test_staff_can_list_prayer_requests(self):
+        self.client.post(
+            self.list_url,
+            {
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "prayer_text": "Please pray for healing and peace.",
+                "is_anonymous": False,
+            },
+            format="json",
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.get(self.list_url)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data["results"]), 1)
+        self.assertIn("followed_up", res.data["results"][0])
+
+    def test_non_staff_cannot_list_prayer_requests(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        res = self.client.get(self.list_url)
+        self.assertEqual(res.status_code, 403)
+
+    def test_staff_can_patch_follow_up_fields(self):
+        create = self.client.post(
+            self.list_url,
+            {
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "prayer_text": "Please pray for wisdom in a hard decision.",
+                "is_anonymous": False,
+            },
+            format="json",
+        )
+        prayer_id = create.data["id"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.patch(
+            f"{self.list_url}{prayer_id}/",
+            {"followed_up": True, "pastor_notes": "Called and prayed together."},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["followed_up"])
+        self.assertEqual(res.data["pastor_notes"], "Called and prayed together.")

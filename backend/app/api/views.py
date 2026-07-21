@@ -1,11 +1,13 @@
 import os
 import sys
 
+from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import PrayerRequest
+from .serializers import PrayerRequestSerializer, PrayerRequestStaffUpdateSerializer
 
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
@@ -140,10 +142,22 @@ class ChatAPI(APIView):
         })
 
 
-class PrayerRequestAPI(APIView):
-    """POST /api/prayer-requests/ — accepts prayer form submissions from Flutter."""
+class PrayerRequestListCreateAPI(APIView):
+    """GET /api/prayer-requests/ — staff inbox list. POST — public submission."""
 
-    permission_classes = [permissions.AllowAny]
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]
+
+    def get(self, request):
+        qs = PrayerRequest.objects.all()
+        followed_up = request.query_params.get('followed_up')
+        if followed_up is not None:
+            flag = followed_up.lower() in ('true', '1', 'yes')
+            qs = qs.filter(followed_up=flag)
+        data = PrayerRequestSerializer(qs, many=True).data
+        return Response({'results': data})
 
     def post(self, request):
         prayer_text = (request.data.get('prayer_text') or '').strip()
@@ -182,6 +196,27 @@ class PrayerRequestAPI(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class PrayerRequestDetailAPI(APIView):
+    """GET/PATCH /api/prayer-requests/<id>/ — staff view and follow-up updates."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, pk):
+        prayer = get_object_or_404(PrayerRequest, pk=pk)
+        return Response(PrayerRequestSerializer(prayer).data)
+
+    def patch(self, request, pk):
+        prayer = get_object_or_404(PrayerRequest, pk=pk)
+        serializer = PrayerRequestStaffUpdateSerializer(
+            prayer,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(PrayerRequestSerializer(prayer).data)
 
 
 # Skip heavy RAG startup work during `manage.py test` / migrations.
