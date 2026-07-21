@@ -208,16 +208,33 @@ case "$TUNNEL" in
   *)
     command -v cloudflared >/dev/null || die "cloudflared not installed"
     stop_screen cloudflared
+    # Kill any leftover quick/named tunnel process so we don't keep an old URL.
+    pkill -f 'cloudflared tunnel' 2>/dev/null || true
     : > "$LOG_DIR/cloudflared.log"
-    screen -dmS cloudflared bash -c \
-      "cloudflared tunnel --url http://127.0.0.1:${DJANGO_PORT} >> '${LOG_DIR}/cloudflared.log' 2>&1"
-    sleep 8
-    URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/cloudflared.log" | head -1 || true)"
-    if [[ -n "$URL" ]]; then
-      echo "$URL" > "$WS/public_url.txt"
-      log "Public URL (Cloudflare): $URL"
+    TOKEN_FILE="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-$WS/.cloudflared/tunnel.token}"
+    PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-christianaiapophatictestdomain.com}"
+    if [[ -f "$TOKEN_FILE" ]]; then
+      # Named Cloudflare tunnel (custom domain) — preferred over quick tunnels.
+      screen -dmS cloudflared bash -c \
+        "cloudflared tunnel --no-autoupdate run --token \"\$(cat '${TOKEN_FILE}')\" >> '${LOG_DIR}/cloudflared.log' 2>&1"
+      echo "https://${PUBLIC_DOMAIN}" > "$WS/public_url.txt"
+      sleep 5
+      if pgrep -f 'cloudflared tunnel' >/dev/null 2>&1; then
+        log "Public URL (Cloudflare named tunnel): https://${PUBLIC_DOMAIN}"
+      else
+        warn "Named tunnel failed to start — see ${LOG_DIR}/cloudflared.log"
+      fi
     else
-      warn "Cloudflare URL not ready — check ${LOG_DIR}/cloudflared.log"
+      screen -dmS cloudflared bash -c \
+        "cloudflared tunnel --url http://127.0.0.1:${DJANGO_PORT} >> '${LOG_DIR}/cloudflared.log' 2>&1"
+      sleep 8
+      URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/cloudflared.log" | head -1 || true)"
+      if [[ -n "$URL" ]]; then
+        echo "$URL" > "$WS/public_url.txt"
+        log "Public URL (Cloudflare quick tunnel): $URL"
+      else
+        warn "Cloudflare URL not ready — check ${LOG_DIR}/cloudflared.log"
+      fi
     fi
     ;;
 esac
