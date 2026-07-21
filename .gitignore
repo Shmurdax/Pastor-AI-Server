@@ -24,3 +24,11 @@ public_url.txt
 # Large / local-only
 Pastor Don Documents/
 unsloth_compiled_cache/
+
+backend/app/converted_markdown/
+backend/app/ai_db
+backend/app/db.sqlite3
+backend/app/staticfiles/
+frontend/build/**
+!frontend/build/web/
+!frontend/build/web/**

@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("api", "0002_profile"),
+        ("core", "0006_prayerrequest"),
     ]
 
     operations = [

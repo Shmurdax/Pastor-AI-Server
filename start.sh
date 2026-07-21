@@ -10,6 +10,17 @@ APP_DIR="$WS/backend/app"
 VENV_DIR="$WS/venv"
 FRONTEND_DIR="$WS/frontend"
 
+resolve_frontend_build_dir() {
+  local root="${1:-$FRONTEND_DIR}"
+  if [[ -f "$root/build/web/index.html" ]]; then
+    echo "$root/build/web"
+  elif [[ -f "$root/index.html" ]]; then
+    echo "$root"
+  else
+    echo "$root"
+  fi
+}
+
 [[ -f "$CONFIG_ENV" ]] || { echo "Missing $CONFIG_ENV — run install.sh first"; exit 1; }
 # shellcheck disable=SC1090
 source "$CONFIG_ENV"
@@ -136,11 +147,13 @@ fi
 
 # Django
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
+FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
+log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
 screen -dmS django bash -c "
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
-  export FRONTEND_BUILD_DIR='${FRONTEND_BUILD_DIR:-$FRONTEND_DIR}' &&
+  export FRONTEND_BUILD_DIR='$(resolve_frontend_build_dir "$FRONTEND_DIR")' &&
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}' &&
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&

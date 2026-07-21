@@ -1,0 +1,559 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .ingestion-dropzone {
+    border: 2px dashed #6c757d;
+    border-radius: 8px;
+    padding: 22px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .ingestion-dropzone:hover {
+    border-color: #417690;
+  }
+
+  .ingestion-dropzone.is-dragover {
+    border-color: #417690;
+    background-color: rgba(65, 118, 144, 0.08);
+  }
+
+  .ingestion-file-list {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #666;
+    word-break: break-word;
+  }
+
+  .ingestion-file-error {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #ba2121;
+    display: none;
+  }
+
+  .ingestion-progress-wrapper {
+    margin-top: 10px;
+    display: none;
+  }
+
+  .ingestion-progress-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(108, 117, 125, 0.25);
+    overflow: hidden;
+  }
+
+  .ingestion-progress-bar {
+    width: 0%;
+    height: 100%;
+    border-radius: 999px;
+    background: #417690;
+    transition: width 0.2s ease;
+  }
+
+  .ingestion-progress-wrapper.is-indeterminate .ingestion-progress-bar {
+    width: 35%;
+    transform: translateX(-120%);
+    animation: ingestion-indeterminate 1.2s ease-in-out infinite;
+  }
+
+  .ingestion-progress-text {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #666;
+  }
+
+  @keyframes ingestion-indeterminate {
+    0% {
+      transform: translateX(-120%);
+    }
+    100% {
+      transform: translateX(360%);
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 760px;">
+  <h1>Document Ingestion</h1>
+  <p>Upload DOCX and PDF files. Each file is stored under <code>uploads/admin_ingestion</code> as a PDF (DOCX is converted with LibreOffice), then text is extracted, normalized, split into chunks, and upserted into Qdrant.</p>
+  <p><a href="{% url 'admin:core_ingested_documents' %}">View all ingested PDF documents</a></p>
+
+  <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
+    {% csrf_token %}
+    <div style="margin-bottom: 12px;">
+      <input id="documents-input" type="file" name="documents" multiple accept=".docx,.pdf" required style="display: none;" />
+      <input id="documents-folder-input" type="file" webkitdirectory mozdirectory directory multiple style="display: none;" />
+      <div id="documents-dropzone" class="ingestion-dropzone" role="button" tabindex="0" aria-label="Upload documents">
+        <strong>Drag and drop DOCX/PDF files here</strong><br>
+        <span>or click this area to browse individual files</span><br>
+        <span style="display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px;">
+          <button id="documents-files-button" type="button">Select files…</button>
+          <button id="documents-folder-button" type="button">Select folder…</button>
+        </span>
+      </div>
+      <div id="documents-file-list" class="ingestion-file-list">No files selected.</div>
+      <div id="documents-file-error" class="ingestion-file-error"></div>
+      <div id="documents-progress-wrapper" class="ingestion-progress-wrapper" aria-live="polite">
+        <div class="ingestion-progress-track">
+          <div class="ingestion-progress-bar"></div>
+        </div>
+        <div id="documents-progress-text" class="ingestion-progress-text">
+          Upload in progress. Please wait...
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <label>
+        <input type="checkbox" name="replace_existing_sources" />
+        Replace existing source if filename already exists (deletes old source chunks before re-ingest)
+      </label>
+    </div>
+    <button type="submit" class="default">Run Incremental Ingestion</button>
+  </form>
+
+  <h2 style="margin-top: 24px;">Recent Ingestion Jobs</h2>
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Job</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Files</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Skipped</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Failed Files</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Chunks Added</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in latest_jobs %}
+      <tr>
+        <td style="padding: 6px 0;"><a href="{% url 'admin:core_ingestionjob_change' job.id %}">#{{ job.id }}</a></td>
+        <td style="padding: 6px 0;">{{ job.status }}</td>
+        <td style="padding: 6px 0;">{{ job.files_processed }}/{{ job.files_received }}</td>
+        <td style="padding: 6px 0;">{{ job.files_skipped_as_duplicates }}</td>
+        <td style="padding: 6px 0;">
+          {% if job.files_failed %}
+            <a href="{% url 'admin:core_ingestionjobfilefailure_changelist' %}?job__id__exact={{ job.id }}">{{ job.files_failed }}</a>
+          {% else %}
+            0
+          {% endif %}
+        </td>
+        <td style="padding: 6px 0;">{{ job.chunks_created }}</td>
+        <td style="padding: 6px 0;">{{ job.created_at }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="7" style="padding: 6px 0;">No jobs yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  (function () {
+    var input = document.getElementById("documents-input");
+    var folderInput = document.getElementById("documents-folder-input");
+    var filesButton = document.getElementById("documents-files-button");
+    var folderButton = document.getElementById("documents-folder-button");
+    var dropzone = document.getElementById("documents-dropzone");
+    var fileList = document.getElementById("documents-file-list");
+    var fileError = document.getElementById("documents-file-error");
+    var progressWrapper = document.getElementById("documents-progress-wrapper");
+    var progressBar = progressWrapper && progressWrapper.querySelector(".ingestion-progress-bar");
+    var progressText = document.getElementById("documents-progress-text");
+    var form = input && input.form;
+    var submitButton = form && form.querySelector('button[type="submit"]');
+    var allowedExtensions = [".pdf", ".docx"];
+    var MAX_FILES_PER_BATCH = 100;
+    var MAX_BATCH_BYTES = 25 * 1024 * 1024; // 25 MB payload target per request
+    var dataTransfer = new DataTransfer();
+
+    if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressWrapper || !progressBar || !progressText || !form) {
+      return;
+    }
+
+    function clearError() {
+      fileError.textContent = "";
+      fileError.style.display = "none";
+    }
+
+    function showError(message) {
+      fileError.textContent = message;
+      fileError.style.display = "block";
+    }
+
+    function showProgress(message) {
+      progressText.textContent = message;
+      progressWrapper.style.display = "block";
+    }
+
+    function hideProgress() {
+      progressWrapper.style.display = "none";
+    }
+
+    function setProgressPercentage(percentage) {
+      var bounded = Math.max(0, Math.min(100, percentage));
+      progressWrapper.classList.remove("is-indeterminate");
+      progressBar.style.transform = "none";
+      progressBar.style.animation = "none";
+      progressBar.style.width = bounded + "%";
+      progressText.textContent = "Upload progress: " + bounded + "%";
+      progressWrapper.style.display = "block";
+    }
+
+    function setProcessingState() {
+      progressWrapper.classList.add("is-indeterminate");
+      progressBar.style.width = "35%";
+      progressBar.style.animation = "";
+      progressBar.style.transform = "";
+      progressText.textContent = "Upload complete. Processing files on server...";
+      progressWrapper.style.display = "block";
+    }
+
+    function setBatchProgress(currentBatch, totalBatches, phaseText) {
+      progressWrapper.classList.remove("is-indeterminate");
+      progressBar.style.transform = "none";
+      progressBar.style.animation = "none";
+      var ratio = totalBatches > 0 ? (currentBatch / totalBatches) : 0;
+      var percentage = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+      progressBar.style.width = percentage + "%";
+      progressText.textContent = phaseText + " (" + currentBatch + "/" + totalBatches + ")";
+      progressWrapper.style.display = "block";
+    }
+
+    function resetSubmitState() {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Run Incremental Ingestion";
+      }
+    }
+
+    function hasAllowedExtension(fileName) {
+      var lowerName = fileName.toLowerCase();
+      for (var i = 0; i < allowedExtensions.length; i += 1) {
+        if (lowerName.endsWith(allowedExtensions[i])) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function validateAndApplyFiles(files) {
+      dataTransfer = new DataTransfer();
+      clearError();
+
+      var invalidNames = [];
+      for (var i = 0; i < files.length; i += 1) {
+        if (hasAllowedExtension(files[i].name)) {
+          dataTransfer.items.add(files[i]);
+        } else {
+          invalidNames.push(files[i].name);
+        }
+      }
+
+      if (invalidNames.length > 0) {
+        showError("Only DOCX and PDF files are allowed. Ignored: " + invalidNames.join(", "));
+      }
+
+      input.files = dataTransfer.files;
+      setSelectedFiles(input.files);
+    }
+
+    function readEntryFiles(entry) {
+      return new Promise(function (resolve) {
+        if (!entry) {
+          resolve([]);
+          return;
+        }
+
+        if (entry.isFile) {
+          entry.file(
+            function (file) {
+              resolve([file]);
+            },
+            function () {
+              resolve([]);
+            }
+          );
+          return;
+        }
+
+        if (!entry.isDirectory) {
+          resolve([]);
+          return;
+        }
+
+        var reader = entry.createReader();
+        var collectedEntries = [];
+
+        function readAllBatches() {
+          reader.readEntries(
+            function (batch) {
+              if (!batch.length) {
+                Promise.all(
+                  collectedEntries.map(function (childEntry) {
+                    return readEntryFiles(childEntry);
+                  })
+                ).then(function (nestedGroups) {
+                  var flattened = [];
+                  for (var i = 0; i < nestedGroups.length; i += 1) {
+                    flattened = flattened.concat(nestedGroups[i]);
+                  }
+                  resolve(flattened);
+                });
+                return;
+              }
+
+              collectedEntries = collectedEntries.concat(Array.prototype.slice.call(batch));
+              readAllBatches();
+            },
+            function () {
+              resolve([]);
+            }
+          );
+        }
+
+        readAllBatches();
+      });
+    }
+
+    function collectDroppedFiles(items) {
+      if (!items || items.length === 0) {
+        return Promise.resolve([]);
+      }
+
+      var reads = [];
+      for (var i = 0; i < items.length; i += 1) {
+        var item = items[i];
+        if (!item) {
+          continue;
+        }
+
+        if (item.webkitGetAsEntry) {
+          var entry = item.webkitGetAsEntry();
+          if (entry) {
+            reads.push(readEntryFiles(entry));
+            continue;
+          }
+        }
+
+        if (item.getAsFile) {
+          var fallbackFile = item.getAsFile();
+          if (fallbackFile) {
+            reads.push(Promise.resolve([fallbackFile]));
+          }
+        }
+      }
+
+      if (reads.length === 0) {
+        return Promise.resolve([]);
+      }
+
+      return Promise.all(reads).then(function (groups) {
+        var merged = [];
+        for (var i = 0; i < groups.length; i += 1) {
+          merged = merged.concat(groups[i]);
+        }
+        return merged;
+      });
+    }
+
+    function setSelectedFiles(files) {
+      if (!files || files.length === 0) {
+        fileList.textContent = "No files selected.";
+        return;
+      }
+      var names = [];
+      for (var i = 0; i < files.length; i += 1) {
+        names.push(files[i].name);
+      }
+      fileList.textContent = names.length + " file(s) selected: " + names.join(", ");
+    }
+
+    function splitFilesIntoBatches(files) {
+      var normalized = Array.prototype.slice.call(files || []);
+      var batches = [];
+      var currentBatch = [];
+      var currentBytes = 0;
+
+      for (var i = 0; i < normalized.length; i += 1) {
+        var file = normalized[i];
+        var fileSize = file && typeof file.size === "number" ? file.size : 0;
+        var wouldOverflowCount = currentBatch.length >= MAX_FILES_PER_BATCH;
+        var wouldOverflowBytes = currentBatch.length > 0 && (currentBytes + fileSize > MAX_BATCH_BYTES);
+
+        if (wouldOverflowCount || wouldOverflowBytes) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBytes = 0;
+        }
+
+        currentBatch.push(file);
+        currentBytes += fileSize;
+      }
+
+      if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+      }
+      return batches;
+    }
+
+    function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting) {
+      return new Promise(function (resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", form.action || window.location.href, true);
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+
+        xhr.addEventListener("load", function () {
+          if (xhr.status >= 200 && xhr.status < 400) {
+            resolve();
+            return;
+          }
+          reject(new Error("Server returned status " + xhr.status + " on batch " + batchIndex + "."));
+        });
+
+        xhr.addEventListener("error", function () {
+          reject(new Error("Network error during batch " + batchIndex + " upload."));
+        });
+
+        xhr.addEventListener("abort", function () {
+          reject(new Error("Upload aborted during batch " + batchIndex + "."));
+        });
+
+        var formData = new FormData();
+        var csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (csrfInput) {
+          formData.append("csrfmiddlewaretoken", csrfInput.value);
+        }
+        if (replaceExisting) {
+          formData.append("replace_existing_sources", "on");
+        }
+        for (var i = 0; i < batchFiles.length; i += 1) {
+          formData.append("documents", batchFiles[i], batchFiles[i].name);
+        }
+
+        xhr.send(formData);
+      });
+    }
+
+    dropzone.addEventListener("click", function () {
+      input.click();
+    });
+
+    filesButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      input.click();
+    });
+
+    folderButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      folderInput.click();
+    });
+
+    dropzone.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        input.click();
+      }
+    });
+
+    input.addEventListener("change", function () {
+      validateAndApplyFiles(input.files);
+    });
+
+    folderInput.addEventListener("change", function () {
+      validateAndApplyFiles(folderInput.files);
+    });
+
+    ["dragenter", "dragover"].forEach(function (eventName) {
+      dropzone.addEventListener(eventName, function (event) {
+        event.preventDefault();
+        dropzone.classList.add("is-dragover");
+      });
+    });
+
+    ["dragleave", "dragend", "drop"].forEach(function (eventName) {
+      dropzone.addEventListener(eventName, function (event) {
+        event.preventDefault();
+        dropzone.classList.remove("is-dragover");
+      });
+    });
+
+    dropzone.addEventListener("drop", function (event) {
+      var transfer = event.dataTransfer;
+      if (!transfer) {
+        return;
+      }
+
+      if (transfer.items && transfer.items.length > 0) {
+        collectDroppedFiles(transfer.items).then(function (files) {
+          validateAndApplyFiles(files);
+        });
+        return;
+      }
+
+      var files = transfer.files;
+      if (!files || files.length === 0) {
+        return;
+      }
+      validateAndApplyFiles(files);
+    });
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearError();
+
+      if (!input.files || input.files.length === 0) {
+        showError("Please select at least one DOCX or PDF file before running ingestion.");
+        hideProgress();
+        resetSubmitState();
+        return;
+      }
+
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Uploading...";
+      }
+
+      var allFiles = Array.prototype.slice.call(input.files || []);
+      var batches = splitFilesIntoBatches(allFiles);
+      var replaceExisting = !!(form.querySelector('input[name="replace_existing_sources"]') && form.querySelector('input[name="replace_existing_sources"]').checked);
+
+      if (batches.length === 0) {
+        showError("No valid files were selected for upload.");
+        hideProgress();
+        resetSubmitState();
+        return;
+      }
+
+      setBatchProgress(0, batches.length, "Preparing upload batches...");
+
+      (async function () {
+        try {
+          for (var batchIdx = 0; batchIdx < batches.length; batchIdx += 1) {
+            setBatchProgress(batchIdx, batches.length, "Uploading batch");
+            await uploadBatch(batches[batchIdx], batchIdx + 1, batches.length, replaceExisting);
+          }
+          setBatchProgress(batches.length, batches.length, "All batches uploaded. Processing on server...");
+          setProcessingState();
+          window.location.href = form.action || window.location.href;
+        } catch (err) {
+          showError("Upload failed: " + (err && err.message ? err.message : "Please try again."));
+          hideProgress();
+          resetSubmitState();
+        }
+      })();
+    });
+  })();
+</script>
+{% endblock %}

@@ -58,3 +58,16 @@ bash /workspace/pastor-ai/ingest_sermons.sh
 | Tunnel | Cloudflare quick tunnel (default) |
 
 See [RUNPOD.md](RUNPOD.md) for troubleshooting (ghost VRAM, ports, tokens).
+
+
+## Frontend (Flutter)
+
+Source lives in `frontend/`. Production Django serves the **web build**:
+
+```bash
+cd frontend && flutter build web --release --dart-define=API_BASE_URL=
+# Optional: --dart-define=USE_MOCK_AUTH=false --dart-define=USE_MOCK_PRAYER=false
+```
+
+`start.sh` / `install.sh` automatically prefer `frontend/build/web` when present.
+Same-origin API calls (`API_BASE_URL` empty) talk to Django on the ngrok/public URL.

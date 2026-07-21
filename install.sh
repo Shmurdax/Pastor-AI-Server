@@ -52,6 +52,17 @@ fi
 WS="${WORKSPACE_ROOT:-/workspace/pastor-ai}"
 BACKEND_DIR="$WS/backend"
 FRONTEND_DIR="$WS/frontend"
+
+resolve_frontend_build_dir() {
+  local root="${1:-$FRONTEND_DIR}"
+  if [[ -f "$root/build/web/index.html" ]]; then
+    echo "$root/build/web"
+  elif [[ -f "$root/index.html" ]]; then
+    echo "$root"
+  else
+    echo "$root"
+  fi
+}
 APP_DIR="$BACKEND_DIR/app"
 VENV_DIR="$WS/venv"
 LOG_DIR="$WS/logs"
@@ -282,7 +293,7 @@ QDRANT_URL=http://127.0.0.1:${QDRANT_PORT}
 QDRANT_BIN=${QDRANT_BIN}
 QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
-FRONTEND_BUILD_DIR=${FRONTEND_DIR}
+FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
 EOF
@@ -355,7 +366,8 @@ PY
 # ---------------------------------------------------------------------------
 section "Django migrate"
 cd "$APP_DIR"
-export FRONTEND_BUILD_DIR="$FRONTEND_DIR"
+export FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
+log "Serving Flutter from $FRONTEND_BUILD_DIR"
 export QDRANT_URL="http://127.0.0.1:${QDRANT_PORT}"
 export VLLM_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export VLLM_MODEL

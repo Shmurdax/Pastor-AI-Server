@@ -1,0 +1,11 @@
+.venv
+venv
+__pycache__/
+*.pyc
+*.pyo
+*.log
+hf_cache/
+qdrant_storage/
+uploads/
+db.sqlite3
+nohup.out
