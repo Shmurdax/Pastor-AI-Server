@@ -23,6 +23,9 @@ const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
 const _surface = Color(0xFFF4F4F9);
+/// Matches [_buildInputArea] bottom padding and desktop sermon sidebar `margin.bottom`.
+const _layoutBottomInsetDesktop = 30.0;
+const _layoutBottomInsetMobile = 15.0;
 
 // ─── Token Storage ───────────────────────────────────────────────────────────
 class TokenStorage {
@@ -1115,6 +1118,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobileOrTablet = screenWidth < 1024;
     final isMobile = screenWidth < 600;
+    final layoutBottomInset = isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop;
+    final prayerFabBottom = layoutBottomInset + MediaQuery.of(context).viewInsets.bottom;
+    final prayerFabRight = isMobile ? 10.0 : 20.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1200,9 +1206,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               ),
             ),
           Positioned(
-            bottom: isMobile ? 90 + MediaQuery.of(context).viewInsets.bottom : 24,
-            right: 24,
-            child: _buildPrayerRequestPanel(isMobile),
+            bottom: prayerFabBottom,
+            right: prayerFabRight,
+            child: _buildPrayerRequestPanel(isMobileOrTablet),
           ),
         ],
       ),
@@ -1215,7 +1221,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 
     return Container(
       width: isMobile ? double.infinity : 320,
-      margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: 30, top: 20),
+      margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: _layoutBottomInsetDesktop, top: 20),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: isMobile ? BorderRadius.zero : BorderRadius.circular(32),
@@ -1757,7 +1763,12 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
 
   Widget _buildInputArea(bool isMobile) {
     return Container(
-      padding: EdgeInsets.only(bottom: isMobile ? 15 : 30, left: isMobile ? 10 : 20, right: isMobile ? 10 : 20, top: 10),
+      padding: EdgeInsets.only(
+        bottom: isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop,
+        left: isMobile ? 10 : 20,
+        right: isMobile ? 10 : 20,
+        top: 10,
+      ),
       child: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 1100),
