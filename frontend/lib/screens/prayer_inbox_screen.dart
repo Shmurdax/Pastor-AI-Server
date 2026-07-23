@@ -3,12 +3,65 @@ import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
 const _surface = Color(0xFFF4F4F9);
+
+const _kPrayerEmailClientPref = 'prayer_inbox_email_client';
+
+enum PrayerEmailClient { gmail, outlook, systemMailto }
+
+PrayerEmailClient prayerEmailClientFromStorage(String? value) {
+  switch (value) {
+    case 'outlook':
+      return PrayerEmailClient.outlook;
+    case 'mailto':
+      return PrayerEmailClient.systemMailto;
+    case 'gmail':
+    default:
+      return PrayerEmailClient.gmail;
+  }
+}
+
+String prayerEmailClientStorageKey(PrayerEmailClient client) {
+  switch (client) {
+    case PrayerEmailClient.outlook:
+      return 'outlook';
+    case PrayerEmailClient.systemMailto:
+      return 'mailto';
+    case PrayerEmailClient.gmail:
+      return 'gmail';
+  }
+}
+
+Uri prayerEmailComposeUri(String to, PrayerEmailClient client) {
+  final encodedTo = Uri.encodeComponent(to);
+  switch (client) {
+    case PrayerEmailClient.gmail:
+      return Uri.parse('https://mail.google.com/mail/?view=cm&fs=1&to=$encodedTo');
+    case PrayerEmailClient.outlook:
+      return Uri.parse(
+        'https://outlook.office.com/mail/deeplink/compose?to=$encodedTo',
+      );
+    case PrayerEmailClient.systemMailto:
+      return Uri(scheme: 'mailto', path: to);
+  }
+}
+
+String prayerEmailClientLabel(PrayerEmailClient client) {
+  switch (client) {
+    case PrayerEmailClient.gmail:
+      return 'Gmail';
+    case PrayerEmailClient.outlook:
+      return 'Outlook';
+    case PrayerEmailClient.systemMailto:
+      return 'Default app';
+  }
+}
 
 enum _InboxFilter { all, needsFollowUp, done }
 
@@ -256,6 +309,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
   bool _saving = false;
   String? _error;
   PrayerRequestItem? _item;
+  PrayerEmailClient _preferredEmailClient = PrayerEmailClient.gmail;
 
   @override
   void initState() {
@@ -263,6 +317,23 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     _item = widget.initial;
     _followedUp = widget.initial.followedUp;
     _notesController = TextEditingController(text: widget.initial.pastorNotes);
+    _loadEmailPreference();
+  }
+
+  Future<void> _loadEmailPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_kPrayerEmailClientPref);
+    if (!mounted) return;
+    setState(() {
+      _preferredEmailClient = prayerEmailClientFromStorage(stored);
+    });
+  }
+
+  Future<void> _setEmailPreference(PrayerEmailClient client) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPrayerEmailClientPref, prayerEmailClientStorageKey(client));
+    if (!mounted) return;
+    setState(() => _preferredEmailClient = client);
   }
 
   @override
@@ -305,13 +376,31 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
   }
 
   Future<void> _launch(Uri uri) async {
-    if (!await launchUrl(uri)) {
+    final mode = uri.scheme == 'http' || uri.scheme == 'https'
+        ? LaunchMode.externalApplication
+        : LaunchMode.platformDefault;
+    if (!await launchUrl(uri, mode: mode)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Could not open ${uri.scheme} link')),
         );
       }
     }
+  }
+
+  Future<void> _openEmail(String to, PrayerEmailClient client) async {
+    await _setEmailPreference(client);
+    await _launch(prayerEmailComposeUri(to, client));
+  }
+
+  Widget _emailClientChip(PrayerEmailClient client, String to, {required bool selected}) {
+    return FilterChip(
+      label: Text(prayerEmailClientLabel(client), style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+      selected: selected,
+      onSelected: (_) => _openEmail(to, client),
+      selectedColor: _gold.withValues(alpha: 0.35),
+      checkmarkColor: _navy,
+    );
   }
 
   @override
@@ -353,24 +442,62 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                 ),
               ),
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                if (email != null)
-                  OutlinedButton.icon(
-                    onPressed: () => _launch(Uri(scheme: 'mailto', path: email)),
+            if (email != null) ...[
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _openEmail(email, _preferredEmailClient),
                     icon: const Icon(Icons.email_outlined, size: 18),
-                    label: const Text('Email'),
+                    label: Text(
+                      'Email in ${prayerEmailClientLabel(_preferredEmailClient)}',
+                      style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _navy,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
                   ),
-                if (item.phone.trim().isNotEmpty)
+                  if (item.phone.trim().isNotEmpty)
+                    OutlinedButton.icon(
+                      onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
+                      icon: const Icon(Icons.phone_outlined, size: 18),
+                      label: const Text('Call'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Or open compose in:',
+                style: GoogleFonts.figtree(fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _emailClientChip(PrayerEmailClient.gmail, email, selected: _preferredEmailClient == PrayerEmailClient.gmail),
+                  _emailClientChip(PrayerEmailClient.outlook, email, selected: _preferredEmailClient == PrayerEmailClient.outlook),
+                  _emailClientChip(
+                    PrayerEmailClient.systemMailto,
+                    email,
+                    selected: _preferredEmailClient == PrayerEmailClient.systemMailto,
+                  ),
+                ],
+              ),
+            ] else if (item.phone.trim().isNotEmpty)
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
                   OutlinedButton.icon(
                     onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
                     icon: const Icon(Icons.phone_outlined, size: 18),
                     label: const Text('Call'),
                   ),
-              ],
-            ),
+                ],
+              ),
             const SizedBox(height: 20),
             Text('Prayer request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
             const SizedBox(height: 8),
