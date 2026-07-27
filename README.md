@@ -34,6 +34,15 @@ bash install.sh
 bash /workspace/pastor-ai/start.sh
 ```
 
+## Django admin
+
+Open `/admin/` on the Django host. Default credentials (created automatically by `install.sh` / `start.sh`):
+
+- **Username:** `admin`
+- **Password:** `admin123`
+
+Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed.
+
 ## Tokens
 
 ```bash

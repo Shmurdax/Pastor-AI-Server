@@ -22,6 +22,7 @@ public_url.txt
 *.egg-info/
 
 # Large / local-only
+.local-dev/
 Pastor Don Documents/
 unsloth_compiled_cache/
 
