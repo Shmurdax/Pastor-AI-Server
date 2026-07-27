@@ -25,6 +25,8 @@ from .models import (
     PrayerRequest,
     ChurchEvent,
 )
+from .website_crawl.config import ALLOWED_DOMAINS
+from .website_crawl.pipeline import enqueue_website_crawl_job
 
 
 STALE_INGESTION_JOB_MINUTES = 30
@@ -251,6 +253,42 @@ def _admin_ingestion_view(request):
     return TemplateResponse(request, "admin/core/ingestion.html", context)
 
 
+def _admin_website_crawl_view(request):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    stale_fixed = _mark_stale_running_jobs_failed()
+    if stale_fixed:
+        messages.warning(
+            request,
+            f"Recovered {stale_fixed} stale ingestion job(s) that were stuck in running state.",
+        )
+
+    if request.method == "POST":
+        replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
+        try:
+            job = enqueue_website_crawl_job(
+                started_by=request.user.get_username() or "admin",
+                replace_existing_sources=replace_existing_sources,
+            )
+            messages.success(
+                request,
+                f"Website crawl started in background (job #{job.id}). Refresh this page to monitor progress.",
+            )
+        except Exception as exc:
+            messages.error(request, f"Website crawl failed to start: {exc}")
+        return HttpResponseRedirect(request.path)
+
+    context = {
+        **admin.site.each_context(request),
+        "title": "Website Crawl → RAG",
+        "latest_jobs": IngestionJob.objects.all()[:15],
+        "allowlisted_domains": sorted(ALLOWED_DOMAINS),
+    }
+    return TemplateResponse(request, "admin/core/website_crawl.html", context)
+
+
 def _admin_ingested_documents_view(request):
     if not request.user.is_staff:
         messages.error(request, "You must be an admin user to access this page.")
@@ -332,6 +370,11 @@ def _get_urls():
             name="core_ingestion",
         ),
         path(
+            "core/website-crawl/",
+            admin.site.admin_view(_admin_website_crawl_view),
+            name="core_website_crawl",
+        ),
+        path(
             "core/ingested-documents/",
             admin.site.admin_view(_admin_ingested_documents_view),
             name="core_ingested_documents",
@@ -363,6 +406,17 @@ def _get_app_list(request, app_label=None):
                     "name": "Document Ingestion",
                     "object_name": "CoreIngestionTool",
                     "admin_url": reverse("admin:core_ingestion"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"add": False, "change": True, "delete": False, "view": True},
+                }
+            )
+        if "CoreWebsiteCrawlTool" not in existing_object_names:
+            custom_entries.append(
+                {
+                    "name": "Website Crawl → RAG",
+                    "object_name": "CoreWebsiteCrawlTool",
+                    "admin_url": reverse("admin:core_website_crawl"),
                     "add_url": None,
                     "view_only": True,
                     "perms": {"add": False, "change": True, "delete": False, "view": True},

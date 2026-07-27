@@ -32,3 +32,4 @@ huggingface-hub
 numpy
 pypdf
 python-docx
+beautifulsoup4>=4.12
