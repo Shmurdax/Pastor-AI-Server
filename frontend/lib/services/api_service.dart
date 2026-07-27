@@ -1,3 +1,4 @@
+import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 
 import 'api_client.dart';
@@ -60,4 +61,14 @@ class ApiService {
       contactedAt: contactedAt,
     );
   }
+
+  Future<List<ChurchEventItem>> listChurchEvents() => _apiClient.listChurchEvents();
+
+  Future<ChurchEventItem> createChurchEvent(Map<String, dynamic> payload) =>
+      _apiClient.createChurchEvent(payload);
+
+  Future<ChurchEventItem> updateChurchEvent(int id, Map<String, dynamic> payload) =>
+      _apiClient.updateChurchEvent(id, payload);
+
+  Future<void> deleteChurchEvent(int id) => _apiClient.deleteChurchEvent(id);
 }

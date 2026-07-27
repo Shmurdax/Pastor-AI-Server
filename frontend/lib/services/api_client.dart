@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:http/http.dart' as http;
 
@@ -146,6 +147,47 @@ class ApiClient {
     );
     _ensureOk(res);
     return PrayerRequestItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<List<ChurchEventItem>> listChurchEvents() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/church-events/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = body['results'] as List<dynamic>? ?? [];
+    return results
+        .map((e) => ChurchEventItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ChurchEventItem> createChurchEvent(Map<String, dynamic> payload) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/church-events/')),
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
+    );
+    _ensureOk(res);
+    return ChurchEventItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<ChurchEventItem> updateChurchEvent(int id, Map<String, dynamic> payload) async {
+    final res = await _client.patch(
+      Uri.parse(_resolveUrl('/api/church-events/$id/')),
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
+    );
+    _ensureOk(res);
+    return ChurchEventItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteChurchEvent(int id) async {
+    final res = await _client.delete(
+      Uri.parse(_resolveUrl('/api/church-events/$id/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
   }
 
   void _ensureOk(http.Response res) {

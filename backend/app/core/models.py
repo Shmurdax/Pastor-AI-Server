@@ -141,3 +141,33 @@ class PrayerRequest(models.Model):
         label = self.name or self.email or "Unknown"
         return f"Prayer from {label} ({self.created_at:%Y-%m-%d})"
 
+
+class ChurchEvent(models.Model):
+    """Public church calendar events (staff-managed)."""
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    location = models.CharField(max_length=300)
+    host_name = models.CharField(
+        max_length=200,
+        help_text="Person or ministry hosting the event.",
+    )
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_published = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="church_events_created",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["starts_at", "title"]
+
+    def __str__(self):
+        return f"{self.title} ({self.starts_at:%Y-%m-%d})"
+

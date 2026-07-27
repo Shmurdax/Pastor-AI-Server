@@ -23,6 +23,7 @@ from .models import (
     IngestionJobFileFailure,
     IngestionJobLog,
     PrayerRequest,
+    ChurchEvent,
 )
 
 
@@ -480,3 +481,19 @@ class PrayerRequestAdmin(admin.ModelAdmin):
             return '—'
         label = obj.user.get_full_name() or obj.user.username
         return format_html('{} &lt;{}&gt;', label, obj.user.email)
+
+
+@admin.register(ChurchEvent)
+class ChurchEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "starts_at",
+        "location",
+        "host_name",
+        "is_published",
+        "updated_at",
+    )
+    list_filter = ("is_published", "starts_at")
+    search_fields = ("title", "location", "host_name", "description")
+    date_hierarchy = "starts_at"
+    list_editable = ("is_published",)

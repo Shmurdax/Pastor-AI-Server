@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from core.models import PrayerRequest
+from core.models import PrayerRequest, ChurchEvent
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -116,3 +116,43 @@ class PrayerRequestStaffUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrayerRequest
         fields = ["followed_up", "pastor_notes", "contacted_at"]
+
+
+class ChurchEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChurchEvent
+        fields = [
+            "id",
+            "title",
+            "description",
+            "location",
+            "host_name",
+            "starts_at",
+            "ends_at",
+            "is_published",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class ChurchEventWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChurchEvent
+        fields = [
+            "title",
+            "description",
+            "location",
+            "host_name",
+            "starts_at",
+            "ends_at",
+            "is_published",
+        ]
+
+    def validate(self, attrs):
+        starts = attrs.get("starts_at") or getattr(self.instance, "starts_at", None)
+        ends = attrs.get("ends_at", getattr(self.instance, "ends_at", None))
+        if starts and ends and ends < starts:
+            raise serializers.ValidationError({"ends_at": "End time must be after start time."})
+        return attrs
+

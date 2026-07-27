@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
+import 'package:flutter_application_1/widgets/church_events_panel.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/google_auth_button.dart';
@@ -26,12 +27,30 @@ const _surface = Color(0xFFF4F4F9);
 /// Matches [_buildInputArea] bottom padding and desktop sermon sidebar `margin.bottom`.
 const _layoutBottomInsetDesktop = 30.0;
 const _layoutBottomInsetMobile = 15.0;
+/// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
+const _chatInputBarBlockHeight = 74.0;
+const _prayerFabClearanceBelowWide = 1900.0;
+
+/// Prevents Material 3 stretch / glow from painting grey at the viewport edge on web.
+class _NoOverscrollScrollBehavior extends MaterialScrollBehavior {
+  const _NoOverscrollScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+}
 
 // ─── Token Storage ───────────────────────────────────────────────────────────
 class TokenStorage {
   static const _tokenKey = 'auth_token';
   static const _userKey = 'auth_user';
   static const _sessionPrefix = 'chat_session_';
+  static const _historyPrefix = 'chat_history_';
 
   const TokenStorage();
 
@@ -84,7 +103,26 @@ class TokenStorage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_sessionPrefix$userId', sessionId);
   }
+
+  Future<List<Map<String, dynamic>>> loadChatHistory(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_historyPrefix$userId');
+    if (raw == null || raw.isEmpty) return [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return [];
+    return decoded
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<void> saveChatHistory(String userId, List<Map<String, dynamic>> entries) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_historyPrefix$userId', jsonEncode(entries));
+  }
 }
+
+enum _SidebarPanel { sermonLibrary, previousChats }
 
 // ─── Auth Controller ───────────────────────────────────────────────────────────
 class AuthController extends ChangeNotifier {
@@ -197,9 +235,15 @@ class SermonBrainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const _NoOverscrollScrollBehavior(),
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: _navy, primary: _navy, secondary: _gold),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _navy,
+          primary: _navy,
+          secondary: _gold,
+          surface: Colors.white,
+        ),
         scaffoldBackgroundColor: Colors.white,
         textTheme: GoogleFonts.figtreeTextTheme(),
       ),
@@ -640,6 +684,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   // Services & controllers
   final _apiService = ApiService();
   final _tokenStorage = const TokenStorage();
@@ -648,6 +693,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _chatFocusNode = FocusNode();
   String sessionId = const Uuid().v4();
   bool _authInitialized = false;
+  _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
+  bool _eventsNavPanelOpen = false;
+  List<Map<String, dynamic>> _chatHistoryEntries = [];
 
   // State
   final List<Map<String, dynamic>> _messages = [];
@@ -733,18 +781,147 @@ final bibleRefRegex = RegExp(
 
     if (auth.isAuthenticated && auth.user != null) {
       final savedSession = await _tokenStorage.loadChatSessionId(auth.user!.id);
-      if (savedSession != null && mounted) {
-        setState(() => sessionId = savedSession);
+      final history = await _tokenStorage.loadChatHistory(auth.user!.id);
+      if (mounted) {
+        setState(() {
+          _chatHistoryEntries = history;
+          if (savedSession != null) sessionId = savedSession;
+        });
+        await _restoreMessagesForCurrentSession(auth.user!.id);
       }
+    } else if (mounted) {
+      setState(() => _chatHistoryEntries = []);
     }
 
     if (mounted) setState(() => _authInitialized = true);
+  }
+
+  Future<void> _restoreMessagesForCurrentSession(String userId) async {
+    for (final entry in _chatHistoryEntries) {
+      if (entry['sessionId'] == sessionId) {
+        final rawMessages = entry['messages'];
+        if (rawMessages is! List || rawMessages.isEmpty) return;
+        if (!mounted) return;
+        setState(() {
+          _messages
+            ..clear()
+            ..addAll(
+              rawMessages
+                  .whereType<Map>()
+                  .map((m) => Map<String, dynamic>.from(m)),
+            );
+          _librarySermons = List<String>.from(entry['librarySermons'] ?? const []);
+          _previousSermons = List<String>.from(entry['previousSermons'] ?? const []);
+          _isFirstMessage = _messages.isEmpty;
+        });
+        return;
+      }
+    }
   }
 
   Future<void> _persistSessionId() async {
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated || auth.user == null) return;
     await _tokenStorage.saveChatSessionId(auth.user!.id, sessionId);
+  }
+
+  String _chatHistoryTitle() {
+    for (final msg in _messages) {
+      if (msg['role'] == 'user') {
+        final text = (msg['text'] as String? ?? '').trim();
+        if (text.isNotEmpty) {
+          return text.length > 48 ? '${text.substring(0, 48)}…' : text;
+        }
+      }
+    }
+    return 'New conversation';
+  }
+
+  Map<String, dynamic> _currentChatSnapshot() => {
+        'sessionId': sessionId,
+        'title': _chatHistoryTitle(),
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        'messages': _messages.map((m) => Map<String, dynamic>.from(m)).toList(),
+        'librarySermons': List<String>.from(_librarySermons),
+        'previousSermons': List<String>.from(_previousSermons),
+      };
+
+  Future<void> _persistChatHistory() async {
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated || auth.user == null || _messages.isEmpty) return;
+
+    final snapshot = _currentChatSnapshot();
+    final sid = sessionId;
+    final updated = <Map<String, dynamic>>[
+      snapshot,
+      ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
+    ]..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
+
+    const maxEntries = 40;
+    final trimmed = updated.take(maxEntries).toList();
+    await _tokenStorage.saveChatHistory(auth.user!.id, trimmed);
+    if (mounted) setState(() => _chatHistoryEntries = trimmed);
+  }
+
+  Future<void> _reloadChatHistory() async {
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated || auth.user == null) return;
+    final history = await _tokenStorage.loadChatHistory(auth.user!.id);
+    if (mounted) setState(() => _chatHistoryEntries = history);
+  }
+
+  Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated || auth.user == null) return;
+    await _tokenStorage.saveChatHistory(auth.user!.id, entries);
+    if (mounted) setState(() => _chatHistoryEntries = entries);
+  }
+
+  Future<void> _confirmDeleteChatHistoryEntry(Map<String, dynamic> entry) async {
+    final sid = entry['sessionId'] as String?;
+    if (sid == null) return;
+
+    final title = (entry['title'] as String? ?? 'this conversation').trim();
+    final delete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete chat?', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
+        content: Text(
+          'Remove “${title.length > 60 ? '${title.substring(0, 60)}…' : title}” from your history? This cannot be undone.',
+          style: GoogleFonts.figtree(color: Colors.black87),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _pink),
+            child: Text('Delete', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (delete != true || !mounted) return;
+
+    final updated = _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList();
+    await _saveChatHistoryEntries(updated);
+
+    if (sid == sessionId && mounted) {
+      setState(() {
+        sessionId = const Uuid().v4();
+        _messages.clear();
+        _librarySermons.clear();
+        _previousSermons.clear();
+        _isFirstMessage = true;
+        _showBackToBottomButton = false;
+      });
+      await _persistSessionId();
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat deleted'), duration: Duration(seconds: 2)),
+      );
+    }
   }
 
   @override
@@ -898,7 +1075,9 @@ Future<void> _launchSermonDoc(String sermonName) async {
           .toList();
 
   // ─── Chat Actions ───────────────────────────────────────────────────────────
-  void _clearChat() {
+  Future<void> _clearChat() async {
+    await _persistChatHistory();
+    if (!mounted) return;
     setState(() {
       sessionId = const Uuid().v4();
       _messages.clear();
@@ -930,6 +1109,136 @@ Future<void> _launchSermonDoc(String sermonName) async {
         builder: (_) => PrayerInboxScreen(apiService: _apiService),
       ),
     );
+  }
+
+  void _openChurchEvents() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    setState(() => _eventsNavPanelOpen = true);
+  }
+
+  void _closeChurchEventsPanel() {
+    setState(() => _eventsNavPanelOpen = false);
+  }
+
+  void _focusChatNav() {
+    setState(() => _eventsNavPanelOpen = false);
+  }
+
+  Widget _buildEventsNavPanel(AuthController auth) {
+    final size = MediaQuery.of(context).size;
+    final screenWidth = size.width;
+    // ~30% width; on very narrow viewports use most of the row so content stays readable.
+    final targetWidth = screenWidth * 0.3;
+    final panelWidth = targetWidth < 260 ? screenWidth * 0.92 : targetWidth;
+    final panelHeight = (size.height * 0.32).clamp(200.0, 340.0);
+
+    return Padding(
+        padding: EdgeInsets.fromLTRB(8, 0, screenWidth < 600 ? 8 : 16, 8),
+        child: SizedBox(
+          width: panelWidth,
+          height: panelHeight,
+          child: Material(
+            color: _surface,
+            elevation: 2,
+            shadowColor: Colors.black26,
+            borderRadius: BorderRadius.circular(16),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 4, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Church Events',
+                          style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold, color: _navy),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close events',
+                        onPressed: _closeChurchEventsPanel,
+                        icon: const Icon(Icons.close, color: _navy, size: 20),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ScrollConfiguration(
+                    behavior: const _NoOverscrollScrollBehavior(),
+                    child: ChurchEventsPanel(
+                      key: ValueKey('events-nav-${auth.user?.id ?? 'guest'}-${auth.user?.isStaff ?? false}'),
+                      apiService: _apiService,
+                      isStaff: auth.isAuthenticated && (auth.user?.isStaff ?? false),
+                      enablePullToRefresh: false,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+    );
+  }
+
+  void _showLoginRequiredForChatHistory() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Login required', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
+        content: Text(
+          'Login required to access chat history.',
+          style: GoogleFonts.figtree(color: Colors.black87),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _openLogin();
+            },
+            style: FilledButton.styleFrom(backgroundColor: _navy),
+            child: Text('Log in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _selectSidebarPanel(_SidebarPanel panel) {
+    if (panel == _SidebarPanel.previousChats) {
+      final auth = context.read<AuthController>();
+      if (!auth.isAuthenticated) {
+        _showLoginRequiredForChatHistory();
+        return;
+      }
+      _reloadChatHistory();
+    }
+    setState(() => _sidebarPanel = panel);
+  }
+
+  void _loadChatFromHistory(Map<String, dynamic> entry) {
+    setState(() {
+      sessionId = entry['sessionId'] as String? ?? sessionId;
+      _messages
+        ..clear()
+        ..addAll(
+          (entry['messages'] as List<dynamic>? ?? const [])
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m)),
+        );
+      _librarySermons = List<String>.from(entry['librarySermons'] ?? const []);
+      _previousSermons = List<String>.from(entry['previousSermons'] ?? const []);
+      _isFirstMessage = _messages.isEmpty;
+      _showBackToBottomButton = false;
+    });
+    _persistSessionId();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
   void _showProfileSheet() {
@@ -998,7 +1307,11 @@ Future<void> _launchSermonDoc(String sermonName) async {
                   await auth.logout();
                   _apiService.setAccessToken(null);
                   if (mounted) {
-                    setState(() => sessionId = const Uuid().v4());
+                    setState(() {
+                      sessionId = const Uuid().v4();
+                      _chatHistoryEntries = [];
+                      _sidebarPanel = _SidebarPanel.sermonLibrary;
+                    });
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Signed out')),
                     );
@@ -1093,6 +1406,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       }
     });
     _scrollToBottom();
+    await _persistChatHistory();
   } catch (e) {
     if (_activeClient != null) {
       setState(() => _messages.add({"role": "ai", "text": "Error: Could not connect to the server."}));
@@ -1107,6 +1421,14 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 }
 
   // ─── Build ───────────────────────────────────────────────────────────────────
+  double _prayerFabBottom(double screenWidth, bool isMobile, double viewInsetBottom) {
+    final layoutBottomInset = isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop;
+    if (screenWidth < _prayerFabClearanceBelowWide) {
+      return layoutBottomInset + _chatInputBarBlockHeight + viewInsetBottom;
+    }
+    return layoutBottomInset + viewInsetBottom;
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -1118,11 +1440,12 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobileOrTablet = screenWidth < 1024;
     final isMobile = screenWidth < 600;
-    final layoutBottomInset = isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop;
-    final prayerFabBottom = layoutBottomInset + MediaQuery.of(context).viewInsets.bottom;
+    final viewInsetBottom = MediaQuery.of(context).viewInsets.bottom;
+    final prayerFabBottom = _prayerFabBottom(screenWidth, isMobile, viewInsetBottom);
     final prayerFabRight = isMobile ? 10.0 : 20.0;
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: Colors.white,
       drawer: isMobileOrTablet ? Drawer(child: _buildSidebar(isMobile: true)) : null,
       appBar: AppBar(
@@ -1183,8 +1506,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 children: [
                   _buildNavButton("Home", () => _launchUrl("https://thenordins.org/")),
                   _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store")),
-                  _buildNavButton("Nordin's AI", () => debugPrint("Already on AI Page")),
-                  const SizedBox(width: 100),
+                  _buildNavButton("Events", _openChurchEvents),
+                  _buildNavButton("Nordin's AI", _focusChatNav),
+                  const SizedBox(width: 40),
                 ],
               ),
             ),
@@ -1192,12 +1516,34 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       ),
       body: Stack(
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!isMobileOrTablet) _buildSidebar(isMobile: false),
-              Expanded(child: _buildChatInterface(isMobile)),
+              Expanded(
+                child: Row(
+                  children: [
+                    if (!isMobileOrTablet) _buildSidebar(isMobile: false),
+                    Expanded(child: _buildChatInterface(isMobile)),
+                  ],
+                ),
+              ),
             ],
           ),
+          if (_eventsNavPanelOpen)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (_) => true,
+                child: NotificationListener<OverscrollIndicatorNotification>(
+                  onNotification: (notification) {
+                    notification.disallowIndicator();
+                    return true;
+                  },
+                  child: _buildEventsNavPanel(auth),
+                ),
+              ),
+            ),
           if (_prayerPanelExpanded)
             Positioned.fill(
               child: GestureDetector(
@@ -1216,6 +1562,177 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   }
 
   // ─── Sidebar ─────────────────────────────────────────────────────────────────
+  Widget _buildSidebarTabSwitcher() {
+    Widget tab(String label, _SidebarPanel panel, IconData icon) {
+      final selected = _sidebarPanel == panel;
+      return Expanded(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _selectSidebarPanel(panel),
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: selected ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
+                border: Border.all(
+                  color: selected ? _gold : Colors.white24,
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: selected ? _gold : Colors.white70, size: 18),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.figtree(
+                      color: selected ? Colors.white : Colors.white70,
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        tab('Sermons', _SidebarPanel.sermonLibrary, Icons.menu_book_outlined),
+        const SizedBox(width: 8),
+        tab('Chats', _SidebarPanel.previousChats, Icons.history),
+      ],
+    );
+  }
+
+  Widget _buildPreviousChatsPanel(AuthController auth) {
+    if (!auth.isAuthenticated) {
+      return Text(
+        'Sign in to view and reopen your past conversations.',
+        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
+      );
+    }
+
+    if (_chatHistoryEntries.isEmpty) {
+      return Text(
+        'Your saved chats will appear here. Start a conversation while signed in.',
+        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
+      );
+    }
+
+    return ListView(
+      physics: _eventsNavPanelOpen
+          ? const NeverScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
+      children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+    );
+  }
+
+  Widget _buildChatHistoryLink(Map<String, dynamic> entry) {
+    final title = (entry['title'] as String? ?? 'Conversation').trim();
+    final updatedAt = entry['updatedAt'] as int?;
+    final isActive = entry['sessionId'] == sessionId;
+    String subtitle = '';
+    if (updatedAt != null) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(updatedAt);
+      subtitle =
+          '${dt.month}/${dt.day}/${dt.year} · ${dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour)}:${dt.minute.toString().padLeft(2, '0')} ${dt.hour >= 12 ? 'PM' : 'AM'}';
+    }
+
+    bool isHovered = false;
+    return StatefulBuilder(
+      builder: (context, setState) => MouseRegion(
+        onEnter: (_) => setState(() => isHovered = true),
+        onExit: (_) => setState(() => isHovered = false),
+        child: AnimatedContainer(
+          duration: isHovered ? const Duration(milliseconds: 250) : Duration.zero,
+          curve: isHovered ? Curves.easeOut : Curves.linear,
+          margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 12.0),
+          transform: isHovered ? (Matrix4.identity()..translate(0.0, -3.0)) : Matrix4.identity(),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: isActive
+                ? Colors.white.withValues(alpha: 0.12)
+                : (isHovered ? Colors.white.withValues(alpha: 0.07) : Colors.transparent),
+            border: isActive ? Border.all(color: _gold.withValues(alpha: 0.6)) : null,
+            boxShadow: isHovered
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 15,
+                      offset: const Offset(0, 6),
+                      spreadRadius: -4,
+                    )
+                  ]
+                : [],
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _loadChatFromHistory(entry),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                    color: _gold,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.figtree(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                          ),
+                          if (subtitle.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              style: GoogleFonts.figtree(color: Colors.white54, fontSize: 11),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => _confirmDeleteChatHistoryEntry(entry),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    color: Colors.white54,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Delete chat',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSidebar({required bool isMobile}) {
     final auth = context.watch<AuthController>();
 
@@ -1239,54 +1756,57 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               Row(children: [
                 _buildNavButton("Home", () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
                 _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
+                _buildNavButton("Events", _openChurchEvents, textColor: Colors.white),
               ]),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
               const SizedBox(height: 20),
             ],
-            Text("Sermon Library",
-                style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Container(height: 2, width: 40, color: _gold),
-            if (auth.isAuthenticated) ...[
-              const SizedBox(height: 20),
-              Text("Your Conversations",
-                  style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Text(
-                "Chat history will appear here once the backend sync is connected.",
-                style: GoogleFonts.figtree(color: Colors.white54, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              Container(height: 1, color: Colors.white24),
-            ],
+            _buildSidebarTabSwitcher(),
             const SizedBox(height: 20),
-            Expanded(
-              child: _librarySermons.isEmpty && _previousSermons.isEmpty
-                  ? Text("Relevant sermons will appear here after you ask a question.",
-                      style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
-                  : ListView(
-                      children: [
-                        ..._librarySermons.map(_buildSermonLink),
-                        if (_previousSermons.isNotEmpty) ...[
-                          const SizedBox(height: 20),
-                          Row(children: [
-                            const Expanded(child: Divider(color: Colors.white24)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                              child: Text("Last Question's Sources",
-                                  style: GoogleFonts.figtree(
-                                      color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ),
-                            const Expanded(child: Divider(color: Colors.white24)),
-                          ]),
-                          const SizedBox(height: 10),
-                          ..._previousSermons.map(
-                              (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
+            if (_sidebarPanel == _SidebarPanel.sermonLibrary) ...[
+              Text("Sermon Library",
+                  style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(height: 2, width: 40, color: _gold),
+              const SizedBox(height: 20),
+              Expanded(
+                child: _librarySermons.isEmpty && _previousSermons.isEmpty
+                    ? Text("Relevant sermons will appear here after you ask a question.",
+                        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
+                    : ListView(
+                        physics: _eventsNavPanelOpen
+                            ? const NeverScrollableScrollPhysics()
+                            : const ClampingScrollPhysics(),
+                        children: [
+                          ..._librarySermons.map(_buildSermonLink),
+                          if (_previousSermons.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            Row(children: [
+                              const Expanded(child: Divider(color: Colors.white24)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                child: Text("Last Question's Sources",
+                                    style: GoogleFonts.figtree(
+                                        color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ),
+                              const Expanded(child: Divider(color: Colors.white24)),
+                            ]),
+                            const SizedBox(height: 10),
+                            ..._previousSermons.map(
+                                (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
+                          ],
                         ],
-                      ],
-                    ),
-            ),
+                      ),
+              ),
+            ] else ...[
+              Text("Previous Chats",
+                  style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(height: 2, width: 40, color: _gold),
+              const SizedBox(height: 20),
+              Expanded(child: _buildPreviousChatsPanel(auth)),
+            ],
             const SizedBox(height: 20),
             _buildAuthFooter(auth),
             const SizedBox(height: 12),
@@ -1582,7 +2102,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   Widget _buildChatInterface(bool isMobile) {
     final mq = MediaQuery.of(context);
     final screenWidth = mq.size.width;
-    final rightPadding = screenWidth >= 1900 ? (screenWidth - 1100) / 4 : 20.0;
+    final narrowViewport = screenWidth < _prayerFabClearanceBelowWide;
 
     // Hide the welcome box when the keyboard is open (viewInsets.bottom > 0)
     // or when vertical space is too tight to display it cleanly (< 400px).
@@ -1599,34 +2119,49 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 Center(
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 1100),
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        return _buildChatBubble(msg, msg["role"] == "user", isMobile, index);
-                      },
+                    child: Stack(
+                      children: [
+                        ListView.builder(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            final msg = _messages[index];
+                            return _buildChatBubble(msg, msg["role"] == "user", isMobile, index);
+                          },
+                        ),
+                        if (_showBackToBottomButton && !_isLoading)
+                          Positioned(
+                            left: narrowViewport ? (isMobile ? 8 : 12) : null,
+                            right: narrowViewport ? null : (isMobile ? 8 : 12),
+                            bottom: 12,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: TextButton.icon(
+                                key: const ValueKey('scrollBtn'),
+                                onPressed: _scrollToBottom,
+                                icon: const Icon(Icons.arrow_downward, size: 16),
+                                label: Text(
+                                  'Back to bottom',
+                                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                                ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: _navy,
+                                  backgroundColor: Colors.white.withValues(alpha: 0.92),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: BorderSide(color: _gold.withValues(alpha: 0.55)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
-                if (_showBackToBottomButton)
-                  Positioned(
-                    bottom: 88,
-                    right: rightPadding,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      transitionBuilder: (child, animation) =>
-                          ScaleTransition(scale: animation, child: child),
-                      child: FloatingActionButton.small(
-                        key: const ValueKey('scrollBtn'),
-                        backgroundColor: _navy,
-                        foregroundColor: _gold,
-                        onPressed: _scrollToBottom,
-                        child: const Icon(Icons.arrow_downward),
-                      ),
-                    ),
-                  ),
                 if (_isFirstMessage)
                   Center(
                     child: AnimatedContainer(
