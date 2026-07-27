@@ -1,0 +1,67 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 760px;">
+  <h1>Website Crawl → RAG</h1>
+  <p>
+    Crawls <strong>thenordins.org</strong> and allowlisted sister ministry sites
+    (CT Church, CT Houston, GMN, Empowerment Conference, and related ministries).
+    Public pages, teaching media, and book/resource descriptions are extracted to markdown
+    and ingested into Qdrant. Cart/checkout/login/admin and social networks are excluded.
+  </p>
+  <p>
+    Markdown/PDF copies are written under <code>uploads/website_crawl/</code>.
+    Progress appears in <a href="{% url 'admin:core_ingestionjob_changelist' %}">Ingestion Jobs</a>.
+  </p>
+
+  <form method="post" style="margin-top: 16px;">
+    {% csrf_token %}
+    <div style="margin-bottom: 12px;">
+      <label>
+        <input type="checkbox" name="replace_existing_sources" checked />
+        Replace existing website sources with the same source name on re-crawl
+      </label>
+    </div>
+    <button type="submit" class="default">Start Website Crawl</button>
+  </form>
+
+  <h2 style="margin-top: 24px;">Allowlisted domains</h2>
+  <ul>
+    {% for domain in allowlisted_domains %}
+      <li><code>{{ domain }}</code></li>
+    {% empty %}
+      <li>No domains configured.</li>
+    {% endfor %}
+  </ul>
+
+  <h2 style="margin-top: 24px;">Recent Ingestion Jobs</h2>
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Job</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Started by</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Files</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Chunks</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in latest_jobs %}
+      <tr>
+        <td style="padding: 6px 0;"><a href="{% url 'admin:core_ingestionjob_change' job.id %}">#{{ job.id }}</a></td>
+        <td style="padding: 6px 0;">{{ job.started_by }}</td>
+        <td style="padding: 6px 0;">{{ job.status }}</td>
+        <td style="padding: 6px 0;">{{ job.files_processed }}/{{ job.files_received }}</td>
+        <td style="padding: 6px 0;">{{ job.chunks_created }}</td>
+        <td style="padding: 6px 0;">{{ job.created_at }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6" style="padding: 6px 0;">No jobs yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

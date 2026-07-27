@@ -139,6 +139,7 @@ def _upsert_chunks(
     embeddings: HuggingFaceEmbeddings,
     qdrant_client: QdrantClient,
     collection_name: str,
+    extra_metadata: Optional[dict] = None,
 ) -> tuple[int, int]:
     if not chunks:
         return 0, 0
@@ -152,6 +153,7 @@ def _upsert_chunks(
     points = []
     created = 0
     skipped = 0
+    extra_metadata = dict(extra_metadata or {})
 
     for idx, (chunk_text, vector) in enumerate(zip(chunks, vectors)):
         chunk_text = _clean_text(chunk_text)
@@ -164,6 +166,14 @@ def _upsert_chunks(
             continue
 
         point_id = _qdrant_point_id(chunk_hash)
+        nested_metadata = {
+            "source": source_name,
+            "title": title,
+            "file_hash": file_hash,
+            "chunk_hash": chunk_hash,
+            "position": idx,
+            **extra_metadata,
+        }
         payload = {
             "source": source_name,
             "title": title,
@@ -171,14 +181,9 @@ def _upsert_chunks(
             "chunk_hash": chunk_hash,
             "position": idx,
             "text": chunk_text,
+            **extra_metadata,
             # Keep metadata nested for vectorstore configs expecting metadata payloads.
-            "metadata": {
-                "source": source_name,
-                "title": title,
-                "file_hash": file_hash,
-                "chunk_hash": chunk_hash,
-                "position": idx,
-            },
+            "metadata": nested_metadata,
         }
 
         points.append(
@@ -355,8 +360,10 @@ def ingest_uploaded_files(
     replace_existing_sources: bool = False,
     log_fn: Optional[Callable[[str], None]] = None,
     job: Optional[IngestionJob] = None,
+    extra_metadata_by_name: Optional[dict] = None,
 ) -> IngestionResult:
     result = IngestionResult(files_received=len(uploaded_files))
+    extra_metadata_by_name = extra_metadata_by_name or {}
 
     upload_dir = Path(settings.BASE_DIR) / "uploads" / "admin_ingestion"
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -448,6 +455,8 @@ def ingest_uploaded_files(
                     embeddings=embeddings,
                     qdrant_client=qdrant_client,
                     collection_name=collection_name,
+                    extra_metadata=extra_metadata_by_name.get(upload.name)
+                    or extra_metadata_by_name.get(pdf_name),
                 )
             except Exception:
                 # Keep corpus consistent: if vector upsert fails, remove DB rows for this doc.
@@ -489,4 +498,121 @@ def ingest_uploaded_files(
 
     _persist_job_progress(job, result)
 
+    return result
+
+
+def ingest_markdown_documents(
+    documents: List[dict],
+    replace_existing_sources: bool = False,
+    log_fn: Optional[Callable[[str], None]] = None,
+    job: Optional[IngestionJob] = None,
+) -> IngestionResult:
+    """
+    Ingest pre-built markdown documents (e.g. website crawl pages).
+
+    Each item in ``documents`` should include:
+      - source_name (str, ideally ending in .md)
+      - title (str)
+      - text (str, full markdown)
+    Optional metadata keys: url, content_type, ministry, domain
+    """
+    result = IngestionResult(files_received=len(documents))
+
+    default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
+    collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
+    ensure_sermon_collection(qdrant_client, collection_name)
+
+    for item in documents:
+        source_name = str(item.get("source_name") or "").strip()
+        title = str(item.get("title") or Path(source_name).stem or "document").strip()
+        text = str(item.get("text") or "")
+        try:
+            if not source_name:
+                raise ValueError("markdown document missing source_name")
+            if log_fn:
+                log_fn(f"Processing markdown: {source_name}")
+
+            if replace_existing_sources:
+                if IngestedDocument.objects.filter(source_name=source_name).exists():
+                    _delete_source_from_qdrant(source_name)
+                    IngestedDocument.objects.filter(source_name=source_name).delete()
+                    if log_fn:
+                        log_fn(f"Replaced previous source data for: {source_name}")
+
+            cleaned_text = _clean_text(text)
+            if not cleaned_text:
+                result.files_skipped_as_duplicates += 1
+                if log_fn:
+                    log_fn(f"Markdown had no text and was skipped: {source_name}")
+                _persist_job_progress(job, result)
+                continue
+
+            file_hash = _sha256_text(cleaned_text)
+            if IngestedDocument.objects.filter(file_hash=file_hash).exists():
+                result.files_skipped_as_duplicates += 1
+                if log_fn:
+                    log_fn(f"Duplicate markdown skipped by hash: {source_name}")
+                _persist_job_progress(job, result)
+                continue
+
+            chunks = [_clean_text(c) for c in default_splitter.split_text(cleaned_text) if _clean_text(c)]
+            doc = IngestedDocument.objects.create(
+                source_name=source_name,
+                title=title,
+                file_hash=file_hash,
+                original_extension=".md",
+            )
+            extra_metadata = {
+                key: value
+                for key, value in {
+                    "url": item.get("url"),
+                    "content_type": item.get("content_type") or "website_page",
+                    "ministry": item.get("ministry"),
+                    "domain": item.get("domain"),
+                }.items()
+                if value
+            }
+            try:
+                created, skipped = _upsert_chunks(
+                    source_name,
+                    title,
+                    chunks,
+                    file_hash,
+                    document=doc,
+                    embeddings=embeddings,
+                    qdrant_client=qdrant_client,
+                    collection_name=collection_name,
+                    extra_metadata=extra_metadata,
+                )
+            except Exception:
+                doc.delete()
+                raise
+
+            doc.chunk_count = created
+            doc.save(update_fields=["chunk_count", "updated_at"])
+            result.files_processed += 1
+            result.chunks_created += created
+            result.chunks_skipped_as_duplicates += skipped
+            if log_fn:
+                log_fn(
+                    f"Ingested markdown {source_name}: created {created} chunks, skipped {skipped} duplicates."
+                )
+            _persist_job_progress(job, result)
+        except Exception as exc:
+            result.files_failed += 1
+            if job is not None:
+                IngestionJobFileFailure.objects.create(
+                    job=job,
+                    original_name=source_name or title or "markdown",
+                    error_message=str(exc),
+                )
+            if log_fn:
+                log_fn(f"Ingestion failed for markdown {source_name or title}: {exc}")
+            logger.exception("Markdown ingestion failed for %s", source_name or title)
+            _persist_job_progress(job, result)
+            continue
+
+    _persist_job_progress(job, result)
     return result

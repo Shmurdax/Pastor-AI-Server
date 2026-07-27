@@ -2,6 +2,13 @@ import unittest
 
 from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
 from .scope_gate import parse_scope_gate_response
+from .website_crawl.crawler import normalize_url, path_is_excluded
+from .website_crawl.extract import (
+    classify_content_type,
+    host_allowed_for_page,
+    html_to_markdown,
+    source_name_for_url,
+)
 
 
 class ScopeGateParserTests(unittest.TestCase):
@@ -74,6 +81,52 @@ class PiiRedactionTests(unittest.TestCase):
         self.assertNotIn("[REDACTED]", llm)
         self.assertIn("Mary", llm)
         self.assertIn("someone", llm.lower())
+
+
+class WebsiteCrawlHelperTests(unittest.TestCase):
+    def test_excludes_cart_and_thank_you(self):
+        self.assertTrue(path_is_excluded("https://thenordins.org/store/cart"))
+        self.assertTrue(path_is_excluded("https://thenordins.org/booking-thank-you"))
+        self.assertTrue(path_is_excluded("https://thenordins.org/signin"))
+        self.assertFalse(path_is_excluded("https://thenordins.org/about"))
+
+    def test_socials_not_allowed(self):
+        self.assertTrue(host_allowed_for_page("https://mycthouston.org/visit"))
+        self.assertFalse(host_allowed_for_page("https://www.facebook.com/TheNordins"))
+
+    def test_content_type_classification(self):
+        self.assertEqual(
+            classify_content_type("https://thenordins.org/store-default/kings-and-priests"),
+            "book_resource",
+        )
+        self.assertEqual(classify_content_type("https://mycthouston.org/visit"), "church_info")
+        self.assertEqual(
+            classify_content_type("https://thenordins.org/know-your-why-session-one"),
+            "teaching_media",
+        )
+
+    def test_normalize_strips_www_and_trailing_slash(self):
+        self.assertEqual(
+            normalize_url("https://www.mycthouston.org/visit/"),
+            "https://mycthouston.org/visit",
+        )
+
+    def test_html_to_markdown_keeps_service_times(self):
+        html = (
+            "<html><head><title>Visit Us</title></head><body><main>"
+            "<h1>Visit Us</h1>"
+            "<p>Services begin at 10am both in person and online.</p>"
+            "<p>Youth Services every Wednesday at 7pm.</p>"
+            "</main></body></html>"
+        )
+        title, content_type, markdown = html_to_markdown(
+            html, "https://mycthouston.org/visit", "CT Houston"
+        )
+        self.assertEqual(title, "Visit Us")
+        self.assertEqual(content_type, "church_info")
+        self.assertIn("10am", markdown)
+        self.assertIn("Source URL: https://mycthouston.org/visit", markdown)
+        self.assertTrue(source_name_for_url("https://mycthouston.org/visit").startswith("web__"))
 
 
 if __name__ == "__main__":

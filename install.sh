@@ -245,6 +245,7 @@ cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
+[[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 chmod +x "$WS"/*.sh
 [[ -f "$APP_DIR/manage.py" ]] || die "manage.py missing after sync"
 log "Code synced (backend + frontend + scripts)"
