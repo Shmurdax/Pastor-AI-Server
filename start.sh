@@ -176,6 +176,11 @@ screen -dmS django bash -c "
   export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
   export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
   export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
+  export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
+  export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
+  export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
+  python manage.py migrate --noinput &&
+  python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
     >> '${LOG_DIR}/django.log' 2>&1
 "

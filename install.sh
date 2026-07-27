@@ -271,6 +271,9 @@ DJANGO_CORS_ALLOW_ALL_ORIGINS=true
 DJANGO_SECURE_SSL_REDIRECT=false
 DJANGO_SESSION_COOKIE_SECURE=false
 DJANGO_CSRF_COOKIE_SECURE=false
+DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
+DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
+DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@localhost}
 POSTGRES_DB=${POSTGRES_DB:-ai_db}
 POSTGRES_USER=${POSTGRES_USER:-pastor}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -377,8 +380,9 @@ export DJANGO_SECURE_SSL_REDIRECT=false
 export DJANGO_SESSION_COOKIE_SECURE=false
 export DJANGO_CSRF_COOKIE_SECURE=false
 python manage.py migrate --noinput
+python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
-log "Django ready"
+log "Django ready (admin login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
 
 # ---------------------------------------------------------------------------
 # Start services
