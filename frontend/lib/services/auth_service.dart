@@ -220,12 +220,7 @@ class AuthService {
   AuthResult _parseAuthResponse(http.Response res) {
     if (res.statusCode == 401 || res.statusCode == 400 || res.statusCode == 503) {
       final body = _tryDecode(res.body);
-      throw AuthException(
-        body?['detail'] as String? ??
-            (res.statusCode == 503
-                ? 'Google Sign-In is not configured on the server.'
-                : 'Invalid email or password.'),
-      );
+      throw AuthException(_authErrorMessage(body, res.statusCode));
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AuthException('Authentication failed (${res.statusCode}).');
@@ -245,5 +240,33 @@ class AuthService {
     } catch (_) {
       return null;
     }
+  }
+
+  String _authErrorMessage(Map<String, dynamic>? body, int statusCode) {
+    if (body == null) {
+      return statusCode == 503
+          ? 'Google Sign-In is not configured on the server.'
+          : 'Authentication failed.';
+    }
+
+    final detail = body['detail'];
+    if (detail is String && detail.isNotEmpty) return detail;
+
+    final fieldMessages = <String>[];
+    for (final entry in body.entries) {
+      if (entry.key == 'detail') continue;
+      final value = entry.value;
+      if (value is List && value.isNotEmpty) {
+        fieldMessages.add('${entry.key}: ${value.first}');
+      } else if (value is String && value.isNotEmpty) {
+        fieldMessages.add('${entry.key}: $value');
+      }
+    }
+    if (fieldMessages.isNotEmpty) return fieldMessages.join('\n');
+
+    if (statusCode == 503) {
+      return 'Google Sign-In is not configured on the server.';
+    }
+    return 'Invalid email or password.';
   }
 }

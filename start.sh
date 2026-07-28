@@ -24,6 +24,11 @@ resolve_frontend_build_dir() {
 [[ -f "$CONFIG_ENV" ]] || { echo "Missing $CONFIG_ENV — run install.sh first"; exit 1; }
 # shellcheck disable=SC1090
 source "$CONFIG_ENV"
+# tokens.env holds secrets (GOOGLE_CLIENT_ID, HF_TOKEN, etc.) — merge if present.
+if [[ -f "$WS/tokens.env" ]]; then
+  # shellcheck disable=SC1090
+  source "$WS/tokens.env"
+fi
 
 mkdir -p "$LOG_DIR" "${QDRANT_STORAGE:-$WS/qdrant_storage}" "${HF_HOME:-$WS/hf_cache}"
 
