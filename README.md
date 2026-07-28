@@ -28,11 +28,21 @@ bash install.sh
 6. Migrate Django, start Qdrant / vLLM / Django / Cloudflare tunnel
 7. Ingest `backend/app/converted_markdown` into Qdrant `sermon_brain`
 
-## After pod restart
+## After pod restart / migrate
+
+Set the RunPod **Container Start Command** (one-time) so the stack auto-starts:
+
+```bash
+bash -lc 'nohup bash /workspace/pastor-ai/onboot.sh >>/workspace/pastor-ai/logs/onboot.log 2>&1 & exec /start.sh'
+```
+
+Or manually:
 
 ```bash
 bash /workspace/pastor-ai/start.sh
 ```
+
+Postgres app data is snapshotted to the network volume (`postgres_data/ai_db.dump`); Qdrant lives in `qdrant_storage/`. `start.sh` restores the dump when needed and always runs Django migrations before serving traffic.
 
 ## Django admin
 

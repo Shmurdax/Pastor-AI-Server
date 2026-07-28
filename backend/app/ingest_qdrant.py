@@ -1,8 +1,17 @@
 import os
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings  # noqa: F401  # type hint re-export
 from langchain_qdrant import QdrantVectorStore
+
+try:
+    from core.embeddings_utils import get_embeddings
+except ImportError:  # script run outside Django package context
+    def get_embeddings():
+        return HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"},
+        )
 
 # === CONFIG ===
 DATA_DIR = os.environ.get("SERMON_MARKDOWN_DIR", "./converted_markdown")
@@ -63,7 +72,7 @@ def run_ingestion():
 
     # 4. Create / refresh the Qdrant collection
     print(f"--- 🧠 Writing {len(all_chunks)} chunks to Qdrant ({QDRANT_URL}/{QDRANT_COLLECTION}) ---")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = get_embeddings()
 
     QdrantVectorStore.from_documents(
         documents=all_chunks,

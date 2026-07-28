@@ -1,0 +1,7 @@
+# Paste this as the RunPod Pod "Container Start Command" / Docker Command
+# (Pod Settings → Edit → Container Start Command) so Pastor-AI always boots
+# even after a full container recreate / network-volume migrate to a new pod.
+#
+# Keeps the stock RunPod /start.sh (SSH, Jupyter, nginx) AND launches onboot.
+
+bash -lc 'nohup bash /workspace/pastor-ai/onboot.sh >>/workspace/pastor-ai/logs/onboot.log 2>&1 & exec /start.sh'

@@ -246,16 +246,19 @@ cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
+[[ -f "$REPO_ROOT/onboot.sh" ]] && cp -a "$REPO_ROOT/onboot.sh" "$WS/onboot.sh"
+[[ -f "$REPO_ROOT/runpod-docker-command.txt" ]] && cp -a "$REPO_ROOT/runpod-docker-command.txt" "$WS/runpod-docker-command.txt"
 chmod +x "$WS"/*.sh
 [[ -f "$APP_DIR/manage.py" ]] || die "manage.py missing after sync"
 log "Code synced (backend + frontend + scripts)"
 
 # ---------------------------------------------------------------------------
-# PostgreSQL
+# PostgreSQL (cluster is local/ephemeral; app DB dumped to volume by start.sh)
 # ---------------------------------------------------------------------------
 section "PostgreSQL"
 service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
 sleep 2
+mkdir -p "$WS/postgres_data"
 
 # ---------------------------------------------------------------------------
 # Config

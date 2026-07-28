@@ -32,6 +32,8 @@ from typing import Callable, List, Optional
 
 from django.conf import settings
 from langchain_huggingface import HuggingFaceEmbeddings
+
+from .embeddings_utils import get_embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from qdrant_client import QdrantClient
@@ -370,7 +372,7 @@ def ingest_uploaded_files(
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
     bible_splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
@@ -519,7 +521,7 @@ def ingest_markdown_documents(
     result = IngestionResult(files_received=len(documents))
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)

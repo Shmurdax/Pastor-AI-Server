@@ -15,7 +15,6 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 # RAG & Memory Imports
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
@@ -25,6 +24,7 @@ from qdrant_client import QdrantClient
 # Import the model
 from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .pii_redaction import query_text_for_llm, redact_user_query
+from .embeddings_utils import get_embeddings
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import OUT_OF_SCOPE_REPLY, query_in_scope
 
@@ -362,7 +362,7 @@ class ChatAPIView(APIView):
                 )
 
             # 1. SETUP: Vector store (skipped when scope gate refuses — saves Qdrant + embedding work)
-            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            embeddings = get_embeddings()
             collection_name = get_collection_name()
             client = QdrantClient(url=get_qdrant_url())
             ensure_sermon_collection(client, collection_name)
