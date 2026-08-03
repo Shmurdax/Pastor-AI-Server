@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
+import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_panel.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -1111,6 +1112,15 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
+  void _openSubscriptions() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SubscriptionsScreen()),
+    );
+  }
+
   void _openChurchEvents() {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -1270,6 +1280,23 @@ Future<void> _launchSermonDoc(String sermonName) async {
               ),
               title: Text(user.name, style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
               subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _openSubscriptions();
+                },
+                icon: const Icon(Icons.workspace_premium_outlined, color: _navy),
+                label: Text('View plans', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _gold, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             if (user.isStaff) ...[
@@ -1508,6 +1535,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                   _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store")),
                   _buildNavButton("Events", _openChurchEvents),
                   _buildNavButton("Nordin's AI", _focusChatNav),
+                  _buildNavButton("Subscribe", _openSubscriptions),
                   const SizedBox(width: 40),
                 ],
               ),
@@ -1753,10 +1781,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile) ...[
-              Row(children: [
+              Wrap(spacing: 4, runSpacing: 8, children: [
                 _buildNavButton("Home", () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
                 _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
                 _buildNavButton("Events", _openChurchEvents, textColor: Colors.white),
+                _buildNavButton("Subscribe", _openSubscriptions, textColor: Colors.white),
               ]),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
