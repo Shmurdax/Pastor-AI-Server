@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/screens/media_library_screen.dart';
+import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -14,14 +18,37 @@ const _benefits = [
 ];
 
 /// Pricing / plans page styled after the Sermon Library sidebar.
-class SubscriptionsScreen extends StatelessWidget {
+class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
+
+  @override
+  State<SubscriptionsScreen> createState() => _SubscriptionsScreenState();
+}
+
+class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
+  final _apiService = ApiService();
+  bool _eventsOpen = false;
 
   Future<void> _launchUrl(String urlString) async {
     final url = Uri.parse(urlString);
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
+  }
+
+  void _goToAiHome() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  void _openMedia() {
+    // Replace so back / stack does not keep Subscribe under Media.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
+    );
+  }
+
+  void _toggleEvents({bool? open}) {
+    setState(() => _eventsOpen = open ?? !_eventsOpen);
   }
 
   @override
@@ -38,17 +65,15 @@ class SubscriptionsScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         toolbarHeight: isMobileOrTablet ? 100 : 120,
-        leading: isMobileOrTablet
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: _navy),
-                onPressed: () => Navigator.of(context).pop(),
-              )
-            : null,
-        automaticallyImplyLeading: isMobileOrTablet,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: _navy),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        automaticallyImplyLeading: true,
         title: Padding(
           padding: EdgeInsets.only(
             top: isMobileOrTablet ? 10.0 : 20.0,
-            left: isMobileOrTablet ? 0.0 : 60.0,
+            left: isMobileOrTablet ? 0.0 : 12.0,
           ),
           child: GestureDetector(
             onTap: () => _launchUrl('https://thenordins.org/'),
@@ -78,64 +103,92 @@ class SubscriptionsScreen extends StatelessWidget {
                     onTap: () => _launchUrl('https://thenordins.org/store'),
                   ),
                   _NavButton(
-                    label: "Nordin's AI",
-                    onTap: () => Navigator.of(context).pop(),
+                    label: 'Events',
+                    onTap: () => _toggleEvents(open: true),
+                    active: _eventsOpen,
                   ),
-                  _NavButton(
-                    label: 'Subscribe',
-                    onTap: () {},
+                  NordinsAiNavMenu(
+                    onAiHome: _goToAiHome,
+                    onMedia: _openMedia,
+                    onSubscribe: () => _toggleEvents(open: false),
                     active: true,
                   ),
                   const SizedBox(width: 40),
                 ],
               ),
             ),
+          if (isMobile)
+            Padding(
+              padding: const EdgeInsets.only(top: 20.0, right: 4),
+              child: IconButton(
+                tooltip: 'Events',
+                onPressed: () => _toggleEvents(open: true),
+                icon: Icon(
+                  Icons.event_outlined,
+                  color: _eventsOpen ? _gold : _navy,
+                ),
+              ),
+            ),
         ],
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 16 : 32,
-              vertical: isMobile ? 24 : 40,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Choose your plan',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.figtree(
-                      fontSize: isMobile ? 28 : 36,
-                      fontWeight: FontWeight.bold,
-                      color: _navy,
-                    ),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 16 : 32,
+                  vertical: isMobile ? 24 : 40,
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Choose your plan',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.figtree(
+                          fontSize: isMobile ? 28 : 36,
+                          fontWeight: FontWeight.bold,
+                          color: _navy,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Container(height: 2, width: 48, color: _gold),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Support the ministry and unlock more of Nordin\'s AI.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.figtree(
+                          fontSize: 15,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      if (isNarrow)
+                        _NarrowPlansLayout(benefits: _benefits)
+                      else
+                        _WidePlansLayout(benefits: _benefits),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: Container(height: 2, width: 48, color: _gold),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Support the ministry and unlock more of Nordin\'s AI.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.figtree(
-                      fontSize: 15,
-                      color: Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 36),
-                  if (isNarrow)
-                    _NarrowPlansLayout(benefits: _benefits)
-                  else
-                    _WidePlansLayout(benefits: _benefits),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          if (_eventsOpen)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: ChurchEventsNavOverlay(
+                apiService: _apiService,
+                isStaff: false,
+                onClose: () => _toggleEvents(open: false),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -455,12 +508,12 @@ class _TierCard extends StatelessWidget {
 class _NavButton extends StatefulWidget {
   const _NavButton({
     required this.label,
-    required this.onTap,
+    this.onTap,
     this.active = false,
   });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool active;
 
   @override
@@ -475,7 +528,7 @@ class _NavButtonState extends State<_NavButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      cursor: SystemMouseCursors.click,
+      cursor: widget.onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
         child: Padding(
@@ -487,7 +540,7 @@ class _NavButtonState extends State<_NavButton> {
                 padding: const EdgeInsets.only(bottom: 6.0),
                 child: Text(
                   widget.label.toUpperCase(),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'Times New Roman',
                     color: Colors.black,
                     fontSize: 16,

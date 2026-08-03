@@ -4,12 +4,15 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
-import 'package:flutter_application_1/widgets/church_events_panel.dart';
+import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/google_auth_button.dart';
+import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,6 +20,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -692,6 +696,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _chatFocusNode = FocusNode();
+  final _inputAreaKey = GlobalKey();
+  final stt.SpeechToText _speechToText = stt.SpeechToText();
   String sessionId = const Uuid().v4();
   bool _authInitialized = false;
   _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
@@ -706,6 +712,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isFirstMessage = true;
   bool _isButtonTapped = false;
   bool _showBackToBottomButton = false;
+  bool _speechAvailable = false;
+  bool _isListening = false;
+  String _textBeforeSpeech = '';
+  /// Full [_buildInputArea] height including bottom inset; grows with multiline input.
+  double _inputAreaHeight = _layoutBottomInsetDesktop + _chatInputBarBlockHeight;
   http.Client? _activeClient;
 
   // Prayer request panel
@@ -766,6 +777,7 @@ final bibleRefRegex = RegExp(
   @override
   void initState() {
     super.initState();
+    ChatNavActions.openEvents = _openChurchEvents;
     _scrollController.addListener(() {
       final isFarFromBottom =
           _scrollController.offset < _scrollController.position.maxScrollExtent - 500;
@@ -774,6 +786,88 @@ final bibleRefRegex = RegExp(
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncAuthState());
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    final available = await _speechToText.initialize(
+      onStatus: (status) {
+        if (!mounted) return;
+        final listening = status == stt.SpeechToText.listeningStatus;
+        if (_isListening != listening) {
+          setState(() => _isListening = listening);
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Voice input error: ${error.errorMsg}',
+              style: GoogleFonts.figtree(),
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _speechAvailable = available);
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    if (_isLoading) return;
+
+    if (_isListening) {
+      await _speechToText.stop();
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    if (!_speechAvailable) {
+      final available = await _speechToText.initialize();
+      if (!mounted) return;
+      setState(() => _speechAvailable = available);
+      if (!available) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Voice input is not available in this browser. Try Chrome or Edge.',
+              style: GoogleFonts.figtree(),
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+    }
+
+    _textBeforeSpeech = _controller.text.trimRight();
+    if (_textBeforeSpeech.isNotEmpty) {
+      _textBeforeSpeech = '$_textBeforeSpeech ';
+    }
+
+    setState(() => _isListening = true);
+    await _speechToText.listen(
+      onResult: (result) {
+        if (!mounted) return;
+        final spoken = result.recognizedWords.trim();
+        final next = '$_textBeforeSpeech$spoken';
+        _controller.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+        setState(() {});
+      },
+      listenOptions: stt.SpeechListenOptions(
+        partialResults: true,
+        cancelOnError: true,
+        listenMode: stt.ListenMode.dictation,
+        // Stop after ~3s of silence (timer resets while speech is detected).
+        pauseFor: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _syncAuthState() async {
@@ -927,9 +1021,16 @@ final bibleRefRegex = RegExp(
 
   @override
   void dispose() {
+    if (ChatNavActions.openEvents == _openChurchEvents) {
+      ChatNavActions.openEvents = null;
+    }
+    if (_speechToText.isListening) {
+      _speechToText.stop();
+    }
     _pulseController.dispose();
     _scrollController.dispose();
     _controller.dispose();
+    _chatFocusNode.dispose();
     _prayerNameController.dispose();
     _prayerEmailController.dispose();
     _prayerPhoneController.dispose();
@@ -1121,6 +1222,16 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
+  void _openMedia() {
+    // TODO: gate on Premium subscription.
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
+    );
+  }
+
   void _openChurchEvents() {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -1137,62 +1248,11 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   Widget _buildEventsNavPanel(AuthController auth) {
-    final size = MediaQuery.of(context).size;
-    final screenWidth = size.width;
-    // ~30% width; on very narrow viewports use most of the row so content stays readable.
-    final targetWidth = screenWidth * 0.3;
-    final panelWidth = targetWidth < 260 ? screenWidth * 0.92 : targetWidth;
-    final panelHeight = (size.height * 0.32).clamp(200.0, 340.0);
-
-    return Padding(
-        padding: EdgeInsets.fromLTRB(8, 0, screenWidth < 600 ? 8 : 16, 8),
-        child: SizedBox(
-          width: panelWidth,
-          height: panelHeight,
-          child: Material(
-            color: _surface,
-            elevation: 2,
-            shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 4, 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Church Events',
-                          style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.bold, color: _navy),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Close events',
-                        onPressed: _closeChurchEventsPanel,
-                        icon: const Icon(Icons.close, color: _navy, size: 20),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ScrollConfiguration(
-                    behavior: const _NoOverscrollScrollBehavior(),
-                    child: ChurchEventsPanel(
-                      key: ValueKey('events-nav-${auth.user?.id ?? 'guest'}-${auth.user?.isStaff ?? false}'),
-                      apiService: _apiService,
-                      isStaff: auth.isAuthenticated && (auth.user?.isStaff ?? false),
-                      enablePullToRefresh: false,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return ChurchEventsNavOverlay(
+      apiService: _apiService,
+      isStaff: auth.isAuthenticated && (auth.user?.isStaff ?? false),
+      onClose: _closeChurchEventsPanel,
+      panelKey: ValueKey('events-nav-${auth.user?.id ?? 'guest'}-${auth.user?.isStaff ?? false}'),
     );
   }
 
@@ -1299,6 +1359,23 @@ Future<void> _launchSermonDoc(String sermonName) async {
               ),
             ),
             const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  _openMedia();
+                },
+                icon: const Icon(Icons.video_library_outlined, color: _navy),
+                label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _navy, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             if (user.isStaff) ...[
               SizedBox(
                 width: double.infinity,
@@ -1372,7 +1449,12 @@ Future<void> _launchSermonDoc(String sermonName) async {
 
 Future<void> _sendMessage() async {
   // Guard clause: prevent sending if already loading
-  if (_isLoading) return; 
+  if (_isLoading) return;
+
+  if (_isListening || _speechToText.isListening) {
+    await _speechToText.stop();
+    if (mounted) setState(() => _isListening = false);
+  }
 
   final userText = _controller.text.trim();
   if (userText.isEmpty) return;
@@ -1448,12 +1530,31 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 }
 
   // ─── Build ───────────────────────────────────────────────────────────────────
+  void _measureInputAreaHeight() {
+    final context = _inputAreaKey.currentContext;
+    if (context == null) return;
+    final height = context.size?.height;
+    if (height == null) return;
+    if ((height - _inputAreaHeight).abs() < 0.5) return;
+    if (!mounted) return;
+    setState(() => _inputAreaHeight = height);
+  }
+
+  void _scheduleInputAreaMeasure() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureInputAreaHeight());
+  }
+
   double _prayerFabBottom(double screenWidth, bool isMobile, double viewInsetBottom) {
     final layoutBottomInset = isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop;
+    const gap = 8.0;
     if (screenWidth < _prayerFabClearanceBelowWide) {
-      return layoutBottomInset + _chatInputBarBlockHeight + viewInsetBottom;
+      // Measured height already includes the bottom layout inset.
+      return _inputAreaHeight + gap + viewInsetBottom;
     }
-    return layoutBottomInset + viewInsetBottom;
+    // Wide screens sit in the corner by default; lift by any multiline growth.
+    final singleLineHeight = layoutBottomInset + _chatInputBarBlockHeight;
+    final growth = (_inputAreaHeight - singleLineHeight).clamp(0.0, double.infinity);
+    return layoutBottomInset + growth + gap + viewInsetBottom;
   }
 
   @override
@@ -1470,6 +1571,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final viewInsetBottom = MediaQuery.of(context).viewInsets.bottom;
     final prayerFabBottom = _prayerFabBottom(screenWidth, isMobile, viewInsetBottom);
     final prayerFabRight = isMobile ? 10.0 : 20.0;
+    _scheduleInputAreaMeasure();
 
     return Scaffold(
       key: _scaffoldKey,
@@ -1534,8 +1636,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                   _buildNavButton("Home", () => _launchUrl("https://thenordins.org/")),
                   _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store")),
                   _buildNavButton("Events", _openChurchEvents),
-                  _buildNavButton("Nordin's AI", _focusChatNav),
-                  _buildNavButton("Subscribe", _openSubscriptions),
+                  NordinsAiNavMenu(
+                    onAiHome: _focusChatNav,
+                    onMedia: _openMedia,
+                    onSubscribe: _openSubscriptions,
+                  ),
                   const SizedBox(width: 40),
                 ],
               ),
@@ -1579,7 +1684,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 child: Container(color: Colors.black12),
               ),
             ),
-          Positioned(
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
             bottom: prayerFabBottom,
             right: prayerFabRight,
             child: _buildPrayerRequestPanel(isMobileOrTablet),
@@ -1781,11 +1888,21 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile) ...[
-              Wrap(spacing: 4, runSpacing: 8, children: [
+              Wrap(spacing: 4, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 _buildNavButton("Home", () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
                 _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
                 _buildNavButton("Events", _openChurchEvents, textColor: Colors.white),
-                _buildNavButton("Subscribe", _openSubscriptions, textColor: Colors.white),
+                NordinsAiNavMenu(
+                  onAiHome: () {
+                    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+                      Navigator.of(context).pop();
+                    }
+                    _focusChatNav();
+                  },
+                  onMedia: _openMedia,
+                  onSubscribe: _openSubscriptions,
+                  textColor: Colors.white,
+                ),
               ]),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
@@ -2327,6 +2444,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
 
   Widget _buildInputArea(bool isMobile) {
     return Container(
+      key: _inputAreaKey,
       padding: EdgeInsets.only(
         bottom: isMobile ? _layoutBottomInsetMobile : _layoutBottomInsetDesktop,
         left: isMobile ? 10 : 20,
@@ -2339,35 +2457,78 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
           decoration: BoxDecoration(
             color: _surface,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(
+              color: _isListening ? _gold : Colors.grey.shade300,
+              width: _isListening ? 1.5 : 1,
+            ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                // Inside _buildInputArea...
-              child: TextField(
-                controller: _controller,
-                focusNode: _chatFocusNode,
-                onChanged: (_) => setState(() {}),
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.send,
-                // UPDATE THIS LINE:
-                onSubmitted: (_) {
-                  if (_controller.text.trim().isEmpty) {
-                    _chatFocusNode.requestFocus();
-                  } else if (!_isLoading) {
-                    _sendMessage();
-                  }
-                },
-                decoration: const InputDecoration(
-                  hintText: "How can I help you?",
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.only(left: 16, right: 16, top: 14, bottom: 14),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _chatFocusNode,
+                  onChanged: (_) {
+                    setState(() {});
+                    _scheduleInputAreaMeasure();
+                  },
+                  minLines: 1,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) {
+                    if (_isListening) {
+                      _speechToText.stop();
+                    }
+                    if (_controller.text.trim().isEmpty) {
+                      _chatFocusNode.requestFocus();
+                    } else if (!_isLoading) {
+                      _sendMessage();
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: _isListening ? 'Listening… speak your question' : 'How can I help you?',
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                  ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6.0, right: 2.0),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Tooltip(
+                    message: _isListening ? 'Stop voice input' : 'Ask with voice',
+                    child: GestureDetector(
+                      onTap: _toggleVoiceInput,
+                      child: AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          final scale = _isListening ? (0.92 + (_wobbleAnimation.value - 0.7) * 0.2) : 1.0;
+                          return Transform.scale(scale: scale, child: child);
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isListening ? _pink : Colors.white,
+                            border: Border.all(
+                              color: _isListening ? _pink : _navy.withValues(alpha: 0.35),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Icon(
+                            _isListening ? Icons.mic : Icons.mic_none,
+                            color: _isListening ? Colors.white : _navy,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 6.0, right: 4.0, left: 4.0),
