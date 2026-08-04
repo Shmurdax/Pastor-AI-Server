@@ -1127,36 +1127,42 @@ final bibleRefRegex = RegExp(
   }
 
 Future<void> _launchSermonDoc(String sermonName) async {
-  final String stem = sermonName.toLowerCase().endsWith('.pdf')
-      ? sermonName.substring(0, sermonName.length - 4)
-      : sermonName;
-  final String expectedPdf = '$stem.pdf';
+  var stem = sermonName.trim();
+  final lower = stem.toLowerCase();
+  for (final ext in const ['.pdf', '.md', '.docx']) {
+    if (lower.endsWith(ext)) {
+      stem = stem.substring(0, stem.length - ext.length).trim();
+      break;
+    }
+  }
+  if (stem.isEmpty) return;
+
+  // Same-origin PDF route: uploaded file when present, else rebuilt from Qdrant notes.
+  final Uri fileUri = Uri(
+    scheme: Uri.base.scheme.isEmpty ? 'https' : Uri.base.scheme,
+    host: Uri.base.host,
+    port: Uri.base.hasPort ? Uri.base.port : null,
+    pathSegments: <String>['sermons', '$stem.pdf'],
+  );
 
   try {
-    final body = await _apiService.getIngestedDocuments(match: expectedPdf);
-    final List<dynamic> docs = body['documents'] as List<dynamic>? ?? <dynamic>[];
-
-    Map<String, dynamic>? match;
-    for (final dynamic d in docs) {
-      final Map<String, dynamic> map = d as Map<String, dynamic>;
-      final String name = (map['source_name'] as String? ?? '').toLowerCase();
-      if (name == expectedPdf.toLowerCase()) {
-        match = map;
-        break;
-      }
+    final launched = await launchUrl(
+      fileUri,
+      mode: LaunchMode.externalApplication,
+      webOnlyWindowName: '_blank',
+    );
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open sermon PDF for "$stem".')),
+      );
     }
-
-    if (match == null) {
-      debugPrint('No ingested document matched source_name=$expectedPdf');
-      return;
-    }
-
-    final String fileUrl = match['file_url'] as String;
-    final Uri fileUri = Uri.parse(Uri.base.origin).resolve(fileUrl);
-
-    await launchUrl(fileUri, mode: LaunchMode.externalApplication);
   } catch (e, st) {
     debugPrint('Error opening sermon link: $e\n$st');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open sermon PDF for "$stem".')),
+      );
+    }
   }
 }
 

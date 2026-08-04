@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.http import Http404
 from django.urls import reverse
 from rest_framework.views import APIView
@@ -13,6 +13,8 @@ from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+
+from .sermon_pdf import sermon_pdf_from_qdrant
 
 # RAG & Memory Imports
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -263,6 +265,7 @@ class SermonPdfByNameAPIView(APIView):
         if not normalized_stem:
             raise Http404("Document was not found.")
 
+        # 1) Preferred: uploaded PDF tracked by IngestedDocument.
         document = (
             IngestedDocument.objects.filter(
                 Q(title__iexact=normalized_stem)
@@ -273,26 +276,32 @@ class SermonPdfByNameAPIView(APIView):
             .order_by("-updated_at")
             .first()
         )
-        if not document:
-            raise Http404("Document was not found.")
+        if document:
+            source_name = document.source_name or ""
+            if Path(source_name).suffix.lower() == ".pdf":
+                upload_dir = (Path(settings.BASE_DIR) / "uploads" / "admin_ingestion").resolve()
+                file_path = (upload_dir / source_name).resolve()
+                if file_path.is_file():
+                    try:
+                        file_path.relative_to(upload_dir)
+                    except ValueError as exc:
+                        raise Http404("Invalid file path.") from exc
+                    response = FileResponse(
+                        open(file_path, "rb"), content_type="application/pdf"
+                    )
+                    response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
+                    return response
 
-        source_name = document.source_name or ""
-        if Path(source_name).suffix.lower() != ".pdf":
-            raise Http404("Only PDF documents are available for download.")
+        # 2) Fallback: reconstruct PDF from Qdrant sermon/markdown chunks.
+        built = sermon_pdf_from_qdrant(normalized_stem)
+        if built:
+            filename, pdf_bytes = built
+            response = HttpResponse(pdf_bytes, content_type="application/pdf")
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            response["Cache-Control"] = "public, max-age=300"
+            return response
 
-        upload_dir = (Path(settings.BASE_DIR) / "uploads" / "admin_ingestion").resolve()
-        file_path = (upload_dir / source_name).resolve()
-        if not file_path.is_file():
-            raise Http404("Document file was not found on disk.")
-
-        try:
-            file_path.relative_to(upload_dir)
-        except ValueError as exc:
-            raise Http404("Invalid file path.") from exc
-
-        response = FileResponse(open(file_path, "rb"), content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
-        return response
+        raise Http404("Document was not found.")
 
 class ChatAPIView(APIView):
     # Same browser often has an active Django admin session. SessionAuthentication would

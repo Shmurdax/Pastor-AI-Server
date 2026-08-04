@@ -31,5 +31,6 @@ openai
 huggingface-hub
 numpy
 pypdf
+fpdf2>=2.7.0
 python-docx
 beautifulsoup4>=4.12
