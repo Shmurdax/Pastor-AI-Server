@@ -17,6 +17,8 @@ from .serializers import (
 
 
 class RegisterView(APIView):
+    # Avoid SessionAuthentication CSRF when an admin session cookie is present.
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -31,6 +33,8 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
+    # Avoid SessionAuthentication CSRF when an admin session cookie is present.
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -75,6 +79,8 @@ class GoogleAuthView(APIView):
     -> { "token": "...", "user": { id, email, name, avatar_url } }
     """
 
+    # Avoid SessionAuthentication CSRF when an admin session cookie is present.
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):

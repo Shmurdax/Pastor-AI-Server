@@ -204,10 +204,12 @@ REFERRER_POLICY = os.getenv("DJANGO_REFERRER_POLICY", "strict-origin-when-cross-
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        # TokenAuthentication lives in rest_framework.authentication (not
-        # rest_framework.authtoken.authentication — that module does not exist).
+        # Token only. SessionAuthentication shares the Django admin session cookie
+        # with the Flutter web app on the same origin; that forces CSRF on API POSTs
+        # (login/register/google/staff writes) and returns 403 "CSRF token missing"
+        # because Flutter does not send a CSRF header. Django admin still uses its
+        # own session middleware — it does not need DRF SessionAuthentication.
         "rest_framework.authentication.TokenAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",

@@ -1,9 +1,44 @@
+import json
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
+
+
+class LoginCsrfRegressionTests(TestCase):
+    """Flutter web shares origin with /admin/; an admin session must not 403 login."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            username="staff@church.org",
+            email="staff@church.org",
+            password="StaffPass123!",
+            is_staff=True,
+        )
+        User.objects.create_superuser(
+            username="admin",
+            email="admin@localhost",
+            password="admin123",
+        )
+
+    def test_login_succeeds_with_admin_session_cookie_and_no_csrf_header(self):
+        browser = Client(enforce_csrf_checks=True)
+        self.assertTrue(browser.login(username="admin", password="admin123"))
+
+        res = browser.post(
+            "/api/auth/login/",
+            data=json.dumps(
+                {"email": "staff@church.org", "password": "StaffPass123!"}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(res.status_code, 200, res.content)
+        body = res.json()
+        self.assertIn("token", body)
+        self.assertTrue(body["user"]["is_staff"])
 
 
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
