@@ -1,6 +1,11 @@
 import unittest
 
 from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
+from .response_language import (
+    ENGLISH_LANGUAGE_FALLBACK,
+    contains_cjk,
+    sanitize_english_response,
+)
 from .scope_gate import parse_scope_gate_response
 from .website_crawl.crawler import normalize_url, path_is_excluded
 from .website_crawl.extract import (
@@ -81,6 +86,34 @@ class PiiRedactionTests(unittest.TestCase):
         self.assertNotIn("[REDACTED]", llm)
         self.assertIn("Mary", llm)
         self.assertIn("someone", llm.lower())
+
+
+class ResponseLanguageTests(unittest.TestCase):
+    def test_contains_cjk_detects_chinese(self):
+        self.assertTrue(contains_cjk("hello 献祭 world"))
+        self.assertFalse(contains_cjk("Romans 12:1 Therefore I urge you"))
+
+    def test_sanitize_keeps_english_prefix(self):
+        leaked = (
+            "2. Hebrews 13:16 — Do not forget to do good and to share.\n"
+            "3. Philippians 2:17 — Even if I am being poured out.\n"
+            "5. Romans 12:1 — Therefore, I urge you, brothers and sisters, and"
+            "劝导用户更换问题，因为提供的参考文献中没有相关内容来回答这个请求。"
+            "\n\n由于提供的参考文献中没有关于“献祭”的具体经文内容，建议您提出其他主题。"
+        )
+        out = sanitize_english_response(leaked)
+        self.assertFalse(contains_cjk(out))
+        self.assertIn("Hebrews 13:16", out)
+        self.assertIn("Philippians 2:17", out)
+        self.assertNotIn("参考文献", out)
+
+    def test_sanitize_mostly_chinese_uses_fallback(self):
+        out = sanitize_english_response("由于提供的参考文献中没有相关内容。")
+        self.assertEqual(out, ENGLISH_LANGUAGE_FALLBACK)
+
+    def test_sanitize_leaves_clean_english(self):
+        text = "Love one another as Christ loved us."
+        self.assertEqual(sanitize_english_response(text), text)
 
 
 class WebsiteCrawlHelperTests(unittest.TestCase):
