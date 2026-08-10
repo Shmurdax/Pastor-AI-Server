@@ -26,7 +26,7 @@ from qdrant_client import QdrantClient
 from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
-from .scope_gate import OUT_OF_SCOPE_REPLY, query_in_scope
+from .scope_gate import generate_out_of_scope_reply, query_in_scope
 
 VLLM_URL = os.getenv("VLLM_URL", "http://vllm:8000/v1")
 logger = logging.getLogger(__name__)
@@ -347,17 +347,18 @@ class ChatAPIView(APIView):
                 )
 
             if not query_in_scope(llm, user_query_llm):
+                out_of_scope_reply = generate_out_of_scope_reply(llm, user_query_llm)
                 if regenerate and target_message:
-                    target_message.ai_response = OUT_OF_SCOPE_REPLY
+                    target_message.ai_response = out_of_scope_reply
                     target_message.save(update_fields=["ai_response"])
                 elif not regenerate:
                     ChatMessage.objects.create(
                         session_id=session_id,
                         user_query=user_query_stored,
-                        ai_response=OUT_OF_SCOPE_REPLY,
+                        ai_response=out_of_scope_reply,
                     )
                 return Response(
-                    {"answer": OUT_OF_SCOPE_REPLY, "sources": []},
+                    {"answer": out_of_scope_reply, "sources": []},
                     status=status.HTTP_200_OK,
                 )
 
@@ -435,22 +436,24 @@ class ChatAPIView(APIView):
                 "</identity>\n\n"
 
                 "<scope_policy>\n"
-                "Stay centered on spiritual life, Christianity, Pastor Don's views, church and ministry life, and "
-                "social issues that people naturally bring to a pastor. Welcome questions about the Bible, theology, "
-                "discipleship, prayer, salvation, spiritual growth, grief, relationships, purpose, ethics, culture, "
-                "family, community, and how faith speaks into everyday life. Also welcome questions about Pastor Don's "
-                "church, services, ministries, resources, and how to connect with the Nordins.\n"
+                "Stay centered on Christianity, biblical concepts, evangelical theology, Pastor Don's views, church "
+                "and ministry life, and social questions that honestly call for a Christian or pastoral perspective. "
+                "Welcome questions about the Bible, theology, discipleship, prayer, salvation, spiritual growth, "
+                "grief, relationships, purpose, ethics, culture, family, community, and how faith speaks into "
+                "everyday life. Also welcome questions about Pastor Don's church, services, ministries, resources, "
+                "and how to connect with the Nordins.\n"
                 "Be gentle, not rigid. Greetings, thanks, and light pastoral conversation are welcome—answer warmly "
-                "and invite how you can help. If a question sits near faith, church, or Christian social concern, "
+                "and invite how you can help. If a question sits near faith, Scripture, church, or Christian concern, "
                 "engage it. Prefer a pastoral bridge over a hard refusal whenever that is honest.\n"
-                "Decline only when the MAIN request is clearly unrelated to faith, church, ministry, or sincere "
-                "pastoral conversation: creative fiction as the task, coding or tech support, homework or trivia "
-                "for its own sake, recipes, travel planning, roleplay games, multi-style rewrites, or whimsical "
-                "hypotheticals with no real spiritual or social concern.\n"
+                "Do not dive into topics that are not related to Christianity, biblical concepts, or evangelical "
+                "theology. Decline when the MAIN request is clearly unrelated: creative fiction as the task, coding "
+                "or tech support, homework or trivia for its own sake, recipes, travel planning, roleplay games, "
+                "multi-style rewrites, or whimsical hypotheticals with no real spiritual or biblical concern.\n"
                 "Never use REFERENCE NOTES to satisfy entertainment-only or homework-style prompts; unrelated chunks "
                 "do not justify doing those tasks.\n"
-                "When you must decline, answer in one or two warm sentences using this idea:\n"
-                f"  {OUT_OF_SCOPE_REPLY}\n"
+                "When you must decline, write your own short, warm reply in natural language—do not use a fixed "
+                "stock phrase. Briefly redirect toward Christianity, Scripture, evangelical theology, Pastor Don's "
+                "teaching, or church life, and invite a related question.\n"
                 "</scope_policy>\n\n"
 
                 "<source_material>\n"
