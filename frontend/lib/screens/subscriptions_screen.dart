@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/screens/checkout_screen.dart';
+import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
 
-const _benefits = [
-  'Unlimited messages',
-  'Access to media content',
-  'Prayer requests',
-  'More',
+const _freePerks = [
+  'Access to most recent chat history',
+];
+
+const _premiumPerks = [
+  'Unlimited Chat history',
+  'Access to daily 15-minute video devotional video',
+  "the Nordin's study notes",
+  'Daily Bible reading assignment.',
 ];
 
 /// Pricing / plans page styled after the Sermon Library sidebar.
@@ -28,6 +36,7 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   final _apiService = ApiService();
   bool _eventsOpen = false;
+  BillingPeriod _billingPeriod = BillingPeriod.monthly;
 
   Future<void> _launchUrl(String urlString) async {
     final url = Uri.parse(urlString);
@@ -41,7 +50,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   void _openMedia() {
-    // Replace so back / stack does not keep Subscribe under Media.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
     );
@@ -51,12 +59,43 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     setState(() => _eventsOpen = open ?? !_eventsOpen);
   }
 
+  void _openCheckout() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(billingPeriod: _billingPeriod),
+      ),
+    );
+  }
+
+  Future<void> _onPremiumSelected() async {
+    final auth = context.read<AuthController>();
+    if (auth.isAuthenticated) {
+      _openCheckout();
+      return;
+    }
+
+    final signedIn = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+    if (!mounted) return;
+    if (signedIn == true && context.read<AuthController>().isAuthenticated) {
+      _openCheckout();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobileOrTablet = screenWidth < 1024;
     final isMobile = screenWidth < 600;
     final isNarrow = screenWidth < 900;
+
+    final premiumSubtitle =
+        _billingPeriod == BillingPeriod.monthly ? 'Monthly' : 'Yearly';
+    final premiumPrice =
+        _billingPeriod == BillingPeriod.monthly ? '\$15.00' : '\$150.00';
+    final premiumPeriod =
+        _billingPeriod == BillingPeriod.monthly ? '/ month' : '/ year';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -141,7 +180,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   vertical: isMobile ? 24 : 40,
                 ),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1100),
+                  constraints: const BoxConstraints(maxWidth: 900),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -167,11 +206,69 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           color: Colors.black54,
                         ),
                       ),
+                      const SizedBox(height: 28),
+                      Center(
+                        child: _BillingPeriodToggle(
+                          value: _billingPeriod,
+                          onChanged: (period) {
+                            setState(() => _billingPeriod = period);
+                          },
+                        ),
+                      ),
                       const SizedBox(height: 36),
                       if (isNarrow)
-                        _NarrowPlansLayout(benefits: _benefits)
+                        Column(
+                          children: [
+                            _TierCard(
+                              title: 'Free',
+                              subtitle: 'Get Started',
+                              priceLabel: '\$0',
+                              pricePeriod: 'forever',
+                              perks: _freePerks,
+                              style: _TierVisualStyle.outlined,
+                            ),
+                            const SizedBox(height: 20),
+                            _TierCard(
+                              title: 'Premium',
+                              subtitle: premiumSubtitle,
+                              priceLabel: premiumPrice,
+                              pricePeriod: premiumPeriod,
+                              perks: _premiumPerks,
+                              style: _TierVisualStyle.filled,
+                              onTap: _onPremiumSelected,
+                            ),
+                          ],
+                        )
                       else
-                        _WidePlansLayout(benefits: _benefits),
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _TierCard(
+                                  title: 'Free',
+                                  subtitle: 'Get Started',
+                                  priceLabel: '\$0',
+                                  pricePeriod: 'forever',
+                                  perks: _freePerks,
+                                  style: _TierVisualStyle.outlined,
+                                ),
+                              ),
+                              const SizedBox(width: 24),
+                              Expanded(
+                                child: _TierCard(
+                                  title: 'Premium',
+                                  subtitle: premiumSubtitle,
+                                  priceLabel: premiumPrice,
+                                  pricePeriod: premiumPeriod,
+                                  perks: _premiumPerks,
+                                  style: _TierVisualStyle.filled,
+                                  onTap: _onPremiumSelected,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -194,63 +291,36 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 }
 
-/// Desktop layout: tier columns + benefits labels on the right.
-class _WidePlansLayout extends StatelessWidget {
-  const _WidePlansLayout({required this.benefits});
+class _BillingPeriodToggle extends StatelessWidget {
+  const _BillingPeriodToggle({
+    required this.value,
+    required this.onChanged,
+  });
 
-  final List<String> benefits;
-
-  static const _headerHeight = 148.0;
+  final BillingPeriod value;
+  final ValueChanged<BillingPeriod> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return IntrinsicHeight(
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F4F9),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _gold.withValues(alpha: 0.45)),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: _TierCard(
-              title: 'Free',
-              subtitle: 'Get started',
-              priceLabel: '\$0',
-              pricePeriod: 'forever',
-              style: _TierVisualStyle.outlined,
-              benefitCount: benefits.length,
-              headerHeight: _headerHeight,
-            ),
+          _ToggleChip(
+            label: 'Monthly',
+            selected: value == BillingPeriod.monthly,
+            onTap: () => onChanged(BillingPeriod.monthly),
           ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: _TierCard(
-              title: 'Premium',
-              subtitle: 'Monthly',
-              priceLabel: '\$9.99',
-              pricePeriod: '/ month',
-              style: _TierVisualStyle.filled,
-              benefitCount: benefits.length,
-              headerHeight: _headerHeight,
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: _TierCard(
-              title: 'Premium',
-              subtitle: 'Yearly',
-              priceLabel: '\$99',
-              pricePeriod: '/ year',
-              badge: 'Best value',
-              style: _TierVisualStyle.filled,
-              benefitCount: benefits.length,
-              headerHeight: _headerHeight,
-            ),
-          ),
-          const SizedBox(width: 24),
-          SizedBox(
-            width: 200,
-            child: _BenefitsColumn(
-              benefits: benefits,
-              headerHeight: _headerHeight,
-            ),
+          _ToggleChip(
+            label: 'Yearly',
+            selected: value == BillingPeriod.yearly,
+            onTap: () => onChanged(BillingPeriod.yearly),
           ),
         ],
       ),
@@ -258,86 +328,40 @@ class _WidePlansLayout extends StatelessWidget {
   }
 }
 
-/// Mobile / narrow: stack tiers; benefits sit beside each tier's blank rows.
-class _NarrowPlansLayout extends StatelessWidget {
-  const _NarrowPlansLayout({required this.benefits});
-
-  final List<String> benefits;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _TierCard(
-          title: 'Free',
-          subtitle: 'Get started',
-          priceLabel: '\$0',
-          pricePeriod: 'forever',
-          style: _TierVisualStyle.outlined,
-          benefitCount: benefits.length,
-          benefitLabels: benefits,
-        ),
-        const SizedBox(height: 20),
-        _TierCard(
-          title: 'Premium',
-          subtitle: 'Monthly',
-          priceLabel: '\$9.99',
-          pricePeriod: '/ month',
-          style: _TierVisualStyle.filled,
-          benefitCount: benefits.length,
-          benefitLabels: benefits,
-        ),
-        const SizedBox(height: 20),
-        _TierCard(
-          title: 'Premium',
-          subtitle: 'Yearly',
-          priceLabel: '\$99',
-          pricePeriod: '/ year',
-          badge: 'Best value',
-          style: _TierVisualStyle.filled,
-          benefitCount: benefits.length,
-          benefitLabels: benefits,
-        ),
-      ],
-    );
-  }
-}
-
-class _BenefitsColumn extends StatelessWidget {
-  const _BenefitsColumn({
-    required this.benefits,
-    required this.headerHeight,
+class _ToggleChip extends StatelessWidget {
+  const _ToggleChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
   });
 
-  final List<String> benefits;
-  final double headerHeight;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    // Match tier card: top padding + header + gap before blank rows.
-    return Padding(
-      padding: EdgeInsets.only(top: 24 + headerHeight + 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < benefits.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            SizedBox(
-              height: 48,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  benefits[i],
-                  style: GoogleFonts.figtree(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _navy,
-                  ),
-                ),
-              ),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? _navy : Colors.transparent,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.figtree(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : _navy,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -345,30 +369,33 @@ class _BenefitsColumn extends StatelessWidget {
 
 enum _TierVisualStyle { outlined, filled }
 
-class _TierCard extends StatelessWidget {
+class _TierCard extends StatefulWidget {
   const _TierCard({
     required this.title,
     required this.subtitle,
     required this.priceLabel,
     required this.pricePeriod,
+    required this.perks,
     required this.style,
-    required this.benefitCount,
-    this.headerHeight = 148,
-    this.badge,
-    this.benefitLabels,
+    this.onTap,
   });
 
   final String title;
   final String subtitle;
   final String priceLabel;
   final String pricePeriod;
+  final List<String> perks;
   final _TierVisualStyle style;
-  final int benefitCount;
-  final double headerHeight;
-  final String? badge;
-  final List<String>? benefitLabels;
+  final VoidCallback? onTap;
 
-  bool get _filled => style == _TierVisualStyle.filled;
+  @override
+  State<_TierCard> createState() => _TierCardState();
+}
+
+class _TierCardState extends State<_TierCard> {
+  bool _hovered = false;
+
+  bool get _filled => widget.style == _TierVisualStyle.filled;
 
   @override
   Widget build(BuildContext context) {
@@ -376,130 +403,132 @@ class _TierCard extends StatelessWidget {
     final subtitleColor = _filled ? Colors.white70 : Colors.black54;
     final priceColor = _filled ? Colors.white : _navy;
     final periodColor = _filled ? Colors.white70 : Colors.black54;
-    final blankBorder = _filled
-        ? Colors.white.withValues(alpha: 0.35)
-        : _gold.withValues(alpha: 0.55);
-    final blankFill = _filled
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.transparent;
+    final perkColor = _filled ? Colors.white : _navy;
+    final clickable = widget.onTap != null;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        gradient: _filled
-            ? const LinearGradient(
-                colors: [_pink, _navy],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : null,
-        color: _filled ? null : Colors.white,
-        border: _filled ? null : Border.all(color: _gold, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: headerHeight,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (badge != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _gold,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      badge!,
-                      style: GoogleFonts.figtree(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: _navy,
-                      ),
-                    ),
+    return MouseRegion(
+      onEnter: clickable ? (_) => setState(() => _hovered = true) : null,
+      onExit: clickable ? (_) => setState(() => _hovered = false) : null,
+      cursor: clickable ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 26),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: _filled
+                ? const LinearGradient(
+                    colors: [_pink, _navy],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   )
-                else
-                  const SizedBox(height: 23),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: GoogleFonts.figtree(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: titleColor,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.figtree(fontSize: 13, color: subtitleColor),
-                ),
-                const Spacer(),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      priceLabel,
-                      style: GoogleFonts.figtree(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: priceColor,
-                      ),
+                : null,
+            color: _filled ? null : Colors.white,
+            border: _filled
+                ? Border.all(
+                    color: _hovered ? _gold : Colors.transparent,
+                    width: 2,
+                  )
+                : Border.all(color: _gold, width: 2),
+            boxShadow: _hovered
+                ? [
+                    BoxShadow(
+                      color: _navy.withValues(alpha: 0.18),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
-                    const SizedBox(width: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        pricePeriod,
-                        style: GoogleFonts.figtree(fontSize: 13, color: periodColor),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Container(height: 2, width: 40, color: _gold),
-              ],
-            ),
+                  ]
+                : null,
           ),
-          const SizedBox(height: 20),
-          for (var i = 0; i < benefitCount; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            SizedBox(
-              height: 48,
-              child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.title,
+                style: GoogleFonts.figtree(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.subtitle,
+                style: GoogleFonts.figtree(fontSize: 13, color: subtitleColor),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Expanded(
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: blankFill,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: blankBorder, width: 1.5),
-                      ),
+                  Text(
+                    widget.priceLabel,
+                    style: GoogleFonts.figtree(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: priceColor,
                     ),
                   ),
-                  if (benefitLabels != null) ...[
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      width: 140,
+                  const SizedBox(width: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      widget.pricePeriod,
+                      style: GoogleFonts.figtree(fontSize: 13, color: periodColor),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(height: 2, width: 40, color: _gold),
+              const SizedBox(height: 22),
+              for (var i = 0; i < widget.perks.length; i++) ...[
+                if (i > 0) const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.check_circle_outline,
+                        size: 18,
+                        color: _filled ? _gold : _navy,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
                       child: Text(
-                        benefitLabels![i],
+                        widget.perks[i],
                         style: GoogleFonts.figtree(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _filled ? Colors.white : _navy,
+                          height: 1.35,
+                          color: perkColor,
                         ),
                       ),
                     ),
                   ],
-                ],
-              ),
-            ),
-          ],
-        ],
+                ),
+              ],
+              if (clickable) ...[
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select plan →',
+                    style: GoogleFonts.figtree(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _gold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
