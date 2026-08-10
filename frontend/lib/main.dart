@@ -1695,7 +1695,10 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             curve: Curves.easeOutCubic,
             bottom: prayerFabBottom,
             right: prayerFabRight,
-            child: _buildPrayerRequestPanel(isMobileOrTablet),
+            child: _buildPrayerRequestPanel(
+              isCompactViewport: isMobileOrTablet,
+              iconOnlyCollapsed: isMobile,
+            ),
           ),
         ],
       ),
@@ -1986,34 +1989,51 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     );
   }
 
-  Widget _buildPrayerRequestPanel(bool isMobile) {
+  Widget _buildPrayerRequestPanel({
+    required bool isCompactViewport,
+    required bool iconOnlyCollapsed,
+  }) {
     final maxHeight = MediaQuery.of(context).size.height * 0.65;
-    final panelWidth = isMobile ? MediaQuery.of(context).size.width - 32 : 420.0;
+    final panelWidth =
+        isCompactViewport ? MediaQuery.of(context).size.width - 32 : 420.0;
 
     if (!_prayerPanelExpanded) {
-      return Material(
+      final fab = Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(28),
         child: InkWell(
           onTap: () => _togglePrayerPanel(expanded: true),
           borderRadius: BorderRadius.circular(28),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: iconOnlyCollapsed
+                ? const EdgeInsets.all(14)
+                : const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               gradient: const LinearGradient(colors: [_pink, _navy]),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.volunteer_activism, color: _gold, size: 22),
-                const SizedBox(width: 8),
-                Text('Prayer Request Form', style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
+            child: iconOnlyCollapsed
+                ? const Icon(Icons.volunteer_activism, color: _gold, size: 24)
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.volunteer_activism, color: _gold, size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Prayer Request Form',
+                        style: GoogleFonts.figtree(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       );
+      return iconOnlyCollapsed
+          ? Tooltip(message: 'Prayer Request Form', child: fab)
+          : fab;
     }
 
     return Material(
