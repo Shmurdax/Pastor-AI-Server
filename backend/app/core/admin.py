@@ -63,10 +63,17 @@ def _mark_stale_running_jobs_failed() -> int:
 
 @admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-    # These now match your models.py perfectly
-    list_display = ('session_id', 'user_query', 'timestamp')
-    search_fields = ('session_id', 'user_query')
+    list_display = ('login_username', 'session_id', 'user_query', 'timestamp')
+    search_fields = ('user__username', 'user__email', 'session_id', 'user_query')
     list_filter = ('timestamp',)
+    raw_id_fields = ('user',)
+    readonly_fields = ('login_username', 'timestamp')
+
+    @admin.display(description='Login username', ordering='user__username')
+    def login_username(self, obj):
+        if obj.user_id is None:
+            return '—'
+        return obj.user.get_username()
 
 
 @admin.register(IngestedDocument)
