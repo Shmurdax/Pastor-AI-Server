@@ -1095,44 +1095,46 @@ final bibleRefRegex = RegExp(
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   void _scrollToBottom() {
-    // ListView.builder grows maxScrollExtent as lower items build, so a single
-    // animateTo() often stops short. Keep jumping until we settle at the true end.
-    Future<void> scrollFully() async {
+    Future<void> scrollSmoothly() async {
       if (!_scrollController.hasClients) return;
 
-      for (var i = 0; i < 12; i++) {
-        if (!_scrollController.hasClients) return;
-        final position = _scrollController.position;
-        final target = position.maxScrollExtent;
-        final remaining = target - position.pixels;
-
-        if (remaining.abs() < 2) break;
-
-        if (i == 0 && remaining > 120) {
-          await _scrollController.animateTo(
-            target,
-            duration: Duration(
-              milliseconds: (remaining / 4).clamp(250, 1000).round(),
-            ),
-            curve: Curves.easeOutCubic,
-          );
-        } else {
-          _scrollController.jumpTo(target);
-        }
-
-        await WidgetsBinding.instance.endOfFrame;
+      final position = _scrollController.position;
+      final distance = position.maxScrollExtent - position.pixels;
+      if (distance <= 1) {
+        if (mounted) setState(() => _showBackToBottomButton = false);
+        return;
       }
 
+      // One continuous ease — chat ListView uses a large cacheExtent so
+      // maxScrollExtent is already accurate for typical conversation length.
+      await _scrollController.animateTo(
+        position.maxScrollExtent,
+        duration: Duration(
+          milliseconds: (distance / 2.2).clamp(350, 900).round(),
+        ),
+        curve: Curves.easeInOutCubic,
+      );
+
+      // Tiny follow-up animate only if late layout grew the extent (no jumpTo).
       if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        final leftover = _scrollController.position.maxScrollExtent -
+            _scrollController.position.pixels;
+        if (leftover > 2) {
+          await _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: Duration(
+              milliseconds: (leftover / 2).clamp(100, 250).round(),
+            ),
+            curve: Curves.easeOut,
+          );
+        }
       }
-      if (mounted) {
-        setState(() => _showBackToBottomButton = false);
-      }
+
+      if (mounted) setState(() => _showBackToBottomButton = false);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(scrollFully());
+      unawaited(scrollSmoothly());
     });
   }
 
@@ -2315,6 +2317,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                         ListView.builder(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
+                          // Keep offscreen messages measured so Back to bottom
+                          // can animate to the true end in one smooth scroll.
+                          cacheExtent: 100000,
                           padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
