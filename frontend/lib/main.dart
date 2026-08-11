@@ -1095,14 +1095,44 @@ final bibleRefRegex = RegExp(
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    // ListView.builder grows maxScrollExtent as lower items build, so a single
+    // animateTo() often stops short. Keep jumping until we settle at the true end.
+    Future<void> scrollFully() async {
+      if (!_scrollController.hasClients) return;
+
+      for (var i = 0; i < 12; i++) {
+        if (!_scrollController.hasClients) return;
+        final position = _scrollController.position;
+        final target = position.maxScrollExtent;
+        final remaining = target - position.pixels;
+
+        if (remaining.abs() < 2) break;
+
+        if (i == 0 && remaining > 120) {
+          await _scrollController.animateTo(
+            target,
+            duration: Duration(
+              milliseconds: (remaining / 4).clamp(250, 1000).round(),
+            ),
+            curve: Curves.easeOutCubic,
+          );
+        } else {
+          _scrollController.jumpTo(target);
+        }
+
+        await WidgetsBinding.instance.endOfFrame;
       }
+
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+      if (mounted) {
+        setState(() => _showBackToBottomButton = false);
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(scrollFully());
     });
   }
 
