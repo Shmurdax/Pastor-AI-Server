@@ -99,6 +99,27 @@ class AuthController extends ChangeNotifier {
 
   bool get isAuthenticated => token != null && user != null;
 
+  bool get isPremium => user?.isPremium ?? false;
+
+  Future<void> applyUser(AuthUser next) async {
+    user = next;
+    if (token != null) {
+      await _tokenStorage.saveSession(token: token!, user: next);
+    }
+    notifyListeners();
+  }
+
+  Future<bool> refreshMe() async {
+    if (token == null) return false;
+    try {
+      final me = await _authService.getMe(token!);
+      await applyUser(me);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _restoreSession() async {
     final saved = await _tokenStorage.loadSession();
     if (saved.token == null || saved.user == null) return;

@@ -71,4 +71,12 @@ class ApiService {
       _apiClient.updateChurchEvent(id, payload);
 
   Future<void> deleteChurchEvent(int id) => _apiClient.deleteChurchEvent(id);
+
+  Future<Map<String, dynamic>> getBillingConfig() => _apiClient.getBillingConfig();
+
+  Future<Map<String, dynamic>> createCheckoutSession({required String billingPeriod}) =>
+      _apiClient.createCheckoutSession(billingPeriod: billingPeriod);
+
+  Future<Map<String, dynamic>> getCheckoutSessionStatus(String sessionId) =>
+      _apiClient.getCheckoutSessionStatus(sessionId);
 }

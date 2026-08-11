@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
@@ -199,8 +200,64 @@ final bibleRefRegex = RegExp(
         setState(() => _showBackToBottomButton = isFarFromBottom);
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAuthState());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _syncAuthState();
+      await _handleBillingReturn();
+    });
     _initSpeech();
+  }
+
+  /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
+  static const _guestHistoryId = 'guest';
+  static const _premiumHistoryCap = 40;
+  static const _freeHistoryCap = 1;
+
+  String get _historyStorageId {
+    final auth = context.read<AuthController>();
+    return auth.user?.id ?? _guestHistoryId;
+  }
+
+  bool get _isPremiumUser {
+    final auth = context.read<AuthController>();
+    return auth.user?.isPremium ?? false;
+  }
+
+  int get _maxHistoryEntries =>
+      _isPremiumUser ? _premiumHistoryCap : _freeHistoryCap;
+
+  Future<void> _handleBillingReturn() async {
+    if (!kIsWeb) return;
+    final uri = Uri.base;
+    final billing = uri.queryParameters['billing'];
+    final sessionId = uri.queryParameters['session_id'];
+    if (billing != 'success' || sessionId == null || sessionId.isEmpty) return;
+
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+    _apiService.setAccessToken(auth.token);
+    try {
+      final status = await _apiService.getCheckoutSessionStatus(sessionId);
+      final userJson = status['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      // Trim/expand history cap after premium unlock.
+      await _reloadChatHistory();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            auth.isPremium
+                ? 'Welcome to Premium — unlimited chat history is unlocked.'
+                : 'Payment received. Refreshing your membership…',
+          ),
+        ),
+      );
+    } catch (_) {
+      await auth.refreshMe();
+    }
   }
 
   Future<void> _initSpeech() async {
@@ -288,18 +345,23 @@ final bibleRefRegex = RegExp(
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
 
-    if (auth.isAuthenticated && auth.user != null) {
-      final savedSession = await _tokenStorage.loadChatSessionId(auth.user!.id);
-      final history = await _tokenStorage.loadChatHistory(auth.user!.id);
-      if (mounted) {
-        setState(() {
-          _chatHistoryEntries = history;
-          if (savedSession != null) sessionId = savedSession;
-        });
-        await _restoreMessagesForCurrentSession(auth.user!.id);
-      }
-    } else if (mounted) {
-      setState(() => _chatHistoryEntries = []);
+    final storageId = auth.user?.id ?? _guestHistoryId;
+    final savedSession = await _tokenStorage.loadChatSessionId(storageId);
+    var history = await _tokenStorage.loadChatHistory(storageId);
+
+    // Free / guest: keep only the most recent chat history entry.
+    final maxEntries = (auth.user?.isPremium ?? false) ? _premiumHistoryCap : _freeHistoryCap;
+    if (history.length > maxEntries) {
+      history = history.take(maxEntries).toList();
+      await _tokenStorage.saveChatHistory(storageId, history);
+    }
+
+    if (mounted) {
+      setState(() {
+        _chatHistoryEntries = history;
+        if (savedSession != null) sessionId = savedSession;
+      });
+      await _restoreMessagesForCurrentSession(storageId);
     }
 
     if (mounted) setState(() => _authInitialized = true);
@@ -329,9 +391,7 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _persistSessionId() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    await _tokenStorage.saveChatSessionId(auth.user!.id, sessionId);
+    await _tokenStorage.saveChatSessionId(_historyStorageId, sessionId);
   }
 
   String _chatHistoryTitle() {
@@ -356,9 +416,9 @@ final bibleRefRegex = RegExp(
       };
 
   Future<void> _persistChatHistory() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null || _messages.isEmpty) return;
+    if (_messages.isEmpty) return;
 
+    final storageId = _historyStorageId;
     final snapshot = _currentChatSnapshot();
     final sid = sessionId;
     final updated = <Map<String, dynamic>>[
@@ -366,24 +426,25 @@ final bibleRefRegex = RegExp(
       ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
     ]..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
 
-    const maxEntries = 40;
-    final trimmed = updated.take(maxEntries).toList();
-    await _tokenStorage.saveChatHistory(auth.user!.id, trimmed);
+    // Free/guest: only the most recent chat is kept; Premium keeps many.
+    final trimmed = updated.take(_maxHistoryEntries).toList();
+    await _tokenStorage.saveChatHistory(storageId, trimmed);
     if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _reloadChatHistory() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    final history = await _tokenStorage.loadChatHistory(auth.user!.id);
-    if (mounted) setState(() => _chatHistoryEntries = history);
+    final history = await _tokenStorage.loadChatHistory(_historyStorageId);
+    final trimmed = history.take(_maxHistoryEntries).toList();
+    if (trimmed.length != history.length) {
+      await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
+    }
+    if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    await _tokenStorage.saveChatHistory(auth.user!.id, entries);
-    if (mounted) setState(() => _chatHistoryEntries = entries);
+    final trimmed = entries.take(_maxHistoryEntries).toList();
+    await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
+    if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _confirmDeleteChatHistoryEntry(Map<String, dynamic> entry) async {
@@ -676,37 +737,8 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
-  void _showLoginRequiredForChatHistory() {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Login required', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
-        content: Text(
-          'Login required to access chat history.',
-          style: GoogleFonts.figtree(color: Colors.black87),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _openLogin();
-            },
-            style: FilledButton.styleFrom(backgroundColor: _navy),
-            child: Text('Log in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _selectSidebarPanel(_SidebarPanel panel) {
     if (panel == _SidebarPanel.previousChats) {
-      final auth = context.read<AuthController>();
-      if (!auth.isAuthenticated) {
-        _showLoginRequiredForChatHistory();
-        return;
-      }
       _reloadChatHistory();
     }
     setState(() => _sidebarPanel = panel);
@@ -1169,25 +1201,36 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   }
 
   Widget _buildPreviousChatsPanel(AuthController auth) {
-    if (!auth.isAuthenticated) {
-      return Text(
-        'Sign in to view and reopen your past conversations.',
-        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
-      );
-    }
-
     if (_chatHistoryEntries.isEmpty) {
       return Text(
-        'Your saved chats will appear here. Start a conversation while signed in.',
+        auth.isPremium
+            ? 'Your saved chats will appear here. Start a conversation to build history.'
+            : 'Your most recent chat is saved here. Upgrade to Premium for unlimited history.',
         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
       );
     }
 
-    return ListView(
-      physics: _eventsNavPanelOpen
-          ? const NeverScrollableScrollPhysics()
-          : const ClampingScrollPhysics(),
-      children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!auth.isPremium) ...[
+          Text(
+            auth.isAuthenticated
+                ? 'Free plan: only your most recent chat is kept.'
+                : 'Guest: only your most recent chat is kept. Sign in & go Premium for unlimited history.',
+            style: GoogleFonts.figtree(color: _gold, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Expanded(
+          child: ListView(
+            physics: _eventsNavPanelOpen
+                ? const NeverScrollableScrollPhysics()
+                : const ClampingScrollPhysics(),
+            children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+          ),
+        ),
+      ],
     );
   }
 

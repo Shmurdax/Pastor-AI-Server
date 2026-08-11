@@ -241,3 +241,21 @@ def _load_dotenv_value(key: str) -> str:
 # Must match the OAuth 2.0 Web client ID used when building the Flutter web app.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "") or _load_dotenv_value("GOOGLE_CLIENT_ID")
 
+# Stripe Premium subscriptions (Embedded Checkout).
+# Paste keys into tokens.env / config.env — never commit live secrets.
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "") or _load_dotenv_value("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = (
+    os.environ.get("STRIPE_PUBLISHABLE_KEY", "") or _load_dotenv_value("STRIPE_PUBLISHABLE_KEY")
+)
+STRIPE_WEBHOOK_SECRET = (
+    os.environ.get("STRIPE_WEBHOOK_SECRET", "") or _load_dotenv_value("STRIPE_WEBHOOK_SECRET")
+)
+STRIPE_PRICE_MONTHLY = (
+    os.environ.get("STRIPE_PRICE_MONTHLY", "") or _load_dotenv_value("STRIPE_PRICE_MONTHLY")
+)
+STRIPE_PRICE_YEARLY = (
+    os.environ.get("STRIPE_PRICE_YEARLY", "") or _load_dotenv_value("STRIPE_PRICE_YEARLY")
+)
+# Used for Checkout return_url. Example: https://your-tunnel-or-domain
+PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "") or _load_dotenv_value("PUBLIC_APP_URL")
+

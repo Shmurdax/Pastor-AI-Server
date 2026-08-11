@@ -7,14 +7,26 @@ from core.models import PrayerRequest, ChurchEvent
 
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
-    { id, email, name, avatar_url, is_staff }
+    { id, email, name, avatar_url, is_staff, is_premium, subscription_status, billing_period }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
+    is_premium = serializers.SerializerMethodField()
+    subscription_status = serializers.SerializerMethodField()
+    billing_period = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "name", "avatar_url", "is_staff"]
+        fields = [
+            "id",
+            "email",
+            "name",
+            "avatar_url",
+            "is_staff",
+            "is_premium",
+            "subscription_status",
+            "billing_period",
+        ]
 
     def get_name(self, obj):
         full_name = obj.get_full_name()
@@ -23,6 +35,21 @@ class UserSerializer(serializers.ModelSerializer):
     def get_avatar_url(self, obj):
         profile = getattr(obj, "profile", None)
         return profile.avatar_url if profile else None
+
+    def _profile(self, obj):
+        return getattr(obj, "profile", None)
+
+    def get_is_premium(self, obj):
+        profile = self._profile(obj)
+        return bool(profile and profile.is_premium)
+
+    def get_subscription_status(self, obj):
+        profile = self._profile(obj)
+        return profile.subscription_status if profile else "free"
+
+    def get_billing_period(self, obj):
+        profile = self._profile(obj)
+        return profile.billing_period if profile else ""
 
 
 class RegisterSerializer(serializers.Serializer):

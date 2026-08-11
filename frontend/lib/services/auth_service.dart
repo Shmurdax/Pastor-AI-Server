@@ -14,6 +14,9 @@ class AuthUser {
     required this.name,
     this.avatarUrl,
     this.isStaff = false,
+    this.isPremium = false,
+    this.subscriptionStatus = 'free',
+    this.billingPeriod = '',
   });
 
   final String id;
@@ -21,6 +24,9 @@ class AuthUser {
   final String name;
   final String? avatarUrl;
   final bool isStaff;
+  final bool isPremium;
+  final String subscriptionStatus;
+  final String billingPeriod;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: '${json['id']}',
@@ -28,6 +34,9 @@ class AuthUser {
         name: json['name'] as String? ?? '',
         avatarUrl: json['avatar_url'] as String?,
         isStaff: json['is_staff'] as bool? ?? false,
+        isPremium: json['is_premium'] as bool? ?? false,
+        subscriptionStatus: json['subscription_status'] as String? ?? 'free',
+        billingPeriod: json['billing_period'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -36,7 +45,32 @@ class AuthUser {
         'name': name,
         if (avatarUrl != null) 'avatar_url': avatarUrl,
         'is_staff': isStaff,
+        'is_premium': isPremium,
+        'subscription_status': subscriptionStatus,
+        'billing_period': billingPeriod,
       };
+
+  AuthUser copyWith({
+    String? id,
+    String? email,
+    String? name,
+    String? avatarUrl,
+    bool? isStaff,
+    bool? isPremium,
+    String? subscriptionStatus,
+    String? billingPeriod,
+  }) {
+    return AuthUser(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      name: name ?? this.name,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      isStaff: isStaff ?? this.isStaff,
+      isPremium: isPremium ?? this.isPremium,
+      subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
+      billingPeriod: billingPeriod ?? this.billingPeriod,
+    );
+  }
 }
 
 class AuthResult {

@@ -190,6 +190,36 @@ class ApiClient {
     _ensureOk(res);
   }
 
+  Future<Map<String, dynamic>> getBillingConfig() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/billing/config/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createCheckoutSession({
+    required String billingPeriod,
+  }) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/billing/create-checkout-session/')),
+      headers: _headers(json: true),
+      body: jsonEncode({'billing_period': billingPeriod}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getCheckoutSessionStatus(String sessionId) async {
+    final uri = Uri.parse(_resolveUrl('/api/billing/session-status/')).replace(
+      queryParameters: {'session_id': sessionId},
+    );
+    final res = await _client.get(uri, headers: _headers());
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     throw Exception('HTTP ${res.statusCode}: ${res.body}');
