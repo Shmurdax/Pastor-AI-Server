@@ -8,7 +8,11 @@ from rest_framework.test import APIClient
 
 from core.admin import ChatMessageAdmin
 from core.models import ChatMessage
-from core.scope_gate import OUT_OF_SCOPE_REPLY
+
+OUT_OF_SCOPE_REPLY = (
+    "I'm here to help with Scripture, Pastor Don's teaching, and church life. "
+    "What spiritual question can I walk through with you?"
+)
 
 
 class ChatMessageUserModelTests(TestCase):
