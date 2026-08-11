@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
 from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
 
 # RAG & Memory Imports
@@ -360,9 +361,10 @@ class SermonPdfByNameAPIView(APIView):
         return response
 
 class ChatAPIView(APIView):
-    # Same browser often has an active Django admin session. SessionAuthentication would
-    # require a CSRF token on POST; Flutter fetch does not send one → 403. Chat is public API.
-    authentication_classes = []
+    # Token auth links messages to the signed-in account when Flutter sends Authorization.
+    # Do not enable SessionAuthentication: an active Django admin cookie would require CSRF
+    # on POST and Flutter fetch does not send one → 403. Anonymous chat remains allowed.
+    authentication_classes = [TokenAuthentication]
     permission_classes = [AllowAny]
     # No browsable API HTML — JSON only (clients must POST with Accept: application/json).
     renderer_classes = [JSONRenderer]
@@ -380,6 +382,7 @@ class ChatAPIView(APIView):
         client_session_id = request.data.get("session_id", "default_user")
         session_id = _scoped_session_id(request, client_session_id)
         regenerate = bool(request.data.get("regenerate", False))
+        chat_user = request.user if getattr(request.user, "is_authenticated", False) else None
 
         if not raw_query:
             return Response({"error": "No query provided"}, status=status.HTTP_400_BAD_REQUEST)
@@ -415,10 +418,15 @@ class ChatAPIView(APIView):
                 out_of_scope_reply = generate_out_of_scope_reply(llm, user_query_llm)
                 if regenerate and target_message:
                     target_message.ai_response = out_of_scope_reply
-                    target_message.save(update_fields=["ai_response"])
+                    if chat_user and target_message.user_id is None:
+                        target_message.user = chat_user
+                        target_message.save(update_fields=["ai_response", "user"])
+                    else:
+                        target_message.save(update_fields=["ai_response"])
                 elif not regenerate:
                     ChatMessage.objects.create(
                         session_id=session_id,
+                        user=chat_user,
                         user_query=user_query_stored,
                         ai_response=out_of_scope_reply,
                     )
@@ -586,12 +594,17 @@ class ChatAPIView(APIView):
             # 6. PERSIST
             if regenerate and target_message:
                 target_message.ai_response = response.content
-                target_message.save(update_fields=["ai_response"])
+                if chat_user and target_message.user_id is None:
+                    target_message.user = chat_user
+                    target_message.save(update_fields=["ai_response", "user"])
+                else:
+                    target_message.save(update_fields=["ai_response"])
             else:
                 ChatMessage.objects.create(
                     session_id=session_id,
+                    user=chat_user,
                     user_query=user_query_stored,
-                    ai_response=response.content
+                    ai_response=response.content,
                 )
 
             # --- LOGGING: Success ---

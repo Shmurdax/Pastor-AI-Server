@@ -2,7 +2,16 @@ from django.db import models
 
 class ChatMessage(models.Model):
     # session_id allows different Flutter users to have separate memories
-    session_id = models.TextField() 
+    session_id = models.TextField()
+    # Linked login account when the Flutter client sends a DRF auth token.
+    # Null for anonymous / not-logged-in chatters.
+    user = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="chat_messages",
+    )
     user_query = models.TextField()
     ai_response = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
