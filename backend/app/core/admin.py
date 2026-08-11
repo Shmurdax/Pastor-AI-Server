@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.http import FileResponse
 from django.http import HttpResponseRedirect
 from django.http import Http404
+from django.http import JsonResponse
 from django.template.response import TemplateResponse
 from django.utils import timezone
 from django.urls import path, reverse
@@ -182,6 +183,10 @@ class IngestionJobLogAdmin(admin.ModelAdmin):
     readonly_fields = ("job", "message", "created_at")
 
 
+def _is_ajax(request) -> bool:
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
 def _admin_ingestion_view(request):
     if not request.user.is_staff:
         messages.error(request, "You must be an admin user to access this page.")
@@ -195,9 +200,12 @@ def _admin_ingestion_view(request):
         )
 
     if request.method == "POST":
+        ajax = _is_ajax(request)
         files = request.FILES.getlist("documents")
         replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
         if not files:
+            if ajax:
+                return JsonResponse({"ok": False, "error": "Select at least one DOCX or PDF file."}, status=400)
             messages.warning(request, "Select at least one DOCX or PDF file.")
             return HttpResponseRedirect(request.path)
 
@@ -236,6 +244,15 @@ def _admin_ingestion_view(request):
                 request,
                 f"Ingestion started in background (job #{job.id}). Refresh this page to monitor progress.",
             )
+            if ajax:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "job_id": job.id,
+                        "files_received": len(files),
+                        "message": f"Ingestion job #{job.id} queued with {len(files)} file(s).",
+                    }
+                )
         except Exception as exc:
             job.status = "failed"
             job.error_message = str(exc)
@@ -243,6 +260,11 @@ def _admin_ingestion_view(request):
             job.save(update_fields=["status", "error_message", "finished_at"])
             IngestionJobLog.objects.create(job=job, message=f"Ingestion failed: {exc}")
             messages.error(request, f"Ingestion failed (job #{job.id}): {exc}")
+            if ajax:
+                return JsonResponse(
+                    {"ok": False, "error": str(exc), "job_id": job.id},
+                    status=500,
+                )
         return HttpResponseRedirect(request.path)
 
     context = {

@@ -161,8 +161,10 @@ STORAGES = {
 
 FRONTEND_BUILD_DIR = os.getenv("FRONTEND_BUILD_DIR", "/frontend")
 
-# Admin ingestion can POST many files at once; Django's default cap (100) raises TooManyFilesSent.
+# Admin ingestion can POST many files at once; Django's default caps raise TooManyFilesSent /
+# TooManyFieldsSent on large multi-file batches.
 DATA_UPLOAD_MAX_NUMBER_FILES = int(os.getenv("DATA_UPLOAD_MAX_NUMBER_FILES", "2000"))
+DATA_UPLOAD_MAX_NUMBER_FIELDS = int(os.getenv("DATA_UPLOAD_MAX_NUMBER_FIELDS", "5000"))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

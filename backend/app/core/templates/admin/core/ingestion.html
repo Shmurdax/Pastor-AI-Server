@@ -83,6 +83,7 @@
 <div style="max-width: 760px;">
   <h1>Document Ingestion</h1>
   <p>Upload DOCX and PDF files. Each file is stored under <code>uploads/admin_ingestion</code> as a PDF (DOCX is converted with LibreOffice) so sermon library links can serve the original document. Extracted text is then run through structured cleanup (page chrome, repeating headers/footers, boilerplate, soft-wrap fixes), split into chunks, and upserted into Qdrant. Cleanup never rewrites the on-disk PDF.</p>
+  <p>Large folders are uploaded in small batches (about 10 files / 8&nbsp;MB each) so Cloudflare and the tunnel do not drop the connection. Hundreds of sermons can take several minutes to finish uploading before background processing starts.</p>
   <p><a href="{% url 'admin:core_ingested_documents' %}">View all ingested PDF documents</a></p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
@@ -172,8 +173,12 @@
     var form = input && input.form;
     var submitButton = form && form.querySelector('button[type="submit"]');
     var allowedExtensions = [".pdf", ".docx"];
-    var MAX_FILES_PER_BATCH = 100;
-    var MAX_BATCH_BYTES = 25 * 1024 * 1024; // 25 MB payload target per request
+    // Keep batches small: Cloudflare tunnels commonly drop large multipart POSTs
+    // (browser reports a generic XHR "network error"). 10 files / 8 MB is reliable.
+    var MAX_FILES_PER_BATCH = 10;
+    var MAX_BATCH_BYTES = 8 * 1024 * 1024;
+    var MAX_UPLOAD_RETRIES = 3;
+    var UPLOAD_TIMEOUT_MS = 120000;
     var dataTransfer = new DataTransfer();
 
     if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressWrapper || !progressBar || !progressText || !form) {
@@ -378,6 +383,12 @@
       fileList.textContent = names.length + " file(s) selected: " + names.join(", ");
     }
 
+    function sleep(ms) {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+      });
+    }
+
     function splitFilesIntoBatches(files) {
       var normalized = Array.prototype.slice.call(files || []);
       var batches = [];
@@ -387,8 +398,9 @@
       for (var i = 0; i < normalized.length; i += 1) {
         var file = normalized[i];
         var fileSize = file && typeof file.size === "number" ? file.size : 0;
+        // Oversized single files still go alone so one huge PDF does not block the rest.
         var wouldOverflowCount = currentBatch.length >= MAX_FILES_PER_BATCH;
-        var wouldOverflowBytes = currentBatch.length > 0 && (currentBytes + fileSize > MAX_BATCH_BYTES);
+        var wouldOverflowBytes = currentBatch.length > 0 && currentBytes + fileSize > MAX_BATCH_BYTES;
 
         if (wouldOverflowCount || wouldOverflowBytes) {
           batches.push(currentBatch);
@@ -406,22 +418,58 @@
       return batches;
     }
 
-    function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting) {
+    function uploadBatchOnce(batchFiles, batchIndex, replaceExisting) {
       return new Promise(function (resolve, reject) {
         var xhr = new XMLHttpRequest();
         xhr.open("POST", form.action || window.location.href, true);
+        xhr.timeout = UPLOAD_TIMEOUT_MS;
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.setRequestHeader("Accept", "application/json");
 
         xhr.addEventListener("load", function () {
+          var payload = null;
+          try {
+            payload = JSON.parse(xhr.responseText || "{}");
+          } catch (parseErr) {
+            payload = null;
+          }
+
           if (xhr.status >= 200 && xhr.status < 400) {
-            resolve();
+            if (payload && payload.ok === false) {
+              reject(new Error(payload.error || ("Server rejected batch " + batchIndex + ".")));
+              return;
+            }
+            resolve(payload || { ok: true });
             return;
           }
-          reject(new Error("Server returned status " + xhr.status + " on batch " + batchIndex + "."));
+
+          var detail =
+            (payload && payload.error) ||
+            (xhr.responseText ? xhr.responseText.slice(0, 180) : "") ||
+            ("HTTP " + xhr.status);
+          reject(new Error("Server returned status " + xhr.status + " on batch " + batchIndex + ": " + detail));
         });
 
         xhr.addEventListener("error", function () {
-          reject(new Error("Network error during batch " + batchIndex + " upload."));
+          reject(
+            new Error(
+              "Network error during batch " +
+                batchIndex +
+                " upload (connection closed before a response — often Cloudflare/tunnel timeout on large batches)."
+            )
+          );
+        });
+
+        xhr.addEventListener("timeout", function () {
+          reject(
+            new Error(
+              "Timed out after " +
+                Math.round(UPLOAD_TIMEOUT_MS / 1000) +
+                "s uploading batch " +
+                batchIndex +
+                "."
+            )
+          );
         });
 
         xhr.addEventListener("abort", function () {
@@ -442,6 +490,37 @@
 
         xhr.send(formData);
       });
+    }
+
+    async function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting) {
+      var lastError = null;
+      for (var attempt = 1; attempt <= MAX_UPLOAD_RETRIES; attempt += 1) {
+        try {
+          if (attempt > 1) {
+            setBatchProgress(
+              batchIndex - 1,
+              totalBatches,
+              "Retrying batch " + batchIndex + "/" + totalBatches + " (attempt " + attempt + ")"
+            );
+            await sleep(1000 * attempt);
+          }
+          return await uploadBatchOnce(batchFiles, batchIndex, replaceExisting);
+        } catch (err) {
+          lastError = err;
+          var message = err && err.message ? String(err.message) : "";
+          var retryable =
+            message.indexOf("Network error") !== -1 ||
+            message.indexOf("Timed out") !== -1 ||
+            message.indexOf("status 502") !== -1 ||
+            message.indexOf("status 503") !== -1 ||
+            message.indexOf("status 504") !== -1 ||
+            message.indexOf("status 524") !== -1;
+          if (!retryable || attempt >= MAX_UPLOAD_RETRIES) {
+            throw err;
+          }
+        }
+      }
+      throw lastError || new Error("Upload failed for batch " + batchIndex + ".");
     }
 
     dropzone.addEventListener("click", function () {
@@ -536,15 +615,23 @@
         return;
       }
 
-      setBatchProgress(0, batches.length, "Preparing upload batches...");
+      setBatchProgress(0, batches.length, "Preparing " + allFiles.length + " files in " + batches.length + " upload batches");
 
       (async function () {
         try {
+          var filesUploaded = 0;
           for (var batchIdx = 0; batchIdx < batches.length; batchIdx += 1) {
-            setBatchProgress(batchIdx, batches.length, "Uploading batch");
-            await uploadBatch(batches[batchIdx], batchIdx + 1, batches.length, replaceExisting);
+            var batchFiles = batches[batchIdx];
+            setBatchProgress(
+              batchIdx,
+              batches.length,
+              "Uploading batch " + (batchIdx + 1) + "/" + batches.length +
+                " (" + batchFiles.length + " files, " + filesUploaded + "/" + allFiles.length + " done)"
+            );
+            await uploadBatch(batchFiles, batchIdx + 1, batches.length, replaceExisting);
+            filesUploaded += batchFiles.length;
           }
-          setBatchProgress(batches.length, batches.length, "All batches uploaded. Processing on server...");
+          setBatchProgress(batches.length, batches.length, "All " + allFiles.length + " files uploaded. Processing on server...");
           setProcessingState();
           window.location.href = form.action || window.location.href;
         } catch (err) {
