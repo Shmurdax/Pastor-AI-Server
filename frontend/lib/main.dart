@@ -786,11 +786,14 @@ final bibleRefRegex = RegExp(
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncAuthState());
-    _initSpeech();
   }
 
-  Future<void> _initSpeech() async {
+  /// Initializes speech only when the mic button is used. Never shows error UI.
+  Future<bool> _ensureSpeechReady() async {
+    if (_speechAvailable) return true;
+
     final available = await _speechToText.initialize(
+      debugLogging: kDebugMode,
       onStatus: (status) {
         if (!mounted) return;
         final listening = status == stt.SpeechToText.listeningStatus;
@@ -798,22 +801,14 @@ final bibleRefRegex = RegExp(
           setState(() => _isListening = listening);
         }
       },
-      onError: (error) {
+      onError: (_) {
         if (!mounted) return;
         setState(() => _isListening = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Voice input error: ${error.errorMsg}',
-              style: GoogleFonts.figtree(),
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
       },
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _speechAvailable = available);
+    return available;
   }
 
   Future<void> _toggleVoiceInput() async {
@@ -825,23 +820,8 @@ final bibleRefRegex = RegExp(
       return;
     }
 
-    if (!_speechAvailable) {
-      final available = await _speechToText.initialize();
-      if (!mounted) return;
-      setState(() => _speechAvailable = available);
-      if (!available) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Voice input is not available in this browser. Try Chrome or Edge.',
-              style: GoogleFonts.figtree(),
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-    }
+    // Mic permission / speech init is requested only after the user taps the button.
+    if (!await _ensureSpeechReady()) return;
 
     _textBeforeSpeech = _controller.text.trimRight();
     if (_textBeforeSpeech.isNotEmpty) {
@@ -849,25 +829,34 @@ final bibleRefRegex = RegExp(
     }
 
     setState(() => _isListening = true);
-    await _speechToText.listen(
-      onResult: (result) {
-        if (!mounted) return;
-        final spoken = result.recognizedWords.trim();
-        final next = '$_textBeforeSpeech$spoken';
-        _controller.value = TextEditingValue(
-          text: next,
-          selection: TextSelection.collapsed(offset: next.length),
-        );
-        setState(() {});
-      },
-      listenOptions: stt.SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: stt.ListenMode.dictation,
-        // Stop after ~3s of silence (timer resets while speech is detected).
-        pauseFor: const Duration(seconds: 3),
-      ),
-    );
+    try {
+      await _speechToText.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          final spoken = result.recognizedWords.trim();
+          final next = '$_textBeforeSpeech$spoken';
+          _controller.value = TextEditingValue(
+            text: next,
+            selection: TextSelection.collapsed(offset: next.length),
+          );
+          setState(() {});
+        },
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: stt.ListenMode.dictation,
+          pauseFor: const Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    if (!mounted) return;
+    if (!_speechToText.isListening) {
+      setState(() => _isListening = false);
+    }
   }
 
   Future<void> _syncAuthState() async {
