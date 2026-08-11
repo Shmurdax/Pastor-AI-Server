@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
@@ -11,15 +12,11 @@ import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
-import 'package:flutter_application_1/widgets/google_auth_button.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -50,180 +47,21 @@ class _NoOverscrollScrollBehavior extends MaterialScrollBehavior {
   }
 }
 
-// ─── Token Storage ───────────────────────────────────────────────────────────
-class TokenStorage {
-  static const _tokenKey = 'auth_token';
-  static const _userKey = 'auth_user';
-  static const _sessionPrefix = 'chat_session_';
-  static const _historyPrefix = 'chat_history_';
-
-  const TokenStorage();
-
-  Future<void> saveSession({required String token, required AuthUser user}) async {
-    final userJson = jsonEncode(user.toJson());
-    if (kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_tokenKey, token);
-      await prefs.setString(_userKey, userJson);
-      return;
-    }
-    const storage = FlutterSecureStorage();
-    await storage.write(key: _tokenKey, value: token);
-    await storage.write(key: _userKey, value: userJson);
-  }
-
-  Future<({String? token, AuthUser? user})> loadSession() async {
-    if (kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString(_tokenKey);
-      final userJson = prefs.getString(_userKey);
-      if (token == null || userJson == null) return (token: null, user: null);
-      return (token: token, user: AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>));
-    }
-    const storage = FlutterSecureStorage();
-    final token = await storage.read(key: _tokenKey);
-    final userJson = await storage.read(key: _userKey);
-    if (token == null || userJson == null) return (token: null, user: null);
-    return (token: token, user: AuthUser.fromJson(jsonDecode(userJson) as Map<String, dynamic>));
-  }
-
-  Future<void> clearSession() async {
-    if (kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_tokenKey);
-      await prefs.remove(_userKey);
-      return;
-    }
-    const storage = FlutterSecureStorage();
-    await storage.delete(key: _tokenKey);
-    await storage.delete(key: _userKey);
-  }
-
-  Future<String?> loadChatSessionId(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('$_sessionPrefix$userId');
-  }
-
-  Future<void> saveChatSessionId(String userId, String sessionId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_sessionPrefix$userId', sessionId);
-  }
-
-  Future<List<Map<String, dynamic>>> loadChatHistory(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('$_historyPrefix$userId');
-    if (raw == null || raw.isEmpty) return [];
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) return [];
-    return decoded
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-  }
-
-  Future<void> saveChatHistory(String userId, List<Map<String, dynamic>> entries) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_historyPrefix$userId', jsonEncode(entries));
-  }
-}
-
 enum _SidebarPanel { sermonLibrary, previousChats }
 
-// ─── Auth Controller ───────────────────────────────────────────────────────────
-class AuthController extends ChangeNotifier {
-  AuthController({AuthService? authService, TokenStorage? tokenStorage})
-      : _authService = authService ?? AuthService(),
-        _tokenStorage = tokenStorage ?? const TokenStorage() {
-    _restoreSession();
-  }
-
-  final AuthService _authService;
-  final TokenStorage _tokenStorage;
-
-  AuthUser? user;
-  String? token;
-  bool isLoading = false;
-  String? error;
-
-  bool get isAuthenticated => token != null && user != null;
-
-  Future<void> _restoreSession() async {
-    final saved = await _tokenStorage.loadSession();
-    if (saved.token == null || saved.user == null) return;
-
-    if (kUseMockAuth) {
-      token = saved.token;
-      user = saved.user;
-      notifyListeners();
-      return;
-    }
-
-    try {
-      final me = await _authService.getMe(saved.token!);
-      token = saved.token;
-      user = me;
-      notifyListeners();
-    } catch (_) {
-      await _tokenStorage.clearSession();
-    }
-  }
-
-  Future<bool> login({required String email, required String password}) =>
-      _authenticate(() => _authService.login(email: email, password: password));
-
-  Future<bool> register({
-    required String name,
-    required String email,
-    required String password,
-  }) =>
-      _authenticate(() => _authService.register(name: name, email: email, password: password));
-
-  Future<bool> signInWithGoogle() =>
-      _authenticate(_authService.signInWithGoogle);
-
-  Future<bool> signInWithGoogleAccount(GoogleSignInAccount account) =>
-      _authenticate(() => _authService.signInWithGoogleAccount(account));
-
-  Future<bool> _authenticate(Future<AuthResult> Function() action) async {
-    isLoading = true;
-    error = null;
-    notifyListeners();
-    try {
-      final result = await action();
-      token = result.token;
-      user = result.user;
-      await _tokenStorage.saveSession(token: result.token, user: result.user);
-      isLoading = false;
-      notifyListeners();
-      return true;
-    } on AuthException catch (e) {
-      error = e.message;
-    } catch (e) {
-      // Surface the real error — the old generic message hid web GIS failures.
-      final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-      error = msg.isEmpty ? 'Something went wrong. Please try again.' : msg;
-    }
-    isLoading = false;
-    notifyListeners();
-    return false;
-  }
-
-  Future<void> logout() async {
-    final currentToken = token;
-    token = null;
-    user = null;
-    error = null;
-    await _tokenStorage.clearSession();
-    if (currentToken != null) await _authService.logout(currentToken);
-    notifyListeners();
-  }
-
-  void clearError() {
-    if (error == null) return;
-    error = null;
-    notifyListeners();
-  }
-}
+InputDecoration _authInputDecoration(String label) => InputDecoration(
+      labelText: label,
+      labelStyle: GoogleFonts.figtree(color: _navy),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _gold, width: 2),
+      ),
+    );
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
 void main() => runApp(
@@ -256,429 +94,6 @@ class SermonBrainApp extends StatelessWidget {
     );
   }
 }
-
-// ─── Login Screen ─────────────────────────────────────────────────────────────
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _obscurePassword = true;
-  StreamSubscription<GoogleSignInAccount?>? _googleSub;
-  bool _handlingGoogle = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Web GIS renderButton authenticates via onCurrentUserChanged (real idToken).
-    if (kIsWeb && AuthService.isGoogleConfigured) {
-      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
-    }
-  }
-
-  @override
-  void dispose() {
-    _googleSub?.cancel();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _onGoogleUser(GoogleSignInAccount? account) async {
-    if (account == null || _handlingGoogle || !mounted) return;
-    _handlingGoogle = true;
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.signInWithGoogleAccount(account);
-    _handlingGoogle = false;
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.login(
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  Future<void> _googleSignIn() async {
-    // Mobile / non-web only. Web uses GoogleAuthButton → GIS renderButton.
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.signInWithGoogle();
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final isMobile = MediaQuery.of(context).size.width < 600;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: _navy),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(isMobile ? 24 : 40),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Image.asset(
-                      'assets/images/nordins_main_logo.png',
-                      height: isMobile ? 80 : 95,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Please login to continue',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(fontSize: 28, fontWeight: FontWeight.bold, color: _navy)),
-                  const SizedBox(height: 8),
-                  Text('Sign in to save your chat history across devices.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54)),
-                  const SizedBox(height: 32),
-                  if (auth.error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Text(auth.error!, style: GoogleFonts.figtree(color: Colors.red.shade800, fontSize: 14)),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: _authInputDecoration('Email'),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Enter your email';
-                      if (!v.contains('@')) return 'Enter a valid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: _authInputDecoration('Password').copyWith(
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _navy),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                      ),
-                    ),
-                    validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: auth.isLoading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _navy,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: auth.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text('Sign in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                  const SizedBox(height: 12),
-                  GoogleAuthButton(
-                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    label: 'Sign in with Google',
-                  ),
-                  if (!AuthService.isGoogleConfigured) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Google Sign-In is not configured (missing GOOGLE_CLIENT_ID).',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: auth.isLoading ? null : () => Navigator.of(context).pop(),
-                    child: Text('Continue as guest', style: GoogleFonts.figtree(color: Colors.black54)),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text("Don't have an account? ", style: GoogleFonts.figtree(color: Colors.black54)),
-                      TextButton(
-                        onPressed: auth.isLoading
-                            ? null
-                            : () => Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                                ),
-                        child: Text('Create one', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Register Screen ──────────────────────────────────────────────────────────
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
-
-  @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
-}
-
-class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
-  StreamSubscription<GoogleSignInAccount?>? _googleSub;
-  bool _handlingGoogle = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (kIsWeb && AuthService.isGoogleConfigured) {
-      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
-    }
-  }
-
-  @override
-  void dispose() {
-    _googleSub?.cancel();
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _onGoogleUser(GoogleSignInAccount? account) async {
-    if (account == null || _handlingGoogle || !mounted) return;
-    _handlingGoogle = true;
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.signInWithGoogleAccount(account);
-    _handlingGoogle = false;
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.register(
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-    );
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  Future<void> _googleSignIn() async {
-    final auth = context.read<AuthController>();
-    auth.clearError();
-    final ok = await auth.signInWithGoogle();
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final isMobile = MediaQuery.of(context).size.width < 600;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: _navy),
-          onPressed: () => Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          ),
-        ),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(isMobile ? 24 : 40),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Image.asset(
-                      'assets/images/nordins_main_logo.png',
-                      height: isMobile ? 80 : 95,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Create your account',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(fontSize: 28, fontWeight: FontWeight.bold, color: _navy)),
-                  const SizedBox(height: 8),
-                  Text('Join to save conversations and pick up where you left off.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54)),
-                  const SizedBox(height: 32),
-                  if (auth.error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Text(auth.error!, style: GoogleFonts.figtree(color: Colors.red.shade800, fontSize: 14)),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  TextFormField(
-                    controller: _nameController,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: _authInputDecoration('Full name'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: _authInputDecoration('Email'),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Enter your email';
-                      if (!v.contains('@')) return 'Enter a valid email';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: _authInputDecoration('Password').copyWith(
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: _navy),
-                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                      ),
-                    ),
-                    validator: (v) => (v == null || v.length < 8) ? 'Password must be at least 8 characters' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _confirmController,
-                    obscureText: _obscureConfirm,
-                    decoration: _authInputDecoration('Confirm password').copyWith(
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility, color: _navy),
-                        onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v != _passwordController.text) return 'Passwords do not match';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: auth.isLoading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _navy,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: auth.isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text('Create account', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ),
-                  const SizedBox(height: 12),
-                  GoogleAuthButton(
-                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    label: 'Sign up with Google',
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Already have an account? ', style: GoogleFonts.figtree(color: Colors.black54)),
-                      TextButton(
-                        onPressed: auth.isLoading
-                            ? null
-                            : () => Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                ),
-                        child: Text('Sign in', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-InputDecoration _authInputDecoration(String label) => InputDecoration(
-      labelText: label,
-      labelStyle: GoogleFonts.figtree(color: _navy),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _gold, width: 2),
-      ),
-    );
 
 // ─── Chat Screen ──────────────────────────────────────────────────────────────
 class ChatScreen extends StatefulWidget {
@@ -785,7 +200,63 @@ final bibleRefRegex = RegExp(
         setState(() => _showBackToBottomButton = isFarFromBottom);
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAuthState());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _syncAuthState();
+      await _handleBillingReturn();
+    });
+  }
+
+  /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
+  static const _guestHistoryId = 'guest';
+  static const _premiumHistoryCap = 40;
+  static const _freeHistoryCap = 1;
+
+  String get _historyStorageId {
+    final auth = context.read<AuthController>();
+    return auth.user?.id ?? _guestHistoryId;
+  }
+
+  bool get _isPremiumUser {
+    final auth = context.read<AuthController>();
+    return auth.user?.isPremium ?? false;
+  }
+
+  int get _maxHistoryEntries =>
+      _isPremiumUser ? _premiumHistoryCap : _freeHistoryCap;
+
+  Future<void> _handleBillingReturn() async {
+    if (!kIsWeb) return;
+    final uri = Uri.base;
+    final billing = uri.queryParameters['billing'];
+    final sessionId = uri.queryParameters['session_id'];
+    if (billing != 'success' || sessionId == null || sessionId.isEmpty) return;
+
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+    _apiService.setAccessToken(auth.token);
+    try {
+      final status = await _apiService.getCheckoutSessionStatus(sessionId);
+      final userJson = status['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      // Trim/expand history cap after premium unlock.
+      await _reloadChatHistory();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            auth.isPremium
+                ? 'Welcome to Premium — unlimited chat history is unlocked.'
+                : 'Payment received. Refreshing your membership…',
+          ),
+        ),
+      );
+    } catch (_) {
+      await auth.refreshMe();
+    }
   }
 
   /// Initializes speech only when the mic button is used. Never shows error UI.
@@ -863,18 +334,23 @@ final bibleRefRegex = RegExp(
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
 
-    if (auth.isAuthenticated && auth.user != null) {
-      final savedSession = await _tokenStorage.loadChatSessionId(auth.user!.id);
-      final history = await _tokenStorage.loadChatHistory(auth.user!.id);
-      if (mounted) {
-        setState(() {
-          _chatHistoryEntries = history;
-          if (savedSession != null) sessionId = savedSession;
-        });
-        await _restoreMessagesForCurrentSession(auth.user!.id);
-      }
-    } else if (mounted) {
-      setState(() => _chatHistoryEntries = []);
+    final storageId = auth.user?.id ?? _guestHistoryId;
+    final savedSession = await _tokenStorage.loadChatSessionId(storageId);
+    var history = await _tokenStorage.loadChatHistory(storageId);
+
+    // Free / guest: keep only the most recent chat history entry.
+    final maxEntries = (auth.user?.isPremium ?? false) ? _premiumHistoryCap : _freeHistoryCap;
+    if (history.length > maxEntries) {
+      history = history.take(maxEntries).toList();
+      await _tokenStorage.saveChatHistory(storageId, history);
+    }
+
+    if (mounted) {
+      setState(() {
+        _chatHistoryEntries = history;
+        if (savedSession != null) sessionId = savedSession;
+      });
+      await _restoreMessagesForCurrentSession(storageId);
     }
 
     if (mounted) setState(() => _authInitialized = true);
@@ -904,9 +380,7 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _persistSessionId() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    await _tokenStorage.saveChatSessionId(auth.user!.id, sessionId);
+    await _tokenStorage.saveChatSessionId(_historyStorageId, sessionId);
   }
 
   String _chatHistoryTitle() {
@@ -931,9 +405,9 @@ final bibleRefRegex = RegExp(
       };
 
   Future<void> _persistChatHistory() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null || _messages.isEmpty) return;
+    if (_messages.isEmpty) return;
 
+    final storageId = _historyStorageId;
     final snapshot = _currentChatSnapshot();
     final sid = sessionId;
     final updated = <Map<String, dynamic>>[
@@ -941,24 +415,25 @@ final bibleRefRegex = RegExp(
       ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
     ]..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
 
-    const maxEntries = 40;
-    final trimmed = updated.take(maxEntries).toList();
-    await _tokenStorage.saveChatHistory(auth.user!.id, trimmed);
+    // Free/guest: only the most recent chat is kept; Premium keeps many.
+    final trimmed = updated.take(_maxHistoryEntries).toList();
+    await _tokenStorage.saveChatHistory(storageId, trimmed);
     if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _reloadChatHistory() async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    final history = await _tokenStorage.loadChatHistory(auth.user!.id);
-    if (mounted) setState(() => _chatHistoryEntries = history);
+    final history = await _tokenStorage.loadChatHistory(_historyStorageId);
+    final trimmed = history.take(_maxHistoryEntries).toList();
+    if (trimmed.length != history.length) {
+      await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
+    }
+    if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
-    final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated || auth.user == null) return;
-    await _tokenStorage.saveChatHistory(auth.user!.id, entries);
-    if (mounted) setState(() => _chatHistoryEntries = entries);
+    final trimmed = entries.take(_maxHistoryEntries).toList();
+    await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
+    if (mounted) setState(() => _chatHistoryEntries = trimmed);
   }
 
   Future<void> _confirmDeleteChatHistoryEntry(Map<String, dynamic> entry) async {
@@ -1283,37 +758,8 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
-  void _showLoginRequiredForChatHistory() {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Login required', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
-        content: Text(
-          'Login required to access chat history.',
-          style: GoogleFonts.figtree(color: Colors.black87),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _openLogin();
-            },
-            style: FilledButton.styleFrom(backgroundColor: _navy),
-            child: Text('Log in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _selectSidebarPanel(_SidebarPanel panel) {
     if (panel == _SidebarPanel.previousChats) {
-      final auth = context.read<AuthController>();
-      if (!auth.isAuthenticated) {
-        _showLoginRequiredForChatHistory();
-        return;
-      }
       _reloadChatHistory();
     }
     setState(() => _sidebarPanel = panel);
@@ -1779,25 +1225,36 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   }
 
   Widget _buildPreviousChatsPanel(AuthController auth) {
-    if (!auth.isAuthenticated) {
-      return Text(
-        'Sign in to view and reopen your past conversations.',
-        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
-      );
-    }
-
     if (_chatHistoryEntries.isEmpty) {
       return Text(
-        'Your saved chats will appear here. Start a conversation while signed in.',
+        auth.isPremium
+            ? 'Your saved chats will appear here. Start a conversation to build history.'
+            : 'Your most recent chat is saved here. Upgrade to Premium for unlimited history.',
         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
       );
     }
 
-    return ListView(
-      physics: _eventsNavPanelOpen
-          ? const NeverScrollableScrollPhysics()
-          : const ClampingScrollPhysics(),
-      children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!auth.isPremium) ...[
+          Text(
+            auth.isAuthenticated
+                ? 'Free plan: only your most recent chat is kept.'
+                : 'Guest: only your most recent chat is kept. Sign in & go Premium for unlimited history.',
+            style: GoogleFonts.figtree(color: _gold, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Expanded(
+          child: ListView(
+            physics: _eventsNavPanelOpen
+                ? const NeverScrollableScrollPhysics()
+                : const ClampingScrollPhysics(),
+            children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+          ),
+        ),
+      ],
     );
   }
 

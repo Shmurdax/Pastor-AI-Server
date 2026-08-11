@@ -10,6 +10,13 @@ from api.auth_views import (
     MeView,
     RegisterView,
 )
+from api.billing_views import (
+    BillingConfigView,
+    CheckoutSessionStatusView,
+    CreateCheckoutSessionView,
+    MockActivatePremiumView,
+    StripeWebhookView,
+)
 from api.views import ChurchEventDetailAPI, ChurchEventListCreateAPI, PrayerRequestDetailAPI
 from core.views import (
     ChatAPIView,
@@ -29,6 +36,13 @@ urlpatterns = [
     path('api/auth/google/', GoogleAuthView.as_view()),
     path('api/auth/me/', MeView.as_view()),
     path('api/auth/logout/', LogoutView.as_view()),
+
+    # Stripe billing
+    path('api/billing/config/', BillingConfigView.as_view()),
+    path('api/billing/create-checkout-session/', CreateCheckoutSessionView.as_view()),
+    path('api/billing/session-status/', CheckoutSessionStatusView.as_view()),
+    path('api/billing/mock-activate/', MockActivatePremiumView.as_view()),
+    path('api/billing/webhook/', StripeWebhookView.as_view()),
 
     # Chat + prayer + ingested docs
     path('api/chat/', ChatAPIView.as_view(), name='chat_api'),

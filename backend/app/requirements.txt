@@ -34,3 +34,4 @@ pypdf
 fpdf2>=2.7.0
 python-docx
 beautifulsoup4>=4.12
+stripe>=11.0.0
