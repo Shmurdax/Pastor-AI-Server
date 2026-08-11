@@ -14,6 +14,7 @@ from api.billing_views import (
     BillingConfigView,
     CheckoutSessionStatusView,
     CreateCheckoutSessionView,
+    MockActivatePremiumView,
     StripeWebhookView,
 )
 from api.views import ChurchEventDetailAPI, ChurchEventListCreateAPI, PrayerRequestDetailAPI
@@ -40,6 +41,7 @@ urlpatterns = [
     path('api/billing/config/', BillingConfigView.as_view()),
     path('api/billing/create-checkout-session/', CreateCheckoutSessionView.as_view()),
     path('api/billing/session-status/', CheckoutSessionStatusView.as_view()),
+    path('api/billing/mock-activate/', MockActivatePremiumView.as_view()),
     path('api/billing/webhook/', StripeWebhookView.as_view()),
 
     # Chat + prayer + ingested docs

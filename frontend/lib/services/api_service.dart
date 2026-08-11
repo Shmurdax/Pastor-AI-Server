@@ -79,4 +79,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> getCheckoutSessionStatus(String sessionId) =>
       _apiClient.getCheckoutSessionStatus(sessionId);
+
+  /// TEMPORARY — gifts Premium without charging. Remove when Stripe is live.
+  Future<Map<String, dynamic>> mockActivatePremium({required String billingPeriod}) =>
+      _apiClient.mockActivatePremium(billingPeriod: billingPeriod);
 }

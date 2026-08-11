@@ -259,3 +259,10 @@ STRIPE_PRICE_YEARLY = (
 # Used for Checkout return_url. Example: https://your-tunnel-or-domain
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "") or _load_dotenv_value("PUBLIC_APP_URL")
 
+# TEMPORARY: gift Premium via fake checkout UI until Stripe keys are available.
+# Auto-enables when Stripe is not configured. Set to false once Stripe is live.
+_billing_mock_raw = os.environ.get("BILLING_MOCK_CHECKOUT", "") or _load_dotenv_value(
+    "BILLING_MOCK_CHECKOUT"
+)
+BILLING_MOCK_CHECKOUT = _billing_mock_raw.strip().lower()
+

@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -13,11 +13,13 @@ const _pink = Color(0xFFa1375a);
 
 enum BillingPeriod { monthly, yearly }
 
-/// Premium checkout with Stripe Embedded Checkout (card + billing fields).
+/// Premium checkout.
 ///
-/// Plug credentials on the server:
-///   STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET
-/// Optional: STRIPE_PRICE_MONTHLY, STRIPE_PRICE_YEARLY, PUBLIC_APP_URL
+/// Real path: Stripe Embedded Checkout when keys are configured.
+/// TEMPORARY path: visual-only payment form that gifts Premium via
+/// `/api/billing/mock-activate/` — card fields never leave the device.
+/// Remove mock UI + endpoint once Stripe credentials are live
+/// (`BILLING_MOCK_CHECKOUT=false`).
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({
     super.key,
@@ -36,6 +38,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _loadingConfig = true;
   bool _startingCheckout = false;
   bool _stripeConfigured = false;
+  bool _mockCheckout = false;
   String? _error;
   String? _publishableKey;
   String? _clientSecret;
@@ -71,10 +74,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       final config = await _api.getBillingConfig();
       final configured = config['configured'] == true;
+      final mock = config['mock_checkout'] == true;
       final pk = (config['publishable_key'] as String?) ?? '';
       if (!mounted) return;
       setState(() {
-        _stripeConfigured = configured && pk.isNotEmpty;
+        _stripeConfigured = configured && pk.isNotEmpty && !mock;
+        _mockCheckout = mock;
         _publishableKey = pk;
         _loadingConfig = false;
       });
@@ -135,6 +140,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } catch (_) {
       await context.read<AuthController>().refreshMe();
     }
+  }
+
+  Future<void> _onMockCheckoutSuccess(AuthUser user) async {
+    await context.read<AuthController>().applyUser(user);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Premium activated. Unlimited chat history is unlocked.'),
+      ),
+    );
+    Navigator.of(context).pop(true);
   }
 
   @override
@@ -255,8 +271,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Card and billing fields are provided by Stripe. '
-                  'Your card details never touch our servers.',
+                  _mockCheckout
+                      ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
+                      : 'Card and billing fields are provided by Stripe. '
+                          'Your card details never touch our servers.',
                   style: GoogleFonts.figtree(
                     fontSize: 14,
                     height: 1.45,
@@ -269,9 +287,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     padding: EdgeInsets.symmetric(vertical: 48),
                     child: Center(child: CircularProgressIndicator(color: _navy)),
                   )
-                else if (!_stripeConfigured)
-                  _SetupHint(error: _error)
-                else if (_error != null) ...[
+                else if (_error != null && !_mockCheckout) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -286,32 +302,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(
-                    onPressed: _startCheckoutSession,
+                    onPressed: _loadConfigAndStart,
                     child: const Text('Try again'),
                   ),
-                ] else if (_publishableKey != null &&
-                    _clientSecret != null &&
-                    kIsWeb)
+                ] else if (_mockCheckout)
+                  _MockCheckoutForm(
+                    billingPeriod: _periodApiValue,
+                    priceLabel: '$_priceLabel $_pricePeriod',
+                    onSuccess: _onMockCheckoutSuccess,
+                  )
+                else if (_stripeConfigured &&
+                    _publishableKey != null &&
+                    _clientSecret != null)
                   StripeEmbeddedCheckout(
                     publishableKey: _publishableKey!,
                     clientSecret: _clientSecret!,
                     height: isMobile ? 560 : 520,
                     onComplete: _confirmSessionIfNeeded,
                   )
-                else if (_publishableKey != null && _clientSecret != null)
-                  StripeEmbeddedCheckout(
-                    publishableKey: _publishableKey!,
-                    clientSecret: _clientSecret!,
-                  )
                 else
-                  const SizedBox.shrink(),
-                const SizedBox(height: 16),
-                Text(
-                  'After paying, Stripe returns you to the app and unlocks '
-                  'unlimited chat history for Premium.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
-                ),
+                  const _SetupHint(),
+                if (!_mockCheckout) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'After paying, Stripe returns you to the app and unlocks '
+                    'unlimited chat history for Premium.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
+                  ),
+                ],
               ],
             ),
           ),
@@ -321,10 +340,304 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 }
 
-class _SetupHint extends StatelessWidget {
-  const _SetupHint({this.error});
+/// TEMPORARY visual checkout — card values stay in memory only and are cleared
+/// on submit. Delete this widget when Stripe Embedded Checkout is live.
+class _MockCheckoutForm extends StatefulWidget {
+  const _MockCheckoutForm({
+    required this.billingPeriod,
+    required this.priceLabel,
+    required this.onSuccess,
+  });
 
-  final String? error;
+  final String billingPeriod;
+  final String priceLabel;
+  final Future<void> Function(AuthUser user) onSuccess;
+
+  @override
+  State<_MockCheckoutForm> createState() => _MockCheckoutFormState();
+}
+
+class _MockCheckoutFormState extends State<_MockCheckoutForm> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _cardController = TextEditingController();
+  final _expiryController = TextEditingController();
+  final _cvcController = TextEditingController();
+  final _zipController = TextEditingController();
+  final _api = ApiService();
+
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _wipeSensitiveFields();
+    _nameController.dispose();
+    _cardController.dispose();
+    _expiryController.dispose();
+    _cvcController.dispose();
+    _zipController.dispose();
+    super.dispose();
+  }
+
+  void _wipeSensitiveFields() {
+    // Never persist — clear local controllers so typed values cannot linger.
+    _nameController.clear();
+    _cardController.clear();
+    _expiryController.clear();
+    _cvcController.clear();
+    _zipController.clear();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    // Wipe card fields before the network call so values never leave this widget.
+    _wipeSensitiveFields();
+
+    try {
+      final auth = context.read<AuthController>();
+      _api.setAccessToken(auth.token);
+      final result = await _api.mockActivatePremium(billingPeriod: widget.billingPeriod);
+      final userJson = result['user'];
+      if (userJson is! Map<String, dynamic>) {
+        throw Exception('Unexpected response from mock checkout.');
+      }
+      final user = AuthUser.fromJson(userJson);
+      if (!mounted) return;
+      await widget.onSuccess(user);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      });
+    }
+  }
+
+  InputDecoration _decoration(String label, {String? hint}) => InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: GoogleFonts.figtree(color: _navy),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _gold, width: 2),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F7F4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _gold.withValues(alpha: 0.45)),
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.lock_outline, size: 16, color: _navy),
+                const SizedBox(width: 6),
+                Text(
+                  'Secure checkout',
+                  style: GoogleFonts.figtree(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _navy,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  widget.priceLabel,
+                  style: GoogleFonts.figtree(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _navy,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _nameController,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              decoration: _decoration('Name on card'),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Enter the name on the card' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _cardController,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(19),
+                _CardNumberFormatter(),
+              ],
+              decoration: _decoration('Card number', hint: 'ACCT-000015'),
+              validator: (v) {
+                final digits = (v ?? '').replaceAll(' ', '');
+                if (digits.length < 13) return 'Enter a valid card number';
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _expiryController,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                      _ExpiryFormatter(),
+                    ],
+                    decoration: _decoration('Expiry', hint: 'MM/YY'),
+                    validator: (v) {
+                      if (v == null || !RegExp(r'^\d{2}/\d{2}$').hasMatch(v)) {
+                        return 'MM/YY';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _cvcController,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    obscureText: true,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    decoration: _decoration('CVC', hint: '123'),
+                    validator: (v) =>
+                        (v == null || v.length < 3) ? 'Invalid' : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: _zipController,
+                    keyboardType: TextInputType.text,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [LengthLimitingTextInputFormatter(10)],
+                    decoration: _decoration('ZIP'),
+                    validator: (v) =>
+                        (v == null || v.trim().length < 3) ? 'Required' : null,
+                  ),
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: GoogleFonts.figtree(color: Colors.red.shade800, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: _submitting ? null : _submit,
+              style: FilledButton.styleFrom(
+                backgroundColor: _navy,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _submitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(
+                      'Subscribe · ${widget.priceLabel}',
+                      style: GoogleFonts.figtree(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Demo mode: payment fields are not stored or charged.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.figtree(fontSize: 11, color: Colors.black45),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CardNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && i % 4 == 0) buf.write(' ');
+      buf.write(digits[i]);
+    }
+    final formatted = buf.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+class _ExpiryFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    var text = digits;
+    if (digits.length >= 3) {
+      text = '${digits.substring(0, 2)}/${digits.substring(2)}';
+    } else if (digits.length >= 1 && oldValue.text.length < newValue.text.length && digits.length == 2) {
+      text = '$digits/';
+    }
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+class _SetupHint extends StatelessWidget {
+  const _SetupHint();
 
   @override
   Widget build(BuildContext context) {
@@ -352,10 +665,8 @@ class _SetupHint extends StatelessWidget {
             'STRIPE_SECRET_KEY=sk_test_...\n'
             'STRIPE_PUBLISHABLE_KEY=pk_test_...\n'
             'STRIPE_WEBHOOK_SECRET=whsec_...\n'
-            'PUBLIC_APP_URL=https://your-public-url\n\n'
-            'Optional Price IDs (otherwise \$15/mo and \$150/yr are used):\n'
-            'STRIPE_PRICE_MONTHLY=price_...\n'
-            'STRIPE_PRICE_YEARLY=price_...\n\n'
+            'PUBLIC_APP_URL=https://your-public-url\n'
+            'BILLING_MOCK_CHECKOUT=false\n\n'
             'Webhook endpoint: POST /api/billing/webhook/',
             style: GoogleFonts.figtree(
               fontSize: 13,
@@ -363,13 +674,6 @@ class _SetupHint extends StatelessWidget {
               color: Colors.black87,
             ),
           ),
-          if (error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              error!,
-              style: GoogleFonts.figtree(color: Colors.red.shade800, fontSize: 13),
-            ),
-          ],
         ],
       ),
     );

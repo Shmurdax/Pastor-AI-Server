@@ -72,6 +72,7 @@ upsert STRIPE_WEBHOOK_SECRET "${STRIPE_WEBHOOK_SECRET:-}"
 upsert STRIPE_PRICE_MONTHLY "${STRIPE_PRICE_MONTHLY:-}"
 upsert STRIPE_PRICE_YEARLY "${STRIPE_PRICE_YEARLY:-}"
 upsert PUBLIC_APP_URL "${PUBLIC_APP_URL:-}"
+upsert BILLING_MOCK_CHECKOUT "${BILLING_MOCK_CHECKOUT:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then

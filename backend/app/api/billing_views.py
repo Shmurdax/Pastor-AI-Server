@@ -31,6 +31,21 @@ def _stripe_configured() -> bool:
     return bool(getattr(settings, "STRIPE_SECRET_KEY", "") and getattr(settings, "STRIPE_PUBLISHABLE_KEY", ""))
 
 
+def _mock_checkout_enabled() -> bool:
+    """TEMPORARY: fake checkout that gifts Premium until Stripe keys are live.
+
+    Enabled when BILLING_MOCK_CHECKOUT=true/1/yes, OR when unset and Stripe
+    is not configured. Set BILLING_MOCK_CHECKOUT=false once Stripe is ready.
+    """
+    raw = (getattr(settings, "BILLING_MOCK_CHECKOUT", "") or "").strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    # Default: mock only while Stripe credentials are missing.
+    return not _stripe_configured()
+
+
 def _ensure_stripe() -> None:
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -130,9 +145,54 @@ class BillingConfigView(APIView):
         return Response(
             {
                 "configured": _stripe_configured(),
+                "mock_checkout": _mock_checkout_enabled(),
                 "publishable_key": getattr(settings, "STRIPE_PUBLISHABLE_KEY", "") or "",
                 "monthly_amount_display": "$15.00",
                 "yearly_amount_display": "$150.00",
+            }
+        )
+
+
+class MockActivatePremiumView(APIView):
+    """TEMPORARY workaround — gifts Premium without charging.
+
+    Remove this view (and BILLING_MOCK_CHECKOUT) once real Stripe credentials
+    are configured. Card fields on the client are never sent here.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not _mock_checkout_enabled():
+            return Response(
+                {
+                    "detail": (
+                        "Mock checkout is disabled. Configure Stripe keys and "
+                        "set BILLING_MOCK_CHECKOUT=false."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        period = (request.data.get("billing_period") or "monthly").lower()
+        if period not in {"monthly", "yearly"}:
+            return Response(
+                {"detail": "billing_period must be 'monthly' or 'yearly'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = _get_or_create_profile(request.user)
+        _apply_subscription_to_profile(
+            profile,
+            status_value=Profile.SubscriptionStatus.ACTIVE,
+            billing_period=period,
+        )
+        user = User.objects.select_related("profile").get(pk=request.user.pk)
+        return Response(
+            {
+                "ok": True,
+                "mock": True,
+                "user": UserSerializer(user).data,
             }
         )
 
