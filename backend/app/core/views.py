@@ -15,13 +15,13 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 
 # RAG & Memory Imports
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
 # Import the model
+from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -49,20 +49,8 @@ BIBLE_SOURCE_MARKERS = tuple(
     if marker.strip()
 )
 
-# Keep retrieval embeddings on CPU. vLLM already owns nearly all GPU VRAM; loading
-# MiniLM onto CUDA per request causes intermittent CUDA OOM after a few chats.
-_EMBEDDINGS = None
-
-
-def _get_embeddings() -> HuggingFaceEmbeddings:
-    global _EMBEDDINGS
-    if _EMBEDDINGS is None:
-        _EMBEDDINGS = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": False},
-        )
-    return _EMBEDDINGS
+# Keep retrieval embeddings on CPU via shared helper (vLLM owns GPU VRAM).
+_get_embeddings = get_embeddings
 
 
 def _estimate_tokens(text: str) -> int:

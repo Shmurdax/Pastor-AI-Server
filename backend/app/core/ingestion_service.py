@@ -45,6 +45,7 @@ from .document_cleanup import (
     clean_markdown_document,
     format_cleanup_log,
 )
+from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_sermon_collection
 
@@ -414,7 +415,8 @@ def ingest_uploaded_files(
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
     bible_splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
@@ -571,7 +573,8 @@ def ingest_markdown_documents(
     result = IngestionResult(files_received=len(documents))
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)

@@ -1,13 +1,14 @@
 import os
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
 try:
     from core.document_cleanup import clean_markdown_document
+    from core.embeddings_utils import get_embeddings
 except ImportError:  # pragma: no cover - script may run outside Django package path
     clean_markdown_document = None
+    get_embeddings = None
 
 # === CONFIG ===
 DATA_DIR = os.environ.get("SERMON_MARKDOWN_DIR", "./converted_markdown")
@@ -72,7 +73,14 @@ def run_ingestion():
 
     # 4. Create / refresh the Qdrant collection
     print(f"--- 🧠 Writing {len(all_chunks)} chunks to Qdrant ({QDRANT_URL}/{QDRANT_COLLECTION}) ---")
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    if get_embeddings is not None:
+        embeddings = get_embeddings()
+    else:
+        from langchain_huggingface import HuggingFaceEmbeddings
+        embeddings = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": os.environ.get("EMBEDDING_DEVICE", "cpu")},
+        )
 
     QdrantVectorStore.from_documents(
         documents=all_chunks,
