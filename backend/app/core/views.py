@@ -17,8 +17,7 @@ from rest_framework.permissions import AllowAny
 # RAG & Memory Imports
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
@@ -35,9 +34,11 @@ SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "10"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.45"))
 RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.7"))
-MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "6000"))
-MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "10000"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1500"))
+MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "2500"))
+MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "3500"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1200"))
+CHAT_CONTEXT_WINDOW = int(os.getenv("CHAT_CONTEXT_WINDOW", "4096"))
+CHAT_TOKEN_SAFETY = int(os.getenv("CHAT_TOKEN_SAFETY", "96"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "240"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
@@ -47,6 +48,67 @@ BIBLE_SOURCE_MARKERS = tuple(
     ).split(",")
     if marker.strip()
 )
+
+
+def _estimate_tokens(text: str) -> int:
+    """Conservative token estimate for English + markup (safer than chars/4)."""
+    return max(1, (len(text or "") + 2) // 3)
+
+
+def _fit_chat_budget(system_filled: str, history_messages, question: str, max_completion: int):
+    """
+    Trim history/context so prompt + completion stays inside the model window.
+    Returns (system_filled, history_messages, max_completion).
+    """
+    window = max(512, CHAT_CONTEXT_WINDOW)
+    safety = max(16, CHAT_TOKEN_SAFETY)
+    completion = max(128, min(max_completion, window - 256))
+
+    def prompt_tokens(sys_text, history, q):
+        hist_text = "\n".join(getattr(m, "content", "") or "" for m in history)
+        return (
+            _estimate_tokens(sys_text)
+            + _estimate_tokens(hist_text)
+            + _estimate_tokens(q)
+            + 24  # role/format overhead
+        )
+
+    history = list(history_messages)
+    sys_text = system_filled
+
+    # Drop oldest history pairs until we fit, then shrink REFERENCE NOTES, then completion.
+    while history and prompt_tokens(sys_text, history, question) + completion + safety > window:
+        # Remove oldest human+ai pair when possible
+        if len(history) >= 2:
+            history = history[2:]
+        else:
+            history = history[1:]
+
+    marker = "REFERENCE NOTES:\n"
+    while prompt_tokens(sys_text, history, question) + completion + safety > window:
+        idx = sys_text.find(marker)
+        if idx < 0:
+            break
+        notes = sys_text[idx + len(marker) :]
+        if len(notes) <= 200:
+            sys_text = sys_text[: idx + len(marker)] + "No relevant sermon notes found."
+            break
+        # Keep the most recent/truncated notes tail-cut for simplicity
+        keep = max(200, int(len(notes) * 0.7))
+        sys_text = sys_text[: idx + len(marker)] + notes[:keep]
+
+    while prompt_tokens(sys_text, history, question) + completion + safety > window and completion > 256:
+        completion = max(256, completion - 128)
+
+    used = prompt_tokens(sys_text, history, question)
+    logger.debug(
+        "Chat token budget: prompt≈%s completion=%s window=%s history_msgs=%s",
+        used,
+        completion,
+        window,
+        len(history),
+    )
+    return sys_text, history, completion
 
 
 def _is_bible_source(source_name: str) -> bool:
@@ -495,22 +557,28 @@ class ChatAPIView(APIView):
                 "REFERENCE NOTES:\n{context}"
             )
 
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", system_content),
-                MessagesPlaceholder(variable_name="history"),
-                ("human", "{question}"),
-            ])
+            # Fill context first, then shrink history/notes so prompt+completion fit the 4096 window.
+            system_filled = system_content.replace(
+                "{context}",
+                context if context else "No relevant sermon notes found.",
+            )
+            system_filled, history_messages, completion_tokens = _fit_chat_budget(
+                system_filled,
+                history_messages,
+                user_query_llm,
+                CHAT_MAX_TOKENS,
+            )
 
             # --- LOGGING: Generation Start ---
             logger.debug("Generating chat response from retrieved context.")
 
-            # 5. GENERATION
-            chain = prompt | llm
-            response = chain.invoke({
-                "context": context if context else "No relevant sermon notes found.",
-                "history": history_messages,
-                "question": user_query_llm
-            })
+            # 5. GENERATION (direct messages avoid template-brace issues in the system prompt)
+            messages = (
+                [SystemMessage(content=system_filled)]
+                + history_messages
+                + [HumanMessage(content=user_query_llm)]
+            )
+            response = llm.bind(max_tokens=completion_tokens).invoke(messages)
 
             # 6. PERSIST
             if regenerate and target_message:
