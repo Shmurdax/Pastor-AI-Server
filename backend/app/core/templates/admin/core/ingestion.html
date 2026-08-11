@@ -82,7 +82,7 @@
 {% block content %}
 <div style="max-width: 760px;">
   <h1>Document Ingestion</h1>
-  <p>Upload DOCX and PDF files. Each file is stored under <code>uploads/admin_ingestion</code> as a PDF (DOCX is converted with LibreOffice), then text is extracted, normalized, split into chunks, and upserted into Qdrant.</p>
+  <p>Upload DOCX and PDF files. Each file is stored under <code>uploads/admin_ingestion</code> as a PDF (DOCX is converted with LibreOffice) so sermon library links can serve the original document. Extracted text is then run through structured cleanup (page chrome, repeating headers/footers, boilerplate, soft-wrap fixes), split into chunks, and upserted into Qdrant. Cleanup never rewrites the on-disk PDF.</p>
   <p><a href="{% url 'admin:core_ingested_documents' %}">View all ingested PDF documents</a></p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">

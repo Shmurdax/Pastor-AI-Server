@@ -4,6 +4,11 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharac
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 
+try:
+    from core.document_cleanup import clean_markdown_document
+except ImportError:  # pragma: no cover - script may run outside Django package path
+    clean_markdown_document = None
+
 # === CONFIG ===
 DATA_DIR = os.environ.get("SERMON_MARKDOWN_DIR", "./converted_markdown")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
@@ -45,6 +50,10 @@ def run_ingestion():
     for doc in docs:
         # Get just the filename (e.g., "Genesis.md")
         file_name = os.path.basename(doc.metadata["source"])
+
+        if clean_markdown_document is not None:
+            cleaned = clean_markdown_document(doc.page_content)
+            doc.page_content = cleaned.text
 
         # Check if the file has Bible-style headers
         if "# " in doc.page_content:

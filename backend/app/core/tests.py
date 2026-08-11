@@ -1,5 +1,10 @@
 import unittest
 
+from .document_cleanup import (
+    clean_extracted_document,
+    clean_markdown_document,
+    format_cleanup_log,
+)
 from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
 from .scope_gate import parse_scope_gate_response
 from .website_crawl.crawler import normalize_url, path_is_excluded
@@ -127,6 +132,76 @@ class WebsiteCrawlHelperTests(unittest.TestCase):
         self.assertIn("10am", markdown)
         self.assertIn("Source URL: https://mycthouston.org/visit", markdown)
         self.assertTrue(source_name_for_url("https://mycthouston.org/visit").startswith("web__"))
+
+
+class DocumentCleanupTests(unittest.TestCase):
+    def test_removes_page_chrome_boilerplate_and_fixes_hyphens(self):
+        raw = (
+            "Faith That Moves Mountains\n"
+            "Pastor Don\n"
+            "Page 1 of 3\n"
+            "\x0c"
+            "Faith That Moves Mountains\n"
+            "All rights reserved.\n"
+            "Copyright © 2020 Example Ministry.\n"
+            "\n"
+            "Today we look at faith that moves moun-\n"
+            "tains for the glory of God.\n"
+            "\n"
+            "- 2 -\n"
+            "\x0c"
+            "Faith That Moves Mountains\n"
+            "Downloaded from the church portal.\n"
+            "www.example.org\n"
+            "\n"
+            "Believe God for the breakthrough.\n"
+            "Page 3 of 3\n"
+        )
+        result = clean_extracted_document(raw, title="Faith That Moves Mountains")
+        text = result.text
+        self.assertIn("faith that moves mountains", text.lower())
+        self.assertIn("Believe God for the breakthrough.", text)
+        self.assertNotIn("All rights reserved", text)
+        self.assertNotIn("Copyright ©", text)
+        self.assertNotIn("Downloaded from", text)
+        self.assertNotIn("Page 1 of 3", text)
+        self.assertNotIn("moun-\ntains", text)
+        self.assertIn("mountains", text.lower())
+        self.assertGreater(result.stats.boilerplate_removed, 0)
+        self.assertGreaterEqual(result.stats.hyphen_fixes, 1)
+
+    def test_preserves_mid_document_content_and_structure(self):
+        raw = (
+            "Introduction\n\n"
+            "Jesus taught his disciples about prayer.\n\n"
+            "Point One\n\n"
+            "Ask in faith without doubting.\n"
+        )
+        result = clean_extracted_document(raw)
+        self.assertIn("Jesus taught his disciples about prayer.", result.text)
+        self.assertIn("Ask in faith without doubting.", result.text)
+
+    def test_markdown_cleanup_keeps_headings(self):
+        raw = (
+            "# Visit Us\n\n"
+            "- Source URL: https://example.org/visit\n\n"
+            "Services begin at 10am.\n\n"
+            "Page 2\n\n"
+            "All rights reserved.\n\n"
+            "## Youth\n\n"
+            "Wednesday at 7pm.\n"
+        )
+        result = clean_markdown_document(raw)
+        self.assertIn("# Visit Us", result.text)
+        self.assertIn("## Youth", result.text)
+        self.assertIn("Services begin at 10am.", result.text)
+        self.assertNotIn("All rights reserved", result.text)
+
+    def test_format_cleanup_log_includes_counts(self):
+        result = clean_extracted_document("Hello world.\n\nAll rights reserved.\n")
+        log = format_cleanup_log(result.stats, source_label="demo.pdf")
+        self.assertIn("Cleanup (demo.pdf):", log)
+        self.assertIn("boilerplate=", log)
 
 
 if __name__ == "__main__":

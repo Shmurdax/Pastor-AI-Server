@@ -4,10 +4,13 @@ Ingestion pipeline (admin uploads):
 1. **Normalize to PDF on disk** — uploads under ``uploads/admin_ingestion`` are always stored as
    ``{original_basename_stem}.pdf``. Incoming PDFs are written as that path; DOCX is written
    temporarily, converted with LibreOffice (``soffice``), then the DOCX is removed.
+   These original PDFs are what the sermon library serves; they are never rewritten by cleanup.
 
 2. **Text extraction** — text is read from the PDF with ``pypdf`` (not from DOCX after conversion).
 
-3. **Normalize** — ``_clean_text`` collapses whitespace and line breaks for consistent chunking.
+3. **Structured cleanup** — ``document_cleanup.clean_extracted_document`` removes page chrome,
+   repeating headers/footers, boilerplate, and soft-wrap artifacts so Qdrant chunks stay coherent.
+   Cleanup applies only to extracted text destined for embeddings — not to the on-disk PDF.
 
 4. **Markdown for chunking** — body text is wrapped as ``# {title}\\n\\n{body}`` via ``_to_markdown``
    (title = filename stem, also stored on ``IngestedDocument.title``). The DB stores ``IngestedDocument`` /
@@ -37,6 +40,11 @@ from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 
+from .document_cleanup import (
+    clean_extracted_document,
+    clean_markdown_document,
+    format_cleanup_log,
+)
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_sermon_collection
 
@@ -87,10 +95,46 @@ BIBLE_SOURCE_MARKERS = tuple(
 
 
 def _clean_text(text: str) -> str:
+    """Light whitespace normalize used on individual chunks after splitting."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def _prepare_extracted_text_for_qdrant(
+    extracted_text: str,
+    *,
+    title: str,
+    source_name: str,
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> str:
+    """
+    Run structured cleanup on PDF-extracted text before chunking/embedding.
+
+    Does not touch the original PDF on disk (sermon library links keep serving it).
+    """
+    result = clean_extracted_document(
+        extracted_text,
+        title=title,
+        source_name=source_name,
+    )
+    if log_fn:
+        log_fn(format_cleanup_log(result.stats, source_label=source_name or title))
+    return result.text
+
+
+def _prepare_markdown_text_for_qdrant(
+    markdown_text: str,
+    *,
+    source_name: str,
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> str:
+    """Lighter structured cleanup for crawl/markdown documents before Qdrant."""
+    result = clean_markdown_document(markdown_text)
+    if log_fn:
+        log_fn(format_cleanup_log(result.stats, source_label=source_name))
+    return result.text
 
 
 def _to_markdown(title: str, body: str) -> str:
@@ -416,8 +460,17 @@ def ingest_uploaded_files(
                 _convert_docx_to_pdf(docx_path, pdf_path)
                 docx_path.unlink(missing_ok=True)
 
+            # Persist the original/converted PDF first so sermon-library links always
+            # have a file even if later text cleanup or chunking fails mid-way.
+            # Cleanup below only mutates extracted text for Qdrant — never this PDF.
             extracted_text = _extract_pdf_text(pdf_path)
-            cleaned_text = _clean_text(extracted_text)
+            title = _safe_upload_stem(upload.name)
+            cleaned_text = _prepare_extracted_text_for_qdrant(
+                extracted_text,
+                title=title,
+                source_name=pdf_name,
+                log_fn=log_fn,
+            )
             if not cleaned_text:
                 pdf_path.unlink(missing_ok=True)
                 result.files_skipped_as_duplicates += 1
@@ -426,7 +479,6 @@ def ingest_uploaded_files(
                 _persist_job_progress(job, result)
                 continue
 
-            title = _safe_upload_stem(upload.name)
             markdown_text = _to_markdown(title, cleaned_text)
             use_bible_splitter = _is_bible_source(upload.name)
             splitter = bible_splitter if use_bible_splitter else default_splitter
@@ -541,7 +593,11 @@ def ingest_markdown_documents(
                     if log_fn:
                         log_fn(f"Replaced previous source data for: {source_name}")
 
-            cleaned_text = _clean_text(text)
+            cleaned_text = _prepare_markdown_text_for_qdrant(
+                text,
+                source_name=source_name,
+                log_fn=log_fn,
+            )
             if not cleaned_text:
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
