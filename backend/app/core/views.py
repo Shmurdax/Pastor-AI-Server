@@ -49,6 +49,21 @@ BIBLE_SOURCE_MARKERS = tuple(
     if marker.strip()
 )
 
+# Keep retrieval embeddings on CPU. vLLM already owns nearly all GPU VRAM; loading
+# MiniLM onto CUDA per request causes intermittent CUDA OOM after a few chats.
+_EMBEDDINGS = None
+
+
+def _get_embeddings() -> HuggingFaceEmbeddings:
+    global _EMBEDDINGS
+    if _EMBEDDINGS is None:
+        _EMBEDDINGS = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": False},
+        )
+    return _EMBEDDINGS
+
 
 def _estimate_tokens(text: str) -> int:
     """Conservative token estimate for English + markup (safer than chars/4)."""
@@ -425,7 +440,7 @@ class ChatAPIView(APIView):
                 )
 
             # 1. SETUP: Vector store (skipped when scope gate refuses — saves Qdrant + embedding work)
-            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            embeddings = _get_embeddings()
             collection_name = get_collection_name()
             client = QdrantClient(url=get_qdrant_url())
             ensure_sermon_collection(client, collection_name)
