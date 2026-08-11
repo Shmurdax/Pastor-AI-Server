@@ -150,6 +150,11 @@ fi
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
+# Ensure no orphaned gunicorn master keeps serving stale workers (old code on :8000).
+pkill -f 'gunicorn pastor_ai.wsgi' 2>/dev/null || true
+sleep 1
+fuser -k "${DJANGO_PORT}/tcp" 2>/dev/null || true
+sleep 1
 screen -dmS django bash -c "
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
@@ -186,6 +191,10 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
+  # Hide GPUs from Django only — vLLM keeps the GPU in its own screen.
+  # Prevents MiniLM embeddings from CUDA-OOM during admin ingestion.
+  export CUDA_VISIBLE_DEVICES='' &&
+  export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \

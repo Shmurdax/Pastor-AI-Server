@@ -11,35 +11,54 @@ import logging
 import os
 from typing import Optional
 
-from langchain_huggingface import HuggingFaceEmbeddings
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
-# Always default to CPU so ingestion/chat never fight vLLM for CUDA memory.
-DEFAULT_EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
-
-_EMBEDDINGS: Optional[HuggingFaceEmbeddings] = None
 
 
-def get_embeddings(*, force_new: bool = False) -> HuggingFaceEmbeddings:
+def _resolve_device() -> str:
+    # Prefer explicit env; otherwise always CPU. Never auto-select CUDA while
+    # vLLM is occupying the only GPU.
+    raw = (os.getenv("EMBEDDING_DEVICE") or "cpu").strip().lower()
+    if raw in {"", "auto"}:
+        return "cpu"
+    return raw
+
+
+def get_embeddings(*, force_new: bool = False):
     """
-    Return a process-wide MiniLM embedding client pinned to ``EMBEDDING_DEVICE``
-    (CPU by default).
+    Return a process-wide MiniLM embedding client pinned to CPU by default.
     """
     global _EMBEDDINGS
     if _EMBEDDINGS is not None and not force_new:
         return _EMBEDDINGS
 
-    device = (DEFAULT_EMBEDDING_DEVICE or "cpu").strip() or "cpu"
+    # Import after env is settled so callers can blank CUDA_VISIBLE_DEVICES first.
+    from langchain_huggingface import HuggingFaceEmbeddings
+
+    device = _resolve_device()
     logger.info("Loading embeddings model %s on device=%s", DEFAULT_EMBEDDING_MODEL, device)
-    _EMBEDDINGS = HuggingFaceEmbeddings(
+    emb = HuggingFaceEmbeddings(
         model_name=DEFAULT_EMBEDDING_MODEL,
         model_kwargs={"device": device},
         encode_kwargs={
             "normalize_embeddings": False,
-            # Keep encode batches modest to limit RAM spikes during large ingest jobs.
             "batch_size": int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
         },
     )
+
+    # Belt-and-suspenders: some sentence-transformers builds still land on CUDA
+    # when it is visible; force tensors onto CPU when requested.
+    if device == "cpu":
+        client = getattr(emb, "client", None)
+        if client is not None:
+            try:
+                client.to("cpu")
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Could not force embedding client to CPU: %s", exc)
+
+    _EMBEDDINGS = emb
     return _EMBEDDINGS
+
+
+_EMBEDDINGS = None
