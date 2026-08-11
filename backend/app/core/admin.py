@@ -64,10 +64,19 @@ def _mark_stale_running_jobs_failed() -> int:
 
 @admin.register(ChatMessage)
 class ChatMessageAdmin(admin.ModelAdmin):
-    # These now match your models.py perfectly
-    list_display = ('session_id', 'user_query', 'timestamp')
-    search_fields = ('session_id', 'user_query')
+    list_display = ('sender_email', 'session_id', 'user_query', 'timestamp')
+    search_fields = ('user__email', 'user__username', 'session_id', 'user_query')
     list_filter = ('timestamp',)
+    raw_id_fields = ('user',)
+    readonly_fields = ('sender_email', 'timestamp')
+
+    @admin.display(description='Sender email', ordering='user__email')
+    def sender_email(self, obj):
+        """Show the login email when the chatter was signed in."""
+        if obj.user_id is None:
+            return '—'
+        # Prefer the account email; fall back to username (often the email).
+        return (obj.user.email or obj.user.get_username() or '—').strip() or '—'
 
 
 @admin.register(IngestedDocument)
