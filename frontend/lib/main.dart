@@ -204,7 +204,6 @@ final bibleRefRegex = RegExp(
       await _syncAuthState();
       await _handleBillingReturn();
     });
-    _initSpeech();
   }
 
   /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
@@ -260,8 +259,12 @@ final bibleRefRegex = RegExp(
     }
   }
 
-  Future<void> _initSpeech() async {
+  /// Initializes speech only when the mic button is used. Never shows error UI.
+  Future<bool> _ensureSpeechReady() async {
+    if (_speechAvailable) return true;
+
     final available = await _speechToText.initialize(
+      debugLogging: kDebugMode,
       onStatus: (status) {
         if (!mounted) return;
         final listening = status == stt.SpeechToText.listeningStatus;
@@ -269,22 +272,14 @@ final bibleRefRegex = RegExp(
           setState(() => _isListening = listening);
         }
       },
-      onError: (error) {
+      onError: (_) {
         if (!mounted) return;
         setState(() => _isListening = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Voice input error: ${error.errorMsg}',
-              style: GoogleFonts.figtree(),
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
       },
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _speechAvailable = available);
+    return available;
   }
 
   Future<void> _toggleVoiceInput() async {
@@ -296,23 +291,8 @@ final bibleRefRegex = RegExp(
       return;
     }
 
-    if (!_speechAvailable) {
-      final available = await _speechToText.initialize();
-      if (!mounted) return;
-      setState(() => _speechAvailable = available);
-      if (!available) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Voice input is not available in this browser. Try Chrome or Edge.',
-              style: GoogleFonts.figtree(),
-            ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
-        return;
-      }
-    }
+    // Mic permission / speech init is requested only after the user taps the button.
+    if (!await _ensureSpeechReady()) return;
 
     _textBeforeSpeech = _controller.text.trimRight();
     if (_textBeforeSpeech.isNotEmpty) {
@@ -320,25 +300,34 @@ final bibleRefRegex = RegExp(
     }
 
     setState(() => _isListening = true);
-    await _speechToText.listen(
-      onResult: (result) {
-        if (!mounted) return;
-        final spoken = result.recognizedWords.trim();
-        final next = '$_textBeforeSpeech$spoken';
-        _controller.value = TextEditingValue(
-          text: next,
-          selection: TextSelection.collapsed(offset: next.length),
-        );
-        setState(() {});
-      },
-      listenOptions: stt.SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-        listenMode: stt.ListenMode.dictation,
-        // Stop after ~3s of silence (timer resets while speech is detected).
-        pauseFor: const Duration(seconds: 3),
-      ),
-    );
+    try {
+      await _speechToText.listen(
+        onResult: (result) {
+          if (!mounted) return;
+          final spoken = result.recognizedWords.trim();
+          final next = '$_textBeforeSpeech$spoken';
+          _controller.value = TextEditingValue(
+            text: next,
+            selection: TextSelection.collapsed(offset: next.length),
+          );
+          setState(() {});
+        },
+        listenOptions: stt.SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: stt.ListenMode.dictation,
+          pauseFor: const Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      if (mounted) setState(() => _isListening = false);
+      return;
+    }
+
+    if (!mounted) return;
+    if (!_speechToText.isListening) {
+      setState(() => _isListening = false);
+    }
   }
 
   Future<void> _syncAuthState() async {
@@ -581,14 +570,46 @@ final bibleRefRegex = RegExp(
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    Future<void> scrollSmoothly() async {
+      if (!_scrollController.hasClients) return;
+
+      final position = _scrollController.position;
+      final distance = position.maxScrollExtent - position.pixels;
+      if (distance <= 1) {
+        if (mounted) setState(() => _showBackToBottomButton = false);
+        return;
       }
+
+      // One continuous ease — chat ListView uses a large cacheExtent so
+      // maxScrollExtent is already accurate for typical conversation length.
+      await _scrollController.animateTo(
+        position.maxScrollExtent,
+        duration: Duration(
+          milliseconds: (distance / 2.2).clamp(350, 900).round(),
+        ),
+        curve: Curves.easeInOutCubic,
+      );
+
+      // Tiny follow-up animate only if late layout grew the extent (no jumpTo).
+      if (_scrollController.hasClients) {
+        final leftover = _scrollController.position.maxScrollExtent -
+            _scrollController.position.pixels;
+        if (leftover > 2) {
+          await _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: Duration(
+              milliseconds: (leftover / 2).clamp(100, 250).round(),
+            ),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+
+      if (mounted) setState(() => _showBackToBottomButton = false);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(scrollSmoothly());
     });
   }
 
@@ -1141,7 +1162,10 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             curve: Curves.easeOutCubic,
             bottom: prayerFabBottom,
             right: prayerFabRight,
-            child: _buildPrayerRequestPanel(isMobileOrTablet),
+            child: _buildPrayerRequestPanel(
+              isCompactViewport: isMobileOrTablet,
+              iconOnlyCollapsed: isMobile,
+            ),
           ),
         ],
       ),
@@ -1443,34 +1467,51 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     );
   }
 
-  Widget _buildPrayerRequestPanel(bool isMobile) {
+  Widget _buildPrayerRequestPanel({
+    required bool isCompactViewport,
+    required bool iconOnlyCollapsed,
+  }) {
     final maxHeight = MediaQuery.of(context).size.height * 0.65;
-    final panelWidth = isMobile ? MediaQuery.of(context).size.width - 32 : 420.0;
+    final panelWidth =
+        isCompactViewport ? MediaQuery.of(context).size.width - 32 : 420.0;
 
     if (!_prayerPanelExpanded) {
-      return Material(
+      final fab = Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(28),
         child: InkWell(
           onTap: () => _togglePrayerPanel(expanded: true),
           borderRadius: BorderRadius.circular(28),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: iconOnlyCollapsed
+                ? const EdgeInsets.all(14)
+                : const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28),
               gradient: const LinearGradient(colors: [_pink, _navy]),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.volunteer_activism, color: _gold, size: 22),
-                const SizedBox(width: 8),
-                Text('Prayer Request Form', style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.bold)),
-              ],
-            ),
+            child: iconOnlyCollapsed
+                ? const Icon(Icons.volunteer_activism, color: _gold, size: 24)
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.volunteer_activism, color: _gold, size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Prayer Request Form',
+                        style: GoogleFonts.figtree(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       );
+      return iconOnlyCollapsed
+          ? Tooltip(message: 'Prayer Request Form', child: fab)
+          : fab;
     }
 
     return Material(
@@ -1733,6 +1774,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                         ListView.builder(
                           controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
+                          // Keep offscreen messages measured so Back to bottom
+                          // can animate to the true end in one smooth scroll.
+                          cacheExtent: 100000,
                           padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
