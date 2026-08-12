@@ -5,6 +5,7 @@ from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from .models import IngestedDocument
+from .persist_db import dump_persistent_postgres
 from .storage_paths import admin_ingestion_dir
 
 logger = logging.getLogger(__name__)
@@ -19,3 +20,4 @@ def remove_admin_ingestion_upload(sender, instance, **kwargs):
         path.unlink(missing_ok=True)
     except OSError as exc:
         logger.warning("Could not remove ingestion upload file %s: %s", path, exc)
+    dump_persistent_postgres()

@@ -28,8 +28,6 @@ source "$CONFIG_ENV"
 mkdir -p "$LOG_DIR" "${QDRANT_STORAGE:-$WS/qdrant_storage}" "${HF_HOME:-$WS/hf_cache}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/persist_runtime.sh"
 
 QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
@@ -42,6 +40,9 @@ TUNNEL="${TUNNEL:-cloudflared}"
 log()  { echo -e "\033[0;32m[✔]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[!]\033[0m $*"; }
 die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
+
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/persist_runtime.sh"
 
 stop_screen() { screen -S "$1" -X quit 2>/dev/null || true; }
 
@@ -56,7 +57,7 @@ echo "=== Pastor-AI start ==="
 echo "Workspace: $WS"
 echo ""
 
-# Postgres on the network volume (container /var/lib/postgresql is wiped on recreate)
+# Postgres lives on local disk; dump/restore onto the network volume (PGDATA chown fails there).
 if ! command -v psql >/dev/null 2>&1; then
   warn "PostgreSQL missing — installing..."
   export DEBIAN_FRONTEND=noninteractive
@@ -202,8 +203,10 @@ screen -dmS django bash -c "
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
+  export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
+  { python manage.py dump_persistent_db || true; } &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
     >> '${LOG_DIR}/django.log' 2>&1
 "

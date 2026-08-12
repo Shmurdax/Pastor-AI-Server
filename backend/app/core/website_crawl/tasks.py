@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from ..ingestion_tasks import _wait_for_turn
 from ..models import IngestionJob, IngestionJobLog
+from ..persist_db import dump_persistent_postgres
 
 logger = logging.getLogger(__name__)
 
@@ -69,4 +70,5 @@ def _run_website_crawl_job(job_id: int, replace_existing_sources: bool) -> None:
         IngestionJobLog.objects.create(job=job, message=f"Website crawl failed: {exc}")
         logger.exception("Website crawl job %s failed", job_id)
     finally:
+        dump_persistent_postgres()
         close_old_connections()

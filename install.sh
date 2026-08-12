@@ -256,6 +256,12 @@ log "Code synced (backend + frontend + scripts)"
 # PostgreSQL
 # ---------------------------------------------------------------------------
 section "PostgreSQL"
+if [[ -f "$CONFIG_ENV" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$CONFIG_ENV"
+  set +a
+fi
 # shellcheck disable=SC1091
 source "$REPO_ROOT/persist_runtime.sh"
 ensure_persistent_postgres || service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true

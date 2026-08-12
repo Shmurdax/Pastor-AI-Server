@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from .ingestion_service import ingest_uploaded_files
 from .models import IngestionJob, IngestionJobLog
+from .persist_db import dump_persistent_postgres
 
 
 @dataclass
@@ -69,6 +70,7 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         job.save(update_fields=["status", "error_message", "finished_at"])
         log_job(f"Ingestion failed: {exc}")
     finally:
+        dump_persistent_postgres()
         _cleanup_staging_files(staged_uploads)
         close_old_connections()
 
