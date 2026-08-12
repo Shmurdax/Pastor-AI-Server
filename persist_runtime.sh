@@ -50,7 +50,7 @@ _pg_dump_app_db() {
   local db="${POSTGRES_DB:-ai_db}"
   mkdir -p "$PERSIST_PG_ROOT"
   chmod a+rX "$PERSIST_ROOT" "$PERSIST_PG_ROOT" 2>/dev/null || true
-  local tmp="/tmp/pastor_ai_db.dump"
+  local tmp="/tmp/pastor_ai_db.$$.dump"
   rm -f "$tmp"
   if ! su -s /bin/bash postgres -c "pg_dump -Fc --no-owner -d '${db}' -f '${tmp}'" 2>/dev/null; then
     rm -f "$tmp"
@@ -88,7 +88,7 @@ start_postgres_dump_loop() {
   screen -dmS pgdump bash -c "
     while true; do
       sleep 60
-      tmp=/tmp/pastor_ai_db.dump
+      tmp=/tmp/pastor_ai_db.$$.dump
       rm -f \"\$tmp\"
       if su -s /bin/bash postgres -c \"pg_dump -Fc --no-owner -d '${POSTGRES_DB:-ai_db}' -f '\$tmp'\" >/dev/null 2>&1 \\
          && [ -s \"\$tmp\" ]; then

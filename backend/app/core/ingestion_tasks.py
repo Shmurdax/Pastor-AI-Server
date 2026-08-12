@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import time
@@ -12,6 +13,8 @@ from django.utils import timezone
 from .ingestion_service import ingest_uploaded_files
 from .models import IngestionJob, IngestionJobLog
 from .persist_db import dump_persistent_postgres
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -64,6 +67,7 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         job.save(update_fields=["status", "finished_at"])
         log_job("Ingestion job finished.")
     except Exception as exc:
+        logger.exception("Ingestion job %s failed", job_id)
         job.status = "failed"
         job.error_message = str(exc)
         job.finished_at = timezone.now()
