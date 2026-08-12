@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
 
+_EMBEDDINGS = None
+
 
 def _resolve_device() -> str:
     # Prefer explicit env; otherwise always CPU. Never auto-select CUDA while
@@ -33,7 +35,10 @@ def get_embeddings(*, force_new: bool = False):
     if _EMBEDDINGS is not None and not force_new:
         return _EMBEDDINGS
 
-    # Import after env is settled so callers can blank CUDA_VISIBLE_DEVICES first.
+    # Ensure GPU is invisible before sentence-transformers/torch initialize.
+    if _resolve_device() == "cpu":
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     from langchain_huggingface import HuggingFaceEmbeddings
 
     device = _resolve_device()
@@ -47,10 +52,9 @@ def get_embeddings(*, force_new: bool = False):
         },
     )
 
-    # Belt-and-suspenders: some sentence-transformers builds still land on CUDA
-    # when it is visible; force tensors onto CPU when requested.
+    # Belt-and-suspenders: force tensors onto CPU when requested.
     if device == "cpu":
-        client = getattr(emb, "client", None)
+        client = getattr(emb, "client", None) or getattr(emb, "_client", None)
         if client is not None:
             try:
                 client.to("cpu")
@@ -59,6 +63,3 @@ def get_embeddings(*, force_new: bool = False):
 
     _EMBEDDINGS = emb
     return _EMBEDDINGS
-
-
-_EMBEDDINGS = None
