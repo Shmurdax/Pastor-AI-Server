@@ -157,8 +157,11 @@ export INGESTION_UPLOAD_DIR="${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}"
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
-# Ensure no orphaned gunicorn master keeps serving stale workers (old code on :8000).
-pkill -f 'gunicorn pastor_ai.wsgi' 2>/dev/null || true
+# Gunicorn rewrites argv to "gunicorn: master [pastor_ai.wsgi:application]",
+# so "gunicorn pastor_ai.wsgi" does not match a live master and stale workers
+# keep serving old code on :8000.
+pkill -9 -f 'pastor_ai.wsgi' 2>/dev/null || true
+pkill -9 -f 'gunicorn:' 2>/dev/null || true
 sleep 1
 fuser -k "${DJANGO_PORT}/tcp" 2>/dev/null || true
 sleep 1
@@ -206,7 +209,6 @@ screen -dmS django bash -c "
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
-  { python manage.py dump_persistent_db || true; } &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
     >> '${LOG_DIR}/django.log' 2>&1
 "

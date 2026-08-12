@@ -30,7 +30,7 @@ def dump_persistent_postgres() -> bool:
         logger.warning("Postgres persist dump skipped: invalid POSTGRES_DB %r", db)
         return False
     dest = dump_path()
-    tmp = Path("/tmp/pastor_ai_db.dump")
+    tmp = Path(f"/tmp/pastor_ai_db.{os.getpid()}.dump")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(
