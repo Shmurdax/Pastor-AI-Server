@@ -26,6 +26,7 @@ from .models import (
     PrayerRequest,
     ChurchEvent,
 )
+from .storage_paths import admin_ingestion_dir
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
@@ -325,7 +326,7 @@ def _admin_ingested_documents_view(request):
         messages.error(request, "You must be an admin user to access this page.")
         return HttpResponseRedirect("../")
 
-    upload_dir = Path(settings.BASE_DIR) / "uploads" / "admin_ingestion"
+    upload_dir = admin_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
     search_term = request.GET.get("q", "").strip()
     allowed_page_sizes = [25, 50, 100]
@@ -376,7 +377,7 @@ def _admin_ingested_document_file_view(request, file_name: str):
         messages.error(request, "You must be an admin user to access this file.")
         return HttpResponseRedirect("../")
 
-    upload_dir = (Path(settings.BASE_DIR) / "uploads" / "admin_ingestion").resolve()
+    upload_dir = admin_ingestion_dir()
     file_path = (upload_dir / file_name).resolve()
 
     if not file_path.is_file():

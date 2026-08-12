@@ -204,5 +204,60 @@ class DocumentCleanupTests(unittest.TestCase):
         self.assertIn("boilerplate=", log)
 
 
+class PersistDbTests(unittest.TestCase):
+    def test_dump_path_uses_env_override(self):
+        import os
+        from pathlib import Path
+
+        from .persist_db import dump_path
+
+        previous = os.environ.get("PERSIST_PG_DUMP")
+        os.environ["PERSIST_PG_DUMP"] = "/tmp/custom_ai_db.dump"
+        try:
+            self.assertEqual(dump_path(), Path("/tmp/custom_ai_db.dump"))
+        finally:
+            if previous is None:
+                os.environ.pop("PERSIST_PG_DUMP", None)
+            else:
+                os.environ["PERSIST_PG_DUMP"] = previous
+
+    def test_dump_skips_invalid_database_name(self):
+        import os
+
+        from .persist_db import dump_persistent_postgres
+
+        previous = os.environ.get("POSTGRES_DB")
+        os.environ["POSTGRES_DB"] = "ai_db; drop table"
+        try:
+            self.assertFalse(dump_persistent_postgres())
+        finally:
+            if previous is None:
+                os.environ.pop("POSTGRES_DB", None)
+            else:
+                os.environ["POSTGRES_DB"] = previous
+
+
+class StoragePathTests(unittest.TestCase):
+    def test_ingestion_dir_uses_env_override(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from .storage_paths import admin_ingestion_dir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.environ.get("INGESTION_UPLOAD_DIR")
+            os.environ["INGESTION_UPLOAD_DIR"] = tmp
+            try:
+                path = admin_ingestion_dir()
+                self.assertEqual(path, Path(tmp).resolve())
+                self.assertTrue(path.is_dir())
+            finally:
+                if previous is None:
+                    os.environ.pop("INGESTION_UPLOAD_DIR", None)
+                else:
+                    os.environ["INGESTION_UPLOAD_DIR"] = previous
+
+
 if __name__ == "__main__":
     unittest.main()

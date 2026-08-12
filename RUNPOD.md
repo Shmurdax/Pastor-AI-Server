@@ -12,8 +12,14 @@
   qdrant_storage/
   config.env            # generated / secrets
   tokens.env            # paste tokens here
-  install.sh start.sh apply-tokens.sh ingest_sermons.sh
+  install.sh start.sh persist_runtime.sh apply-tokens.sh ingest_sermons.sh
+
+/workspace/persistent/          # survives container recreate + install.sh rsync
+  postgres/ai_db.dump           # ingested document catalog (pg_dump)
+  uploads/admin_ingestion/      # original sermon PDFs for library links
 ```
+
+Live Postgres cannot use this volume as `PGDATA` (the volume cannot `chown` to user `postgres`). `start.sh` / `install.sh` keep the cluster on local disk, dump/restore `ai_db` onto `/workspace/persistent/postgres/ai_db.dump`, and symlink `backend/app/uploads/admin_ingestion` to the persistent PDF folder. Re-run `start.sh` after a pod stop/start or a full remigration so those bindings are restored.
 
 ## Fresh install
 

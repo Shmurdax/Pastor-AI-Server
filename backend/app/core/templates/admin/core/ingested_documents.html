@@ -3,7 +3,7 @@
 {% block content %}
 <div style="max-width: 900px;">
   <h1>Ingested Documents</h1>
-  <p>Browse converted PDFs stored in <code>uploads/admin_ingestion</code>.</p>
+  <p>Browse converted PDFs stored for the sermon library. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations.</p>
   <p>
     <a href="{% url 'admin:core_ingestion' %}">Back to ingestion panel</a>
   </p>

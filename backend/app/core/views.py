@@ -27,6 +27,7 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
+from .storage_paths import admin_ingestion_dir
 
 VLLM_URL = os.getenv("VLLM_URL", "http://vllm:8000/v1")
 logger = logging.getLogger(__name__)
@@ -296,7 +297,7 @@ class IngestedDocumentFileAPIView(APIView):
         if Path(source_name).suffix.lower() != ".pdf":
             raise Http404("Only PDF documents are available for download.")
 
-        upload_dir = (Path(settings.BASE_DIR) / "uploads" / "admin_ingestion").resolve()
+        upload_dir = admin_ingestion_dir()
         file_path = (upload_dir / source_name).resolve()
         if not file_path.is_file():
             raise Http404("Document file was not found on disk.")
@@ -346,7 +347,7 @@ class SermonPdfByNameAPIView(APIView):
         if Path(source_name).suffix.lower() != ".pdf":
             raise Http404("Only PDF documents are available for download.")
 
-        upload_dir = (Path(settings.BASE_DIR) / "uploads" / "admin_ingestion").resolve()
+        upload_dir = admin_ingestion_dir()
         file_path = (upload_dir / source_name).resolve()
         if not file_path.is_file():
             raise Http404("Document file was not found on disk.")
