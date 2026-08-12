@@ -48,6 +48,7 @@ from .document_cleanup import (
 from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_sermon_collection
+from .storage_paths import admin_ingestion_dir
 
 try:
     from docx import Document as DocxDocument
@@ -410,7 +411,7 @@ def ingest_uploaded_files(
     result = IngestionResult(files_received=len(uploaded_files))
     extra_metadata_by_name = extra_metadata_by_name or {}
 
-    upload_dir = Path(settings.BASE_DIR) / "uploads" / "admin_ingestion"
+    upload_dir = admin_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)

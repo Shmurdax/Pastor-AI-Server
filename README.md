@@ -43,7 +43,7 @@ Open `/admin/` on the Django host. Default credentials (created automatically by
 
 Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed.
 
-**Document Ingestion** stores original PDFs under `uploads/admin_ingestion` (served by sermon library links) and runs structured text cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
+**Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
 ```bash
 # Preview cleanup on sample / extracted text (does not modify PDFs)

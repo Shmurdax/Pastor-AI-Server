@@ -204,5 +204,27 @@ class DocumentCleanupTests(unittest.TestCase):
         self.assertIn("boilerplate=", log)
 
 
+class StoragePathTests(unittest.TestCase):
+    def test_ingestion_dir_uses_env_override(self):
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from .storage_paths import admin_ingestion_dir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.environ.get("INGESTION_UPLOAD_DIR")
+            os.environ["INGESTION_UPLOAD_DIR"] = tmp
+            try:
+                path = admin_ingestion_dir()
+                self.assertEqual(path, Path(tmp).resolve())
+                self.assertTrue(path.is_dir())
+            finally:
+                if previous is None:
+                    os.environ.pop("INGESTION_UPLOAD_DIR", None)
+                else:
+                    os.environ["INGESTION_UPLOAD_DIR"] = previous
+
+
 if __name__ == "__main__":
     unittest.main()

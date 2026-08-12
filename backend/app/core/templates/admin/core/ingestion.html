@@ -82,7 +82,7 @@
 {% block content %}
 <div style="max-width: 760px;">
   <h1>Document Ingestion</h1>
-  <p>Upload DOCX and PDF files. Each file is stored under <code>uploads/admin_ingestion</code> as a PDF (DOCX is converted with LibreOffice) so sermon library links can serve the original document. Extracted text is then run through structured cleanup (page chrome, repeating headers/footers, boilerplate, soft-wrap fixes), split into chunks, and upserted into Qdrant. Cleanup never rewrites the on-disk PDF.</p>
+  <p>Upload DOCX and PDF files. Each file is stored as a PDF for sermon library links (on RunPod this is the persistent volume, so files survive restarts). Extracted text is then run through structured cleanup (page chrome, repeating headers/footers, boilerplate, soft-wrap fixes), split into chunks, and upserted into Qdrant. Cleanup never rewrites the on-disk PDF.</p>
   <p>Large folders are uploaded in small batches (about 10 files / 8&nbsp;MB each) so Cloudflare and the tunnel do not drop the connection. Hundreds of sermons can take several minutes to finish uploading before background processing starts. Embedding runs on CPU so it does not compete with the chat GPU model for VRAM.</p>
   <p><a href="{% url 'admin:core_ingested_documents' %}">View all ingested PDF documents</a></p>
 

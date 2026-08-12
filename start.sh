@@ -27,6 +27,10 @@ source "$CONFIG_ENV"
 
 mkdir -p "$LOG_DIR" "${QDRANT_STORAGE:-$WS/qdrant_storage}" "${HF_HOME:-$WS/hf_cache}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/persist_runtime.sh"
+
 QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
 # Avoid 8001 — RunPod's host nginx often binds it and fools health checks.
@@ -52,13 +56,13 @@ echo "=== Pastor-AI start ==="
 echo "Workspace: $WS"
 echo ""
 
-# Postgres (container restarts wipe apt packages — reinstall if needed)
+# Postgres on the network volume (container /var/lib/postgresql is wiped on recreate)
 if ! command -v psql >/dev/null 2>&1; then
   warn "PostgreSQL missing — installing..."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq && apt-get install -y -qq postgresql postgresql-contrib >/dev/null || warn "postgres apt install failed"
 fi
-service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || true
+ensure_persistent_postgres || service postgresql start 2>/dev/null || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" 2>/dev/null | grep -q 1 \
@@ -147,6 +151,8 @@ fi
 
 # Django
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
+ensure_persistent_uploads
+export INGESTION_UPLOAD_DIR="${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}"
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
@@ -195,6 +201,7 @@ screen -dmS django bash -c "
   # Prevents MiniLM embeddings from CUDA-OOM during admin ingestion.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
+  export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \

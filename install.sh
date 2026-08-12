@@ -237,10 +237,12 @@ section "Sync backend + frontend into $WS"
 rsync -a --delete \
   --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
   --exclude='venv' --exclude='hf_cache' --exclude='qdrant_storage' \
+  --exclude='app/uploads/' \
   "$REPO_ROOT/backend/" "$BACKEND_DIR/"
 rsync -a --delete --exclude='.git' \
   "$REPO_ROOT/frontend/" "$FRONTEND_DIR/"
 cp -a "$REPO_ROOT/start.sh" "$WS/start.sh"
+cp -a "$REPO_ROOT/persist_runtime.sh" "$WS/persist_runtime.sh"
 cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
@@ -254,7 +256,10 @@ log "Code synced (backend + frontend + scripts)"
 # PostgreSQL
 # ---------------------------------------------------------------------------
 section "PostgreSQL"
-service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
+# shellcheck disable=SC1091
+source "$REPO_ROOT/persist_runtime.sh"
+ensure_persistent_postgres || service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
+ensure_persistent_uploads
 sleep 2
 
 # ---------------------------------------------------------------------------
@@ -297,6 +302,7 @@ QDRANT_URL=http://127.0.0.1:${QDRANT_PORT}
 QDRANT_BIN=${QDRANT_BIN}
 QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
+INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=

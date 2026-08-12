@@ -12,8 +12,14 @@
   qdrant_storage/
   config.env            # generated / secrets
   tokens.env            # paste tokens here
-  install.sh start.sh apply-tokens.sh ingest_sermons.sh
+  install.sh start.sh persist_runtime.sh apply-tokens.sh ingest_sermons.sh
+
+/workspace/persistent/          # survives container recreate + install.sh rsync
+  postgres/<version>/           # PostgreSQL data (ingested document catalog)
+  uploads/admin_ingestion/      # original sermon PDFs for library links
 ```
+
+`start.sh` points Postgres `data_directory` at `/workspace/persistent/postgres` and symlinks `backend/app/uploads/admin_ingestion` to the persistent PDF folder. Re-run `start.sh` after a pod stop/start or a full remigration so those bindings are restored.
 
 ## Fresh install
 
