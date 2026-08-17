@@ -233,6 +233,16 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> cancelSubscription() async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/billing/cancel-subscription/')),
+      headers: _headers(json: true),
+      body: jsonEncode(const {}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     throw Exception('HTTP ${res.statusCode}: ${res.body}');

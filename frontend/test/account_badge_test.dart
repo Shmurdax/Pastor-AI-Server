@@ -61,6 +61,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Pastor Don 🔨'), findsOneWidget);
+    expect(find.text('Pastor Don'), findsOneWidget);
+    expect(find.text('🔨'), findsOneWidget);
   });
 }

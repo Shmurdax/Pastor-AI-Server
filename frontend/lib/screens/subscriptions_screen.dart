@@ -4,8 +4,10 @@ import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
+import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -69,6 +71,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   Future<void> _onPremiumSelected() async {
     final auth = context.read<AuthController>();
+    if (auth.user?.isPaidPremium == true) return;
     if (auth.isAuthenticated) {
       _openCheckout();
       return;
@@ -80,6 +83,61 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (!mounted) return;
     if (signedIn == true && context.read<AuthController>().isAuthenticated) {
       _openCheckout();
+    }
+  }
+
+  Future<void> _unsubscribe() async {
+    final auth = context.read<AuthController>();
+    final user = auth.user;
+    if (user == null || !user.isPaidPremium || user.cancelAtPeriodEnd) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Unsubscribe from Premium?', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+        content: Text(
+          'You will keep Premium benefits until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. '
+          'After that, your account returns to the Free plan and auto-renewal stops.',
+          style: GoogleFonts.figtree(height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: Text('Keep Premium', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w600)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _pink),
+            child: Text('Unsubscribe', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      _apiService.setAccessToken(auth.token);
+      final result = await _apiService.cancelSubscription();
+      final userJson = result['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Auto-renewal is off. Premium stays until ${formatPremiumAccessUntil(auth.user?.currentPeriodEnd)}.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
     }
   }
 
@@ -96,6 +154,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         _billingPeriod == BillingPeriod.monthly ? '\$15.00' : '\$150.00';
     final premiumPeriod =
         _billingPeriod == BillingPeriod.monthly ? '/ month' : '/ year';
+    final auth = context.watch<AuthController>();
+    final paid = auth.user?.isPaidPremium == true;
+    final cancelScheduled = paid && (auth.user?.cancelAtPeriodEnd ?? false);
+    final premiumCta = paid
+        ? (cancelScheduled
+            ? 'Current plan · ends ${formatPremiumAccessUntil(auth.user?.currentPeriodEnd)}'
+            : 'Your current plan')
+        : 'Select plan →';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -235,7 +301,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                               pricePeriod: premiumPeriod,
                               perks: _premiumPerks,
                               style: _TierVisualStyle.filled,
-                              onTap: _onPremiumSelected,
+                              ctaLabel: premiumCta,
+                              onTap: paid ? null : _onPremiumSelected,
                             ),
                           ],
                         )
@@ -263,12 +330,34 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   pricePeriod: premiumPeriod,
                                   perks: _premiumPerks,
                                   style: _TierVisualStyle.filled,
-                                  onTap: _onPremiumSelected,
+                                  ctaLabel: premiumCta,
+                                  onTap: paid ? null : _onPremiumSelected,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                      if (paid && !cancelScheduled) ...[
+                        const SizedBox(height: 28),
+                        Center(
+                          child: TextButton(
+                            onPressed: _unsubscribe,
+                            child: Text(
+                              'Unsubscribe from Premium',
+                              style: GoogleFonts.figtree(
+                                color: _pink,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'You will keep Premium until the end of the current billing period.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -378,6 +467,7 @@ class _TierCard extends StatefulWidget {
     required this.perks,
     required this.style,
     this.onTap,
+    this.ctaLabel = 'Select plan →',
   });
 
   final String title;
@@ -387,6 +477,7 @@ class _TierCard extends StatefulWidget {
   final List<String> perks;
   final _TierVisualStyle style;
   final VoidCallback? onTap;
+  final String ctaLabel;
 
   @override
   State<_TierCard> createState() => _TierCardState();
@@ -512,12 +603,12 @@ class _TierCardState extends State<_TierCard> {
                   ],
                 ),
               ],
-              if (clickable) ...[
+              if (clickable || widget.ctaLabel != 'Select plan →') ...[
                 const SizedBox(height: 24),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Select plan →',
+                    widget.ctaLabel,
                     style: GoogleFonts.figtree(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,

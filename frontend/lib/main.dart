@@ -783,131 +783,223 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _showProfileSheet() {
-    final auth = context.read<AuthController>();
-    final user = auth.user;
-    if (user == null) return;
+    if (context.read<AuthController>().user == null) return;
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Your account', style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: _navy)),
-            const SizedBox(height: 20),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: _gold.withOpacity(0.2),
-                child: Text(
-                  user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
-                ),
-              ),
-              title: UserNameWithAccountBadge(
-                user: user,
-                style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _openSubscriptions();
-                },
-                icon: const Icon(Icons.workspace_premium_outlined, color: _navy),
-                label: Text('View plans', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _gold, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _openMedia();
-                },
-                icon: const Icon(Icons.video_library_outlined, color: _navy),
-                label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _navy, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (user.isStaff) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _openPrayerInbox();
-                  },
-                  icon: const Icon(Icons.volunteer_activism_outlined),
-                  label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _navy,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          child: Consumer<AuthController>(
+            builder: (context, auth, _) {
+              final user = auth.user;
+              if (user == null) return const SizedBox.shrink();
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Your account', style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: _navy)),
+                  const SizedBox(height: 20),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: _gold.withOpacity(0.2),
+                      child: Text(
+                        user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                        style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
+                      ),
+                    ),
+                    title: UserNameWithAccountBadge(
+                      user: user,
+                      style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (kUseMockAuth)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  'Demo mode: auth is mocked until Django endpoints are ready.',
-                  style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
-                ),
-              ),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  await auth.logout();
-                  _apiService.setAccessToken(null);
-                  if (mounted) {
-                    setState(() {
-                      sessionId = const Uuid().v4();
-                      _chatHistoryEntries = [];
-                      _sidebarPanel = _SidebarPanel.sermonLibrary;
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Signed out')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.logout, color: _pink),
-                label: Text('Sign out', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _pink),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
+                  if (user.isPaidPremium) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      user.cancelAtPeriodEnd
+                          ? 'Premium stays active until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. Auto-renewal is off.'
+                          : 'Premium member${user.billingPeriod.isNotEmpty ? ' · ${user.billingPeriod}' : ''}.',
+                      style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54, height: 1.35),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _openSubscriptions();
+                      },
+                      icon: const Icon(Icons.workspace_premium_outlined, color: _navy),
+                      label: Text('View plans', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _gold, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  if (user.isPaidPremium && !user.cancelAtPeriodEnd) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _unsubscribeFromPremium(sheetContext: ctx),
+                        icon: const Icon(Icons.cancel_outlined, color: _pink),
+                        label: Text('Unsubscribe', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: _pink),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _openMedia();
+                      },
+                      icon: const Icon(Icons.video_library_outlined, color: _navy),
+                      label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _navy, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (user.isStaff) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _openPrayerInbox();
+                        },
+                        icon: const Icon(Icons.volunteer_activism_outlined),
+                        label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _navy,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (kUseMockAuth)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Demo mode: auth is mocked until Django endpoints are ready.',
+                        style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
+                      ),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        await auth.logout();
+                        _apiService.setAccessToken(null);
+                        if (mounted) {
+                          setState(() {
+                            sessionId = const Uuid().v4();
+                            _chatHistoryEntries = [];
+                            _sidebarPanel = _SidebarPanel.sermonLibrary;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Signed out')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.logout, color: _pink),
+                      label: Text('Sign out', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _pink),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _unsubscribeFromPremium({BuildContext? sheetContext}) async {
+    final auth = context.read<AuthController>();
+    final user = auth.user;
+    if (user == null || !user.isPaidPremium) return;
+
+    final confirmed = await showDialog<bool>(
+      context: sheetContext ?? context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Unsubscribe from Premium?', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+        content: Text(
+          'You will keep Premium benefits until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. '
+          'After that, your account returns to the Free plan and auto-renewal stops.',
+          style: GoogleFonts.figtree(height: 1.45),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: Text('Keep Premium', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w600)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _pink),
+            child: Text('Unsubscribe', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
+    if (confirmed != true) return;
+
+    try {
+      _apiService.setAccessToken(auth.token);
+      final result = await _apiService.cancelSubscription();
+      final userJson = result['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      final next = auth.user;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Auto-renewal is off. Premium stays until ${formatPremiumAccessUntil(next?.currentPeriodEnd)}.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+          ),
+        ),
+      );
+    }
   }
 
   void _stopResponse() {
@@ -1086,20 +1178,36 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           if (auth.isAuthenticated)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),
-              child: ActionChip(
-                avatar: CircleAvatar(
-                  backgroundColor: _gold.withOpacity(0.25),
-                  child: Text(
-                    auth.user!.name.isNotEmpty ? auth.user!.name[0].toUpperCase() : '?',
-                    style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: _navy),
+              child: Material(
+                color: const Color(0xFFF8F4E8),
+                shape: const StadiumBorder(),
+                clipBehavior: Clip.none,
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: _showProfileSheet,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: _gold.withOpacity(0.25),
+                          child: Text(
+                            auth.user!.name.isNotEmpty ? auth.user!.name[0].toUpperCase() : '?',
+                            style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: _navy),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        UserNameWithAccountBadge(
+                          user: auth.user!,
+                          firstNameOnly: true,
+                          style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                label: UserNameWithAccountBadge(
-                  user: auth.user!,
-                  firstNameOnly: true,
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy),
-                ),
-                onPressed: _showProfileSheet,
               ),
             ),
           if (!isMobile)

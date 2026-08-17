@@ -207,3 +207,66 @@ class PremiumAccessTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.data["user"]["is_staff"])
         self.assertTrue(res.data["user"]["is_premium"])
+
+
+@override_settings(BILLING_MOCK_CHECKOUT="true")
+class CancelSubscriptionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/billing/cancel-subscription/"
+        self.member = User.objects.create_user(
+            username="free@church.org",
+            email="free@church.org",
+            password="MemberPass123!",
+            first_name="Free",
+            last_name="Member",
+        )
+        self.premium = User.objects.create_user(
+            username="premium@church.org",
+            email="premium@church.org",
+            password="PremiumPass123!",
+            first_name="Paid",
+            last_name="Member",
+        )
+        self.premium.profile.subscription_status = "active"
+        self.premium.profile.billing_period = "monthly"
+        self.premium.profile.save(update_fields=["subscription_status", "billing_period"])
+        self.member_token = Token.objects.create(user=self.member).key
+        self.premium_token = Token.objects.create(user=self.premium).key
+
+    def test_free_member_cannot_unsubscribe(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_premium_unsubscribe_keeps_access_until_period_end(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 200)
+        user = res.data["user"]
+        self.assertTrue(user["is_premium"])
+        self.assertEqual(user["subscription_status"], "active")
+        self.assertTrue(user["cancel_at_period_end"])
+        self.assertIsNotNone(user["current_period_end"])
+
+        self.premium.profile.refresh_from_db()
+        self.assertTrue(self.premium.profile.is_premium)
+        self.assertTrue(self.premium.profile.cancel_at_period_end)
+
+    def test_premium_access_ends_after_canceled_period(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        profile = self.premium.profile
+        profile.subscription_status = "active"
+        profile.cancel_at_period_end = True
+        profile.current_period_end = timezone.now() - timedelta(minutes=1)
+        profile.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.get("/api/auth/me/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["user"]["is_premium"])
+        self.assertEqual(res.data["user"]["subscription_status"], "canceled")
+        self.assertFalse(res.data["user"]["cancel_at_period_end"])
