@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/models/media_item.dart';
+import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -57,6 +59,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     );
   }
 
+  void _openPrayerInbox() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PrayerInboxScreen(apiService: _apiService),
+      ),
+    );
+  }
+
   void _goToAiHome() {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
@@ -65,15 +75,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     setState(() => _eventsOpen = open ?? !_eventsOpen);
   }
 
-  /// Catalog visible for the current access level (video-only).
+  /// Video catalog. Premium episodes stay visible and locked for free accounts.
   List<MediaItem> get _accessibleItems {
-    return MediaCatalog.allItems.where((item) {
-      if (item.contentType != MediaContentType.video) return false;
-      if (!_hasPremiumAccess && item.accessTier != MediaAccessTier.freePreview) {
-        return false;
-      }
-      return true;
-    }).toList();
+    return MediaCatalog.allItems
+        .where((item) => item.contentType == MediaContentType.video)
+        .toList();
   }
 
   List<MediaItem> get _filteredItems {
@@ -117,19 +123,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   void _openItem(MediaItem item) {
-    if (item.isPlayable) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _WatchEpisodeScreen(item: item),
-        ),
-      );
-      return;
-    }
-    if (item.accessTier == MediaAccessTier.premium) {
+    final hasPremiumAccess = context.read<AuthController>().hasPremiumAccess;
+    if (item.isLockedForUser(hasPremiumAccess: hasPremiumAccess)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'This episode is for Premium members. Subscribe to unlock when media goes live.',
+            'This episode is for Premium members. Subscribe to unlock the full library.',
             style: GoogleFonts.figtree(),
           ),
           action: SnackBarAction(
@@ -137,6 +136,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             onPressed: _openSubscriptions,
           ),
           duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+    if (item.isPlayable) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _WatchEpisodeScreen(item: item),
         ),
       );
       return;
@@ -300,6 +307,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final isMobile = screenWidth < 600;
     final items = _filteredItems;
     final useGrid = screenWidth >= 720;
+    final auth = context.watch<AuthController>();
+    final hasPremiumAccess = auth.hasPremiumAccess;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -330,6 +339,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           ),
         ),
         actions: [
+          if (auth.isAuthenticated && auth.user!.isStaff)
+            Padding(
+              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              child: IconButton(
+                tooltip: 'Prayer inbox',
+                onPressed: _openPrayerInbox,
+                icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
+              ),
+            ),
+          if (auth.isAuthenticated)
+            AccountProfileChip(
+              apiService: _apiService,
+              isMobile: isMobile,
+              onOpenSubscriptions: _openSubscriptions,
+              onOpenPrayerInbox: _openPrayerInbox,
+              onSignedOut: () {
+                if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
           if (!isMobile)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
@@ -383,7 +411,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _CreatorHeader(onSubscribe: _openSubscriptions),
+                            _CreatorHeader(
+                              onSubscribe: _openSubscriptions,
+                              hasPremiumAccess: hasPremiumAccess,
+                            ),
                             const SizedBox(height: 28),
                             _SearchBar(
                               controller: _searchController,
@@ -502,6 +533,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           constraints: const BoxConstraints(maxWidth: 560),
                           child: _MediaPostCard(
                             item: items.first,
+                            hasPremiumAccess: hasPremiumAccess,
                             onTap: () => _openItem(items.first),
                           ),
                         ),
@@ -522,6 +554,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         (context, index) => _MediaPostCard(
                           item: items[index],
                           compact: true,
+                          hasPremiumAccess: hasPremiumAccess,
                           onTap: () => _openItem(items[index]),
                         ),
                         childCount: items.length,
@@ -537,6 +570,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _MediaPostCard(
                             item: items[index],
+                            hasPremiumAccess: hasPremiumAccess,
                             onTap: () => _openItem(items[index]),
                           ),
                         ),
@@ -564,9 +598,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 }
 
 class _CreatorHeader extends StatelessWidget {
-  const _CreatorHeader({required this.onSubscribe});
+  const _CreatorHeader({
+    required this.onSubscribe,
+    required this.hasPremiumAccess,
+  });
 
   final VoidCallback onSubscribe;
+  final bool hasPremiumAccess;
 
   @override
   Widget build(BuildContext context) {
@@ -639,19 +677,21 @@ class _CreatorHeader extends StatelessWidget {
             'to preview the experience.',
             style: GoogleFonts.figtree(fontSize: 14, height: 1.5, color: Colors.black87),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onSubscribe,
-            icon: const Icon(Icons.lock_open_outlined, size: 18),
-            label: Text(
-              'Unlock with Premium',
-              style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+          if (!hasPremiumAccess) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onSubscribe,
+              icon: const Icon(Icons.lock_open_outlined, size: 18),
+              label: Text(
+                'Unlock with Premium',
+                style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: _navy,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              ),
             ),
-            style: FilledButton.styleFrom(
-              backgroundColor: _navy,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -830,16 +870,18 @@ class _MediaPostCard extends StatelessWidget {
   const _MediaPostCard({
     required this.item,
     required this.onTap,
+    required this.hasPremiumAccess,
     this.compact = false,
   });
 
   final MediaItem item;
   final VoidCallback onTap;
+  final bool hasPremiumAccess;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final locked = !item.isPlayable && item.accessTier == MediaAccessTier.premium;
+    final locked = item.isLockedForUser(hasPremiumAccess: hasPremiumAccess);
 
     return Material(
       color: Colors.transparent,
@@ -891,8 +933,8 @@ class _MediaPostCard extends StatelessWidget {
                           right: 10,
                           top: 10,
                           child: _Badge(
-                            label: item.isPlayable ? 'Preview' : 'Premium',
-                            highlight: !item.isPlayable,
+                            label: locked ? 'Premium' : 'Member',
+                            highlight: locked,
                           ),
                         ),
                       if (item.durationLabel != null)
@@ -923,13 +965,21 @@ class _MediaPostCard extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: _MediaPostCardBody(item: item, compact: true),
+                    child: _MediaPostCardBody(
+                      item: item,
+                      compact: true,
+                      locked: locked,
+                    ),
                   ),
                 )
               else
                 Padding(
                   padding: const EdgeInsets.all(18),
-                  child: _MediaPostCardBody(item: item, compact: false),
+                  child: _MediaPostCardBody(
+                    item: item,
+                    compact: false,
+                    locked: locked,
+                  ),
                 ),
             ],
           ),
@@ -940,10 +990,15 @@ class _MediaPostCard extends StatelessWidget {
 }
 
 class _MediaPostCardBody extends StatelessWidget {
-  const _MediaPostCardBody({required this.item, required this.compact});
+  const _MediaPostCardBody({
+    required this.item,
+    required this.compact,
+    required this.locked,
+  });
 
   final MediaItem item;
   final bool compact;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -992,7 +1047,17 @@ class _MediaPostCardBody extends StatelessWidget {
             ),
           ],
         ),
-        if (!item.isPlayable) ...[
+        if (locked) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Premium members only',
+            style: GoogleFonts.figtree(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.black38,
+            ),
+          ),
+        ] else if (!item.isPlayable) ...[
           const SizedBox(height: 6),
           Text(
             'Coming soon',

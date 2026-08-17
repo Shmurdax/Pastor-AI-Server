@@ -3,8 +3,10 @@ import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
+import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -54,6 +56,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   void _openMedia() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
+    );
+  }
+
+  void _openPrayerInbox() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PrayerInboxScreen(apiService: _apiService),
+      ),
     );
   }
 
@@ -193,6 +203,25 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
         ),
         actions: [
+          if (auth.isAuthenticated && auth.user!.isStaff)
+            Padding(
+              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              child: IconButton(
+                tooltip: 'Prayer inbox',
+                onPressed: _openPrayerInbox,
+                icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
+              ),
+            ),
+          if (auth.isAuthenticated)
+            AccountProfileChip(
+              apiService: _apiService,
+              isMobile: isMobile,
+              onOpenMedia: _openMedia,
+              onOpenPrayerInbox: _openPrayerInbox,
+              onSignedOut: () {
+                if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            ),
           if (!isMobile)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
