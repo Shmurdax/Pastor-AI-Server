@@ -140,6 +140,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
       return status['status'] == 'complete';
     } catch (_) {
+      if (!mounted) return false;
       await context.read<AuthController>().refreshMe();
       return false;
     }

@@ -247,6 +247,7 @@ final bibleRefRegex = RegExp(
       if (!mounted) return;
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
+      if (!mounted) return;
       final complete = status['status'] == 'complete' || auth.hasPremiumAccess;
       if (complete) {
         await showPurchaseCompleteDialog(context);
