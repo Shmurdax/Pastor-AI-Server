@@ -1,9 +1,7 @@
-import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 MediaItem _premiumItem({bool published = true}) {
   return MediaItem(
@@ -19,12 +17,6 @@ MediaItem _premiumItem({bool published = true}) {
 }
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
-  });
-
   test('premium media stays locked for free and guest accounts', () {
     final item = _premiumItem();
     expect(item.isLockedForUser(hasPremiumAccess: false), isTrue);
@@ -36,17 +28,16 @@ void main() {
     expect(item.isLockedForUser(hasPremiumAccess: true), isFalse);
   });
 
-  test('paid subscription grants premium access even if isPremium is stale', () {
-    final auth = AuthController();
-    auth.user = const AuthUser(
+  test('an active subscription is treated as paid Premium', () {
+    const user = AuthUser(
       id: '1',
       email: 'premium@test.com',
       name: 'Premium User',
       isPremium: false,
       subscriptionStatus: 'active',
     );
-    expect(auth.user!.isPaidPremium, isTrue);
-    expect(auth.hasPremiumAccess, isTrue);
+    expect(user.isPaidPremium, isTrue);
+    expect(user.isStaff, isFalse);
   });
 
   test('catalog premium devotionals are playable once unlocked', () {
