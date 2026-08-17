@@ -13,6 +13,8 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
+import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
+import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -218,7 +220,7 @@ final bibleRefRegex = RegExp(
 
   bool get _isPremiumUser {
     final auth = context.read<AuthController>();
-    return auth.user?.isPremium ?? false;
+    return auth.hasPremiumAccess;
   }
 
   int get _maxHistoryEntries =>
@@ -245,15 +247,10 @@ final bibleRefRegex = RegExp(
       if (!mounted) return;
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            auth.isPremium
-                ? 'Welcome to Premium — unlimited chat history is unlocked.'
-                : 'Payment received. Refreshing your membership…',
-          ),
-        ),
-      );
+      final complete = status['status'] == 'complete' || auth.hasPremiumAccess;
+      if (complete) {
+        await showPurchaseCompleteDialog(context);
+      }
     } catch (_) {
       await auth.refreshMe();
     }
@@ -339,7 +336,7 @@ final bibleRefRegex = RegExp(
     var history = await _tokenStorage.loadChatHistory(storageId);
 
     // Free / guest: keep only the most recent chat history entry.
-    final maxEntries = (auth.user?.isPremium ?? false) ? _premiumHistoryCap : _freeHistoryCap;
+    final maxEntries = auth.hasPremiumAccess ? _premiumHistoryCap : _freeHistoryCap;
     if (history.length > maxEntries) {
       history = history.take(maxEntries).toList();
       await _tokenStorage.saveChatHistory(storageId, history);
@@ -811,7 +808,10 @@ Future<void> _launchSermonDoc(String sermonName) async {
                   style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
                 ),
               ),
-              title: Text(user.name, style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+              title: UserNameWithAccountBadge(
+                user: user,
+                style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+              ),
               subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
             ),
             const SizedBox(height: 12),
@@ -1093,8 +1093,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: _navy),
                   ),
                 ),
-                label: Text(
-                  auth.user!.name.split(' ').first,
+                label: UserNameWithAccountBadge(
+                  user: auth.user!,
+                  firstNameOnly: true,
                   style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy),
                 ),
                 onPressed: _showProfileSheet,
@@ -1227,7 +1228,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   Widget _buildPreviousChatsPanel(AuthController auth) {
     if (_chatHistoryEntries.isEmpty) {
       return Text(
-        auth.isPremium
+        auth.hasPremiumAccess
             ? 'Your saved chats will appear here. Start a conversation to build history.'
             : 'Your most recent chat is saved here. Upgrade to Premium for unlimited history.',
         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
@@ -1237,7 +1238,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!auth.isPremium) ...[
+        if (!auth.hasPremiumAccess) ...[
           Text(
             auth.isAuthenticated
                 ? 'Free plan: only your most recent chat is kept.'
@@ -1710,8 +1711,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name,
-                        style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                    UserNameWithAccountBadge(
+                      user: user,
+                      style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text(user.email,
                         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 12),
                         overflow: TextOverflow.ellipsis),

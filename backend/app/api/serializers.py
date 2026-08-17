@@ -40,6 +40,9 @@ class UserSerializer(serializers.ModelSerializer):
         return getattr(obj, "profile", None)
 
     def get_is_premium(self, obj):
+        # Staff accounts receive the same entitlements as paid Premium members.
+        if obj.is_staff or obj.is_superuser:
+            return True
         profile = self._profile(obj)
         return bool(profile and profile.is_premium)
 

@@ -43,5 +43,10 @@ class Profile(models.Model):
     def is_premium(self) -> bool:
         return self.subscription_status == self.SubscriptionStatus.ACTIVE
 
+    @property
+    def has_premium_access(self) -> bool:
+        """Staff inherit every Premium entitlement, plus their staff tools."""
+        return bool(self.user.is_staff or self.user.is_superuser or self.is_premium)
+
     def __str__(self):
         return f"Profile({self.user.username})"

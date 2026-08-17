@@ -122,6 +122,14 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
 
       final options = JSObject();
       options['fetchClientSecret'] = fetchClientSecret.toJS;
+      final onComplete = widget.onComplete;
+      if (onComplete != null) {
+        void handleComplete() {
+          onComplete();
+        }
+
+        options['onComplete'] = handleComplete.toJS;
+      }
 
       final checkoutPromise = stripe.callMethod(
         'initEmbeddedCheckout'.toJS,

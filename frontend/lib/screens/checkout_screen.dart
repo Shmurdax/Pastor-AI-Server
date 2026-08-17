@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/stripe_embedded_checkout.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -124,9 +125,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<void> _confirmSessionIfNeeded() async {
+  Future<bool> _confirmSessionIfNeeded() async {
     final sessionId = _sessionId;
-    if (sessionId == null || sessionId.isEmpty) return;
+    if (sessionId == null || sessionId.isEmpty) return false;
     try {
       final auth = context.read<AuthController>();
       _api.setAccessToken(auth.token);
@@ -137,20 +138,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       } else {
         await auth.refreshMe();
       }
+      return status['status'] == 'complete';
     } catch (_) {
       await context.read<AuthController>().refreshMe();
+      return false;
     }
+  }
+
+  Future<void> _returnToChatbot() async {
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  Future<void> _showPurchaseCompleteAndReturn() async {
+    if (!mounted) return;
+    await showPurchaseCompleteDialog(context);
+    await _returnToChatbot();
+  }
+
+  Future<void> _onStripeCheckoutComplete() async {
+    final complete = await _confirmSessionIfNeeded();
+    if (!mounted || !complete) return;
+    await _showPurchaseCompleteAndReturn();
   }
 
   Future<void> _onMockCheckoutSuccess(AuthUser user) async {
     await context.read<AuthController>().applyUser(user);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Premium activated. Unlimited chat history is unlocked.'),
-      ),
-    );
-    Navigator.of(context).pop(true);
+    await _showPurchaseCompleteAndReturn();
   }
 
   @override
@@ -318,7 +333,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     publishableKey: _publishableKey!,
                     clientSecret: _clientSecret!,
                     height: isMobile ? 560 : 520,
-                    onComplete: _confirmSessionIfNeeded,
+                    onComplete: () {
+                      _onStripeCheckoutComplete();
+                    },
                   )
                 else
                   const _SetupHint(),

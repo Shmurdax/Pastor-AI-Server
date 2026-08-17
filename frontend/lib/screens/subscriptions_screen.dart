@@ -281,7 +281,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               right: 0,
               child: ChurchEventsNavOverlay(
                 apiService: _apiService,
-                isStaff: false,
+                isStaff: context.watch<AuthController>().user?.isStaff ?? false,
                 onClose: () => _toggleEvents(open: false),
               ),
             ),

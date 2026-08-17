@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
@@ -34,9 +36,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   MediaAccessTier? _tierFilter;
   int? _yearFilter;
 
-  /// Wire to real Premium subscription status when billing is connected.
-  /// Non-subscribers only see the free intro video.
-  bool get _hasPremiumAccess => false;
+  bool get _hasPremiumAccess => context.watch<AuthController>().hasPremiumAccess;
 
   @override
   void dispose() {
@@ -553,7 +553,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
               right: 0,
               child: ChurchEventsNavOverlay(
                 apiService: _apiService,
-                isStaff: false,
+                isStaff: context.watch<AuthController>().user?.isStaff ?? false,
                 onClose: () => _toggleEvents(open: false),
               ),
             ),

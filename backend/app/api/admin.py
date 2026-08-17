@@ -11,6 +11,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "subscription_status",
         "billing_period",
         "is_premium_display",
+        "has_premium_access_display",
         "stripe_customer_id",
     )
     list_filter = ("subscription_status", "billing_period")
@@ -25,3 +26,7 @@ class ProfileAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Premium")
     def is_premium_display(self, obj):
         return obj.is_premium
+
+    @admin.display(boolean=True, description="Premium access")
+    def has_premium_access_display(self, obj):
+        return obj.has_premium_access
