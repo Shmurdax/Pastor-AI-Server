@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
+from django.urls import reverse
 
 from core.transcript_normalize import (
     TranscriptSegment,
@@ -158,3 +159,14 @@ class VideoIngestPipelineTests(TestCase):
             self.assertIn("[", first_payload["text"])
             self.assertIn("Jesus", first_payload["text"])
             self.assertNotIn("subscribe", first_payload["text"].lower())
+
+
+class VideoIngestionAdminTests(TestCase):
+    def test_video_admin_urls_resolve(self):
+        self.assertEqual(reverse("admin:core_video_ingestion"), "/admin/core/video-ingestion/")
+        self.assertEqual(reverse("admin:core_ingested_videos"), "/admin/core/ingested-videos/")
+        self.assertTrue(
+            reverse("admin:core_ingested_video_file", args=["sermon.mp4"]).endswith(
+                "/ingested-videos/file/sermon.mp4/"
+            )
+        )
