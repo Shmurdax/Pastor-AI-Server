@@ -61,6 +61,7 @@ services:
       - .:/code
       - ${FRONTEND_MOUNT_PATH:-../../Pastor-AI-Server-front_end_backup}:/frontend:ro
       - ${ADMIN_INGESTION_MOUNT_PATH:-/var/www/pastor_ai/PDF-Data}:/code/uploads/admin_ingestion
+      - ${ADMIN_VIDEO_INGESTION_MOUNT_PATH:-/var/www/pastor_ai/Video-Data}:/code/uploads/admin_video_ingestion
     environment:
       # This ensures Django talks to the internal container name, not localhost
       - PYTHONUNBUFFERED=1
@@ -84,6 +85,9 @@ services:
       - LOGNAME=${HOST_USER:-student}
       - HOME=${HOST_HOME:-/tmp}
       - TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor
+      - VIDEO_INGESTION_UPLOAD_DIR=/code/uploads/admin_video_ingestion
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
     depends_on:
       - db
       - vllm

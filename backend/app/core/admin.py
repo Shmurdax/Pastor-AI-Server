@@ -1,7 +1,7 @@
+import mimetypes
 from django.contrib import admin
 from django.contrib import messages
 from django.conf import settings
-from django.db.models import Q
 from django.http import FileResponse
 from django.http import HttpResponseRedirect
 from django.http import Http404
@@ -15,7 +15,7 @@ from django.utils.text import get_valid_filename
 from pathlib import Path
 
 from .ingestion_service import delete_ingested_documents
-from .ingestion_tasks import StagedUpload, enqueue_ingestion_job
+from .ingestion_tasks import StagedUpload, enqueue_ingestion_job, enqueue_video_ingestion_job
 from .models import (
     ChatMessage,
     IngestedChunk,
@@ -26,12 +26,14 @@ from .models import (
     PrayerRequest,
     ChurchEvent,
 )
-from .storage_paths import admin_ingestion_dir
+from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
+from .video_ingestion import VIDEO_ACCEPT_ATTRIBUTE, VIDEO_EXTENSIONS, is_video_filename
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
 
 STALE_INGESTION_JOB_MINUTES = 30
+STALE_VIDEO_INGESTION_JOB_MINUTES = 480
 
 
 def _mark_stale_running_jobs_failed() -> int:
@@ -39,14 +41,21 @@ def _mark_stale_running_jobs_failed() -> int:
     Convert orphaned 'running' ingestion jobs to 'failed'.
 
     This handles process crashes/restarts where request cleanup never executes.
+    Video jobs get a longer idle window because Whisper transcription of a
+    full-length sermon can run for hours on CPU.
     """
-    cutoff = timezone.now() - timezone.timedelta(minutes=STALE_INGESTION_JOB_MINUTES)
-    stale_jobs = IngestionJob.objects.filter(
-        status="running",
-    ).filter(Q(created_at__lt=cutoff) | Q(finished_at__isnull=True, created_at__lt=cutoff))
-
+    now = timezone.now()
+    running = IngestionJob.objects.filter(status="running", finished_at__isnull=True)
     updated_count = 0
-    for job in stale_jobs:
+    for job in running:
+        last_activity = job.updated_at or job.created_at
+        idle_minutes = (
+            STALE_VIDEO_INGESTION_JOB_MINUTES
+            if job.job_kind == "video"
+            else STALE_INGESTION_JOB_MINUTES
+        )
+        if last_activity >= now - timezone.timedelta(minutes=idle_minutes):
+            continue
         if not job.error_message:
             job.error_message = (
                 "Job was left in running state and auto-marked failed. "
@@ -54,7 +63,7 @@ def _mark_stale_running_jobs_failed() -> int:
             )
         job.status = "failed"
         job.finished_at = timezone.now()
-        job.save(update_fields=["status", "error_message", "finished_at"])
+        job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
         IngestionJobLog.objects.create(
             job=job,
             message="Job auto-marked failed after exceeding stale running threshold.",
@@ -82,10 +91,10 @@ class ChatMessageAdmin(admin.ModelAdmin):
 
 @admin.register(IngestedDocument)
 class IngestedDocumentAdmin(admin.ModelAdmin):
-    list_display = ("title", "source_name", "original_extension", "chunk_count", "updated_at")
+    list_display = ("title", "source_name", "source_kind", "original_extension", "chunk_count", "updated_at")
     search_fields = ("title", "source_name", "file_hash")
-    list_filter = ("original_extension", "updated_at")
-    readonly_fields = ("source_name", "file_hash", "original_extension", "chunk_count", "created_at", "updated_at")
+    list_filter = ("source_kind", "original_extension", "updated_at")
+    readonly_fields = ("source_name", "file_hash", "original_extension", "source_kind", "chunk_count", "created_at", "updated_at")
     actions = ("delete_selected_with_vectors",)
 
     @admin.action(description="Delete selected documents from Django and Qdrant")
@@ -139,6 +148,7 @@ class IngestedChunkAdmin(admin.ModelAdmin):
 class IngestionJobAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "job_kind",
         "started_by",
         "status",
         "replace_existing_sources",
@@ -149,9 +159,10 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "finished_at",
     )
     search_fields = ("started_by", "error_message")
-    list_filter = ("status", "replace_existing_sources", "created_at")
+    list_filter = ("job_kind", "status", "replace_existing_sources", "created_at")
     readonly_fields = (
         "started_by",
+        "job_kind",
         "replace_existing_sources",
         "status",
         "files_received",
@@ -162,6 +173,7 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "chunks_skipped_as_duplicates",
         "error_message",
         "created_at",
+        "updated_at",
         "finished_at",
     )
 
@@ -197,6 +209,26 @@ def _is_ajax(request) -> bool:
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
+def _stage_uploads(job: IngestionJob, files, *, staging_subdir: str) -> list[StagedUpload]:
+    staging_root = Path(settings.BASE_DIR) / "uploads" / staging_subdir
+    staging_dir = staging_root / f"job_{job.id}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    staged_uploads: list[StagedUpload] = []
+    for idx, upload in enumerate(files):
+        safe_name = get_valid_filename(Path(upload.name).name) or f"upload_{idx}"
+        staged_path = staging_dir / f"{idx:04d}_{safe_name}"
+        with open(staged_path, "wb") as out:
+            for chunk in upload.chunks():
+                out.write(chunk)
+        staged_uploads.append(
+            StagedUpload(
+                original_name=upload.name,
+                staged_path=str(staged_path),
+            )
+        )
+    return staged_uploads
+
+
 def _admin_ingestion_view(request):
     if not request.user.is_staff:
         messages.error(request, "You must be an admin user to access this page.")
@@ -221,28 +253,14 @@ def _admin_ingestion_view(request):
 
         job = IngestionJob.objects.create(
             started_by=request.user.get_username() or "admin",
+            job_kind="document",
             replace_existing_sources=replace_existing_sources,
             status="running",
             files_received=len(files),
         )
 
         try:
-            staging_root = Path(settings.BASE_DIR) / "uploads" / "admin_ingestion_jobs"
-            staging_dir = staging_root / f"job_{job.id}"
-            staging_dir.mkdir(parents=True, exist_ok=True)
-            staged_uploads: list[StagedUpload] = []
-            for idx, upload in enumerate(files):
-                safe_name = get_valid_filename(Path(upload.name).name) or f"upload_{idx}"
-                staged_path = staging_dir / f"{idx:04d}_{safe_name}"
-                with open(staged_path, "wb") as out:
-                    for chunk in upload.chunks():
-                        out.write(chunk)
-                staged_uploads.append(
-                    StagedUpload(
-                        original_name=upload.name,
-                        staged_path=str(staged_path),
-                    )
-                )
+            staged_uploads = _stage_uploads(job, files, staging_subdir="admin_ingestion_jobs")
 
             IngestionJobLog.objects.create(job=job, message="Ingestion job queued for background processing.")
             enqueue_ingestion_job(
@@ -267,7 +285,7 @@ def _admin_ingestion_view(request):
             job.status = "failed"
             job.error_message = str(exc)
             job.finished_at = timezone.now()
-            job.save(update_fields=["status", "error_message", "finished_at"])
+            job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
             IngestionJobLog.objects.create(job=job, message=f"Ingestion failed: {exc}")
             messages.error(request, f"Ingestion failed (job #{job.id}): {exc}")
             if ajax:
@@ -280,9 +298,92 @@ def _admin_ingestion_view(request):
     context = {
         **admin.site.each_context(request),
         "title": "Admin Document Ingestion",
-        "latest_jobs": IngestionJob.objects.all()[:10],
+        "latest_jobs": IngestionJob.objects.exclude(job_kind="video")[:10],
     }
     return TemplateResponse(request, "admin/core/ingestion.html", context)
+
+
+def _admin_video_ingestion_view(request):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    stale_fixed = _mark_stale_running_jobs_failed()
+    if stale_fixed:
+        messages.warning(
+            request,
+            f"Recovered {stale_fixed} stale ingestion job(s) that were stuck in running state.",
+        )
+
+    if request.method == "POST":
+        ajax = _is_ajax(request)
+        files = request.FILES.getlist("videos")
+        replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
+        if not files:
+            if ajax:
+                return JsonResponse({"ok": False, "error": "Select at least one video file."}, status=400)
+            messages.warning(request, "Select at least one video file.")
+            return HttpResponseRedirect(request.path)
+
+        unsupported = [upload.name for upload in files if not is_video_filename(upload.name)]
+        if unsupported:
+            detail = "Only video files are allowed. Ignored: " + ", ".join(unsupported)
+            if ajax:
+                return JsonResponse({"ok": False, "error": detail}, status=400)
+            messages.warning(request, detail)
+            return HttpResponseRedirect(request.path)
+
+        job = IngestionJob.objects.create(
+            started_by=request.user.get_username() or "admin",
+            job_kind="video",
+            replace_existing_sources=replace_existing_sources,
+            status="running",
+            files_received=len(files),
+        )
+
+        try:
+            staged_uploads = _stage_uploads(job, files, staging_subdir="admin_video_ingestion_jobs")
+            IngestionJobLog.objects.create(job=job, message="Video ingestion job queued for background processing.")
+            enqueue_video_ingestion_job(
+                job_id=job.id,
+                staged_uploads=staged_uploads,
+                replace_existing_sources=replace_existing_sources,
+            )
+            messages.success(
+                request,
+                f"Video ingestion started in background (job #{job.id}). Refresh this page to monitor progress.",
+            )
+            if ajax:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "job_id": job.id,
+                        "files_received": len(files),
+                        "message": f"Video ingestion job #{job.id} queued with {len(files)} file(s).",
+                    }
+                )
+        except Exception as exc:
+            job.status = "failed"
+            job.error_message = str(exc)
+            job.finished_at = timezone.now()
+            job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+            IngestionJobLog.objects.create(job=job, message=f"Video ingestion failed: {exc}")
+            messages.error(request, f"Video ingestion failed (job #{job.id}): {exc}")
+            if ajax:
+                return JsonResponse(
+                    {"ok": False, "error": str(exc), "job_id": job.id},
+                    status=500,
+                )
+        return HttpResponseRedirect(request.path)
+
+    context = {
+        **admin.site.each_context(request),
+        "title": "Admin Video Ingestion",
+        "latest_jobs": IngestionJob.objects.filter(job_kind="video")[:10],
+        "video_accept": VIDEO_ACCEPT_ATTRIBUTE,
+        "video_extensions": sorted(VIDEO_EXTENSIONS),
+    }
+    return TemplateResponse(request, "admin/core/video_ingestion.html", context)
 
 
 def _admin_website_crawl_view(request):
@@ -315,7 +416,7 @@ def _admin_website_crawl_view(request):
     context = {
         **admin.site.each_context(request),
         "title": "Website Crawl → RAG",
-        "latest_jobs": IngestionJob.objects.all()[:15],
+        "latest_jobs": IngestionJob.objects.filter(job_kind="website")[:15],
         "allowlisted_domains": sorted(ALLOWED_DOMAINS),
     }
     return TemplateResponse(request, "admin/core/website_crawl.html", context)
@@ -394,12 +495,106 @@ def _admin_ingested_document_file_view(request, file_name: str):
     return FileResponse(open(file_path, "rb"), content_type="application/pdf")
 
 
+def _admin_ingested_videos_view(request):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    upload_dir = admin_video_ingestion_dir()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    search_term = request.GET.get("q", "").strip()
+    allowed_page_sizes = [25, 50, 100]
+    page_size_raw = request.GET.get("page_size", "50")
+    try:
+        page_size = int(page_size_raw)
+    except ValueError:
+        page_size = 50
+    if page_size not in allowed_page_sizes:
+        page_size = 50
+    videos = []
+    for file_path in upload_dir.iterdir():
+        if not file_path.is_file():
+            continue
+        if file_path.suffix.lower() == ".json":
+            continue
+        if file_path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        if search_term and search_term.lower() not in file_path.name.lower():
+            continue
+        file_stat = file_path.stat()
+        sidecar = file_path.with_suffix(".transcript.json")
+        videos.append(
+            {
+                "name": file_path.name,
+                "modified_at": timezone.datetime.fromtimestamp(file_stat.st_mtime, tz=timezone.get_current_timezone()),
+                "size_bytes": file_stat.st_size,
+                "has_transcript": sidecar.is_file(),
+                "transcript_name": sidecar.name,
+            }
+        )
+    videos.sort(key=lambda item: item["modified_at"], reverse=True)
+    videos_count = len(videos)
+    paginator = Paginator(videos, page_size)
+    page_number = request.GET.get("page", "1")
+    try:
+        page_obj = paginator.get_page(page_number)
+    except EmptyPage:
+        page_obj = paginator.get_page(1)
+
+    context = {
+        **admin.site.each_context(request),
+        "title": "Ingested Videos",
+        "videos": page_obj.object_list,
+        "search_term": search_term,
+        "videos_count": videos_count,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "page_size": page_size,
+        "allowed_page_sizes": allowed_page_sizes,
+    }
+    return TemplateResponse(request, "admin/core/ingested_videos.html", context)
+
+
+def _admin_ingested_video_file_view(request, file_name: str):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this file.")
+        return HttpResponseRedirect("../")
+
+    upload_dir = admin_video_ingestion_dir()
+    file_path = (upload_dir / file_name).resolve()
+
+    if not file_path.is_file():
+        raise Http404("Video file was not found.")
+
+    try:
+        file_path.relative_to(upload_dir)
+    except ValueError as exc:
+        raise Http404("Invalid file path.") from exc
+
+    suffix = file_path.suffix.lower()
+    if suffix not in VIDEO_EXTENSIONS and suffix != ".json":
+        raise Http404("Only ingested video files and transcripts are available from this endpoint.")
+
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if suffix == ".json":
+        content_type = "application/json"
+    return FileResponse(
+        open(file_path, "rb"),
+        content_type=content_type or "application/octet-stream",
+    )
+
+
 def _get_urls():
     custom_urls = [
         path(
             "core/ingestion/",
             admin.site.admin_view(_admin_ingestion_view),
             name="core_ingestion",
+        ),
+        path(
+            "core/video-ingestion/",
+            admin.site.admin_view(_admin_video_ingestion_view),
+            name="core_video_ingestion",
         ),
         path(
             "core/website-crawl/",
@@ -415,6 +610,16 @@ def _get_urls():
             "core/ingested-documents/file/<path:file_name>/",
             admin.site.admin_view(_admin_ingested_document_file_view),
             name="core_ingested_document_file",
+        ),
+        path(
+            "core/ingested-videos/",
+            admin.site.admin_view(_admin_ingested_videos_view),
+            name="core_ingested_videos",
+        ),
+        path(
+            "core/ingested-videos/file/<path:file_name>/",
+            admin.site.admin_view(_admin_ingested_video_file_view),
+            name="core_ingested_video_file",
         ),
     ]
     return custom_urls + _original_get_urls()
@@ -443,6 +648,17 @@ def _get_app_list(request, app_label=None):
                     "perms": {"add": False, "change": True, "delete": False, "view": True},
                 }
             )
+        if "CoreVideoIngestionTool" not in existing_object_names:
+            custom_entries.append(
+                {
+                    "name": "Video Ingestion",
+                    "object_name": "CoreVideoIngestionTool",
+                    "admin_url": reverse("admin:core_video_ingestion"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"add": False, "change": True, "delete": False, "view": True},
+                }
+            )
         if "CoreWebsiteCrawlTool" not in existing_object_names:
             custom_entries.append(
                 {
@@ -460,6 +676,17 @@ def _get_app_list(request, app_label=None):
                     "name": "Ingested Documents Browser",
                     "object_name": "CoreIngestedDocumentsTool",
                     "admin_url": reverse("admin:core_ingested_documents"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"add": False, "change": True, "delete": False, "view": True},
+                }
+            )
+        if "CoreIngestedVideosTool" not in existing_object_names:
+            custom_entries.append(
+                {
+                    "name": "Ingested Videos Browser",
+                    "object_name": "CoreIngestedVideosTool",
+                    "admin_url": reverse("admin:core_ingested_videos"),
                     "add_url": None,
                     "view_only": True,
                     "perms": {"add": False, "change": True, "delete": False, "view": True},

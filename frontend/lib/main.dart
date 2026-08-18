@@ -623,14 +623,49 @@ final bibleRefRegex = RegExp(
 
 Future<void> _launchSermonDoc(String sermonName) async {
   var stem = sermonName.trim();
+  stem = stem.replaceFirst(RegExp(r'\s*\[[0-9:]{4,8}[–-][0-9:]{4,8}\]\s*$'), '').trim();
   final lower = stem.toLowerCase();
-  for (final ext in const ['.pdf', '.md', '.docx']) {
+  for (final ext in const [
+    '.pdf',
+    '.md',
+    '.docx',
+    '.mp4',
+    '.m4v',
+    '.mov',
+    '.avi',
+    '.mkv',
+    '.webm',
+    '.wmv',
+    '.flv',
+    '.mpeg',
+    '.mpg',
+    '.3gp',
+    '.ogv',
+  ]) {
     if (lower.endsWith(ext)) {
       stem = stem.substring(0, stem.length - ext.length).trim();
       break;
     }
   }
   if (stem.isEmpty) return;
+
+  try {
+    final data = await _apiService.getIngestedDocuments(limit: 5, match: stem);
+    final docs = List<Map<String, dynamic>>.from(data['documents'] ?? const []);
+    if (docs.isNotEmpty) {
+      final fileUrl = (docs.first['file_url'] ?? docs.first['file_path'] ?? '').toString();
+      if (fileUrl.isNotEmpty) {
+        final launched = await launchUrl(
+          Uri.parse(fileUrl),
+          mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank',
+        );
+        if (launched) return;
+      }
+    }
+  } catch (e, st) {
+    debugPrint('Ingested source lookup failed: $e\n$st');
+  }
 
   // Same-origin PDF route: uploaded file when present, else rebuilt from Qdrant notes.
   final Uri fileUri = Uri(
@@ -648,14 +683,14 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open sermon PDF for "$stem".')),
+        SnackBar(content: Text('Could not open source for "$stem".')),
       );
     }
   } catch (e, st) {
     debugPrint('Error opening sermon link: $e\n$st');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open sermon PDF for "$stem".')),
+        SnackBar(content: Text('Could not open source for "$stem".')),
       );
     }
   }
@@ -672,7 +707,17 @@ Future<void> _launchSermonDoc(String sermonName) async {
 
   List<String> _parseSources(dynamic raw) =>
       List<String>.from(raw ?? [])
-          .map((s) => s.replaceAll('.md', '').replaceAll('.docx', '').replaceAll('.pdf', '').trim())
+          .map((s) {
+            var value = s.toString().trim();
+            for (final ext in const ['.md', '.docx', '.pdf', '.mp4', '.mov', '.mkv', '.webm', '.avi']) {
+              if (value.toLowerCase().endsWith(ext)) {
+                value = value.substring(0, value.length - ext.length).trim();
+                break;
+              }
+            }
+            return value;
+          })
+          .where((s) => s.isNotEmpty)
           .toSet()
           .take(5)
           .toList();
@@ -2043,7 +2088,11 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
               child: Row(
                 children: [
-                  const Icon(Icons.description_outlined, color: _gold, size: 18),
+                  Icon(
+                    sermonTitle.contains('[') ? Icons.videocam_outlined : Icons.description_outlined,
+                    color: _gold,
+                    size: 18,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(sermonTitle,

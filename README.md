@@ -45,10 +45,13 @@ Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `conf
 
 **Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
+**Video Ingestion** (alongside Document Ingestion in Django admin) accepts common video containers, transcribes them with OpenAI Whisper on CPU (timestamps kept for citation), then normalizes the script to drop fillers, channel CTAs, and isolated talk that is not about Christianity, the Bible, or social ideas and issues. Original videos persist at `/workspace/persistent/uploads/admin_video_ingestion`.
+
 ```bash
 # Preview cleanup on sample / extracted text (does not modify PDFs)
 bash /workspace/pastor-ai/cleanup_ingested_text.sh --demo
 python manage.py cleanup_ingested_text --file /path/to/extracted.txt
+python manage.py ingest_videos /path/to/sermon.mp4
 ```
 
 ## Tokens

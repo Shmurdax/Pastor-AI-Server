@@ -143,7 +143,7 @@ section "System packages"
 apt-get update -qq
 apt-get install -y -qq \
   git curl wget unzip ca-certificates gnupg lsb-release \
-  build-essential screen jq \
+  build-essential screen jq ffmpeg \
   python3 python3-pip python3-venv python3-dev \
   libpq-dev postgresql postgresql-contrib \
   pciutils >/dev/null
@@ -309,6 +309,7 @@ QDRANT_BIN=${QDRANT_BIN}
 QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
 INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
+VIDEO_INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_video_ingestion
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
