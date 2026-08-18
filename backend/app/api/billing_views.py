@@ -10,13 +10,14 @@ Configure via environment (see config.env.example / tokens.env.example):
   PUBLIC_APP_URL=https://your-domain   # return URL after checkout
 """
 
-from __future__ import annotations
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 import logging
 
 import stripe
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -101,6 +102,33 @@ def _public_app_url(request) -> str:
     return request.build_absolute_uri("/").rstrip("/")
 
 
+def _period_end_from_now(period: str) -> datetime:
+    now = timezone.now()
+    if (period or "").lower() == Profile.BillingPeriod.YEARLY:
+        try:
+            return now.replace(year=now.year + 1)
+        except ValueError:
+            return now + timedelta(days=365)
+    month = now.month + 1
+    year = now.year
+    if month > 12:
+        month = 1
+        year += 1
+    try:
+        return now.replace(year=year, month=month)
+    except ValueError:
+        return now + timedelta(days=30)
+
+
+def _datetime_from_stripe_ts(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=dt_timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
 def _apply_subscription_to_profile(
     profile: Profile,
     *,
@@ -108,6 +136,8 @@ def _apply_subscription_to_profile(
     customer_id: str = "",
     subscription_id: str = "",
     billing_period: str = "",
+    cancel_at_period_end: bool | None = None,
+    current_period_end: datetime | None = None,
 ) -> None:
     update_fields = ["subscription_status"]
     profile.subscription_status = status_value
@@ -120,6 +150,18 @@ def _apply_subscription_to_profile(
     if billing_period in {Profile.BillingPeriod.MONTHLY, Profile.BillingPeriod.YEARLY}:
         profile.billing_period = billing_period
         update_fields.append("billing_period")
+    if cancel_at_period_end is not None:
+        profile.cancel_at_period_end = cancel_at_period_end
+        update_fields.append("cancel_at_period_end")
+    elif status_value == Profile.SubscriptionStatus.ACTIVE:
+        profile.cancel_at_period_end = False
+        update_fields.append("cancel_at_period_end")
+    elif status_value == Profile.SubscriptionStatus.CANCELED:
+        profile.cancel_at_period_end = False
+        update_fields.append("cancel_at_period_end")
+    if current_period_end is not None:
+        profile.current_period_end = current_period_end
+        update_fields.append("current_period_end")
     profile.save(update_fields=update_fields)
 
 
@@ -186,6 +228,8 @@ class MockActivatePremiumView(APIView):
             profile,
             status_value=Profile.SubscriptionStatus.ACTIVE,
             billing_period=period,
+            cancel_at_period_end=False,
+            current_period_end=_period_end_from_now(period),
         )
         user = User.objects.select_related("profile").get(pk=request.user.pk)
         return Response(
@@ -330,6 +374,68 @@ class CheckoutSessionStatusView(APIView):
         )
 
 
+class CancelSubscriptionView(APIView):
+    """Stop auto-renewal. Premium stays until the current period ends."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        profile = _get_or_create_profile(request.user)
+        profile.expire_canceled_subscription_if_needed()
+        if profile.subscription_status != Profile.SubscriptionStatus.ACTIVE:
+            return Response(
+                {"detail": "You do not have an active Premium subscription to cancel."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if profile.cancel_at_period_end:
+            user = User.objects.select_related("profile").get(pk=request.user.pk)
+            return Response({"ok": True, "user": UserSerializer(user).data})
+
+        if profile.stripe_subscription_id and _stripe_configured():
+            _ensure_stripe()
+            try:
+                subscription = stripe.Subscription.modify(
+                    profile.stripe_subscription_id,
+                    cancel_at_period_end=True,
+                )
+            except stripe.error.StripeError as exc:
+                logger.exception("Stripe subscription cancel failed")
+                return Response(
+                    {"detail": str(exc.user_message or exc)},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            period_end = _datetime_from_stripe_ts(subscription.get("current_period_end"))
+            _apply_subscription_to_profile(
+                profile,
+                status_value=Profile.SubscriptionStatus.ACTIVE,
+                subscription_id=subscription.get("id") or profile.stripe_subscription_id,
+                billing_period=_billing_period_from_subscription(subscription)
+                or profile.billing_period,
+                cancel_at_period_end=True,
+                current_period_end=period_end or profile.current_period_end,
+            )
+        else:
+            period_end = profile.current_period_end or _period_end_from_now(
+                profile.billing_period or Profile.BillingPeriod.MONTHLY
+            )
+            _apply_subscription_to_profile(
+                profile,
+                status_value=Profile.SubscriptionStatus.ACTIVE,
+                billing_period=profile.billing_period,
+                cancel_at_period_end=True,
+                current_period_end=period_end,
+            )
+
+        user = User.objects.select_related("profile").get(pk=request.user.pk)
+        return Response(
+            {
+                "ok": True,
+                "user": UserSerializer(user).data,
+            }
+        )
+
+
 class StripeWebhookView(APIView):
     """Stripe webhook — keep STRIPE_WEBHOOK_SECRET in sync with the Dashboard endpoint."""
 
@@ -408,6 +514,7 @@ class StripeWebhookView(APIView):
             customer_id=session.get("customer") or "",
             subscription_id=sub_id or "",
             billing_period=period,
+            cancel_at_period_end=False,
         )
 
     def _on_subscription_updated(self, subscription) -> None:
@@ -432,6 +539,8 @@ class StripeWebhookView(APIView):
             customer_id=subscription.get("customer") or "",
             subscription_id=subscription.get("id") or "",
             billing_period=_billing_period_from_subscription(subscription),
+            cancel_at_period_end=bool(subscription.get("cancel_at_period_end")),
+            current_period_end=_datetime_from_stripe_ts(subscription.get("current_period_end")),
         )
 
     def _on_subscription_deleted(self, subscription) -> None:
@@ -446,4 +555,5 @@ class StripeWebhookView(APIView):
             status_value=Profile.SubscriptionStatus.CANCELED,
             customer_id=subscription.get("customer") or "",
             subscription_id=subscription.get("id") or "",
+            cancel_at_period_end=False,
         )

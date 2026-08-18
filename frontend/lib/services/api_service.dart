@@ -83,4 +83,6 @@ class ApiService {
   /// TEMPORARY — gifts Premium without charging. Remove when Stripe is live.
   Future<Map<String, dynamic>> mockActivatePremium({required String billingPeriod}) =>
       _apiClient.mockActivatePremium(billingPeriod: billingPeriod);
+
+  Future<Map<String, dynamic>> cancelSubscription() => _apiClient.cancelSubscription();
 }

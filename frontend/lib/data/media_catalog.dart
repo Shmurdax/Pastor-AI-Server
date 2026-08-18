@@ -35,7 +35,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '12:04',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'faith'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2025-1',
@@ -45,7 +47,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '10:05',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'grace'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2024-1',
@@ -55,7 +59,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '11:20',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'strength'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2023-1',
@@ -65,7 +71,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '13:40',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'hope'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2022-1',
@@ -75,7 +83,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '12:55',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'trust'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2021-1',
@@ -85,7 +95,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '9:45',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'joy'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2020-1',
@@ -95,7 +107,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '11:10',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'peace'],
+      isPublished: true,
     ),
     MediaItem(
       id: 'placeholder-devotional-2019-1',
@@ -105,7 +119,9 @@ class MediaCatalog {
       contentType: MediaContentType.video,
       accessTier: MediaAccessTier.premium,
       durationLabel: '10:30',
+      videoAssetPath: 'assets/videos/sample-5s.mp4',
       tags: ['devotional', 'abide'],
+      isPublished: true,
     ),
   ];
 }

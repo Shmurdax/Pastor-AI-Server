@@ -11,8 +11,11 @@ import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
+import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
+import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -218,7 +221,7 @@ final bibleRefRegex = RegExp(
 
   bool get _isPremiumUser {
     final auth = context.read<AuthController>();
-    return auth.user?.isPremium ?? false;
+    return auth.hasPremiumAccess;
   }
 
   int get _maxHistoryEntries =>
@@ -245,15 +248,11 @@ final bibleRefRegex = RegExp(
       if (!mounted) return;
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            auth.isPremium
-                ? 'Welcome to Premium — unlimited chat history is unlocked.'
-                : 'Payment received. Refreshing your membership…',
-          ),
-        ),
-      );
+      if (!mounted) return;
+      final complete = status['status'] == 'complete' || auth.hasPremiumAccess;
+      if (complete) {
+        await showPurchaseCompleteDialog(context);
+      }
     } catch (_) {
       await auth.refreshMe();
     }
@@ -339,7 +338,7 @@ final bibleRefRegex = RegExp(
     var history = await _tokenStorage.loadChatHistory(storageId);
 
     // Free / guest: keep only the most recent chat history entry.
-    final maxEntries = (auth.user?.isPremium ?? false) ? _premiumHistoryCap : _freeHistoryCap;
+    final maxEntries = auth.hasPremiumAccess ? _premiumHistoryCap : _freeHistoryCap;
     if (history.length > maxEntries) {
       history = history.take(maxEntries).toList();
       await _tokenStorage.saveChatHistory(storageId, history);
@@ -785,127 +784,23 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _showProfileSheet() {
-    final auth = context.read<AuthController>();
-    final user = auth.user;
-    if (user == null) return;
-
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Your account', style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: _navy)),
-            const SizedBox(height: 20),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: _gold.withOpacity(0.2),
-                child: Text(
-                  user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
-                ),
-              ),
-              title: Text(user.name, style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
-              subtitle: Text(user.email, style: GoogleFonts.figtree(color: Colors.black54)),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _openSubscriptions();
-                },
-                icon: const Icon(Icons.workspace_premium_outlined, color: _navy),
-                label: Text('View plans', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _gold, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _openMedia();
-                },
-                icon: const Icon(Icons.video_library_outlined, color: _navy),
-                label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _navy, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (user.isStaff) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _openPrayerInbox();
-                  },
-                  icon: const Icon(Icons.volunteer_activism_outlined),
-                  label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _navy,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (kUseMockAuth)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  'Demo mode: auth is mocked until Django endpoints are ready.',
-                  style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
-                ),
-              ),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.of(ctx).pop();
-                  await auth.logout();
-                  _apiService.setAccessToken(null);
-                  if (mounted) {
-                    setState(() {
-                      sessionId = const Uuid().v4();
-                      _chatHistoryEntries = [];
-                      _sidebarPanel = _SidebarPanel.sermonLibrary;
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Signed out')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.logout, color: _pink),
-                label: Text('Sign out', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _pink),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    showAccountProfileSheet(
+      context,
+      apiService: _apiService,
+      onOpenMedia: _openMedia,
+      onOpenSubscriptions: _openSubscriptions,
+      onOpenPrayerInbox: _openPrayerInbox,
+      onSignedOut: () {
+        if (!mounted) return;
+        setState(() {
+          sessionId = const Uuid().v4();
+          _chatHistoryEntries = [];
+          _sidebarPanel = _SidebarPanel.sermonLibrary;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Signed out')),
+        );
+      },
     );
   }
 
@@ -1083,22 +978,23 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               ),
             ),
           if (auth.isAuthenticated)
-            Padding(
-              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),
-              child: ActionChip(
-                avatar: CircleAvatar(
-                  backgroundColor: _gold.withOpacity(0.25),
-                  child: Text(
-                    auth.user!.name.isNotEmpty ? auth.user!.name[0].toUpperCase() : '?',
-                    style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.bold, color: _navy),
-                  ),
-                ),
-                label: Text(
-                  auth.user!.name.split(' ').first,
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600, color: _navy),
-                ),
-                onPressed: _showProfileSheet,
-              ),
+            AccountProfileChip(
+              apiService: _apiService,
+              isMobile: isMobile,
+              onOpenMedia: _openMedia,
+              onOpenSubscriptions: _openSubscriptions,
+              onOpenPrayerInbox: _openPrayerInbox,
+              onSignedOut: () {
+                if (!mounted) return;
+                setState(() {
+                  sessionId = const Uuid().v4();
+                  _chatHistoryEntries = [];
+                  _sidebarPanel = _SidebarPanel.sermonLibrary;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Signed out')),
+                );
+              },
             ),
           if (!isMobile)
             Padding(
@@ -1227,7 +1123,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   Widget _buildPreviousChatsPanel(AuthController auth) {
     if (_chatHistoryEntries.isEmpty) {
       return Text(
-        auth.isPremium
+        auth.hasPremiumAccess
             ? 'Your saved chats will appear here. Start a conversation to build history.'
             : 'Your most recent chat is saved here. Upgrade to Premium for unlimited history.',
         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
@@ -1237,7 +1133,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!auth.isPremium) ...[
+        if (!auth.hasPremiumAccess) ...[
           Text(
             auth.isAuthenticated
                 ? 'Free plan: only your most recent chat is kept.'
@@ -1710,8 +1606,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name,
-                        style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                    UserNameWithAccountBadge(
+                      user: user,
+                      style: GoogleFonts.figtree(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text(user.email,
                         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 12),
                         overflow: TextOverflow.ellipsis),

@@ -17,6 +17,8 @@ class AuthUser {
     this.isPremium = false,
     this.subscriptionStatus = 'free',
     this.billingPeriod = '',
+    this.cancelAtPeriodEnd = false,
+    this.currentPeriodEnd,
   });
 
   final String id;
@@ -27,6 +29,10 @@ class AuthUser {
   final bool isPremium;
   final String subscriptionStatus;
   final String billingPeriod;
+  final bool cancelAtPeriodEnd;
+  final DateTime? currentPeriodEnd;
+
+  bool get isPaidPremium => subscriptionStatus == 'active';
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: '${json['id']}',
@@ -37,6 +43,8 @@ class AuthUser {
         isPremium: json['is_premium'] as bool? ?? false,
         subscriptionStatus: json['subscription_status'] as String? ?? 'free',
         billingPeriod: json['billing_period'] as String? ?? '',
+        cancelAtPeriodEnd: json['cancel_at_period_end'] as bool? ?? false,
+        currentPeriodEnd: _parseDate(json['current_period_end']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +56,8 @@ class AuthUser {
         'is_premium': isPremium,
         'subscription_status': subscriptionStatus,
         'billing_period': billingPeriod,
+        'cancel_at_period_end': cancelAtPeriodEnd,
+        if (currentPeriodEnd != null) 'current_period_end': currentPeriodEnd!.toIso8601String(),
       };
 
   AuthUser copyWith({
@@ -59,6 +69,8 @@ class AuthUser {
     bool? isPremium,
     String? subscriptionStatus,
     String? billingPeriod,
+    bool? cancelAtPeriodEnd,
+    DateTime? currentPeriodEnd,
   }) {
     return AuthUser(
       id: id ?? this.id,
@@ -69,7 +81,14 @@ class AuthUser {
       isPremium: isPremium ?? this.isPremium,
       subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
       billingPeriod: billingPeriod ?? this.billingPeriod,
+      cancelAtPeriodEnd: cancelAtPeriodEnd ?? this.cancelAtPeriodEnd,
+      currentPeriodEnd: currentPeriodEnd ?? this.currentPeriodEnd,
     );
+  }
+
+  static DateTime? _parseDate(dynamic value) {
+    if (value is String && value.isNotEmpty) return DateTime.tryParse(value);
+    return null;
   }
 }
 

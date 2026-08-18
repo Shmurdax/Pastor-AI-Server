@@ -7,13 +7,16 @@ from core.models import PrayerRequest, ChurchEvent
 
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
-    { id, email, name, avatar_url, is_staff, is_premium, subscription_status, billing_period }
+    { id, email, name, avatar_url, is_staff, is_premium, subscription_status,
+      billing_period, cancel_at_period_end, current_period_end }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     is_premium = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
+    cancel_at_period_end = serializers.SerializerMethodField()
+    current_period_end = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -26,6 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
             "is_premium",
             "subscription_status",
             "billing_period",
+            "cancel_at_period_end",
+            "current_period_end",
         ]
 
     def get_name(self, obj):
@@ -37,9 +42,15 @@ class UserSerializer(serializers.ModelSerializer):
         return profile.avatar_url if profile else None
 
     def _profile(self, obj):
-        return getattr(obj, "profile", None)
+        profile = getattr(obj, "profile", None)
+        if profile is not None:
+            profile.expire_canceled_subscription_if_needed()
+        return profile
 
     def get_is_premium(self, obj):
+        # Staff accounts receive the same entitlements as paid Premium members.
+        if obj.is_staff or obj.is_superuser:
+            return True
         profile = self._profile(obj)
         return bool(profile and profile.is_premium)
 
@@ -50,6 +61,16 @@ class UserSerializer(serializers.ModelSerializer):
     def get_billing_period(self, obj):
         profile = self._profile(obj)
         return profile.billing_period if profile else ""
+
+    def get_cancel_at_period_end(self, obj):
+        profile = self._profile(obj)
+        return bool(profile and profile.cancel_at_period_end)
+
+    def get_current_period_end(self, obj):
+        profile = self._profile(obj)
+        if not profile or profile.current_period_end is None:
+            return None
+        return profile.current_period_end.isoformat()
 
 
 class RegisterSerializer(serializers.Serializer):

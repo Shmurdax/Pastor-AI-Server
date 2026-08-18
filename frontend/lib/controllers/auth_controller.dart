@@ -101,6 +101,10 @@ class AuthController extends ChangeNotifier {
 
   bool get isPremium => user?.isPremium ?? false;
 
+  /// Paid Premium members and staff (staff inherit Premium entitlements).
+  bool get hasPremiumAccess =>
+      (user?.isStaff ?? false) || isPremium || (user?.isPaidPremium ?? false);
+
   Future<void> applyUser(AuthUser next) async {
     user = next;
     if (token != null) {

@@ -40,7 +40,9 @@ class MediaItem {
 
   bool get isPlayable => isPublished && videoAssetPath != null;
 
-  bool get isLocked => accessTier == MediaAccessTier.premium && !isPlayable;
+  /// Premium catalog entries stay locked for free/guest accounts only.
+  bool isLockedForUser({required bool hasPremiumAccess}) =>
+      accessTier == MediaAccessTier.premium && !hasPremiumAccess;
 }
 
 class MediaCatalogStats {
