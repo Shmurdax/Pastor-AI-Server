@@ -59,8 +59,9 @@ class TranscriptNormalizeTests(TestCase):
         texts = " ".join(seg.text for seg in result.segments)
         self.assertIn("Scripture", texts)
         self.assertIn("illustration", texts)
+        self.assertIn("grocery", texts)
         self.assertNotIn("Texans", texts)
-        self.assertNotIn("grocery", texts)
+        self.assertNotIn("weather", texts.lower())
 
     def test_keeps_social_issue_content(self):
         segments = [
