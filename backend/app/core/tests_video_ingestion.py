@@ -3,6 +3,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
@@ -15,8 +18,11 @@ from core.transcript_normalize import (
     segments_from_whisper,
 )
 from core.video_ingestion import (
+    AUDIO_EXTENSIONS,
+    MEDIA_EXTENSIONS,
     group_segments_into_chunks,
     ingest_video_files,
+    is_audio_filename,
     is_video_filename,
 )
 from core.views import _strip_source_label
@@ -94,7 +100,23 @@ class VideoHelpersTests(TestCase):
         self.assertTrue(is_video_filename("clip.webm"))
         self.assertTrue(is_video_filename("tape.m2ts"))
         self.assertFalse(is_video_filename("notes.pdf"))
-        self.assertFalse(is_video_filename("audio.mp3"))
+        self.assertFalse(is_video_filename("slides.docx"))
+
+    def test_audio_extensions(self):
+        self.assertTrue(is_audio_filename("talk.m4a"))
+        self.assertTrue(is_video_filename("talk.M4A"))
+        self.assertTrue(is_video_filename("clip.mp3"))
+        self.assertTrue(is_video_filename("room.wav"))
+        self.assertTrue(is_video_filename("sermon.flac"))
+        self.assertTrue(is_video_filename("podcast.aac"))
+        self.assertTrue(is_video_filename("session.ogg"))
+        self.assertTrue(is_video_filename("voice.opus"))
+        self.assertIn(".m4a", AUDIO_EXTENSIONS)
+        self.assertTrue(AUDIO_EXTENSIONS.issubset(MEDIA_EXTENSIONS))
+
+    def test_django_allows_500_plus_uploads(self):
+        self.assertGreaterEqual(settings.DATA_UPLOAD_MAX_NUMBER_FILES, 500)
+        self.assertGreaterEqual(settings.DATA_UPLOAD_MAX_NUMBER_FIELDS, 500)
 
     def test_group_segments_respects_chunk_size(self):
         segments = [
@@ -160,6 +182,36 @@ class VideoIngestPipelineTests(TestCase):
             self.assertIn("Jesus", first_payload["text"])
             self.assertNotIn("subscribe", first_payload["text"].lower())
 
+    def test_ingest_m4a_audio_creates_timestamped_chunks(self):
+        class FakeUpload:
+            name = "sunday_talk.m4a"
+
+            def read(self):
+                return b"fake-audio-bytes"
+
+        segments = [
+            TranscriptSegment(0, 8, "The Bible says the word became flesh."),
+        ]
+
+        fake_embeddings = MagicMock()
+        fake_embeddings.embed_documents.side_effect = lambda chunks: [[0.1, 0.2]] * len(chunks)
+        fake_qdrant = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)), patch(
+                "core.video_ingestion.get_embeddings", return_value=fake_embeddings
+            ), patch("core.video_ingestion.QdrantClient", return_value=fake_qdrant), patch(
+                "core.video_ingestion.ensure_sermon_collection"
+            ):
+                result = ingest_video_files(
+                    [FakeUpload()],
+                    transcribe_fn=lambda _path: segments,
+                )
+
+            self.assertEqual(result.files_processed, 1)
+            self.assertTrue((Path(tmp) / "sunday_talk.m4a").is_file())
+            self.assertTrue((Path(tmp) / "sunday_talk.transcript.json").is_file())
+
 
 class VideoIngestionAdminTests(TestCase):
     def test_video_admin_urls_resolve(self):
@@ -170,3 +222,55 @@ class VideoIngestionAdminTests(TestCase):
                 "/ingested-videos/file/sermon.mp4/"
             )
         )
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="staff",
+            password="pass",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_login(self.user)
+
+    @patch("core.admin.enqueue_video_ingestion_job")
+    @patch("core.admin._stage_uploads", return_value=[])
+    def test_admin_accepts_m4a(self, _stage, mock_enqueue):
+        upload = SimpleUploadedFile("sermon.m4a", b"audio-bytes", content_type="audio/mp4")
+        response = self.client.post(
+            reverse("admin:core_video_ingestion"),
+            {"videos": upload},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["files_received"], 1)
+        mock_enqueue.assert_called_once()
+
+    @patch("core.admin.enqueue_video_ingestion_job")
+    @patch("core.admin._stage_uploads", return_value=[])
+    def test_admin_accepts_over_500_audio_files(self, _stage, mock_enqueue):
+        uploads = [
+            SimpleUploadedFile(f"sermon_{index:04d}.m4a", b"a", content_type="audio/mp4")
+            for index in range(501)
+        ]
+        response = self.client.post(
+            reverse("admin:core_video_ingestion"),
+            {"videos": uploads},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["files_received"], 501)
+        mock_enqueue.assert_called_once()
+
+    def test_admin_rejects_pdf_on_video_endpoint(self):
+        upload = SimpleUploadedFile("notes.pdf", b"%PDF", content_type="application/pdf")
+        response = self.client.post(
+            reverse("admin:core_video_ingestion"),
+            {"videos": upload},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("video and audio", response.json()["error"])

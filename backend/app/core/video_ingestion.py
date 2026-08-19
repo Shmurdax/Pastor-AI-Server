@@ -1,7 +1,7 @@
 """
-Admin video ingestion pipeline:
+Admin video/audio ingestion pipeline:
 
-1. Store the original video under ``uploads/admin_video_ingestion``.
+1. Store the original file under ``uploads/admin_video_ingestion``.
 2. Extract audio with ffmpeg and transcribe with Whisper (segment timestamps).
 3. Normalize the transcript: strip fillers/CTAs and drop isolated content that
    is not about Christianity, the Bible, or social ideas/issues.
@@ -78,17 +78,54 @@ VIDEO_EXTENSIONS = {
     ".amv",
 }
 
-VIDEO_ACCEPT_ATTRIBUTE = "video/*," + ",".join(sorted(VIDEO_EXTENSIONS))
+AUDIO_EXTENSIONS = {
+    ".m4a",
+    ".m4b",
+    ".mp3",
+    ".mpga",
+    ".mp2",
+    ".wav",
+    ".wave",
+    ".aac",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".wma",
+    ".aiff",
+    ".aif",
+    ".amr",
+    ".ac3",
+    ".mka",
+    ".weba",
+    ".caf",
+    ".3ga",
+}
+
+MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
+
+VIDEO_ACCEPT_ATTRIBUTE = (
+    "video/*,audio/*," + ",".join(sorted(MEDIA_EXTENSIONS))
+)
+
+
+def is_media_filename(name: str) -> bool:
+    return Path(name or "").suffix.lower() in MEDIA_EXTENSIONS
+
+
+def is_audio_filename(name: str) -> bool:
+    return Path(name or "").suffix.lower() in AUDIO_EXTENSIONS
 
 
 def is_video_filename(name: str) -> bool:
-    return Path(name or "").suffix.lower() in VIDEO_EXTENSIONS
+    """True for video or audio containers accepted by Whisper ingest."""
+    return is_media_filename(name)
 
 
 def _canonical_video_name(original_name: str) -> str:
     stem = _safe_upload_stem(original_name)
     suffix = Path(original_name).suffix.lower()
-    if suffix not in VIDEO_EXTENSIONS:
+    if suffix not in MEDIA_EXTENSIONS:
         suffix = suffix if suffix else ".mp4"
     return f"{stem}{suffix}"
 
@@ -101,7 +138,7 @@ def _replace_existing_video(original_name: str) -> None:
     stem = _safe_upload_stem(original_name)
     upload_dir = admin_video_ingestion_dir()
     names = {original_name, _canonical_video_name(original_name)}
-    for ext in VIDEO_EXTENSIONS:
+    for ext in MEDIA_EXTENSIONS:
         names.add(f"{stem}{ext}")
     for name in names:
         if not IngestedDocument.objects.filter(source_name=name).exists():
@@ -204,13 +241,14 @@ def ingest_video_files(
         video_path: Optional[Path] = None
         try:
             extension = Path(upload.name).suffix.lower()
-            if extension not in VIDEO_EXTENSIONS:
+            if extension not in MEDIA_EXTENSIONS:
                 if log_fn:
-                    log_fn(f"Skipped unsupported video type: {upload.name}")
+                    log_fn(f"Skipped unsupported media type: {upload.name}")
                 continue
 
             if log_fn:
-                log_fn(f"Processing video: {upload.name}")
+                kind = "audio" if extension in AUDIO_EXTENSIONS else "video"
+                log_fn(f"Processing {kind}: {upload.name}")
 
             if replace_existing_sources:
                 _replace_existing_video(upload.name)

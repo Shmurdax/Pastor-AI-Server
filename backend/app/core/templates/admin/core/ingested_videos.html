@@ -3,7 +3,7 @@
 {% block content %}
 <div style="max-width: 900px;">
   <h1>Ingested Videos</h1>
-  <p>Browse original video files stored for Whisper transcription. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations. Timestamped transcripts are saved as <code>.transcript.json</code> sidecars next to each video.</p>
+  <p>Browse original video and audio files stored for Whisper transcription. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations. Timestamped transcripts are saved as <code>.transcript.json</code> sidecars next to each file.</p>
   <p>
     <a href="{% url 'admin:core_video_ingestion' %}">Back to video ingestion panel</a>
   </p>
@@ -32,7 +32,7 @@
     {% if search_term %}
       Showing {{ videos_count }} result{{ videos_count|pluralize }} for "{{ search_term }}"
     {% else %}
-      Showing {{ videos_count }} video{{ videos_count|pluralize }}
+      Showing {{ videos_count }} file{{ videos_count|pluralize }}
     {% endif %}
   </p>
 

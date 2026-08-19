@@ -27,7 +27,7 @@ from .models import (
     ChurchEvent,
 )
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
-from .video_ingestion import VIDEO_ACCEPT_ATTRIBUTE, VIDEO_EXTENSIONS, is_video_filename
+from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
@@ -321,13 +321,15 @@ def _admin_video_ingestion_view(request):
         replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
         if not files:
             if ajax:
-                return JsonResponse({"ok": False, "error": "Select at least one video file."}, status=400)
-            messages.warning(request, "Select at least one video file.")
+                return JsonResponse({"ok": False, "error": "Select at least one video or audio file."}, status=400)
+            messages.warning(request, "Select at least one video or audio file.")
             return HttpResponseRedirect(request.path)
 
         unsupported = [upload.name for upload in files if not is_video_filename(upload.name)]
         if unsupported:
-            detail = "Only video files are allowed. Ignored: " + ", ".join(unsupported)
+            shown = unsupported[:15]
+            extra = "" if len(unsupported) <= 15 else f" (and {len(unsupported) - 15} more)"
+            detail = "Only video and audio files are allowed. Ignored: " + ", ".join(shown) + extra
             if ajax:
                 return JsonResponse({"ok": False, "error": detail}, status=400)
             messages.warning(request, detail)
@@ -359,7 +361,7 @@ def _admin_video_ingestion_view(request):
                         "ok": True,
                         "job_id": job.id,
                         "files_received": len(files),
-                        "message": f"Video ingestion job #{job.id} queued with {len(files)} file(s).",
+                        "message": f"Media ingestion job #{job.id} queued with {len(files)} file(s).",
                     }
                 )
         except Exception as exc:
@@ -381,7 +383,7 @@ def _admin_video_ingestion_view(request):
         "title": "Admin Video Ingestion",
         "latest_jobs": IngestionJob.objects.filter(job_kind="video")[:10],
         "video_accept": VIDEO_ACCEPT_ATTRIBUTE,
-        "video_extensions": sorted(VIDEO_EXTENSIONS),
+        "video_extensions": sorted(MEDIA_EXTENSIONS),
     }
     return TemplateResponse(request, "admin/core/video_ingestion.html", context)
 
@@ -517,7 +519,7 @@ def _admin_ingested_videos_view(request):
             continue
         if file_path.suffix.lower() == ".json":
             continue
-        if file_path.suffix.lower() not in VIDEO_EXTENSIONS:
+        if file_path.suffix.lower() not in MEDIA_EXTENSIONS:
             continue
         if search_term and search_term.lower() not in file_path.name.lower():
             continue
@@ -572,8 +574,8 @@ def _admin_ingested_video_file_view(request, file_name: str):
         raise Http404("Invalid file path.") from exc
 
     suffix = file_path.suffix.lower()
-    if suffix not in VIDEO_EXTENSIONS and suffix != ".json":
-        raise Http404("Only ingested video files and transcripts are available from this endpoint.")
+    if suffix not in MEDIA_EXTENSIONS and suffix != ".json":
+        raise Http404("Only ingested media files and transcripts are available from this endpoint.")
 
     content_type, _ = mimetypes.guess_type(str(file_path))
     if suffix == ".json":

@@ -20,10 +20,10 @@ class _PathUpload:
 
 
 class Command(BaseCommand):
-    help = "Transcribe video files with Whisper and ingest timestamped transcripts into Qdrant."
+    help = "Transcribe video or audio files with Whisper and ingest timestamped transcripts into Qdrant."
 
     def add_arguments(self, parser):
-        parser.add_argument("paths", nargs="+", help="Video files to ingest.")
+        parser.add_argument("paths", nargs="+", help="Video or audio files to ingest.")
         parser.add_argument(
             "--replace",
             action="store_true",
@@ -37,7 +37,7 @@ class Command(BaseCommand):
             if not path.is_file():
                 raise CommandError(f"Not a file: {path}")
             if not is_video_filename(path.name):
-                raise CommandError(f"Unsupported video type: {path.name}")
+                raise CommandError(f"Unsupported video or audio type: {path.name}")
             files.append(_PathUpload(path))
 
         job = IngestionJob.objects.create(
