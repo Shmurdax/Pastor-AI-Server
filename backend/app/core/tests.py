@@ -243,20 +243,30 @@ class StoragePathTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from .storage_paths import admin_ingestion_dir
+        from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
 
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.environ.get("INGESTION_UPLOAD_DIR")
+            previous_video = os.environ.get("VIDEO_INGESTION_UPLOAD_DIR")
             os.environ["INGESTION_UPLOAD_DIR"] = tmp
+            video_tmp = str(Path(tmp) / "videos")
+            os.environ["VIDEO_INGESTION_UPLOAD_DIR"] = video_tmp
             try:
                 path = admin_ingestion_dir()
                 self.assertEqual(path, Path(tmp).resolve())
                 self.assertTrue(path.is_dir())
+                video_path = admin_video_ingestion_dir()
+                self.assertEqual(video_path, Path(video_tmp).resolve())
+                self.assertTrue(video_path.is_dir())
             finally:
                 if previous is None:
                     os.environ.pop("INGESTION_UPLOAD_DIR", None)
                 else:
                     os.environ["INGESTION_UPLOAD_DIR"] = previous
+                if previous_video is None:
+                    os.environ.pop("VIDEO_INGESTION_UPLOAD_DIR", None)
+                else:
+                    os.environ["VIDEO_INGESTION_UPLOAD_DIR"] = previous_video
 
 
 if __name__ == "__main__":

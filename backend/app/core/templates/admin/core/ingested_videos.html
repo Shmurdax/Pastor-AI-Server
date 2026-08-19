@@ -1,0 +1,98 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 900px;">
+  <h1>Ingested Videos</h1>
+  <p>Browse original video files stored for Whisper transcription. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations. Timestamped transcripts are saved as <code>.transcript.json</code> sidecars next to each video.</p>
+  <p>
+    <a href="{% url 'admin:core_video_ingestion' %}">Back to video ingestion panel</a>
+  </p>
+
+  <form method="get" style="margin-top: 14px; margin-bottom: 14px;">
+    <input
+      type="text"
+      name="q"
+      value="{{ search_term }}"
+      placeholder="Search by filename..."
+      style="min-width: 280px;"
+    />
+    <label for="page-size-select" style="margin-left: 8px;">Page size:</label>
+    <select id="page-size-select" name="page_size" onchange="this.form.submit()">
+      {% for size in allowed_page_sizes %}
+        <option value="{{ size }}"{% if page_size == size %} selected{% endif %}>{{ size }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="button">Search</button>
+    {% if search_term %}
+      <a href="{% url 'admin:core_ingested_videos' %}?page_size={{ page_size }}" style="margin-left: 8px;">Clear</a>
+    {% endif %}
+  </form>
+
+  <p style="margin-bottom: 10px;">
+    {% if search_term %}
+      Showing {{ videos_count }} result{{ videos_count|pluralize }} for "{{ search_term }}"
+    {% else %}
+      Showing {{ videos_count }} video{{ videos_count|pluralize }}
+    {% endif %}
+  </p>
+
+  <table style="width: 100%; border-collapse: collapse; margin-top: 14px;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">File Name</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Modified</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Size</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Transcript</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for video in videos %}
+      <tr>
+        <td style="padding: 6px 0;">
+          <a href="{% url 'admin:core_ingested_video_file' video.name %}" target="_blank" rel="noopener">
+            {{ video.name }}
+          </a>
+        </td>
+        <td style="padding: 6px 0;">{{ video.modified_at|date:"Y-m-d H:i:s" }}</td>
+        <td style="padding: 6px 0;">{{ video.size_bytes|filesizeformat }}</td>
+        <td style="padding: 6px 0;">
+          {% if video.has_transcript %}
+            <a href="{% url 'admin:core_ingested_video_file' video.transcript_name %}" target="_blank" rel="noopener">JSON</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="4" style="padding: 6px 0;">No ingested videos found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if paginator.num_pages > 1 %}
+  <div style="margin-top: 16px;">
+    {% if page_obj.has_previous %}
+      <a
+        href="{% url 'admin:core_ingested_videos' %}?{% if search_term %}q={{ search_term|urlencode }}&{% endif %}page_size={{ page_size }}&page={{ page_obj.previous_page_number }}"
+      >
+        Previous
+      </a>
+    {% endif %}
+
+    <span style="margin: 0 10px;">
+      Page {{ page_obj.number }} of {{ paginator.num_pages }}
+    </span>
+
+    {% if page_obj.has_next %}
+      <a
+        href="{% url 'admin:core_ingested_videos' %}?{% if search_term %}q={{ search_term|urlencode }}&{% endif %}page_size={{ page_size }}&page={{ page_obj.next_page_number }}"
+      >
+        Next
+      </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

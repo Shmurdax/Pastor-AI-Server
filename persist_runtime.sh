@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Persist sermon PDFs + a Postgres dump on the RunPod network volume.
+# Persist sermon PDFs, ingested videos, and a Postgres dump on the RunPod network volume.
 # Container-local /var/lib/postgresql and git-synced backend/app/uploads are wiped
 # on pod recreate / install.sh rsync --delete. Keep durable data outside the repo tree.
 #
@@ -12,6 +12,7 @@
 
 PERSIST_ROOT="${PERSIST_ROOT:-/workspace/persistent}"
 PERSIST_UPLOADS="${PERSIST_UPLOADS:-$PERSIST_ROOT/uploads/admin_ingestion}"
+PERSIST_VIDEO_UPLOADS="${PERSIST_VIDEO_UPLOADS:-$PERSIST_ROOT/uploads/admin_video_ingestion}"
 PERSIST_PG_ROOT="${PERSIST_PG_ROOT:-$PERSIST_ROOT/postgres}"
 PERSIST_PG_DUMP="${PERSIST_PG_DUMP:-$PERSIST_PG_ROOT/ai_db.dump}"
 PERSIST_RESTORE_MARKER="${PERSIST_RESTORE_MARKER:-/var/lib/postgresql/.pastor_ai_restored}"
@@ -22,8 +23,9 @@ detect_pg_version() {
 
 ensure_persistent_uploads() {
   local app_uploads="${APP_DIR}/uploads/admin_ingestion"
-  mkdir -p "$PERSIST_UPLOADS" "${APP_DIR}/uploads"
-  chmod a+rX "$PERSIST_ROOT" "$PERSIST_ROOT/uploads" "$PERSIST_UPLOADS" 2>/dev/null || true
+  local app_video_uploads="${APP_DIR}/uploads/admin_video_ingestion"
+  mkdir -p "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" "${APP_DIR}/uploads"
+  chmod a+rX "$PERSIST_ROOT" "$PERSIST_ROOT/uploads" "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" 2>/dev/null || true
   if [[ -d "$app_uploads" && ! -L "$app_uploads" ]]; then
     shopt -s nullglob
     local existing=("$app_uploads"/*)
@@ -35,6 +37,17 @@ ensure_persistent_uploads() {
   fi
   ln -sfn "$PERSIST_UPLOADS" "$app_uploads"
   log "Sermon PDFs persist at $PERSIST_UPLOADS"
+  if [[ -d "$app_video_uploads" && ! -L "$app_video_uploads" ]]; then
+    shopt -s nullglob
+    local existing_videos=("$app_video_uploads"/*)
+    if ((${#existing_videos[@]})); then
+      log "Moving existing ingested videos into $PERSIST_VIDEO_UPLOADS"
+      mv -n "${existing_videos[@]}" "$PERSIST_VIDEO_UPLOADS/" 2>/dev/null || true
+    fi
+    rm -rf "$app_video_uploads"
+  fi
+  ln -sfn "$PERSIST_VIDEO_UPLOADS" "$app_video_uploads"
+  log "Ingested videos persist at $PERSIST_VIDEO_UPLOADS"
 }
 
 _pg_ready() {

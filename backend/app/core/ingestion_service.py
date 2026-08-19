@@ -186,6 +186,7 @@ def _upsert_chunks(
     qdrant_client: QdrantClient,
     collection_name: str,
     extra_metadata: Optional[dict] = None,
+    per_chunk_metadata: Optional[List[dict]] = None,
 ) -> tuple[int, int]:
     if not chunks:
         return 0, 0
@@ -200,6 +201,7 @@ def _upsert_chunks(
     created = 0
     skipped = 0
     extra_metadata = dict(extra_metadata or {})
+    per_chunk_metadata = list(per_chunk_metadata or [])
 
     for idx, (chunk_text, vector) in enumerate(zip(chunks, vectors)):
         chunk_text = _clean_text(chunk_text)
@@ -211,6 +213,10 @@ def _upsert_chunks(
             skipped += 1
             continue
 
+        chunk_extra = dict(extra_metadata)
+        if idx < len(per_chunk_metadata) and per_chunk_metadata[idx]:
+            chunk_extra.update(per_chunk_metadata[idx])
+
         point_id = _qdrant_point_id(chunk_hash)
         nested_metadata = {
             "source": source_name,
@@ -218,7 +224,7 @@ def _upsert_chunks(
             "file_hash": file_hash,
             "chunk_hash": chunk_hash,
             "position": idx,
-            **extra_metadata,
+            **chunk_extra,
         }
         payload = {
             "source": source_name,
@@ -227,7 +233,7 @@ def _upsert_chunks(
             "chunk_hash": chunk_hash,
             "position": idx,
             "text": chunk_text,
-            **extra_metadata,
+            **chunk_extra,
             # Keep metadata nested for vectorstore configs expecting metadata payloads.
             "metadata": nested_metadata,
         }
@@ -397,6 +403,7 @@ def _persist_job_progress(job: Optional[IngestionJob], result: IngestionResult) 
             "files_failed",
             "chunks_created",
             "chunks_skipped_as_duplicates",
+            "updated_at",
         ]
     )
 
@@ -498,6 +505,7 @@ def ingest_uploaded_files(
                 title=title,
                 file_hash=file_hash,
                 original_extension=extension,
+                source_kind="document",
             )
 
             try:
@@ -623,6 +631,7 @@ def ingest_markdown_documents(
                 title=title,
                 file_hash=file_hash,
                 original_extension=".md",
+                source_kind="website",
             )
             extra_metadata = {
                 key: value

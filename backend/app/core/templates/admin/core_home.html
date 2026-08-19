@@ -84,12 +84,32 @@
       </div>
 
       <div class="core-tool-card">
+        <h3 class="core-tool-title">Video Ingestion</h3>
+        <p class="core-tool-description">
+          Upload sermon videos, transcribe with Whisper timestamps, drop off-topic fluff, and upsert to Qdrant.
+        </p>
+        <a class="core-tool-link" href="{% url 'admin:core_video_ingestion' %}">
+          Open video ingestion panel
+        </a>
+      </div>
+
+      <div class="core-tool-card">
         <h3 class="core-tool-title">Ingested PDF Documents</h3>
         <p class="core-tool-description">
           Browse converted PDFs, search by filename, and paginate through your ingestion folder.
         </p>
         <a class="core-tool-link" href="{% url 'admin:core_ingested_documents' %}">
           Open documents browser
+        </a>
+      </div>
+
+      <div class="core-tool-card">
+        <h3 class="core-tool-title">Ingested Videos</h3>
+        <p class="core-tool-description">
+          Browse original video files and timestamped Whisper transcript sidecars.
+        </p>
+        <a class="core-tool-link" href="{% url 'admin:core_ingested_videos' %}">
+          Open videos browser
         </a>
       </div>
     </div>

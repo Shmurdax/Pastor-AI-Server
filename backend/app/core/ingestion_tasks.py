@@ -39,6 +39,14 @@ def enqueue_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], repla
     _executor.submit(_run_ingestion_job, job_id, staged_uploads, replace_existing_sources)
 
 
+def enqueue_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
+    _executor.submit(_run_video_ingestion_job, job_id, staged_uploads, replace_existing_sources)
+
+
+def _touch_job(job: IngestionJob) -> None:
+    job.save(update_fields=["updated_at"])
+
+
 def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
     close_old_connections()
     try:
@@ -50,6 +58,7 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
 
     def log_job(message_text: str) -> None:
         IngestionJobLog.objects.create(job=job, message=message_text)
+        _touch_job(job)
 
     _wait_for_turn(job_id, log_job)
 
@@ -73,6 +82,49 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "error_message", "finished_at"])
         log_job(f"Ingestion failed: {exc}")
+    finally:
+        dump_persistent_postgres()
+        _cleanup_staging_files(staged_uploads)
+        close_old_connections()
+
+
+def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
+    close_old_connections()
+    try:
+        job = IngestionJob.objects.get(id=job_id)
+    except IngestionJob.DoesNotExist:
+        _cleanup_staging_files(staged_uploads)
+        close_old_connections()
+        return
+
+    def log_job(message_text: str) -> None:
+        IngestionJobLog.objects.create(job=job, message=message_text)
+        _touch_job(job)
+
+    _wait_for_turn(job_id, log_job)
+
+    uploads = [_DiskUpload(item.original_name, item.staged_path) for item in staged_uploads]
+    try:
+        log_job("Video ingestion job started in background worker.")
+        from .video_ingestion import ingest_video_files
+
+        ingest_video_files(
+            uploads,
+            replace_existing_sources=replace_existing_sources,
+            log_fn=log_job,
+            job=job,
+        )
+        job.status = "completed"
+        job.finished_at = timezone.now()
+        job.save(update_fields=["status", "finished_at", "updated_at"])
+        log_job("Video ingestion job finished.")
+    except Exception as exc:
+        logger.exception("Video ingestion job %s failed", job_id)
+        job.status = "failed"
+        job.error_message = str(exc)
+        job.finished_at = timezone.now()
+        job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+        log_job(f"Video ingestion failed: {exc}")
     finally:
         dump_persistent_postgres()
         _cleanup_staging_files(staged_uploads)

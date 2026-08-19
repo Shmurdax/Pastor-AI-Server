@@ -27,13 +27,25 @@ class ChatMessage(models.Model):
 
 
 class IngestedDocument(models.Model):
+    SOURCE_KIND_CHOICES = [
+        ("document", "Document"),
+        ("video", "Video"),
+        ("website", "Website"),
+    ]
+
     source_name = models.CharField(max_length=255)
     title = models.CharField(
         max_length=300,
         help_text="Display name for links and APIs (defaults from filename; edit to match sermon titles in your app).",
     )
     file_hash = models.CharField(max_length=64, unique=True)
-    original_extension = models.CharField(max_length=10)
+    original_extension = models.CharField(max_length=16)
+    source_kind = models.CharField(
+        max_length=20,
+        choices=SOURCE_KIND_CHOICES,
+        default="document",
+        db_index=True,
+    )
     chunk_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -73,8 +85,19 @@ class IngestionJob(models.Model):
         ("completed", "Completed"),
         ("failed", "Failed"),
     ]
+    JOB_KIND_CHOICES = [
+        ("document", "Document"),
+        ("video", "Video"),
+        ("website", "Website"),
+    ]
 
     started_by = models.CharField(max_length=150)
+    job_kind = models.CharField(
+        max_length=20,
+        choices=JOB_KIND_CHOICES,
+        default="document",
+        db_index=True,
+    )
     replace_existing_sources = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="running")
     files_received = models.PositiveIntegerField(default=0)
@@ -85,6 +108,7 @@ class IngestionJob(models.Model):
     chunks_skipped_as_duplicates = models.PositiveIntegerField(default=0)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

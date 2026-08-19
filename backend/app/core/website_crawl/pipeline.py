@@ -175,6 +175,7 @@ def enqueue_website_crawl_job(
 
     job = IngestionJob.objects.create(
         started_by=started_by,
+        job_kind="website",
         replace_existing_sources=replace_existing_sources,
         status="running",
         files_received=0,

@@ -154,6 +154,7 @@ fi
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
 ensure_persistent_uploads
 export INGESTION_UPLOAD_DIR="${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}"
+export VIDEO_INGESTION_UPLOAD_DIR="${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}"
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
@@ -206,6 +207,10 @@ screen -dmS django bash -c "
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
+  export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
+  export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
+  export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}' &&
+  export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&

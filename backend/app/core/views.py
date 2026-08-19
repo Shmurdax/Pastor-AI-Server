@@ -2,6 +2,8 @@ import os
 import logging
 import hmac
 import hashlib
+import mimetypes
+import re
 from pathlib import Path
 from django.conf import settings
 from django.db.models import Q
@@ -27,7 +29,7 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
-from .storage_paths import admin_ingestion_dir
+from .storage_paths import ingested_media_path
 
 VLLM_URL = os.getenv("VLLM_URL", "http://vllm:8000/v1")
 logger = logging.getLogger(__name__)
@@ -50,6 +52,51 @@ BIBLE_SOURCE_MARKERS = tuple(
     ).split(",")
     if marker.strip()
 )
+_SOURCE_TIMESTAMP_RE = re.compile(r"\s*\[[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?–[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\]\s*$")
+_SOURCE_MEDIA_EXTS = {".pdf", ".md", ".docx"} | {
+    ".mp4",
+    ".m4v",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
+    ".wmv",
+    ".flv",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".ogv",
+    ".ts",
+    ".mts",
+    ".m2ts",
+}
+
+
+def _strip_source_label(name: str) -> str:
+    raw = (name or "").strip()
+    raw = _SOURCE_TIMESTAMP_RE.sub("", raw).strip()
+    suffix = Path(raw).suffix.lower()
+    if suffix in _SOURCE_MEDIA_EXTS:
+        return Path(raw).stem.strip()
+    return raw
+
+
+def _file_response_for_document(document: IngestedDocument):
+    source_name = document.source_name or ""
+    file_path = ingested_media_path(source_name, document.source_kind)
+    if not file_path.is_file():
+        raise Http404("Document file was not found on disk.")
+    root = file_path.parent
+    try:
+        file_path.relative_to(root)
+    except ValueError as exc:
+        raise Http404("Invalid file path.") from exc
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    if document.source_kind != "video" and file_path.suffix.lower() == ".pdf":
+        content_type = "application/pdf"
+    response = FileResponse(open(file_path, "rb"), content_type=content_type or "application/octet-stream")
+    response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
+    return response
 
 # Keep retrieval embeddings on CPU via shared helper (vLLM owns GPU VRAM).
 _get_embeddings = get_embeddings
@@ -136,7 +183,7 @@ def _doc_source_name(doc) -> str:
     )
     if source:
         source_str = str(source)
-        stem = Path(source_str).stem if source_str.lower().endswith(".pdf") else source_str
+        stem = Path(source_str).stem
         matched = (
             IngestedDocument.objects.filter(
                 Q(title__iexact=source_str)
@@ -155,6 +202,16 @@ def _doc_source_name(doc) -> str:
         if metadata.get(key):
             return str(metadata[key])
     return "Unknown"
+
+
+def _doc_source_label(doc) -> str:
+    name = _doc_source_name(doc)
+    metadata = getattr(doc, "metadata", {}) or {}
+    timestamp = metadata.get("timestamp")
+    content_type = str(metadata.get("content_type") or metadata.get("media_type") or "")
+    if timestamp and ("video" in content_type):
+        return f"{name} [{timestamp}]"
+    return name
 
 
 def _weighted_docs(docs, total_k: int):
@@ -244,23 +301,26 @@ class IngestedDocumentsAPIView(APIView):
         documents_qs = IngestedDocument.objects.all().order_by("-updated_at")
         match = (request.query_params.get("match") or "").strip()
         if match:
-            stem = Path(match).stem if match.lower().endswith(".pdf") else match
+            stem = _strip_source_label(match)
             documents_qs = documents_qs.filter(
                 Q(title__icontains=match)
                 | Q(source_name__icontains=match)
                 | Q(title__iexact=stem)
                 | Q(source_name__istartswith=f"{stem}.")
             )
+        source_kind = (request.query_params.get("source_kind") or "").strip().lower()
+        if source_kind in {"document", "video", "website"}:
+            documents_qs = documents_qs.filter(source_kind=source_kind)
         documents_qs = documents_qs[:limit]
 
         documents = []
         for document in documents_qs:
             file_relative_url = reverse("ingested_document_file_api", args=[document.id])
             file_absolute_url = request.build_absolute_uri(file_relative_url)
-            # Frontend source click flow resolves by exact `source_name` string
-            # from chat sources + ".pdf". Chat sources are title-based, so expose
-            # a title-derived source_name for matching reliability.
-            title_source_name = f"{(document.title or '').strip()}.pdf"
+            stored_ext = Path(document.source_name or "").suffix or document.original_extension or ".pdf"
+            if not stored_ext.startswith("."):
+                stored_ext = f".{stored_ext}"
+            title_source_name = f"{(document.title or '').strip()}{stored_ext}"
             documents.append(
                 {
                     "id": document.id,
@@ -268,6 +328,7 @@ class IngestedDocumentsAPIView(APIView):
                     "source_name": title_source_name or document.source_name,
                     "stored_source_name": document.source_name,
                     "original_extension": document.original_extension,
+                    "source_kind": document.source_kind,
                     "chunk_count": document.chunk_count,
                     "updated_at": document.updated_at.isoformat(),
                     "file_url": file_absolute_url,
@@ -292,24 +353,7 @@ class IngestedDocumentFileAPIView(APIView):
         document = IngestedDocument.objects.filter(id=document_id).first()
         if not document:
             raise Http404("Document was not found.")
-
-        source_name = document.source_name or ""
-        if Path(source_name).suffix.lower() != ".pdf":
-            raise Http404("Only PDF documents are available for download.")
-
-        upload_dir = admin_ingestion_dir()
-        file_path = (upload_dir / source_name).resolve()
-        if not file_path.is_file():
-            raise Http404("Document file was not found on disk.")
-
-        try:
-            file_path.relative_to(upload_dir)
-        except ValueError as exc:
-            raise Http404("Invalid file path.") from exc
-
-        response = FileResponse(open(file_path, "rb"), content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
-        return response
+        return _file_response_for_document(document)
 
 
 class SermonPdfByNameAPIView(APIView):
@@ -325,8 +369,7 @@ class SermonPdfByNameAPIView(APIView):
         if not requested_name:
             raise Http404("Document was not found.")
 
-        stem = Path(requested_name).stem if requested_name.lower().endswith(".pdf") else requested_name
-        normalized_stem = stem.strip()
+        normalized_stem = _strip_source_label(requested_name)
         if not normalized_stem:
             raise Http404("Document was not found.")
 
@@ -342,24 +385,7 @@ class SermonPdfByNameAPIView(APIView):
         )
         if not document:
             raise Http404("Document was not found.")
-
-        source_name = document.source_name or ""
-        if Path(source_name).suffix.lower() != ".pdf":
-            raise Http404("Only PDF documents are available for download.")
-
-        upload_dir = admin_ingestion_dir()
-        file_path = (upload_dir / source_name).resolve()
-        if not file_path.is_file():
-            raise Http404("Document file was not found on disk.")
-
-        try:
-            file_path.relative_to(upload_dir)
-        except ValueError as exc:
-            raise Http404("Invalid file path.") from exc
-
-        response = FileResponse(open(file_path, "rb"), content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
-        return response
+        return _file_response_for_document(document)
 
 class ChatAPIView(APIView):
     # Token auth links messages to the signed-in account when Flutter sends Authorization.
@@ -615,7 +641,7 @@ class ChatAPIView(APIView):
             # --- LOGGING: Success ---
             logger.debug("Chat response generated successfully.")
 
-            unique_sources = sorted({name for name in (_doc_source_name(doc) for doc in docs) if name and name != "Unknown"})
+            unique_sources = sorted({name for name in (_doc_source_label(doc) for doc in docs) if name and name != "Unknown"})
             return Response({
                 "answer": response.content,
                 "sources": unique_sources if docs else [],

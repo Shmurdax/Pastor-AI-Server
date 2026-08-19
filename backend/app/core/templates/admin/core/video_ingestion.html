@@ -81,19 +81,18 @@
 
 {% block content %}
 <div style="max-width: 760px;">
-  <h1>Document Ingestion</h1>
-  <p>Upload DOCX and PDF files. Each file is stored as a PDF for sermon library links (on RunPod this is the persistent volume, so files survive restarts). Extracted text is then run through structured cleanup (page chrome, repeating headers/footers, boilerplate, soft-wrap fixes), split into chunks, and upserted into Qdrant. Cleanup never rewrites the on-disk PDF.</p>
-  <p>Large folders are uploaded in small batches (about 10 files / 8&nbsp;MB each) so Cloudflare and the tunnel do not drop the connection. Hundreds of sermons can take several minutes to finish uploading before background processing starts. Embedding runs on CPU so it does not compete with the chat GPU model for VRAM.</p>
-  <p><a href="{% url 'admin:core_ingested_documents' %}">View all ingested PDF documents</a>
-     · <a href="{% url 'admin:core_video_ingestion' %}">Open video ingestion</a></p>
+  <h1>Video Ingestion</h1>
+  <p>Upload video files of any common container type (MP4, MOV, MKV, WebM, AVI, and others). The original file is stored for later reference. Whisper then transcribes the audio with timestamps, the transcript is normalized to drop fillers, channel CTAs, and isolated talk that is not about Christianity, the Bible, or social ideas and issues, and the remaining timestamped lines are chunked into Qdrant.</p>
+  <p>Videos are uploaded one file at a time because they are large. Whisper runs on CPU so it does not compete with the chat GPU model for VRAM — a long sermon can take a while. Refresh this page to watch job progress.</p>
+  <p><a href="{% url 'admin:core_ingested_videos' %}">View all ingested videos</a></p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
     {% csrf_token %}
     <div style="margin-bottom: 12px;">
-      <input id="documents-input" type="file" name="documents" multiple accept=".docx,.pdf" required style="display: none;" />
+      <input id="documents-input" type="file" name="videos" multiple accept="{{ video_accept }}" required style="display: none;" />
       <input id="documents-folder-input" type="file" webkitdirectory mozdirectory directory multiple style="display: none;" />
-      <div id="documents-dropzone" class="ingestion-dropzone" role="button" tabindex="0" aria-label="Upload documents">
-        <strong>Drag and drop DOCX/PDF files here</strong><br>
+      <div id="documents-dropzone" class="ingestion-dropzone" role="button" tabindex="0" aria-label="Upload videos">
+        <strong>Drag and drop video files here</strong><br>
         <span>or click this area to browse individual files</span><br>
         <span style="display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px;">
           <button id="documents-files-button" type="button">Select files…</button>
@@ -117,7 +116,7 @@
         Replace existing source if filename already exists (deletes old source chunks before re-ingest)
       </label>
     </div>
-    <button type="submit" class="default">Run Incremental Ingestion</button>
+    <button type="submit" class="default">Run Video Ingestion</button>
   </form>
 
   <h2 style="margin-top: 24px;">Recent Ingestion Jobs</h2>
@@ -173,13 +172,12 @@
     var progressText = document.getElementById("documents-progress-text");
     var form = input && input.form;
     var submitButton = form && form.querySelector('button[type="submit"]');
-    var allowedExtensions = [".pdf", ".docx"];
-    // Keep batches small: Cloudflare tunnels commonly drop large multipart POSTs
-    // (browser reports a generic XHR "network error"). 10 files / 8 MB is reliable.
-    var MAX_FILES_PER_BATCH = 10;
-    var MAX_BATCH_BYTES = 8 * 1024 * 1024;
+    var allowedExtensions = {{ video_extensions|safe }};
+    // One file per batch: sermon videos are large and tunnels drop huge multipart POSTs.
+    var MAX_FILES_PER_BATCH = 1;
+    var MAX_BATCH_BYTES = 2 * 1024 * 1024 * 1024;
     var MAX_UPLOAD_RETRIES = 3;
-    var UPLOAD_TIMEOUT_MS = 120000;
+    var UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
     var dataTransfer = new DataTransfer();
 
     if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressWrapper || !progressBar || !progressText || !form) {
@@ -238,18 +236,20 @@
     function resetSubmitState() {
       if (submitButton) {
         submitButton.disabled = false;
-        submitButton.textContent = "Run Incremental Ingestion";
+        submitButton.textContent = "Run Video Ingestion";
       }
     }
 
-    function hasAllowedExtension(fileName) {
+    function hasAllowedExtension(file) {
+      var fileName = (file && file.name) ? file.name : "";
       var lowerName = fileName.toLowerCase();
       for (var i = 0; i < allowedExtensions.length; i += 1) {
         if (lowerName.endsWith(allowedExtensions[i])) {
           return true;
         }
       }
-      return false;
+      var mime = (file && file.type) ? String(file.type).toLowerCase() : "";
+      return mime.indexOf("video/") === 0;
     }
 
     function validateAndApplyFiles(files) {
@@ -258,7 +258,7 @@
 
       var invalidNames = [];
       for (var i = 0; i < files.length; i += 1) {
-        if (hasAllowedExtension(files[i].name)) {
+        if (hasAllowedExtension(files[i])) {
           dataTransfer.items.add(files[i]);
         } else {
           invalidNames.push(files[i].name);
@@ -266,7 +266,7 @@
       }
 
       if (invalidNames.length > 0) {
-        showError("Only DOCX and PDF files are allowed. Ignored: " + invalidNames.join(", "));
+        showError("Only video files are allowed. Ignored: " + invalidNames.join(", "));
       }
 
       input.files = dataTransfer.files;
@@ -486,7 +486,7 @@
           formData.append("replace_existing_sources", "on");
         }
         for (var i = 0; i < batchFiles.length; i += 1) {
-          formData.append("documents", batchFiles[i], batchFiles[i].name);
+          formData.append("videos", batchFiles[i], batchFiles[i].name);
         }
 
         xhr.send(formData);
@@ -594,7 +594,7 @@
       clearError();
 
       if (!input.files || input.files.length === 0) {
-        showError("Please select at least one DOCX or PDF file before running ingestion.");
+        showError("Please select at least one video file before running ingestion.");
         hideProgress();
         resetSubmitState();
         return;
