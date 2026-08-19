@@ -25,6 +25,7 @@ public_url.txt
 .local-dev/
 Pastor Don Documents/
 unsloth_compiled_cache/
+docs/
 
 backend/app/converted_markdown/
 backend/app/ai_db
