@@ -280,6 +280,19 @@ class AuthService {
                 : 'Invalid email or password.'),
       );
     }
+    if (res.statusCode == 403) {
+      final body = _tryDecode(res.body);
+      final detail = body?['detail'] as String? ?? '';
+      if (detail.toLowerCase().contains('csrf')) {
+        throw AuthException(
+          'Sign-in blocked by an active Django admin session in this browser. '
+          'Log out of /admin/, clear cookies for this site, or use a private window.',
+        );
+      }
+      throw AuthException(
+        detail.isNotEmpty ? detail : 'Authentication failed (403).',
+      );
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AuthException('Authentication failed (${res.statusCode}).');
     }
