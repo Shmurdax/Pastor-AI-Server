@@ -237,6 +237,39 @@ class PersistDbTests(unittest.TestCase):
                 os.environ["POSTGRES_DB"] = previous
 
 
+class DocxToPdfTests(unittest.TestCase):
+    def test_fallback_writes_pdf_when_soffice_missing(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from docx import Document
+
+        from .docx_to_pdf import convert_docx_to_pdf
+
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "notes.docx"
+            dest = Path(tmp) / "notes.pdf"
+            doc = Document()
+            doc.add_paragraph("The Lord is my shepherd.")
+            doc.save(src)
+            previous = os.environ.get("SOFFICE_PATH")
+            os.environ["SOFFICE_PATH"] = "soffice-not-installed"
+            try:
+                with patch("core.docx_to_pdf.shutil.which", return_value=None):
+                    method = convert_docx_to_pdf(src, dest)
+            finally:
+                if previous is None:
+                    os.environ.pop("SOFFICE_PATH", None)
+                else:
+                    os.environ["SOFFICE_PATH"] = previous
+            self.assertEqual(method, "fpdf")
+            self.assertTrue(dest.is_file())
+            self.assertGreater(dest.stat().st_size, 100)
+            self.assertIn(b"%PDF", dest.read_bytes()[:8])
+
+
 class StoragePathTests(unittest.TestCase):
     def test_ingestion_dir_uses_env_override(self):
         import os

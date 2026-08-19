@@ -328,44 +328,9 @@ def _replace_existing_for_upload(original_name: str) -> None:
 
 
 def _convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> None:
-    soffice = shutil.which(os.environ.get("SOFFICE_PATH", "soffice"))
-    if not soffice:
-        raise RuntimeError(
-            "DOCX conversion requires LibreOffice (`soffice` on PATH). "
-            "Install LibreOffice locally or use the Docker image that includes libreoffice-writer."
-        )
-    outdir = pdf_path.parent
-    outdir.mkdir(parents=True, exist_ok=True)
-    if pdf_path.exists():
-        pdf_path.unlink()
-    timeout_s = int(os.environ.get("SOFFICE_TIMEOUT", "300"))
-    result = subprocess.run(
-        [
-            soffice,
-            "--headless",
-            "--nologo",
-            "--nofirststartwizard",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(outdir),
-            str(docx_path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout_s,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"LibreOffice failed (exit {result.returncode}): "
-            f"{(result.stderr or result.stdout or '').strip() or 'no output'}"
-        )
-    produced = outdir / f"{docx_path.stem}.pdf"
-    if not produced.exists():
-        raise RuntimeError(f"LibreOffice did not create expected PDF at {produced}.")
-    if produced.resolve() != pdf_path.resolve():
-        produced.replace(pdf_path)
+    from .docx_to_pdf import convert_docx_to_pdf
+
+    convert_docx_to_pdf(docx_path, pdf_path)
 
 
 def delete_ingested_documents(documents) -> DeletionResult:
@@ -466,7 +431,7 @@ def ingest_uploaded_files(
                 with open(docx_path, "wb") as out:
                     out.write(raw_content)
                 if log_fn:
-                    log_fn(f"Converting to PDF via LibreOffice: {docx_path.name} -> {pdf_name}")
+                    log_fn(f"Converting DOCX to PDF: {docx_path.name} -> {pdf_name}")
                 _convert_docx_to_pdf(docx_path, pdf_path)
                 docx_path.unlink(missing_ok=True)
 

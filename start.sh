@@ -63,6 +63,11 @@ if ! command -v psql >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq && apt-get install -y -qq postgresql postgresql-contrib >/dev/null || warn "postgres apt install failed"
 fi
+if ! command -v soffice >/dev/null 2>&1; then
+  warn "LibreOffice missing — installing (needed for DOCX ingestion)..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq libreoffice-writer >/dev/null || warn "LibreOffice apt install failed; DOCX ingest will use text fallback"
+fi
 ensure_persistent_postgres || service postgresql start 2>/dev/null || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then

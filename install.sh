@@ -146,7 +146,7 @@ apt-get install -y -qq \
   build-essential screen jq ffmpeg \
   python3 python3-pip python3-venv python3-dev \
   libpq-dev postgresql postgresql-contrib \
-  pciutils >/dev/null
+  pciutils libreoffice-writer >/dev/null
 
 # NVIDIA driver / toolkit — usually preinstalled on RunPod; install toolkit if missing
 if ! command -v nvidia-smi >/dev/null 2>&1; then
