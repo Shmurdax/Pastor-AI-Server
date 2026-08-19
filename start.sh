@@ -231,7 +231,11 @@ sleep 3
 curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJANGO_PORT}" \
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
 
-# Tunnel
+# Tunnel. Production uses a named Cloudflare tunnel; tokens.env may still say ngrok.
+if [[ "${TUNNEL:-}" == "ngrok" ]] && ! command -v ngrok >/dev/null 2>&1; then
+  warn "TUNNEL=ngrok but ngrok is not installed — using cloudflared"
+  TUNNEL=cloudflared
+fi
 case "$TUNNEL" in
   ngrok)
     [[ -n "${NGROK_AUTH_TOKEN:-}" ]] || die "NGROK_AUTH_TOKEN missing in config.env"

@@ -55,6 +55,9 @@ else
   log "GOOGLE_CLIENT_ID is configured for Django"
 fi
 
+if [[ -x "$WS/.flutter-sdk/bin/flutter" ]]; then
+  export PATH="$WS/.flutter-sdk/bin:$PATH"
+fi
 if command -v flutter >/dev/null 2>&1; then
   log "Building Flutter web"
   cd "$FRONTEND_DIR"
