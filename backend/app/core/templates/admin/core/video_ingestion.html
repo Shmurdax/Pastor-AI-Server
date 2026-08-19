@@ -527,8 +527,12 @@
 
     async function uploadFileInChunks(file, fileIndex, totalFiles, bytesAlreadySent, totalBytes, replaceExisting) {
       var fileSize = file && typeof file.size === "number" ? file.size : 0;
+      // Browser File.size can be 0 for placeholders or empty drops. Do not abort
+      // the rest of the queue; ingest will skip empty payloads later.
       if (fileSize < 1) {
-        throw new Error(file.name + " is empty.");
+        progressText.textContent =
+          "Skipping empty file " + (fileIndex + 1) + "/" + totalFiles + ": " + file.name;
+        return 0;
       }
       var chunkCount = Math.ceil(fileSize / CHUNK_BYTES);
       var uploadId = randomUuid();
@@ -664,16 +668,36 @@
       (async function () {
         try {
           var bytesAlreadySent = 0;
+          var uploadedCount = 0;
+          var skippedEmpty = [];
           for (var fileIdx = 0; fileIdx < allFiles.length; fileIdx += 1) {
+            var current = allFiles[fileIdx];
             var sent = await uploadFileInChunks(
-              allFiles[fileIdx],
+              current,
               fileIdx,
               allFiles.length,
               bytesAlreadySent,
               totalBytes,
               replaceExisting
             );
-            bytesAlreadySent += sent;
+            if (sent > 0) {
+              uploadedCount += 1;
+              bytesAlreadySent += sent;
+            } else if (!current || !current.size) {
+              skippedEmpty.push(current && current.name ? current.name : "unnamed");
+            }
+          }
+          if (uploadedCount === 0) {
+            var emptyNames = skippedEmpty.slice(0, 8).join(", ");
+            var extra = skippedEmpty.length > 8 ? " and " + (skippedEmpty.length - 8) + " more" : "";
+            showError(
+              "Every selected file was empty (0 bytes) and was skipped" +
+                (emptyNames ? ": " + emptyNames + extra : ".") +
+                " The rest of a mixed drop would still upload; add files that contain audio or video."
+            );
+            hideProgress();
+            resetSubmitState();
+            return;
           }
           setProgressPercentage(100);
           setProcessingState();

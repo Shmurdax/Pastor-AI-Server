@@ -256,6 +256,13 @@ def ingest_video_files(
                     log_fn(f"Replaced previous video source data for: {upload.name}")
 
             raw_content = upload.read()
+            if not raw_content:
+                result.files_skipped_as_duplicates += 1
+                if log_fn:
+                    log_fn(f"Empty media file skipped (0 bytes): {upload.name}")
+                _persist_job_progress(job, result)
+                continue
+
             file_hash = _sha256_bytes(raw_content)
             if IngestedDocument.objects.filter(file_hash=file_hash).exists():
                 result.files_skipped_as_duplicates += 1

@@ -292,12 +292,23 @@ def _admin_video_ingestion_chunk_view(request):
     except (ValueError, TypeError):
         return JsonResponse({"ok": False, "error": "Invalid chunk metadata."}, status=400)
 
+    if file_size < 0 or file_size > VIDEO_UPLOAD_MAX_FILE_BYTES:
+        return JsonResponse({"ok": False, "error": "File size is missing or too large."}, status=400)
+    if file_size == 0:
+        return JsonResponse(
+            {
+                "ok": True,
+                "complete": True,
+                "skipped": True,
+                "reason": "empty",
+                "message": f"{file_name} is empty and will be skipped during ingest.",
+            }
+        )
+
     if chunk_index < 0 or chunk_count < 1 or chunk_index >= chunk_count:
         return JsonResponse({"ok": False, "error": "Invalid chunk index or count."}, status=400)
     if chunk_count > VIDEO_UPLOAD_MAX_CHUNKS:
         return JsonResponse({"ok": False, "error": "Too many chunks for one file."}, status=400)
-    if file_size < 1 or file_size > VIDEO_UPLOAD_MAX_FILE_BYTES:
-        return JsonResponse({"ok": False, "error": "File size is missing or too large."}, status=400)
 
     blob = request.FILES.get("chunk")
     if blob is None:

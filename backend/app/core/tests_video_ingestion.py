@@ -212,6 +212,32 @@ class VideoIngestPipelineTests(TestCase):
             self.assertTrue((Path(tmp) / "sunday_talk.m4a").is_file())
             self.assertTrue((Path(tmp) / "sunday_talk.transcript.json").is_file())
 
+    def test_ingest_skips_empty_audio_without_failing_job(self):
+        class FakeUpload:
+            name = "382077209.m4a"
+
+            def read(self):
+                return b""
+
+        fake_embeddings = MagicMock()
+        fake_qdrant = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)), patch(
+                "core.video_ingestion.get_embeddings", return_value=fake_embeddings
+            ), patch("core.video_ingestion.QdrantClient", return_value=fake_qdrant), patch(
+                "core.video_ingestion.ensure_sermon_collection"
+            ):
+                result = ingest_video_files(
+                    [FakeUpload()],
+                    transcribe_fn=lambda _path: [],
+                )
+
+        self.assertEqual(result.files_received, 1)
+        self.assertEqual(result.files_processed, 0)
+        self.assertEqual(result.files_failed, 0)
+        self.assertEqual(result.files_skipped_as_duplicates, 1)
+
 
 class VideoIngestionAdminTests(TestCase):
     def test_video_admin_urls_resolve(self):
@@ -344,3 +370,21 @@ class VideoIngestionAdminTests(TestCase):
             HTTP_X_REQUESTED_WITH="XMLHttpRequest",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_chunked_upload_skips_empty_file(self):
+        response = self.client.post(
+            reverse("admin:core_video_ingestion_chunk"),
+            {
+                "upload_id": "33333333-3333-4333-8333-333333333333",
+                "file_name": "382077209.m4a",
+                "chunk_index": "0",
+                "chunk_count": "1",
+                "file_size": "0",
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["skipped"])
+        self.assertEqual(payload["reason"], "empty")
