@@ -216,6 +216,7 @@ class VideoIngestPipelineTests(TestCase):
 class VideoIngestionAdminTests(TestCase):
     def test_video_admin_urls_resolve(self):
         self.assertEqual(reverse("admin:core_video_ingestion"), "/admin/core/video-ingestion/")
+        self.assertEqual(reverse("admin:core_video_ingestion_chunk"), "/admin/core/video-ingestion/chunk/")
         self.assertEqual(reverse("admin:core_ingested_videos"), "/admin/core/ingested-videos/")
         self.assertTrue(
             reverse("admin:core_ingested_video_file", args=["sermon.mp4"]).endswith(
@@ -274,3 +275,72 @@ class VideoIngestionAdminTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("video and audio", response.json()["error"])
+
+    @patch("core.admin._queue_video_job_from_path")
+    def test_chunked_upload_assembles_file_then_queues(self, mock_queue):
+        captured = {}
+
+        def capture_job(**kwargs):
+            captured["name"] = kwargs["original_name"]
+            captured["bytes"] = Path(kwargs["source_path"]).read_bytes()
+            job = MagicMock()
+            job.id = 77
+            return job
+
+        mock_queue.side_effect = capture_job
+        upload_id = "11111111-1111-4111-8111-111111111111"
+        url = reverse("admin:core_video_ingestion_chunk")
+        first = SimpleUploadedFile("chunk", b"hello ", content_type="application/octet-stream")
+        second = SimpleUploadedFile("chunk", b"m4a!!", content_type="application/octet-stream")
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.admin._video_chunk_root", return_value=Path(tmp)):
+                start = self.client.post(
+                    url,
+                    {
+                        "upload_id": upload_id,
+                        "file_name": "talk.m4a",
+                        "chunk_index": "0",
+                        "chunk_count": "2",
+                        "file_size": "11",
+                        "chunk": first,
+                    },
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+                self.assertEqual(start.status_code, 200)
+                self.assertFalse(start.json()["complete"])
+                mock_queue.assert_not_called()
+
+                finish = self.client.post(
+                    url,
+                    {
+                        "upload_id": upload_id,
+                        "file_name": "talk.m4a",
+                        "chunk_index": "1",
+                        "chunk_count": "2",
+                        "file_size": "11",
+                        "chunk": second,
+                    },
+                    HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+                )
+        self.assertEqual(finish.status_code, 200)
+        payload = finish.json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["complete"])
+        self.assertEqual(payload["job_id"], 77)
+        self.assertEqual(captured["name"], "talk.m4a")
+        self.assertEqual(captured["bytes"], b"hello m4a!!")
+
+    def test_chunked_upload_rejects_pdf(self):
+        response = self.client.post(
+            reverse("admin:core_video_ingestion_chunk"),
+            {
+                "upload_id": "22222222-2222-4222-8222-222222222222",
+                "file_name": "notes.pdf",
+                "chunk_index": "0",
+                "chunk_count": "1",
+                "file_size": "4",
+                "chunk": SimpleUploadedFile("chunk", b"%PDF"),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 400)

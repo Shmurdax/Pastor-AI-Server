@@ -1,4 +1,7 @@
+import json
 import mimetypes
+import shutil
+import uuid
 from django.contrib import admin
 from django.contrib import messages
 from django.conf import settings
@@ -34,6 +37,11 @@ from .website_crawl.pipeline import enqueue_website_crawl_job
 
 STALE_INGESTION_JOB_MINUTES = 30
 STALE_VIDEO_INGESTION_JOB_MINUTES = 480
+# Cloudflare named tunnels drop large multipart POSTs (often ~100s / ~100MB).
+# Clients split each media file into pieces well under that limit.
+VIDEO_UPLOAD_MAX_CHUNK_BYTES = 6 * 1024 * 1024
+VIDEO_UPLOAD_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024
+VIDEO_UPLOAD_MAX_CHUNKS = 1024
 
 
 def _mark_stale_running_jobs_failed() -> int:
@@ -229,6 +237,164 @@ def _stage_uploads(job: IngestionJob, files, *, staging_subdir: str) -> list[Sta
     return staged_uploads
 
 
+def _video_chunk_root() -> Path:
+    return Path(settings.BASE_DIR) / "uploads" / "admin_video_ingestion_chunks"
+
+
+def _parse_upload_id(raw: str) -> uuid.UUID:
+    return uuid.UUID(str(raw or "").strip())
+
+
+def _queue_video_job_from_path(
+    *,
+    started_by: str,
+    original_name: str,
+    source_path: Path,
+    replace_existing_sources: bool,
+) -> IngestionJob:
+    job = IngestionJob.objects.create(
+        started_by=started_by,
+        job_kind="video",
+        replace_existing_sources=replace_existing_sources,
+        status="running",
+        files_received=1,
+    )
+    staging_root = Path(settings.BASE_DIR) / "uploads" / "admin_video_ingestion_jobs"
+    staging_dir = staging_root / f"job_{job.id}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = get_valid_filename(Path(original_name).name) or "upload"
+    staged_path = staging_dir / f"0000_{safe_name}"
+    shutil.copyfile(source_path, staged_path)
+    IngestionJobLog.objects.create(job=job, message="Video ingestion job queued for background processing.")
+    enqueue_video_ingestion_job(
+        job_id=job.id,
+        staged_uploads=[StagedUpload(original_name=original_name, staged_path=str(staged_path))],
+        replace_existing_sources=replace_existing_sources,
+    )
+    return job
+
+
+def _admin_video_ingestion_chunk_view(request):
+    if not request.user.is_staff:
+        return JsonResponse({"ok": False, "error": "You must be an admin user to upload."}, status=403)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
+
+    file_name = (request.POST.get("file_name") or "").strip()
+    if not is_video_filename(file_name):
+        return JsonResponse({"ok": False, "error": "Only video and audio files are allowed."}, status=400)
+
+    try:
+        upload_id = _parse_upload_id(request.POST.get("upload_id") or "")
+        chunk_index = int(request.POST.get("chunk_index", "-1"))
+        chunk_count = int(request.POST.get("chunk_count", "-1"))
+        file_size = int(request.POST.get("file_size", "-1"))
+    except (ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "Invalid chunk metadata."}, status=400)
+
+    if chunk_index < 0 or chunk_count < 1 or chunk_index >= chunk_count:
+        return JsonResponse({"ok": False, "error": "Invalid chunk index or count."}, status=400)
+    if chunk_count > VIDEO_UPLOAD_MAX_CHUNKS:
+        return JsonResponse({"ok": False, "error": "Too many chunks for one file."}, status=400)
+    if file_size < 1 or file_size > VIDEO_UPLOAD_MAX_FILE_BYTES:
+        return JsonResponse({"ok": False, "error": "File size is missing or too large."}, status=400)
+
+    blob = request.FILES.get("chunk")
+    if blob is None:
+        return JsonResponse({"ok": False, "error": "Missing chunk payload."}, status=400)
+    if blob.size > VIDEO_UPLOAD_MAX_CHUNK_BYTES:
+        return JsonResponse({"ok": False, "error": "Chunk is too large for the tunnel."}, status=400)
+
+    chunk_dir = _video_chunk_root() / str(upload_id)
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = chunk_dir / "meta.json"
+    done_path = chunk_dir / "done.json"
+    replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
+
+    if done_path.is_file():
+        try:
+            done = json.loads(done_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            done = {}
+        return JsonResponse({"ok": True, "complete": True, "job_id": done.get("job_id"), "duplicate": True})
+
+    meta = {
+        "file_name": file_name,
+        "file_size": file_size,
+        "chunk_count": chunk_count,
+        "replace_existing_sources": replace_existing_sources,
+    }
+    if meta_path.is_file():
+        try:
+            existing = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing = {}
+        if (
+            existing.get("file_name") != file_name
+            or int(existing.get("file_size") or 0) != file_size
+            or int(existing.get("chunk_count") or 0) != chunk_count
+        ):
+            return JsonResponse({"ok": False, "error": "Chunk metadata does not match this upload."}, status=400)
+    else:
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+    part_path = chunk_dir / f"{chunk_index:06d}.part"
+    with open(part_path, "wb") as out:
+        for block in blob.chunks():
+            out.write(block)
+
+    received = sorted(int(path.stem) for path in chunk_dir.glob("*.part") if path.stem.isdigit())
+    if len(received) < chunk_count:
+        return JsonResponse(
+            {
+                "ok": True,
+                "complete": False,
+                "received": chunk_index,
+                "parts": len(received),
+                "chunk_count": chunk_count,
+            }
+        )
+
+    assembled_path = chunk_dir / "assembled.bin"
+    with open(assembled_path, "wb") as out:
+        for index in range(chunk_count):
+            part = chunk_dir / f"{index:06d}.part"
+            if not part.is_file():
+                return JsonResponse({"ok": False, "error": f"Missing chunk {index}."}, status=400)
+            with open(part, "rb") as src:
+                shutil.copyfileobj(src, out)
+    assembled_size = assembled_path.stat().st_size
+    if assembled_size != file_size:
+        assembled_path.unlink(missing_ok=True)
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": f"Assembled size {assembled_size} does not match file_size {file_size}.",
+            },
+            status=400,
+        )
+
+    job = _queue_video_job_from_path(
+        started_by=request.user.get_username() or "admin",
+        original_name=file_name,
+        source_path=assembled_path,
+        replace_existing_sources=replace_existing_sources,
+    )
+    done_path.write_text(json.dumps({"job_id": job.id}), encoding="utf-8")
+    for leftover in chunk_dir.glob("*.part"):
+        leftover.unlink(missing_ok=True)
+    assembled_path.unlink(missing_ok=True)
+    return JsonResponse(
+        {
+            "ok": True,
+            "complete": True,
+            "job_id": job.id,
+            "files_received": 1,
+            "message": f"Media ingestion job #{job.id} queued for {file_name}.",
+        }
+    )
+
+
 def _admin_ingestion_view(request):
     if not request.user.is_staff:
         messages.error(request, "You must be an admin user to access this page.")
@@ -384,6 +550,8 @@ def _admin_video_ingestion_view(request):
         "latest_jobs": IngestionJob.objects.filter(job_kind="video")[:10],
         "video_accept": VIDEO_ACCEPT_ATTRIBUTE,
         "video_extensions": sorted(MEDIA_EXTENSIONS),
+        "video_chunk_url": reverse("admin:core_video_ingestion_chunk"),
+        "video_chunk_bytes": 2 * 1024 * 1024,
     }
     return TemplateResponse(request, "admin/core/video_ingestion.html", context)
 
@@ -597,6 +765,11 @@ def _get_urls():
             "core/video-ingestion/",
             admin.site.admin_view(_admin_video_ingestion_view),
             name="core_video_ingestion",
+        ),
+        path(
+            "core/video-ingestion/chunk/",
+            admin.site.admin_view(_admin_video_ingestion_chunk_view),
+            name="core_video_ingestion_chunk",
         ),
         path(
             "core/website-crawl/",

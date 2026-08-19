@@ -83,7 +83,7 @@
 <div style="max-width: 760px;">
   <h1>Video Ingestion</h1>
   <p>Upload video or audio files of any common type (MP4, MOV, MKV, WebM, M4A, MP3, WAV, AAC, FLAC, and others). The original file is stored for later reference. Whisper then transcribes the audio with timestamps, the transcript is normalized to drop fillers, channel CTAs, and isolated talk that is not about Christianity, the Bible, or social ideas and issues, and the remaining timestamped lines are chunked into Qdrant.</p>
-  <p>You can drop a whole folder or hundreds of files (500+) at once. The browser keeps the file list in memory and uploads in small batches so Cloudflare does not drop a giant multipart POST. Whisper runs on CPU so it does not compete with the chat GPU model for VRAM — a long sermon can take a while. Refresh this page to watch job progress.</p>
+  <p>You can drop a whole folder or hundreds of files (500+) at once. Each file is uploaded in 2&nbsp;MB pieces so Cloudflare does not close the connection on large sermons. Whisper runs on CPU so it does not compete with the chat GPU model for VRAM — a long sermon can take a while. Refresh this page to watch job progress.</p>
   <p><a href="{% url 'admin:core_ingested_videos' %}">View all ingested videos and audio</a></p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
@@ -176,12 +176,12 @@
     // Chrome DataTransfer silently drops files after ~100 adds. Keep File objects
     // in a plain array so 500+ drops and folder selects work.
     var selectedFiles = [];
-    // Small batches: Cloudflare/tunnels drop huge multipart POSTs. Large videos
-    // still go one-per-batch when they exceed MAX_BATCH_BYTES.
-    var MAX_FILES_PER_BATCH = 20;
-    var MAX_BATCH_BYTES = 96 * 1024 * 1024;
-    var MAX_UPLOAD_RETRIES = 3;
-    var UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+    // Cloudflare named tunnels drop large multipart POSTs. Upload each file
+    // as 2 MB pieces and retry individual pieces, not the whole sermon.
+    var CHUNK_URL = "{{ video_chunk_url }}";
+    var CHUNK_BYTES = {{ video_chunk_bytes }};
+    var MAX_UPLOAD_RETRIES = 6;
+    var UPLOAD_TIMEOUT_MS = 120 * 1000;
 
     if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressWrapper || !progressBar || !progressText || !form) {
       return;
@@ -430,42 +430,44 @@
       });
     }
 
-    function splitFilesIntoBatches(files) {
-      var normalized = Array.prototype.slice.call(files || []);
-      var batches = [];
-      var currentBatch = [];
-      var currentBytes = 0;
-
-      for (var i = 0; i < normalized.length; i += 1) {
-        var file = normalized[i];
-        var fileSize = file && typeof file.size === "number" ? file.size : 0;
-        // Oversized single files still go alone so one huge PDF does not block the rest.
-        var wouldOverflowCount = currentBatch.length >= MAX_FILES_PER_BATCH;
-        var wouldOverflowBytes = currentBatch.length > 0 && currentBytes + fileSize > MAX_BATCH_BYTES;
-
-        if (wouldOverflowCount || wouldOverflowBytes) {
-          batches.push(currentBatch);
-          currentBatch = [];
-          currentBytes = 0;
-        }
-
-        currentBatch.push(file);
-        currentBytes += fileSize;
+    function randomUuid() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
       }
-
-      if (currentBatch.length > 0) {
-        batches.push(currentBatch);
-      }
-      return batches;
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (ch) {
+        var rand = (Math.random() * 16) | 0;
+        var value = ch === "x" ? rand : (rand & 0x3) | 0x8;
+        return value.toString(16);
+      });
     }
 
-    function uploadBatchOnce(batchFiles, batchIndex, replaceExisting) {
+    function isRetryableUploadError(err) {
+      var message = err && err.message ? String(err.message) : "";
+      return (
+        message.indexOf("Network error") !== -1 ||
+        message.indexOf("Timed out") !== -1 ||
+        message.indexOf("status 502") !== -1 ||
+        message.indexOf("status 503") !== -1 ||
+        message.indexOf("status 504") !== -1 ||
+        message.indexOf("status 520") !== -1 ||
+        message.indexOf("status 522") !== -1 ||
+        message.indexOf("status 524") !== -1
+      );
+    }
+
+    function postFormOnce(formData, label, onProgress) {
       return new Promise(function (resolve, reject) {
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", form.action || window.location.href, true);
+        xhr.open("POST", CHUNK_URL, true);
         xhr.timeout = UPLOAD_TIMEOUT_MS;
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         xhr.setRequestHeader("Accept", "application/json");
+
+        xhr.upload.addEventListener("progress", function (event) {
+          if (onProgress && event.lengthComputable) {
+            onProgress(event.loaded, event.total);
+          }
+        });
 
         xhr.addEventListener("load", function () {
           var payload = null;
@@ -477,7 +479,7 @@
 
           if (xhr.status >= 200 && xhr.status < 400) {
             if (payload && payload.ok === false) {
-              reject(new Error(payload.error || ("Server rejected batch " + batchIndex + ".")));
+              reject(new Error(payload.error || ("Server rejected " + label + ".")));
               return;
             }
             resolve(payload || { ok: true });
@@ -488,80 +490,84 @@
             (payload && payload.error) ||
             (xhr.responseText ? xhr.responseText.slice(0, 180) : "") ||
             ("HTTP " + xhr.status);
-          reject(new Error("Server returned status " + xhr.status + " on batch " + batchIndex + ": " + detail));
+          reject(new Error("Server returned status " + xhr.status + " on " + label + ": " + detail));
         });
 
         xhr.addEventListener("error", function () {
-          reject(
-            new Error(
-              "Network error during batch " +
-                batchIndex +
-                " upload (connection closed before a response — often Cloudflare/tunnel timeout on large batches)."
-            )
-          );
+          reject(new Error("Network error during " + label + " (Cloudflare/tunnel closed the connection)."));
         });
-
         xhr.addEventListener("timeout", function () {
-          reject(
-            new Error(
-              "Timed out after " +
-                Math.round(UPLOAD_TIMEOUT_MS / 1000) +
-                "s uploading batch " +
-                batchIndex +
-                "."
-            )
-          );
+          reject(new Error("Timed out after " + Math.round(UPLOAD_TIMEOUT_MS / 1000) + "s on " + label + "."));
         });
-
         xhr.addEventListener("abort", function () {
-          reject(new Error("Upload aborted during batch " + batchIndex + "."));
+          reject(new Error("Upload aborted during " + label + "."));
         });
-
-        var formData = new FormData();
-        var csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
-        if (csrfInput) {
-          formData.append("csrfmiddlewaretoken", csrfInput.value);
-        }
-        if (replaceExisting) {
-          formData.append("replace_existing_sources", "on");
-        }
-        for (var i = 0; i < batchFiles.length; i += 1) {
-          formData.append("videos", batchFiles[i], batchFiles[i].name);
-        }
 
         xhr.send(formData);
       });
     }
 
-    async function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting) {
+    async function postFormWithRetry(formData, label, onProgress) {
       var lastError = null;
       for (var attempt = 1; attempt <= MAX_UPLOAD_RETRIES; attempt += 1) {
         try {
           if (attempt > 1) {
-            setBatchProgress(
-              batchIndex - 1,
-              totalBatches,
-              "Retrying batch " + batchIndex + "/" + totalBatches + " (attempt " + attempt + ")"
-            );
-            await sleep(1000 * attempt);
+            await sleep(800 * attempt);
           }
-          return await uploadBatchOnce(batchFiles, batchIndex, replaceExisting);
+          return await postFormOnce(formData, label, onProgress);
         } catch (err) {
           lastError = err;
-          var message = err && err.message ? String(err.message) : "";
-          var retryable =
-            message.indexOf("Network error") !== -1 ||
-            message.indexOf("Timed out") !== -1 ||
-            message.indexOf("status 502") !== -1 ||
-            message.indexOf("status 503") !== -1 ||
-            message.indexOf("status 504") !== -1 ||
-            message.indexOf("status 524") !== -1;
-          if (!retryable || attempt >= MAX_UPLOAD_RETRIES) {
+          if (!isRetryableUploadError(err) || attempt >= MAX_UPLOAD_RETRIES) {
             throw err;
           }
         }
       }
-      throw lastError || new Error("Upload failed for batch " + batchIndex + ".");
+      throw lastError || new Error("Upload failed for " + label + ".");
+    }
+
+    async function uploadFileInChunks(file, fileIndex, totalFiles, bytesAlreadySent, totalBytes, replaceExisting) {
+      var fileSize = file && typeof file.size === "number" ? file.size : 0;
+      if (fileSize < 1) {
+        throw new Error(file.name + " is empty.");
+      }
+      var chunkCount = Math.ceil(fileSize / CHUNK_BYTES);
+      var uploadId = randomUuid();
+      var sentInFile = 0;
+
+      for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+        var start = chunkIndex * CHUNK_BYTES;
+        var end = Math.min(fileSize, start + CHUNK_BYTES);
+        var blob = file.slice(start, end);
+        var formData = new FormData();
+        var csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (csrfInput) {
+          formData.append("csrfmiddlewaretoken", csrfInput.value);
+        }
+        formData.append("upload_id", uploadId);
+        formData.append("file_name", file.name);
+        formData.append("chunk_index", String(chunkIndex));
+        formData.append("chunk_count", String(chunkCount));
+        formData.append("file_size", String(fileSize));
+        if (replaceExisting) {
+          formData.append("replace_existing_sources", "on");
+        }
+        formData.append("chunk", blob, file.name + ".part" + chunkIndex);
+
+        var label = file.name + " chunk " + (chunkIndex + 1) + "/" + chunkCount;
+        await postFormWithRetry(formData, label, function (loaded, total) {
+          var chunkBytes = total > 0 ? loaded : 0;
+          var overall = totalBytes > 0 ? (bytesAlreadySent + sentInFile + chunkBytes) / totalBytes : 0;
+          var pct = Math.max(0, Math.min(100, Math.round(overall * 100)));
+          setProgressPercentage(pct);
+          progressText.textContent =
+            "Uploading " + (fileIndex + 1) + "/" + totalFiles + ": " + file.name +
+            " (piece " + (chunkIndex + 1) + "/" + chunkCount + ", " + pct + "%)";
+        });
+        sentInFile += blob.size;
+        var overallDone = totalBytes > 0 ? (bytesAlreadySent + sentInFile) / totalBytes : 0;
+        setProgressPercentage(Math.round(overallDone * 100));
+      }
+      return fileSize;
     }
 
     dropzone.addEventListener("click", function () {
@@ -646,33 +652,30 @@
       }
 
       var allFiles = selectedFiles.slice();
-      var batches = splitFilesIntoBatches(allFiles);
       var replaceExisting = !!(form.querySelector('input[name="replace_existing_sources"]') && form.querySelector('input[name="replace_existing_sources"]').checked);
-
-      if (batches.length === 0) {
-        showError("No valid files were selected for upload.");
-        hideProgress();
-        resetSubmitState();
-        return;
+      var totalBytes = 0;
+      for (var sizeIdx = 0; sizeIdx < allFiles.length; sizeIdx += 1) {
+        totalBytes += allFiles[sizeIdx] && typeof allFiles[sizeIdx].size === "number" ? allFiles[sizeIdx].size : 0;
       }
 
-      setBatchProgress(0, batches.length, "Preparing " + allFiles.length + " files in " + batches.length + " upload batches");
+      setProgressPercentage(0);
+      progressText.textContent = "Uploading " + allFiles.length + " file(s) in 2 MB pieces...";
 
       (async function () {
         try {
-          var filesUploaded = 0;
-          for (var batchIdx = 0; batchIdx < batches.length; batchIdx += 1) {
-            var batchFiles = batches[batchIdx];
-            setBatchProgress(
-              batchIdx,
-              batches.length,
-              "Uploading batch " + (batchIdx + 1) + "/" + batches.length +
-                " (" + batchFiles.length + " files, " + filesUploaded + "/" + allFiles.length + " done)"
+          var bytesAlreadySent = 0;
+          for (var fileIdx = 0; fileIdx < allFiles.length; fileIdx += 1) {
+            var sent = await uploadFileInChunks(
+              allFiles[fileIdx],
+              fileIdx,
+              allFiles.length,
+              bytesAlreadySent,
+              totalBytes,
+              replaceExisting
             );
-            await uploadBatch(batchFiles, batchIdx + 1, batches.length, replaceExisting);
-            filesUploaded += batchFiles.length;
+            bytesAlreadySent += sent;
           }
-          setBatchProgress(batches.length, batches.length, "All " + allFiles.length + " files uploaded. Processing on server...");
+          setProgressPercentage(100);
           setProcessingState();
           window.location.href = form.action || window.location.href;
         } catch (err) {
