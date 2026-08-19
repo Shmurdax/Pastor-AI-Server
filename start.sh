@@ -68,6 +68,11 @@ if ! command -v soffice >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq && apt-get install -y -qq libreoffice-writer >/dev/null || warn "LibreOffice apt install failed; DOCX ingest will use text fallback"
 fi
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  warn "ffmpeg missing — installing (needed for Whisper video ingestion)..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq ffmpeg >/dev/null || warn "ffmpeg apt install failed; video ingestion will not transcribe"
+fi
 ensure_persistent_postgres || service postgresql start 2>/dev/null || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
