@@ -259,6 +259,13 @@ class VideoIngestionAdminTests(TestCase):
         )
         self.client.force_login(self.user)
 
+    def test_video_ingestion_page_captures_dropped_files_synchronously(self):
+        template = Path(__file__).resolve().parent / "templates" / "admin" / "core" / "video_ingestion.html"
+        body = template.read_text(encoding="utf-8")
+        self.assertIn("getAsFile()", body)
+        self.assertIn("arrayBuffer", body)
+        self.assertIn("Select folder", body)
+
     @patch("core.admin.enqueue_video_ingestion_job")
     @patch("core.admin._stage_uploads", return_value=[])
     def test_admin_accepts_m4a(self, _stage, mock_enqueue):

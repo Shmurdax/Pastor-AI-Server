@@ -93,7 +93,7 @@
       <input id="documents-folder-input" type="file" webkitdirectory mozdirectory directory multiple style="display: none;" />
       <div id="documents-dropzone" class="ingestion-dropzone" role="button" tabindex="0" aria-label="Upload videos and audio">
         <strong>Drag and drop video or audio files here</strong><br>
-        <span>or click this area to browse. Folders and 500+ files are supported.</span><br>
+        <span>or click this area to browse. Folders and 500+ files are supported. If a drag-and-drop shows 0 bytes, use Select folder… instead.</span><br>
         <span style="display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px;">
           <button id="documents-files-button" type="button">Select files…</button>
           <button id="documents-folder-button" type="button">Select folder…</button>
@@ -375,19 +375,33 @@
           continue;
         }
 
+        var entry = null;
         if (item.webkitGetAsEntry) {
-          var entry = item.webkitGetAsEntry();
-          if (entry) {
-            reads.push(readEntryFiles(entry));
+          try {
+            entry = item.webkitGetAsEntry();
+          } catch (entryErr) {
+            entry = null;
+          }
+        }
+
+        // Directories must use the entry API. Files should use getAsFile()
+        // synchronously in the drop handler — async entry.file() often yields
+        // File objects with size 0 after DataTransfer is released.
+        if (entry && entry.isDirectory) {
+          reads.push(readEntryFiles(entry));
+          continue;
+        }
+
+        if (item.getAsFile) {
+          var syncFile = item.getAsFile();
+          if (syncFile) {
+            reads.push(Promise.resolve([syncFile]));
             continue;
           }
         }
 
-        if (item.getAsFile) {
-          var fallbackFile = item.getAsFile();
-          if (fallbackFile) {
-            reads.push(Promise.resolve([fallbackFile]));
-          }
+        if (entry) {
+          reads.push(readEntryFiles(entry));
         }
       }
 
@@ -402,6 +416,18 @@
         }
         return merged;
       });
+    }
+
+    function filesHaveBytes(files) {
+      if (!files || files.length === 0) {
+        return false;
+      }
+      for (var i = 0; i < files.length; i += 1) {
+        if (files[i] && typeof files[i].size === "number" && files[i].size > 0) {
+          return true;
+        }
+      }
+      return false;
     }
 
     function setSelectedFiles(files) {
@@ -525,15 +551,39 @@
       throw lastError || new Error("Upload failed for " + label + ".");
     }
 
+    async function ensureFileHasBytes(file) {
+      if (!file) {
+        return file;
+      }
+      if (typeof file.size === "number" && file.size > 0) {
+        return file;
+      }
+      if (typeof file.arrayBuffer !== "function") {
+        return file;
+      }
+      try {
+        var buffer = await file.arrayBuffer();
+        if (buffer && buffer.byteLength > 0) {
+          return new File([buffer], file.name, {
+            type: file.type || "application/octet-stream",
+            lastModified: file.lastModified || Date.now(),
+          });
+        }
+      } catch (readErr) {
+        return file;
+      }
+      return file;
+    }
+
     async function uploadFileInChunks(file, fileIndex, totalFiles, bytesAlreadySent, totalBytes, replaceExisting) {
-      var fileSize = file && typeof file.size === "number" ? file.size : 0;
-      // Browser File.size can be 0 for placeholders or empty drops. Do not abort
-      // the rest of the queue; ingest will skip empty payloads later.
+      var readable = await ensureFileHasBytes(file);
+      var fileSize = readable && typeof readable.size === "number" ? readable.size : 0;
       if (fileSize < 1) {
         progressText.textContent =
-          "Skipping empty file " + (fileIndex + 1) + "/" + totalFiles + ": " + file.name;
+          "Skipping empty file " + (fileIndex + 1) + "/" + totalFiles + ": " + (file && file.name ? file.name : "unnamed");
         return 0;
       }
+      file = readable;
       var chunkCount = Math.ceil(fileSize / CHUNK_BYTES);
       var uploadId = randomUuid();
       var sentInFile = 0;
@@ -625,18 +675,31 @@
         return;
       }
 
+      // Snapshot FileList during the drop event. After this handler returns,
+      // DataTransfer contents can become 0-byte stubs.
+      var immediateFiles = transfer.files && transfer.files.length
+        ? Array.prototype.slice.call(transfer.files)
+        : [];
+
       if (transfer.items && transfer.items.length > 0) {
         collectDroppedFiles(transfer.items).then(function (files) {
-          validateAndApplyFiles(files);
+          if (filesHaveBytes(files)) {
+            validateAndApplyFiles(files);
+            return;
+          }
+          if (filesHaveBytes(immediateFiles)) {
+            validateAndApplyFiles(immediateFiles);
+            return;
+          }
+          validateAndApplyFiles(files.length ? files : immediateFiles);
         });
         return;
       }
 
-      var files = transfer.files;
-      if (!files || files.length === 0) {
+      if (!immediateFiles.length) {
         return;
       }
-      validateAndApplyFiles(files);
+      validateAndApplyFiles(immediateFiles);
     });
 
     form.addEventListener("submit", function (event) {
@@ -691,9 +754,10 @@
             var emptyNames = skippedEmpty.slice(0, 8).join(", ");
             var extra = skippedEmpty.length > 8 ? " and " + (skippedEmpty.length - 8) + " more" : "";
             showError(
-              "Every selected file was empty (0 bytes) and was skipped" +
-                (emptyNames ? ": " + emptyNames + extra : ".") +
-                " The rest of a mixed drop would still upload; add files that contain audio or video."
+              "The browser reported every selected file as 0 bytes, so nothing was uploaded (" +
+                skippedEmpty.length +
+                " files). This is usually a folder drag-and-drop glitch or cloud placeholders (iCloud/OneDrive), not missing sermons. Use “Select folder…” or “Select files…” instead of dragging, or copy the files onto this computer first." +
+                (emptyNames ? " Names: " + emptyNames + extra : "")
             );
             hideProgress();
             resetSubmitState();
