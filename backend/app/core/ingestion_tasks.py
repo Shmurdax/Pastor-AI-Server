@@ -40,7 +40,10 @@ def enqueue_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], repla
 
 
 def enqueue_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
-    _executor.submit(_run_video_ingestion_job, job_id, staged_uploads, replace_existing_sources)
+    """Record staging on disk. Whisper runs in ``run_video_ingestion_worker``, not gunicorn."""
+    from .video_job_queue import persist_video_job_manifest
+
+    persist_video_job_manifest(job_id, staged_uploads, replace_existing_sources)
 
 
 def _touch_job(job: IngestionJob) -> None:
@@ -88,7 +91,12 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         close_old_connections()
 
 
-def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
+def _run_video_ingestion_job(
+    job_id: int,
+    staged_uploads: List[StagedUpload],
+    replace_existing_sources: bool,
+    wait_for_turn: bool = True,
+) -> None:
     close_old_connections()
     try:
         job = IngestionJob.objects.get(id=job_id)
@@ -101,7 +109,8 @@ def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], re
         IngestionJobLog.objects.create(job=job, message=message_text)
         _touch_job(job)
 
-    _wait_for_turn(job_id, log_job)
+    if wait_for_turn:
+        _wait_for_turn(job_id, log_job)
 
     uploads = [_DiskUpload(item.original_name, item.staged_path) for item in staged_uploads]
     try:
@@ -118,6 +127,8 @@ def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], re
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "finished_at", "updated_at"])
         log_job("Video ingestion job finished.")
+        dump_persistent_postgres()
+        _cleanup_staging_files(staged_uploads)
     except Exception as exc:
         logger.exception("Video ingestion job %s failed", job_id)
         job.status = "failed"
@@ -125,9 +136,9 @@ def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], re
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
         log_job(f"Video ingestion failed: {exc}")
-    finally:
         dump_persistent_postgres()
-        _cleanup_staging_files(staged_uploads)
+        # Keep staging on failure so the disk worker can retry after a restart.
+    finally:
         close_old_connections()
 
 

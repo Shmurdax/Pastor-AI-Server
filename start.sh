@@ -165,6 +165,8 @@ fi
 ensure_persistent_uploads
 export INGESTION_UPLOAD_DIR="${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}"
 export VIDEO_INGESTION_UPLOAD_DIR="${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}"
+export VIDEO_INGESTION_JOBS_DIR="${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}"
+export VIDEO_INGESTION_CHUNKS_DIR="${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}"
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
@@ -218,6 +220,8 @@ screen -dmS django bash -c "
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
   export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
+  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
+  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}' &&
   export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
   export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}' &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
@@ -230,6 +234,33 @@ screen -dmS django bash -c "
 sleep 3
 curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJANGO_PORT}" \
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
+
+# Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
+stop_screen video-ingest
+screen -dmS video-ingest bash -c "
+  set -a
+  source '${CONFIG_ENV}'
+  set +a
+  source '${VENV_DIR}/bin/activate'
+  cd '${APP_DIR}'
+  export CUDA_VISIBLE_DEVICES=''
+  export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
+  export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
+  export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
+  export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}'
+  export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}'
+  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}'
+  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
+  export WHISPER_MODEL='${WHISPER_MODEL:-base}'
+  export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}'
+  export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
+  export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
+  export PYTHONUNBUFFERED=1
+  exec python -u manage.py run_video_ingestion_worker >> '${LOG_DIR}/video_ingest_worker.log' 2>&1
+"
+sleep 1
+screen -ls | grep -q 'video-ingest' && log "Video ingest worker on screen video-ingest" \
+  || warn "Video ingest worker did not start — see ${LOG_DIR}/video_ingest_worker.log"
 
 # Tunnel. Production uses a named Cloudflare tunnel; tokens.env may still say ngrok.
 if [[ "${TUNNEL:-}" == "ngrok" ]] && ! command -v ngrok >/dev/null 2>&1; then

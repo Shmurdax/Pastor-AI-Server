@@ -13,6 +13,8 @@
 PERSIST_ROOT="${PERSIST_ROOT:-/workspace/persistent}"
 PERSIST_UPLOADS="${PERSIST_UPLOADS:-$PERSIST_ROOT/uploads/admin_ingestion}"
 PERSIST_VIDEO_UPLOADS="${PERSIST_VIDEO_UPLOADS:-$PERSIST_ROOT/uploads/admin_video_ingestion}"
+PERSIST_VIDEO_JOBS="${PERSIST_VIDEO_JOBS:-$PERSIST_ROOT/uploads/admin_video_ingestion_jobs}"
+PERSIST_VIDEO_CHUNKS="${PERSIST_VIDEO_CHUNKS:-$PERSIST_ROOT/uploads/admin_video_ingestion_chunks}"
 PERSIST_PG_ROOT="${PERSIST_PG_ROOT:-$PERSIST_ROOT/postgres}"
 PERSIST_PG_DUMP="${PERSIST_PG_DUMP:-$PERSIST_PG_ROOT/ai_db.dump}"
 PERSIST_RESTORE_MARKER="${PERSIST_RESTORE_MARKER:-/var/lib/postgresql/.pastor_ai_restored}"
@@ -24,8 +26,10 @@ detect_pg_version() {
 ensure_persistent_uploads() {
   local app_uploads="${APP_DIR}/uploads/admin_ingestion"
   local app_video_uploads="${APP_DIR}/uploads/admin_video_ingestion"
-  mkdir -p "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" "${APP_DIR}/uploads"
-  chmod a+rX "$PERSIST_ROOT" "$PERSIST_ROOT/uploads" "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" 2>/dev/null || true
+  local app_video_jobs="${APP_DIR}/uploads/admin_video_ingestion_jobs"
+  local app_video_chunks="${APP_DIR}/uploads/admin_video_ingestion_chunks"
+  mkdir -p "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" "$PERSIST_VIDEO_JOBS" "$PERSIST_VIDEO_CHUNKS" "${APP_DIR}/uploads"
+  chmod a+rX "$PERSIST_ROOT" "$PERSIST_ROOT/uploads" "$PERSIST_UPLOADS" "$PERSIST_VIDEO_UPLOADS" "$PERSIST_VIDEO_JOBS" "$PERSIST_VIDEO_CHUNKS" 2>/dev/null || true
   if [[ -d "$app_uploads" && ! -L "$app_uploads" ]]; then
     shopt -s nullglob
     local existing=("$app_uploads"/*)
@@ -48,6 +52,28 @@ ensure_persistent_uploads() {
   fi
   ln -sfn "$PERSIST_VIDEO_UPLOADS" "$app_video_uploads"
   log "Ingested videos persist at $PERSIST_VIDEO_UPLOADS"
+  if [[ -d "$app_video_jobs" && ! -L "$app_video_jobs" ]]; then
+    shopt -s nullglob
+    local existing_jobs=("$app_video_jobs"/*)
+    if ((${#existing_jobs[@]})); then
+      log "Moving existing video job staging into $PERSIST_VIDEO_JOBS"
+      mv -n "${existing_jobs[@]}" "$PERSIST_VIDEO_JOBS/" 2>/dev/null || true
+    fi
+    rm -rf "$app_video_jobs"
+  fi
+  ln -sfn "$PERSIST_VIDEO_JOBS" "$app_video_jobs"
+  log "Video ingest job staging persists at $PERSIST_VIDEO_JOBS"
+  if [[ -d "$app_video_chunks" && ! -L "$app_video_chunks" ]]; then
+    shopt -s nullglob
+    local existing_chunks=("$app_video_chunks"/*)
+    if ((${#existing_chunks[@]})); then
+      log "Moving existing video upload chunks into $PERSIST_VIDEO_CHUNKS"
+      mv -n "${existing_chunks[@]}" "$PERSIST_VIDEO_CHUNKS/" 2>/dev/null || true
+    fi
+    rm -rf "$app_video_chunks"
+  fi
+  ln -sfn "$PERSIST_VIDEO_CHUNKS" "$app_video_chunks"
+  log "Video ingest chunk staging persists at $PERSIST_VIDEO_CHUNKS"
 }
 
 _pg_ready() {

@@ -29,8 +29,14 @@ from .models import (
     PrayerRequest,
     ChurchEvent,
 )
-from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
+from .storage_paths import (
+    admin_ingestion_dir,
+    admin_video_ingestion_chunks_dir,
+    admin_video_ingestion_dir,
+    video_job_staging_dir,
+)
 from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
+from .video_job_queue import persist_video_job_manifest, video_job_has_staging
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
@@ -63,6 +69,9 @@ def _mark_stale_running_jobs_failed() -> int:
             else STALE_INGESTION_JOB_MINUTES
         )
         if last_activity >= now - timezone.timedelta(minutes=idle_minutes):
+            continue
+        if job.job_kind == "video" and video_job_has_staging(job.id):
+            # Staging survived a restart; the disk worker will resume this job.
             continue
         if not job.error_message:
             job.error_message = (
@@ -218,9 +227,12 @@ def _is_ajax(request) -> bool:
 
 
 def _stage_uploads(job: IngestionJob, files, *, staging_subdir: str) -> list[StagedUpload]:
-    staging_root = Path(settings.BASE_DIR) / "uploads" / staging_subdir
-    staging_dir = staging_root / f"job_{job.id}"
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    if staging_subdir == "admin_video_ingestion_jobs":
+        staging_dir = video_job_staging_dir(job.id)
+    else:
+        staging_root = Path(settings.BASE_DIR) / "uploads" / staging_subdir
+        staging_dir = staging_root / f"job_{job.id}"
+        staging_dir.mkdir(parents=True, exist_ok=True)
     staged_uploads: list[StagedUpload] = []
     for idx, upload in enumerate(files):
         safe_name = get_valid_filename(Path(upload.name).name) or f"upload_{idx}"
@@ -238,7 +250,7 @@ def _stage_uploads(job: IngestionJob, files, *, staging_subdir: str) -> list[Sta
 
 
 def _video_chunk_root() -> Path:
-    return Path(settings.BASE_DIR) / "uploads" / "admin_video_ingestion_chunks"
+    return admin_video_ingestion_chunks_dir()
 
 
 def _parse_upload_id(raw: str) -> uuid.UUID:
@@ -259,12 +271,15 @@ def _queue_video_job_from_path(
         status="running",
         files_received=1,
     )
-    staging_root = Path(settings.BASE_DIR) / "uploads" / "admin_video_ingestion_jobs"
-    staging_dir = staging_root / f"job_{job.id}"
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = video_job_staging_dir(job.id)
     safe_name = get_valid_filename(Path(original_name).name) or "upload"
     staged_path = staging_dir / f"0000_{safe_name}"
     shutil.copyfile(source_path, staged_path)
+    persist_video_job_manifest(
+        job.id,
+        [StagedUpload(original_name=original_name, staged_path=str(staged_path))],
+        replace_existing_sources,
+    )
     IngestionJobLog.objects.create(job=job, message="Video ingestion job queued for background processing.")
     enqueue_video_ingestion_job(
         job_id=job.id,

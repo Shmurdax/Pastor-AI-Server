@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -395,3 +396,147 @@ class VideoIngestionAdminTests(TestCase):
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["skipped"])
         self.assertEqual(payload["reason"], "empty")
+
+
+class VideoJobPersistenceTests(TestCase):
+    def test_jobs_and_chunks_follow_env_dirs(self):
+        from core.storage_paths import admin_video_ingestion_chunks_dir, admin_video_ingestion_jobs_dir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jobs = Path(tmp) / "jobs"
+            chunks = Path(tmp) / "chunks"
+            with patch.dict(
+                os.environ,
+                {
+                    "VIDEO_INGESTION_JOBS_DIR": str(jobs),
+                    "VIDEO_INGESTION_CHUNKS_DIR": str(chunks),
+                },
+            ):
+                self.assertEqual(admin_video_ingestion_jobs_dir(), jobs.resolve())
+                self.assertEqual(admin_video_ingestion_chunks_dir(), chunks.resolve())
+
+    def test_manifest_round_trip_keeps_original_names(self):
+        from core.ingestion_tasks import StagedUpload
+        from core.video_job_queue import load_video_job_uploads, persist_video_job_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"VIDEO_INGESTION_JOBS_DIR": tmp}):
+                job_dir = Path(tmp) / "job_9"
+                job_dir.mkdir()
+                staged = job_dir / "0000_458394609.m4a"
+                staged.write_bytes(b"audio")
+                persist_video_job_manifest(
+                    9,
+                    [StagedUpload(original_name="458394609.m4a", staged_path=str(staged))],
+                    False,
+                )
+                uploads, replace = load_video_job_uploads(9)
+                self.assertFalse(replace)
+                self.assertEqual(len(uploads), 1)
+                self.assertEqual(uploads[0].original_name, "458394609.m4a")
+                self.assertTrue(Path(uploads[0].staged_path).is_file())
+
+    def test_stale_marker_keeps_video_jobs_that_still_have_staging(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.admin import _mark_stale_running_jobs_failed
+        from core.ingestion_tasks import StagedUpload
+        from core.models import IngestionJob
+        from core.video_job_queue import persist_video_job_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"VIDEO_INGESTION_JOBS_DIR": tmp}):
+                job = IngestionJob.objects.create(
+                    started_by="test",
+                    job_kind="video",
+                    status="running",
+                    files_received=1,
+                )
+                staged = Path(tmp) / f"job_{job.id}" / "0000_talk.m4a"
+                staged.parent.mkdir(parents=True)
+                staged.write_bytes(b"audio")
+                persist_video_job_manifest(
+                    job.id,
+                    [StagedUpload(original_name="talk.m4a", staged_path=str(staged))],
+                    False,
+                )
+                old = timezone.now() - timedelta(minutes=600)
+                IngestionJob.objects.filter(id=job.id).update(created_at=old, updated_at=old)
+                self.assertEqual(_mark_stale_running_jobs_failed(), 0)
+                job.refresh_from_db()
+                self.assertEqual(job.status, "running")
+
+    def test_stale_marker_fails_video_jobs_without_staging(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.admin import _mark_stale_running_jobs_failed
+        from core.models import IngestionJob
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"VIDEO_INGESTION_JOBS_DIR": tmp}):
+                job = IngestionJob.objects.create(
+                    started_by="test",
+                    job_kind="video",
+                    status="running",
+                    files_received=1,
+                )
+                old = timezone.now() - timedelta(minutes=600)
+                IngestionJob.objects.filter(id=job.id).update(created_at=old, updated_at=old)
+                self.assertEqual(_mark_stale_running_jobs_failed(), 1)
+                job.refresh_from_db()
+                self.assertEqual(job.status, "failed")
+
+    def test_enqueue_video_job_does_not_use_gunicorn_thread_pool(self):
+        from core.ingestion_tasks import StagedUpload, enqueue_video_ingestion_job
+
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Path(tmp) / "job_12" / "0000_a.m4a"
+            staged.parent.mkdir()
+            staged.write_bytes(b"x")
+            with patch.dict(os.environ, {"VIDEO_INGESTION_JOBS_DIR": tmp}), patch(
+                "core.ingestion_tasks._executor.submit"
+            ) as submit:
+                enqueue_video_ingestion_job(
+                    12,
+                    [StagedUpload(original_name="a.m4a", staged_path=str(staged))],
+                    False,
+                )
+                submit.assert_not_called()
+                self.assertTrue((Path(tmp) / "job_12" / "manifest.json").is_file())
+
+    def test_worker_once_runs_staged_job(self):
+        from django.core.management import call_command
+
+        from core.ingestion_service import IngestionResult
+        from core.ingestion_tasks import StagedUpload
+        from core.models import IngestionJob
+        from core.video_job_queue import persist_video_job_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"VIDEO_INGESTION_JOBS_DIR": tmp}):
+                job = IngestionJob.objects.create(
+                    started_by="test",
+                    job_kind="video",
+                    status="running",
+                    files_received=1,
+                )
+                staged = Path(tmp) / f"job_{job.id}" / "0000_talk.m4a"
+                staged.parent.mkdir(parents=True)
+                staged.write_bytes(b"audio-bytes")
+                persist_video_job_manifest(
+                    job.id,
+                    [StagedUpload(original_name="talk.m4a", staged_path=str(staged))],
+                    False,
+                )
+                with patch("core.video_ingestion.ingest_video_files") as ingest, patch(
+                    "core.ingestion_tasks.dump_persistent_postgres"
+                ):
+                    ingest.return_value = IngestionResult(files_received=1, files_processed=1)
+                    call_command("run_video_ingestion_worker", "--once")
+                ingest.assert_called_once()
+                job.refresh_from_db()
+                self.assertEqual(job.status, "completed")
