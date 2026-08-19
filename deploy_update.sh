@@ -37,6 +37,11 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
+if [[ -f "$APP_DIR/requirements.txt" ]]; then
+  log "Installing Python requirements (Whisper, etc.)"
+  pip install -q -r "$APP_DIR/requirements.txt" || warn "pip install requirements failed"
+fi
+
 log "Running Django migrations"
 mkdir -p "$LOG_DIR"
 cd "$APP_DIR"
