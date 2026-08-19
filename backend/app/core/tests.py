@@ -37,6 +37,44 @@ class ScopeGateParserTests(unittest.TestCase):
         self.assertIsNone(parse_scope_gate_response("maybe"))
 
 
+class SusanNordinRetrievalTests(unittest.TestCase):
+    def test_query_mentions_susan(self):
+        from .chat_prompt import query_mentions_susan
+
+        self.assertTrue(query_mentions_susan("Give me some sermons from Susan Nordin"))
+        self.assertTrue(query_mentions_susan("What has Pastor Don's wife taught?"))
+        self.assertFalse(query_mentions_susan("What does Pastor Don teach about faith?"))
+
+    def test_prefer_susan_docs_puts_her_chunks_first(self):
+        from .chat_prompt import prefer_susan_docs
+
+        class Doc:
+            def __init__(self, text, source):
+                self.page_content = text
+                self.metadata = {"source": source, "title": source}
+
+        don = Doc("Faith that moves mountains", "FAITH.pdf")
+        susan = Doc("Teaching by Susan Nordin on prayer", "PRAYER SUSAN NORDIN.pdf")
+        ordered = prefer_susan_docs([don, susan], "sermons from Susan Nordin")
+        self.assertEqual(ordered[0], susan)
+        self.assertEqual(ordered[1], don)
+
+    def test_format_reference_notes_includes_titles(self):
+        from .chat_prompt import format_reference_notes
+
+        class Doc:
+            def __init__(self, text, source):
+                self.page_content = text
+                self.metadata = {"source": source}
+
+        notes = format_reference_notes(
+            [Doc("Pray without ceasing.", "Susan Prayer.pdf")],
+            lambda doc: doc.metadata["source"],
+        )
+        self.assertIn("[Susan Prayer.pdf]", notes)
+        self.assertIn("Pray without ceasing.", notes)
+
+
 class PiiRedactionTests(unittest.TestCase):
     def test_email_redacted(self):
         out = redact_user_query("Email me at user.name+tag@example.co.uk soon")
