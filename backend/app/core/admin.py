@@ -31,6 +31,7 @@ from .models import (
 )
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
 from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
+from .vimeo_titles import DEFAULT_VIMEO_FOLDER_URL, VimeoTitleError, apply_titles_from_vimeo_folder
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
@@ -681,6 +682,31 @@ def _admin_ingested_videos_view(request):
         messages.error(request, "You must be an admin user to access this page.")
         return HttpResponseRedirect("../")
 
+    if request.method == "POST" and request.POST.get("action") == "apply_vimeo_titles":
+        folder_url = (request.POST.get("vimeo_folder_url") or DEFAULT_VIMEO_FOLDER_URL).strip()
+        token = (request.POST.get("vimeo_access_token") or "").strip()
+        dry_run = request.POST.get("dry_run") == "on"
+        try:
+            _mapping, result = apply_titles_from_vimeo_folder(
+                folder_url=folder_url,
+                token=token,
+                dry_run=dry_run,
+                update_qdrant=not dry_run,
+            )
+        except VimeoTitleError as exc:
+            messages.error(request, str(exc))
+        else:
+            prefix = "Dry run — would update" if dry_run else "Updated"
+            messages.success(
+                request,
+                f"{prefix} {result.updated} video title(s). "
+                f"Already matched: {result.already_matched}. "
+                f"No Vimeo name for {result.unmatched} file(s).",
+            )
+            for source_name, old_title, new_title in result.sample_updates:
+                messages.info(request, f"{source_name}: {old_title} → {new_title}")
+        return HttpResponseRedirect(request.path)
+
     upload_dir = admin_video_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
     search_term = request.GET.get("q", "").strip()
@@ -732,6 +758,7 @@ def _admin_ingested_videos_view(request):
         "paginator": paginator,
         "page_size": page_size,
         "allowed_page_sizes": allowed_page_sizes,
+        "vimeo_folder_url": DEFAULT_VIMEO_FOLDER_URL,
     }
     return TemplateResponse(request, "admin/core/ingested_videos.html", context)
 

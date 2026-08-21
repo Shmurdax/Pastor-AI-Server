@@ -5,7 +5,49 @@
   <h1>Ingested Videos</h1>
   <p>Browse original video and audio files stored for Whisper transcription. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations. Timestamped transcripts are saved as <code>.transcript.json</code> sidecars next to each file.</p>
   <p>
+    Chat and the ingested-document list use the <strong>title</strong> on each video row, which currently defaults to the Vimeo numeric filename (for example <code>461937715</code>). To copy the human names from the original Vimeo folder, paste a personal access token below (scopes: <code>public</code> and <code>private</code>) and run a dry-run first.
+  </p>
+  <form method="post" style="margin: 16px 0; padding: 12px; border: 1px solid #ddd; border-radius: 6px; max-width: 640px;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="apply_vimeo_titles" />
+    <p style="margin-top: 0;"><strong>Apply Vimeo folder titles</strong></p>
+    <p>
+      <label for="vimeo-folder-url">Folder URL</label><br />
+      <input
+        id="vimeo-folder-url"
+        type="url"
+        name="vimeo_folder_url"
+        value="{{ vimeo_folder_url }}"
+        style="min-width: 100%;"
+      />
+    </p>
+    <p>
+      <label for="vimeo-access-token">Vimeo access token</label><br />
+      <input
+        id="vimeo-access-token"
+        type="password"
+        name="vimeo_access_token"
+        autocomplete="off"
+        style="min-width: 100%;"
+      />
+    </p>
+    <p>
+      <label>
+        <input type="checkbox" name="dry_run" checked />
+        Dry run (show what would change, do not write)
+      </label>
+    </p>
+    <button type="submit" class="button">Apply Vimeo titles</button>
+    <p style="font-size: 12px; color: #666;">
+      Create a token at
+      <a href="https://developer.vimeo.com/apps" target="_blank" rel="noopener">developer.vimeo.com/apps</a>.
+      The token is not stored.
+    </p>
+  </form>
+  <p>
     <a href="{% url 'admin:core_video_ingestion' %}">Back to video ingestion panel</a>
+    ·
+    <a href="{% url 'admin:core_ingesteddocument_changelist' %}">Edit titles individually</a>
   </p>
 
   <form method="get" style="margin-top: 14px; margin-bottom: 14px;">

@@ -40,6 +40,7 @@ from .transcript_normalize import (
     format_timestamp_range,
     normalize_transcript_segments,
 )
+from .vimeo_titles import resolve_ingest_title
 from .whisper_transcribe import transcribe_video_file
 
 logger = logging.getLogger(__name__)
@@ -274,7 +275,7 @@ def ingest_video_files(
             source_name = _canonical_video_name(upload.name)
             video_path = upload_dir / source_name
             video_path.write_bytes(raw_content)
-            title = _safe_upload_stem(upload.name)
+            title = resolve_ingest_title(upload.name)
 
             if log_fn:
                 log_fn(f"Stored original video as {source_name}. Starting Whisper transcription.")

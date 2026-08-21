@@ -9,6 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
+from core.models import IngestedDocument
 from core.transcript_normalize import (
     TranscriptSegment,
     format_segment_line,
@@ -181,6 +182,39 @@ class VideoIngestPipelineTests(TestCase):
             self.assertIn("[", first_payload["text"])
             self.assertIn("Jesus", first_payload["text"])
             self.assertNotIn("subscribe", first_payload["text"].lower())
+            self.assertEqual(first_payload["title"], "faith_that_moves")
+
+    @patch("core.video_ingestion.resolve_ingest_title", return_value="Faith That Moves Mountains")
+    def test_ingest_numeric_vimeo_id_uses_resolved_title(self, _mock_title):
+        class FakeUpload:
+            name = "461937715.m4a"
+
+            def read(self):
+                return b"fake-audio-bytes"
+
+        segments = [
+            TranscriptSegment(0, 8, "The Bible says the word became flesh."),
+        ]
+        fake_embeddings = MagicMock()
+        fake_embeddings.embed_documents.side_effect = lambda chunks: [[0.1, 0.2]] * len(chunks)
+        fake_qdrant = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)), patch(
+                "core.video_ingestion.get_embeddings", return_value=fake_embeddings
+            ), patch("core.video_ingestion.QdrantClient", return_value=fake_qdrant), patch(
+                "core.video_ingestion.ensure_sermon_collection"
+            ):
+                result = ingest_video_files(
+                    [FakeUpload()],
+                    transcribe_fn=lambda _path: segments,
+                )
+
+            self.assertEqual(result.files_processed, 1)
+            doc = IngestedDocument.objects.get(source_name="461937715.m4a")
+            self.assertEqual(doc.title, "Faith That Moves Mountains")
+            sidecar = json.loads((Path(tmp) / "461937715.transcript.json").read_text(encoding="utf-8"))
+            self.assertEqual(sidecar["title"], "Faith That Moves Mountains")
 
     def test_ingest_m4a_audio_creates_timestamped_chunks(self):
         class FakeUpload:
