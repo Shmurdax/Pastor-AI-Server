@@ -129,7 +129,8 @@ class VimeoTitleAdminTests(TestCase):
         template = Path(__file__).resolve().parent / "templates" / "admin" / "core" / "ingested_videos.html"
         body = template.read_text(encoding="utf-8")
         self.assertIn("Apply Vimeo folder titles", body)
-        self.assertIn(DEFAULT_VIMEO_FOLDER_URL, body)
+        self.assertIn("vimeo_folder_url", body)
+        self.assertIn("vimeo_access_token", body)
 
     @patch("core.admin.apply_titles_from_vimeo_folder")
     def test_admin_dry_run_does_not_require_qdrant(self, mock_apply):
