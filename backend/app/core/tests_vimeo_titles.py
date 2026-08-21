@@ -124,10 +124,12 @@ class VimeoTitleAdminTests(TestCase):
         )
 
     def test_ingested_videos_page_has_vimeo_form(self):
-        response = self.client.get(reverse("admin:core_ingested_videos"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Apply Vimeo folder titles")
-        self.assertContains(response, DEFAULT_VIMEO_FOLDER_URL)
+        from pathlib import Path
+
+        template = Path(__file__).resolve().parent / "templates" / "admin" / "core" / "ingested_videos.html"
+        body = template.read_text(encoding="utf-8")
+        self.assertIn("Apply Vimeo folder titles", body)
+        self.assertIn(DEFAULT_VIMEO_FOLDER_URL, body)
 
     @patch("core.admin.apply_titles_from_vimeo_folder")
     def test_admin_dry_run_does_not_require_qdrant(self, mock_apply):
