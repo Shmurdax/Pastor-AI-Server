@@ -258,14 +258,16 @@ case "$TUNNEL" in
     fi
     ;;
   *)
-    command -v cloudflared >/dev/null || die "cloudflared not installed"
+    if ! ensure_cloudflared_binary; then
+      warn "Skipping Cloudflare tunnel — public hostname will return 1033 until cloudflared is installed"
+    else
     stop_screen cloudflared
     # Kill any leftover quick/named tunnel process so we don't keep an old URL.
     pkill -f 'cloudflared tunnel' 2>/dev/null || true
     : > "$LOG_DIR/cloudflared.log"
-    TOKEN_FILE="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-$WS/.cloudflared/tunnel.token}"
+    TOKEN_FILE="$(resolve_cloudflare_tunnel_token_file)"
     PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-christianaiapophatictestdomain.com}"
-    if [[ -f "$TOKEN_FILE" ]]; then
+    if [[ -n "${TOKEN_FILE}" && -f "$TOKEN_FILE" ]]; then
       # Named Cloudflare tunnel (custom domain) — preferred over quick tunnels.
       screen -dmS cloudflared bash -c \
         "cloudflared tunnel --no-autoupdate run --token \"\$(cat '${TOKEN_FILE}')\" >> '${LOG_DIR}/cloudflared.log' 2>&1"
@@ -287,6 +289,7 @@ case "$TUNNEL" in
       else
         warn "Cloudflare URL not ready — check ${LOG_DIR}/cloudflared.log"
       fi
+    fi
     fi
     ;;
 esac

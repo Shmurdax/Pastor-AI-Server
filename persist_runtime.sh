@@ -16,6 +16,9 @@ PERSIST_VIDEO_UPLOADS="${PERSIST_VIDEO_UPLOADS:-$PERSIST_ROOT/uploads/admin_vide
 PERSIST_PG_ROOT="${PERSIST_PG_ROOT:-$PERSIST_ROOT/postgres}"
 PERSIST_PG_DUMP="${PERSIST_PG_DUMP:-$PERSIST_PG_ROOT/ai_db.dump}"
 PERSIST_RESTORE_MARKER="${PERSIST_RESTORE_MARKER:-/var/lib/postgresql/.pastor_ai_restored}"
+PERSIST_CLOUDFLARED="${PERSIST_CLOUDFLARED:-$PERSIST_ROOT/bin/cloudflared}"
+WS_CLOUDFLARED="${WS_CLOUDFLARED:-/workspace/bin/cloudflared}"
+CLOUDFLARED_RELEASE_URL="${CLOUDFLARED_RELEASE_URL:-https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64}"
 
 detect_pg_version() {
   ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1
@@ -48,6 +51,62 @@ ensure_persistent_uploads() {
   fi
   ln -sfn "$PERSIST_VIDEO_UPLOADS" "$app_video_uploads"
   log "Ingested videos persist at $PERSIST_VIDEO_UPLOADS"
+}
+
+_copy_cloudflared_to() {
+  local src="$1" dest="$2"
+  mkdir -p "$(dirname "$dest")"
+  cp -f "$src" "$dest" && chmod +x "$dest"
+}
+
+# RunPod remigrations wipe /usr/local/bin. Keep a copy on the network volume and
+# restore/install before starting the named tunnel (otherwise Cloudflare 1033).
+ensure_cloudflared_binary() {
+  local dest="/usr/local/bin/cloudflared"
+  mkdir -p /usr/local/bin "$(dirname "$PERSIST_CLOUDFLARED")" /workspace/bin
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    if [[ -x "$PERSIST_CLOUDFLARED" ]]; then
+      _copy_cloudflared_to "$PERSIST_CLOUDFLARED" "$dest"
+      log "Restored cloudflared from $PERSIST_CLOUDFLARED"
+    elif [[ -x "$WS_CLOUDFLARED" ]]; then
+      _copy_cloudflared_to "$WS_CLOUDFLARED" "$dest"
+      log "Restored cloudflared from $WS_CLOUDFLARED"
+    else
+      warn "cloudflared missing — installing (required for the public Cloudflare hostname)"
+      if curl -fL --retry 3 --retry-delay 2 -o "$dest" "$CLOUDFLARED_RELEASE_URL"; then
+        chmod +x "$dest"
+        log "cloudflared installed"
+      else
+        warn "cloudflared download failed — named tunnel will not start (Cloudflare 1033)"
+        return 1
+      fi
+    fi
+  fi
+  local bin
+  bin="$(command -v cloudflared || true)"
+  [[ -n "$bin" ]] || return 1
+  _copy_cloudflared_to "$bin" "$PERSIST_CLOUDFLARED" 2>/dev/null || true
+  _copy_cloudflared_to "$bin" "$WS_CLOUDFLARED" 2>/dev/null || true
+  return 0
+}
+
+# Prints the tunnel token path. Mirrors the token onto the persistent volume so
+# a git-synced pastor-ai tree cannot lose it.
+resolve_cloudflare_tunnel_token_file() {
+  local ws_root="${WS:-/workspace/pastor-ai}"
+  local default_file="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-$ws_root/.cloudflared/tunnel.token}"
+  local persist_file="${PERSIST_ROOT}/.cloudflared/tunnel.token"
+  mkdir -p "$(dirname "$default_file")" "$(dirname "$persist_file")"
+  if [[ -s "$default_file" && ! -s "$persist_file" ]]; then
+    cp -f "$default_file" "$persist_file" || true
+  elif [[ ! -s "$default_file" && -s "$persist_file" ]]; then
+    cp -f "$persist_file" "$default_file" || true
+  fi
+  if [[ -s "$default_file" ]]; then
+    printf '%s\n' "$default_file"
+  elif [[ -s "$persist_file" ]]; then
+    printf '%s\n' "$persist_file"
+  fi
 }
 
 _pg_ready() {

@@ -212,12 +212,8 @@ if [[ "$USE_DOCKER" == "yes" || ( "$USE_DOCKER" == "auto" && "$FORCE_DOCKER" == 
   fi
 fi
 
-if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    -o /usr/local/bin/cloudflared
-  chmod +x /usr/local/bin/cloudflared
-  log "cloudflared installed"
-fi
+# cloudflared is installed later via ensure_cloudflared_binary (also copied onto
+# the persistent volume so RunPod remigrations do not cause Cloudflare 1033).
 
 if [[ ! -x "$QDRANT_BIN" ]]; then
   log "Downloading Qdrant binary..."
@@ -266,6 +262,7 @@ fi
 source "$REPO_ROOT/persist_runtime.sh"
 ensure_persistent_postgres || service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
 ensure_persistent_uploads
+ensure_cloudflared_binary || warn "cloudflared missing; public hostname will return 1033 until it is installed"
 sleep 2
 
 # ---------------------------------------------------------------------------
