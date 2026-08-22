@@ -243,6 +243,28 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getEmailNotificationMeta() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/staff/email-notification/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> sendEmailNotification({
+    required String subject,
+    required String body,
+  }) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/staff/email-notification/')),
+      headers: _headers(json: true),
+      body: jsonEncode({'subject': subject, 'body': body}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     throw Exception('HTTP ${res.statusCode}: ${res.body}');

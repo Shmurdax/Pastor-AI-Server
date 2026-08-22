@@ -271,3 +271,33 @@ _billing_mock_raw = os.environ.get("BILLING_MOCK_CHECKOUT", "") or _load_dotenv_
 )
 BILLING_MOCK_CHECKOUT = _billing_mock_raw.strip().lower()
 
+# Staff → all-account email notifications.
+# Configure SMTP in tokens.env / config.env for real delivery. When EMAIL_HOST is
+# empty, Django uses the console backend (prints messages; useful for local/dev).
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "") or _load_dotenv_value("EMAIL_HOST")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "") or _load_dotenv_value("EMAIL_PORT") or "587")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "") or _load_dotenv_value("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = (
+    os.environ.get("EMAIL_HOST_PASSWORD", "") or _load_dotenv_value("EMAIL_HOST_PASSWORD")
+)
+EMAIL_USE_TLS = (
+    os.environ.get("EMAIL_USE_TLS", "") or _load_dotenv_value("EMAIL_USE_TLS") or "true"
+).lower() in ("1", "true", "yes")
+EMAIL_USE_SSL = (
+    os.environ.get("EMAIL_USE_SSL", "") or _load_dotenv_value("EMAIL_USE_SSL") or "false"
+).lower() in ("1", "true", "yes")
+DEFAULT_FROM_EMAIL = (
+    os.environ.get("DEFAULT_FROM_EMAIL", "")
+    or _load_dotenv_value("DEFAULT_FROM_EMAIL")
+    or "Nordin's AI <info@thenordins.org>"
+)
+_email_backend_override = (
+    os.environ.get("EMAIL_BACKEND", "") or _load_dotenv_value("EMAIL_BACKEND")
+).strip()
+if _email_backend_override:
+    EMAIL_BACKEND = _email_backend_override
+elif EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+

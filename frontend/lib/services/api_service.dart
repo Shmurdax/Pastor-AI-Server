@@ -85,4 +85,13 @@ class ApiService {
       _apiClient.mockActivatePremium(billingPeriod: billingPeriod);
 
   Future<Map<String, dynamic>> cancelSubscription() => _apiClient.cancelSubscription();
+
+  Future<Map<String, dynamic>> getEmailNotificationMeta() =>
+      _apiClient.getEmailNotificationMeta();
+
+  Future<Map<String, dynamic>> sendEmailNotification({
+    required String subject,
+    required String body,
+  }) =>
+      _apiClient.sendEmailNotification(subject: subject, body: body);
 }

@@ -45,6 +45,8 @@ Open `/admin/` on the Django host. Default credentials (created automatically by
 
 Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed.
 
+**Staff → Email members:** signed-in staff can open their account chip and choose **Email members** to send a notification to every active account email. Configure SMTP with `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, and `DEFAULT_FROM_EMAIL` in `tokens.env` / `config.env` (see `tokens.env.example`). Without `EMAIL_HOST`, Django prints mail to the console.
+
 **Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
 **Video Ingestion** (alongside Document Ingestion in Django admin) accepts common video containers, transcribes them with OpenAI Whisper on CPU (timestamps kept for citation), then normalizes the script to drop fillers, channel CTAs, and isolated talk that is not about Christianity, the Bible, or social ideas and issues. Original videos persist at `/workspace/persistent/uploads/admin_video_ingestion`.

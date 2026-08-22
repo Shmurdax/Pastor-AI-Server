@@ -270,3 +270,119 @@ class CancelSubscriptionTests(TestCase):
         self.assertFalse(res.data["user"]["is_premium"])
         self.assertEqual(res.data["user"]["subscription_status"], "canceled")
         self.assertFalse(res.data["user"]["cancel_at_period_end"])
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class StaffEmailNotificationAPITests(TestCase):
+    def setUp(self):
+        from django.core import mail
+
+        mail.outbox.clear()
+        self.client = APIClient()
+        self.url = "/api/staff/email-notification/"
+        self.staff = User.objects.create_user(
+            username="pastor@church.org",
+            email="pastor@church.org",
+            password="StaffPass123!",
+            is_staff=True,
+        )
+        self.staff_token = Token.objects.create(user=self.staff).key
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+        )
+        self.member_token = Token.objects.create(user=self.member).key
+        User.objects.create_user(
+            username="other@church.org",
+            email="other@church.org",
+            password="OtherPass123!",
+        )
+        # Blank email but username is an address — still a recipient.
+        User.objects.create_user(
+            username="legacy@church.org",
+            email="",
+            password="LegacyPass123!",
+        )
+        # Inactive accounts are skipped.
+        User.objects.create_user(
+            username="gone@church.org",
+            email="gone@church.org",
+            password="GonePass123!",
+            is_active=False,
+        )
+
+    def test_non_staff_cannot_preview_or_send(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(
+            self.client.post(
+                self.url,
+                {"subject": "Hello", "body": "Body text for members."},
+                format="json",
+            ).status_code,
+            403,
+        )
+
+    def test_anonymous_cannot_send(self):
+        res = self.client.post(
+            self.url,
+            {"subject": "Hello", "body": "Body text for members."},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_staff_can_preview_recipient_count(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, 200)
+        # staff + member + other + legacy username email
+        self.assertEqual(res.data["recipient_count"], 4)
+        self.assertTrue(res.data["email_configured"])
+        self.assertIn("from_email", res.data)
+
+    def test_staff_sends_to_all_account_emails(self):
+        from django.core import mail
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.post(
+            self.url,
+            {
+                "subject": "Sunday update",
+                "body": "Join us this Sunday for worship and fellowship.",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["success"])
+        self.assertEqual(res.data["sent"], 4)
+        self.assertEqual(res.data["failed"], 0)
+        self.assertEqual(len(mail.outbox), 4)
+        recipients = {msg.to[0] for msg in mail.outbox}
+        self.assertEqual(
+            recipients,
+            {
+                "pastor@church.org",
+                "member@church.org",
+                "other@church.org",
+                "legacy@church.org",
+            },
+        )
+        self.assertNotIn("gone@church.org", recipients)
+        self.assertEqual(mail.outbox[0].subject, "Sunday update")
+        self.assertIn("Join us this Sunday", mail.outbox[0].body)
+
+    def test_blank_subject_or_body_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.post(
+            self.url,
+            {"subject": "  ", "body": "Hello"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        res = self.client.post(
+            self.url,
+            {"subject": "Hello", "body": ""},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)

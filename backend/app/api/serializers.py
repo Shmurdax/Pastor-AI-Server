@@ -204,3 +204,22 @@ class ChurchEventWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"ends_at": "End time must be after start time."})
         return attrs
 
+
+class StaffEmailNotificationSerializer(serializers.Serializer):
+    """Staff compose form for broadcasting to every account email."""
+
+    subject = serializers.CharField(max_length=200)
+    body = serializers.CharField(max_length=10000)
+
+    def validate_subject(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Subject is required.")
+        return value
+
+    def validate_body(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Message body is required.")
+        return value
+

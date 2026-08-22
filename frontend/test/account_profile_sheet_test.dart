@@ -53,6 +53,45 @@ void main() {
       tester.getTopLeft(find.text('Media library')).dy,
       lessThan(tester.getTopLeft(find.text('View plans')).dy),
     );
+    expect(find.text('Email members'), findsNothing);
+  });
+
+  testWidgets('staff profile sheet shows Email members', (tester) async {
+    final auth = AuthController();
+    auth.user = const AuthUser(
+      id: '2',
+      email: 'pastor@test.com',
+      name: 'Pastor Don',
+      isStaff: true,
+      isPremium: true,
+      subscriptionStatus: 'free',
+    );
+    auth.token = 'staff-token';
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AuthController>.value(
+        value: auth,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAccountProfileSheet(
+                  context,
+                  apiService: ApiService(),
+                ),
+                child: const Text('Open profile'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Prayer inbox'), findsOneWidget);
+    expect(find.text('Email members'), findsOneWidget);
   });
 
   testWidgets('account chip is visible for a signed-in user', (tester) async {

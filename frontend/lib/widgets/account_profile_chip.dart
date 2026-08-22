@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/screens/email_notification_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -210,6 +211,27 @@ Future<void> showAccountProfileSheet(
                       },
                       icon: const Icon(Icons.volunteer_activism_outlined),
                       label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _navy,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => EmailNotificationScreen(apiService: apiService),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.mail_outline),
+                      label: Text('Email members', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: _navy,
                         padding: const EdgeInsets.symmetric(vertical: 14),

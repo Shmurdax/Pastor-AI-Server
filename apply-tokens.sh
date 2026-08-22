@@ -73,6 +73,14 @@ upsert STRIPE_PRICE_MONTHLY "${STRIPE_PRICE_MONTHLY:-}"
 upsert STRIPE_PRICE_YEARLY "${STRIPE_PRICE_YEARLY:-}"
 upsert PUBLIC_APP_URL "${PUBLIC_APP_URL:-}"
 upsert BILLING_MOCK_CHECKOUT "${BILLING_MOCK_CHECKOUT:-}"
+upsert EMAIL_HOST "${EMAIL_HOST:-}"
+upsert EMAIL_PORT "${EMAIL_PORT:-}"
+upsert EMAIL_HOST_USER "${EMAIL_HOST_USER:-}"
+upsert EMAIL_HOST_PASSWORD "${EMAIL_HOST_PASSWORD:-}"
+upsert EMAIL_USE_TLS "${EMAIL_USE_TLS:-}"
+upsert EMAIL_USE_SSL "${EMAIL_USE_SSL:-}"
+upsert EMAIL_BACKEND "${EMAIL_BACKEND:-}"
+upsert DEFAULT_FROM_EMAIL "${DEFAULT_FROM_EMAIL:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then

@@ -3,6 +3,7 @@
 Chat / public prayer POST live in core.views (production vLLM + Qdrant stack).
 """
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -10,11 +11,17 @@ from rest_framework.views import APIView
 
 from core.models import PrayerRequest, ChurchEvent
 
+from .email_notifications import (
+    account_recipient_emails,
+    email_delivery_configured,
+    send_account_notification,
+)
 from .serializers import (
     ChurchEventSerializer,
     ChurchEventWriteSerializer,
     PrayerRequestSerializer,
     PrayerRequestStaffUpdateSerializer,
+    StaffEmailNotificationSerializer,
 )
 
 
@@ -91,3 +98,54 @@ class PrayerRequestDetailAPI(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(PrayerRequestSerializer(prayer).data)
+
+
+class StaffEmailNotificationAPI(APIView):
+    """GET/POST /api/staff/email-notification/ — staff broadcast to all accounts."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request):
+        recipients = account_recipient_emails()
+        return Response(
+            {
+                "recipient_count": len(recipients),
+                "from_email": settings.DEFAULT_FROM_EMAIL,
+                "email_configured": email_delivery_configured(),
+            }
+        )
+
+    def post(self, request):
+        serializer = StaffEmailNotificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = send_account_notification(
+                subject=serializer.validated_data["subject"],
+                body=serializer.validated_data["body"],
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response(
+                {"detail": f"Could not send email: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(
+            {
+                "success": result["success"],
+                "sent": result["sent"],
+                "failed": result["failed"],
+                "recipient_count": result["recipient_count"],
+                "from_email": result["from_email"],
+                "message": (
+                    f"Sent to {result['sent']} account"
+                    f"{'' if result['sent'] == 1 else 's'}."
+                    if result["failed"] == 0
+                    else (
+                        f"Sent to {result['sent']} of {result['recipient_count']} "
+                        f"accounts; {result['failed']} failed."
+                    )
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
