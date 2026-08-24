@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
@@ -30,6 +32,8 @@ class _NordinsAiNavMenuState extends State<NordinsAiNavMenu> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10.0),
       child: MenuAnchor(
@@ -50,17 +54,17 @@ class _NordinsAiNavMenuState extends State<NordinsAiNavMenu> {
         ),
         menuChildren: [
           _MenuRow(
-            label: 'Chat',
+            label: s.chat,
             icon: Icons.chat_bubble_outline,
             onPressed: widget.onAiHome,
           ),
           _MenuRow(
-            label: 'Media',
+            label: s.media,
             icon: Icons.video_library_outlined,
             onPressed: widget.onMedia,
           ),
           _MenuRow(
-            label: 'Subscribe',
+            label: s.subscribe,
             icon: Icons.workspace_premium_outlined,
             onPressed: widget.onSubscribe,
           ),
@@ -90,7 +94,7 @@ class _NordinsAiNavMenuState extends State<NordinsAiNavMenu> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          "NORDIN'S AI",
+                          s.nordinsAi,
                           style: TextStyle(
                             fontFamily: 'Times New Roman',
                             color: widget.textColor,

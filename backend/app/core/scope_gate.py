@@ -90,13 +90,16 @@ def query_in_scope(llm, user_query_llm: str) -> bool:
     return parsed
 
 
-def generate_out_of_scope_reply(llm, user_query_llm: str) -> str:
+def generate_out_of_scope_reply(llm, user_query_llm: str, language: str = "en") -> str:
     """Ask the model to write a natural decline; do not use a precomposed stock reply."""
     from langchain_core.prompts import ChatPromptTemplate
 
+    from .chat_language import language_reply_instruction
+
+    system = f"{_OUT_OF_SCOPE_REPLY_SYSTEM}\n\n{language_reply_instruction(language)}"
     reply_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", _OUT_OF_SCOPE_REPLY_SYSTEM),
+            ("system", system),
             ("human", "{question}"),
         ]
     )

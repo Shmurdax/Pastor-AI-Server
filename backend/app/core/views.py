@@ -26,6 +26,7 @@ from qdrant_client import QdrantClient
 # Import the model
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest
+from .chat_language import language_reply_instruction, normalize_chat_language
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
@@ -409,6 +410,9 @@ class ChatAPIView(APIView):
         client_session_id = request.data.get("session_id", "default_user")
         session_id = _scoped_session_id(request, client_session_id)
         regenerate = bool(request.data.get("regenerate", False))
+        chat_language = normalize_chat_language(
+            request.data.get("language") or request.data.get("locale")
+        )
         chat_user = request.user if getattr(request.user, "is_authenticated", False) else None
 
         if not raw_query:
@@ -442,7 +446,9 @@ class ChatAPIView(APIView):
                 )
 
             if not query_in_scope(llm, user_query_llm):
-                out_of_scope_reply = generate_out_of_scope_reply(llm, user_query_llm)
+                out_of_scope_reply = generate_out_of_scope_reply(
+                    llm, user_query_llm, language=chat_language
+                )
                 if regenerate and target_message:
                     target_message.ai_response = out_of_scope_reply
                     if chat_user and target_message.user_id is None:
@@ -595,8 +601,11 @@ class ChatAPIView(APIView):
                 "pastoral counseling, and share the Nordins' contact information when that would help them take the "
                 "next step.\n"
                 "</safety_protocol>\n\n"
-
-                "REFERENCE NOTES:\n{context}"
+            )
+            system_content = (
+                system_content
+                + language_reply_instruction(chat_language)
+                + "\nREFERENCE NOTES:\n{context}"
             )
 
             # Fill context first, then shrink history/notes so prompt+completion fit the 4096 window.

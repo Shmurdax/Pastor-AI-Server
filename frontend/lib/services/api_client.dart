@@ -39,6 +39,7 @@ class ApiClient {
     required String query,
     required String sessionId,
     bool regenerate = false,
+    String language = 'en',
   }) async {
     final res = await _client.post(
       Uri.parse(_resolveUrl('/api/chat/')),
@@ -47,6 +48,7 @@ class ApiClient {
         'query': query,
         'session_id': sessionId,
         'regenerate': regenerate,
+        'language': language,
       }),
     );
     _ensureOk(res);

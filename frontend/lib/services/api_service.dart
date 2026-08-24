@@ -13,11 +13,13 @@ class ApiService {
     String query,
     String sessionId, {
     bool regenerate = false,
+    String language = 'en',
   }) async {
     return _apiClient.chat(
       query: query,
       sessionId: sessionId,
       regenerate: regenerate,
+      language: language,
     );
   }
 
