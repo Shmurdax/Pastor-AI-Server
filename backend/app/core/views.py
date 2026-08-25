@@ -27,6 +27,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest
 from .chat_language import language_reply_instruction, normalize_chat_language
+from .chat_translate import translate_texts
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
@@ -659,6 +660,52 @@ class ChatAPIView(APIView):
             logger.exception("Error in Memory-RAG loop: %s", str(e))
             return Response({"error": "I encountered a processing error while generating this answer. Please retry."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class TranslateAPIView(APIView):
+    """POST /api/translate/ — retranslate visible AI replies when the UI language changes."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [AllowAny]
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        auth_error = _require_api_key(request)
+        if auth_error:
+            return auth_error
+
+        language = normalize_chat_language(
+            request.data.get("language") or request.data.get("locale")
+        )
+        texts = request.data.get("texts")
+        if texts is None and request.data.get("text") is not None:
+            texts = [request.data.get("text")]
+        if not isinstance(texts, list) or not texts:
+            return Response(
+                {"error": "Provide texts: [..] or text"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(texts) > 40:
+            return Response(
+                {"error": "Too many texts (max 40)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            translated = translate_texts(texts, language)
+        except Exception:
+            logger.exception("TranslateAPIView failed")
+            return Response(
+                {"error": "Translation failed. Please retry."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(
+            {"texts": translated, "language": language},
+            status=status.HTTP_200_OK,
+        )
 
 
 class PrayerRequestAPIView(APIView):

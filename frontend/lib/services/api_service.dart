@@ -23,6 +23,13 @@ class ApiService {
     );
   }
 
+  Future<List<String>> translateTexts({
+    required List<String> texts,
+    required String language,
+  }) {
+    return _apiClient.translateTexts(texts: texts, language: language);
+  }
+
   Future<Map<String, dynamic>> getIngestedDocuments({
     int limit = 1000,
     String? match,

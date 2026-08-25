@@ -99,6 +99,14 @@ class LocaleController extends ChangeNotifier {
       if (saved != null && saved.isNotEmpty) {
         _language = appLanguageByCode(saved);
       }
+      // URL wins for local/manual testing: ?lang=es or ?language=es
+      final fromUrl = Uri.base.queryParameters['lang'] ??
+          Uri.base.queryParameters['language'];
+      if (fromUrl != null && fromUrl.trim().isNotEmpty) {
+        final next = appLanguageByCode(fromUrl);
+        _language = next;
+        await prefs.setString(_prefsKey, next.code);
+      }
     } catch (e) {
       debugPrint('LocaleController.load failed: $e');
     } finally {

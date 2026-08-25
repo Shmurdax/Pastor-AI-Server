@@ -73,6 +73,7 @@ class AppStrings {
   String get signIn => _t('signIn');
   String signedInAs(String name) => _t('signedInAs').replaceAll('{name}', name);
   String get signedOut => _t('signedOut');
+  String get translatingReplies => _t('translatingReplies');
 
   String _t(String key) {
     final table = _tables[languageCode] ?? _tables['en']!;
@@ -151,6 +152,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': 'Sign in',
     'signedInAs': 'Signed in as {name}',
     'signedOut': 'Signed out',
+    'translatingReplies': 'Updating replies to the selected language…',
   },
   'es': {
     'home': 'Inicio',
@@ -224,6 +226,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': 'Iniciar sesión',
     'signedInAs': 'Sesión iniciada como {name}',
     'signedOut': 'Sesión cerrada',
+    'translatingReplies': 'Actualizando respuestas al idioma seleccionado…',
   },
   'fr': {
     'home': 'Accueil',
@@ -297,6 +300,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': 'Se connecter',
     'signedInAs': 'Connecté en tant que {name}',
     'signedOut': 'Déconnecté',
+    'translatingReplies': 'Mise à jour des réponses vers la langue choisie…',
   },
   'pt': {
     'home': 'Início',
@@ -370,6 +374,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': 'Entrar',
     'signedInAs': 'Conectado como {name}',
     'signedOut': 'Sessão encerrada',
+    'translatingReplies': 'Atualizando respostas para o idioma selecionado…',
   },
   'de': {
     'home': 'Startseite',
@@ -443,6 +448,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': 'Anmelden',
     'signedInAs': 'Angemeldet als {name}',
     'signedOut': 'Abgemeldet',
+    'translatingReplies': 'Antworten werden in die gewählte Sprache aktualisiert…',
   },
   'ko': {
     'home': '홈',
@@ -507,6 +513,7 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': '로그인',
     'signedInAs': '{name}(으)로 로그인됨',
     'signedOut': '로그아웃됨',
+    'translatingReplies': '선택한 언어로 답변을 업데이트하는 중…',
   },
   'zh': {
     'home': '首页',
@@ -571,5 +578,6 @@ const Map<String, Map<String, String>> _tables = {
     'signIn': '登录',
     'signedInAs': '已以 {name} 登录',
     'signedOut': '已退出登录',
+    'translatingReplies': '正在将回复更新为所选语言…',
   },
 };

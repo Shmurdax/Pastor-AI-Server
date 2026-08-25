@@ -130,6 +130,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   AppStrings get _s => context.read<LocaleController>().strings;
   String get _languageCode => context.read<LocaleController>().languageCode;
+  String? _appliedLanguageCode;
+  bool _translatingThread = false;
+  LocaleController? _localeListener;
 
   // State
   final List<Map<String, dynamic>> _messages = [];
@@ -215,7 +218,78 @@ final bibleRefRegex = RegExp(
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _syncAuthState();
       await _handleBillingReturn();
+      if (!mounted) return;
+      _localeListener = context.read<LocaleController>();
+      _appliedLanguageCode = _localeListener!.languageCode;
+      _localeListener!.addListener(_onLocaleChanged);
     });
+  }
+
+  void _onLocaleChanged() {
+    if (!mounted || _localeListener == null) return;
+    final next = _localeListener!.languageCode;
+    if (next == _appliedLanguageCode) return;
+    _appliedLanguageCode = next;
+    _retranslateThreadForLanguage(next);
+  }
+
+  String _messageDisplayText(Map<String, dynamic> msg) {
+    final key = msg['localKey'] as String?;
+    if (key == 'responseCancelled') return _s.responseCancelled;
+    if (key == 'serverError') return _s.serverError;
+    return (msg['text'] as String?) ?? '';
+  }
+
+  Future<void> _retranslateThreadForLanguage(String language) async {
+    if (_translatingThread || !mounted) return;
+
+    // Local system bubbles update immediately via localKey + setState.
+    var touchedLocal = false;
+    for (final msg in _messages) {
+      if (msg['role'] == 'ai' && msg['localKey'] is String) {
+        touchedLocal = true;
+        break;
+      }
+    }
+    if (touchedLocal) setState(() {});
+
+    final aiIndexes = <int>[];
+    final texts = <String>[];
+    for (var i = 0; i < _messages.length; i++) {
+      final msg = _messages[i];
+      if (msg['role'] != 'ai') continue;
+      if (msg['localKey'] is String) continue;
+      final text = (msg['text'] as String?)?.trim() ?? '';
+      if (text.isEmpty) continue;
+      aiIndexes.add(i);
+      texts.add(text);
+    }
+    if (texts.isEmpty) return;
+
+    setState(() => _translatingThread = true);
+    try {
+      final translated = await _apiService.translateTexts(
+        texts: texts,
+        language: language,
+      );
+      if (!mounted || language != _languageCode) return;
+      setState(() {
+        for (var i = 0; i < aiIndexes.length; i++) {
+          if (i >= translated.length) break;
+          final next = translated[i].trim();
+          if (next.isEmpty) continue;
+          _messages[aiIndexes[i]] = {
+            ..._messages[aiIndexes[i]],
+            'text': _boldBibleReferences(next),
+          };
+        }
+      });
+      await _persistChatHistory();
+    } catch (e) {
+      debugPrint('Thread retranslate failed: $e');
+    } finally {
+      if (mounted) setState(() => _translatingThread = false);
+    }
   }
 
   /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
@@ -494,6 +568,7 @@ final bibleRefRegex = RegExp(
 
   @override
   void dispose() {
+    _localeListener?.removeListener(_onLocaleChanged);
     if (ChatNavActions.openEvents == _openChurchEvents) {
       ChatNavActions.openEvents = null;
     }
@@ -865,7 +940,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
     setState(() {
       _isLoading = false;
       _activeClient = null;
-      _messages.add({"role": "ai", "text": _s.responseCancelled});
+      _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
     });
     _scrollToBottom();
   }
@@ -886,6 +961,8 @@ Future<void> _sendMessage() async {
 }
 
   void _regenerateResponse(int index) {
+    if (index <= 0 || index >= _messages.length) return;
+    if (_messages[index]['localKey'] is String) return;
     final userMessage = _messages[index - 1];
     if (userMessage["role"] != "user") return;
     final prompt = userMessage["text"] as String;
@@ -946,7 +1023,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     await _persistChatHistory();
   } catch (e) {
     if (_activeClient != null) {
-      setState(() => _messages.add({"role": "ai", "text": _s.serverError}));
+      setState(() => _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError}));
       _scrollToBottom();
     }
   } finally {
@@ -1836,6 +1913,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               ),
             ),
           ),
+        if (_translatingThread)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              _s.translatingReplies,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
+            ),
+          ),
         _buildInputArea(isMobile),
       ],
     );
@@ -1868,7 +1954,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MarkdownBody(
-            data: msg["text"],
+            data: _messageDisplayText(msg),
             styleSheet: MarkdownStyleSheet(
               p: GoogleFonts.figtree(
                 fontSize: 15, 
@@ -1889,7 +1975,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 _buildActionButton(
                   icon: Icons.copy_rounded,
                   tooltip: _s.copyToClipboard,
-                  onTap: () => _copyToClipboard(msg["text"]),
+                  onTap: () => _copyToClipboard(_messageDisplayText(msg)),
                 ),
                 
                 // The Regenerate button only appears if this is the latest AI message
