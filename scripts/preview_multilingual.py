@@ -108,14 +108,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in {"/api/chat/", "/chat/"}:
             lang = normalize_language(body.get("language") or body.get("locale"))
-            query = (body.get("query") or "").strip()
-            answer = REPLY_BY_LANG[lang]
-            if query:
-                answer = f"{answer}\n\n> {query}"
+            # Do not echo the user query back in the answer — markdown ">" quotes
+            # render as a blue blockquote in the Flutter chat bubble.
             self._json(
                 200,
                 {
-                    "answer": answer,
+                    "answer": REPLY_BY_LANG[lang],
                     "sources": SAMPLE_SOURCES,
                     "language": lang,
                 },
@@ -129,23 +127,9 @@ class Handler(BaseHTTPRequestHandler):
                 texts = [body.get("text")]
             if not isinstance(texts, list):
                 texts = []
-            # Preview mock: swap to the canned reply for the target language when
-            # the source looks like one of our preview replies; otherwise tag it.
-            out = []
-            for t in texts:
-                src = str(t or "")
-                matched = False
-                for sample in REPLY_BY_LANG.values():
-                    if sample in src or src in sample:
-                        # Keep any trailing quoted user question after the canned body.
-                        suffix = ""
-                        if "\n\n>" in src:
-                            suffix = src[src.index("\n\n>") :]
-                        out.append(REPLY_BY_LANG[lang] + suffix)
-                        matched = True
-                        break
-                if not matched:
-                    out.append(REPLY_BY_LANG[lang] if not src.strip() else f"{REPLY_BY_LANG[lang]}\n\n> {src.strip()[:200]}")
+            # Preview mock: return the canned reply for the target language.
+            # Never append the original text as a markdown quote.
+            out = [REPLY_BY_LANG[lang] for _ in texts]
             self._json(200, {"texts": out, "language": lang})
             return
 

@@ -17,6 +17,7 @@ _TRANSLATE_SYSTEM = (
     "- Keep Bible references and NKJV Scripture quotations in English (including text inside "
     "quotation marks that is clearly Scripture).\n"
     "- Do not add commentary, preface, or labels—return only the translated reply.\n"
+    "- Do not echo or restate the user's question as a markdown blockquote or heading.\n"
     "- Keep the same pastoral tone and meaning.\n"
 )
 
