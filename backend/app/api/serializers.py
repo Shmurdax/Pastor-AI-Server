@@ -2,7 +2,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from core.models import PrayerRequest, ChurchEvent
+from core.models import PrayerRequest, ChurchEvent, ResponseReport
+
+from .models import MediaVideo
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -166,6 +168,57 @@ class PrayerRequestStaffUpdateSerializer(serializers.ModelSerializer):
         fields = ["followed_up", "pastor_notes", "contacted_at"]
 
 
+class ResponseReportSerializer(serializers.ModelSerializer):
+    reason_label = serializers.CharField(source="get_reason_display", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    reporter_email = serializers.SerializerMethodField()
+    reporter_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ResponseReport
+        fields = [
+            "id",
+            "chat_message_id",
+            "user_query_snapshot",
+            "ai_response_snapshot",
+            "reason",
+            "reason_label",
+            "details",
+            "session_id",
+            "status",
+            "status_label",
+            "staff_notes",
+            "created_at",
+            "reviewed_at",
+            "reporter_email",
+            "reporter_name",
+        ]
+        read_only_fields = fields
+
+    def get_reporter_email(self, obj):
+        if obj.user_id is None:
+            return None
+        return obj.user.email
+
+    def get_reporter_name(self, obj):
+        if obj.user_id is None:
+            return None
+        full = obj.user.get_full_name()
+        return full or obj.user.username
+
+
+class ResponseReportStaffUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ResponseReport
+        fields = ["status", "staff_notes"]
+
+    def validate_status(self, value):
+        allowed = {c.value for c in ResponseReport.Status}
+        if value not in allowed:
+            raise serializers.ValidationError("Invalid status.")
+        return value
+
+
 class ChurchEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChurchEvent
@@ -203,4 +256,27 @@ class ChurchEventWriteSerializer(serializers.ModelSerializer):
         if starts and ends and ends < starts:
             raise serializers.ValidationError({"ends_at": "End time must be after start time."})
         return attrs
+
+
+class MediaVideoSerializer(serializers.ModelSerializer):
+    """Shaped for Flutter MediaItem.fromJson()."""
+
+    duration_label = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = MediaVideo
+        fields = [
+            "id",
+            "vimeo_id",
+            "privacy_hash",
+            "title",
+            "description",
+            "published_at",
+            "duration_seconds",
+            "duration_label",
+            "thumbnail_url",
+            "access_tier",
+            "is_published",
+        ]
+        read_only_fields = fields
 

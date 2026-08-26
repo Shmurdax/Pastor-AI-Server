@@ -28,6 +28,7 @@ from .models import (
     IngestionJobLog,
     PrayerRequest,
     ChurchEvent,
+    ResponseReport,
 )
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
 from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
@@ -980,6 +981,75 @@ class PrayerRequestAdmin(admin.ModelAdmin):
             return '—'
         label = obj.user.get_full_name() or obj.user.username
         return format_html('{} &lt;{}&gt;', label, obj.user.email)
+
+
+@admin.register(ResponseReport)
+class ResponseReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "reason",
+        "status",
+        "created_at",
+        "response_preview",
+        "reporter_label",
+    )
+    list_filter = ("reason", "status", "created_at")
+    search_fields = (
+        "user_query_snapshot",
+        "ai_response_snapshot",
+        "details",
+        "staff_notes",
+        "session_id",
+    )
+    date_hierarchy = "created_at"
+    list_editable = ("status",)
+    readonly_fields = (
+        "chat_message",
+        "user_query_snapshot",
+        "ai_response_snapshot",
+        "session_id",
+        "user",
+        "created_at",
+        "reviewed_at",
+    )
+    fieldsets = (
+        (
+            "Report",
+            {
+                "fields": ("reason", "details", "status", "staff_notes", "reviewed_at"),
+            },
+        ),
+        (
+            "Reported content",
+            {
+                "fields": (
+                    "chat_message",
+                    "user_query_snapshot",
+                    "ai_response_snapshot",
+                ),
+            },
+        ),
+        (
+            "Meta",
+            {
+                "classes": ("collapse",),
+                "fields": ("session_id", "user", "created_at"),
+            },
+        ),
+    )
+
+    @admin.display(description="AI response preview")
+    def response_preview(self, obj):
+        text = (obj.ai_response_snapshot or "").replace("\n", " ").strip()
+        if len(text) > 80:
+            text = f"{text[:77]}..."
+        return text or "—"
+
+    @admin.display(description="Reporter")
+    def reporter_label(self, obj):
+        if obj.user_id is None:
+            return "Guest"
+        return obj.user.get_full_name() or obj.user.username or obj.user.email
 
 
 @admin.register(ChurchEvent)

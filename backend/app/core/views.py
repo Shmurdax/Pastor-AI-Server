@@ -25,7 +25,7 @@ from qdrant_client import QdrantClient
 
 # Import the model
 from .embeddings_utils import get_embeddings
-from .models import ChatMessage, IngestedDocument, PrayerRequest
+from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
@@ -443,6 +443,7 @@ class ChatAPIView(APIView):
 
             if not query_in_scope(llm, user_query_llm):
                 out_of_scope_reply = generate_out_of_scope_reply(llm, user_query_llm)
+                saved_message = None
                 if regenerate and target_message:
                     target_message.ai_response = out_of_scope_reply
                     if chat_user and target_message.user_id is None:
@@ -450,18 +451,18 @@ class ChatAPIView(APIView):
                         target_message.save(update_fields=["ai_response", "user"])
                     else:
                         target_message.save(update_fields=["ai_response"])
+                    saved_message = target_message
                 elif not regenerate:
-                    ChatMessage.objects.create(
+                    saved_message = ChatMessage.objects.create(
                         session_id=session_id,
                         user=chat_user,
                         user_query=user_query_stored,
                         ai_response=out_of_scope_reply,
                     )
-                return Response(
-                    {"answer": out_of_scope_reply, "sources": []},
-                    status=status.HTTP_200_OK,
-                )
-
+                payload = {"answer": out_of_scope_reply, "sources": []}
+                if saved_message is not None:
+                    payload["message_id"] = saved_message.id
+                return Response(payload, status=status.HTTP_200_OK)
             # 1. SETUP: Vector store (skipped when scope gate refuses — saves Qdrant + embedding work)
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
@@ -630,8 +631,9 @@ class ChatAPIView(APIView):
                     target_message.save(update_fields=["ai_response", "user"])
                 else:
                     target_message.save(update_fields=["ai_response"])
+                saved_message = target_message
             else:
-                ChatMessage.objects.create(
+                saved_message = ChatMessage.objects.create(
                     session_id=session_id,
                     user=chat_user,
                     user_query=user_query_stored,
@@ -645,6 +647,7 @@ class ChatAPIView(APIView):
             return Response({
                 "answer": response.content,
                 "sources": unique_sources if docs else [],
+                "message_id": saved_message.id,
             }, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception("Error in Memory-RAG loop: %s", str(e))
@@ -722,3 +725,109 @@ class PrayerRequestAPIView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class ResponseReportAPIView(APIView):
+    """GET/POST /api/response-reports/ — public submit + staff inbox list."""
+
+    renderer_classes = [JSONRenderer]
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAdminUser
+
+        if self.request.method == "GET":
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+    def get(self, request):
+        from api.serializers import ResponseReportSerializer
+
+        qs = ResponseReport.objects.select_related("user", "chat_message").all()
+        status_filter = (request.query_params.get("status") or "").strip().lower()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        data = ResponseReportSerializer(qs, many=True).data
+        return Response({"results": data})
+
+    def post(self, request):
+        auth_error = _require_api_key(request)
+        if auth_error:
+            return auth_error
+
+        try:
+            message_id = int(request.data.get("message_id"))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "message_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = (request.data.get("reason") or "").strip()
+        valid_reasons = {c.value for c in ResponseReport.Reason}
+        if reason not in valid_reasons:
+            return Response(
+                {
+                    "detail": "Invalid reason.",
+                    "allowed": sorted(valid_reasons),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        details = (request.data.get("details") or "").strip()
+        if len(details) > 2000:
+            return Response(
+                {"detail": "details must be 2000 characters or fewer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = ChatMessage.objects.filter(pk=message_id).first()
+        if message is None:
+            return Response(
+                {"detail": "Chat message not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        client_session_id = request.data.get("session_id") or ""
+        session_id = (
+            _scoped_session_id(request, client_session_id)
+            if str(client_session_id).strip()
+            else message.session_id
+        )
+
+        existing = ResponseReport.objects.filter(
+            chat_message=message,
+            session_id=session_id,
+            status=ResponseReport.Status.NEW,
+        ).first()
+        if existing is not None:
+            return Response(
+                {
+                    "success": True,
+                    "id": existing.id,
+                    "message": "Report already submitted for this response.",
+                    "already_reported": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        user = request.user if getattr(request.user, "is_authenticated", False) else None
+        report = ResponseReport.objects.create(
+            chat_message=message,
+            user_query_snapshot=message.user_query,
+            ai_response_snapshot=message.ai_response,
+            reason=reason,
+            details=details,
+            session_id=session_id,
+            user=user,
+        )
+
+        return Response(
+            {
+                "success": True,
+                "id": report.id,
+                "message": "Report received. Thank you.",
+                "already_reported": False,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+

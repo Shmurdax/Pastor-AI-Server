@@ -18,13 +18,20 @@ from api.billing_views import (
     MockActivatePremiumView,
     StripeWebhookView,
 )
-from api.views import ChurchEventDetailAPI, ChurchEventListCreateAPI, PrayerRequestDetailAPI
+from api.views import (
+    ChurchEventDetailAPI,
+    ChurchEventListCreateAPI,
+    MediaVideoListAPI,
+    PrayerRequestDetailAPI,
+    ResponseReportDetailAPI,
+)
 from core.views import (
     ChatAPIView,
     IngestedDocumentsAPIView,
     IngestedDocumentFileAPIView,
     SermonPdfByNameAPIView,
     PrayerRequestAPIView,
+    ResponseReportAPIView,
 )
 from .frontend import serve_frontend
 
@@ -50,8 +57,11 @@ urlpatterns = [
     path('api/chat/', ChatAPIView.as_view(), name='chat_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
     path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view(), name='prayer_request_detail_api'),
+    path('api/response-reports/', ResponseReportAPIView.as_view(), name='response_reports_api'),
+    path('api/response-reports/<int:pk>/', ResponseReportDetailAPI.as_view(), name='response_report_detail_api'),
     path('api/church-events/', ChurchEventListCreateAPI.as_view(), name='church_events_api'),
     path('api/church-events/<int:pk>/', ChurchEventDetailAPI.as_view(), name='church_event_detail_api'),
+    path('api/media/', MediaVideoListAPI.as_view(), name='media_list_api'),
     path('api/ingested-documents/', IngestedDocumentsAPIView.as_view(), name='ingested_documents_api'),
     path('api/ingested-documents/<int:document_id>/file/', IngestedDocumentFileAPIView.as_view(), name='ingested_document_file_api'),
     # Backward-compatible route for existing Flutter builds that open /sermons/<name>.pdf directly.

@@ -73,6 +73,11 @@ upsert STRIPE_PRICE_MONTHLY "${STRIPE_PRICE_MONTHLY:-}"
 upsert STRIPE_PRICE_YEARLY "${STRIPE_PRICE_YEARLY:-}"
 upsert PUBLIC_APP_URL "${PUBLIC_APP_URL:-}"
 upsert BILLING_MOCK_CHECKOUT "${BILLING_MOCK_CHECKOUT:-}"
+upsert VIMEO_ACCESS_TOKEN "${VIMEO_ACCESS_TOKEN:-}"
+upsert VIMEO_FOLDER_ID "${VIMEO_FOLDER_ID:-}"
+upsert VIMEO_USER_ID "${VIMEO_USER_ID:-}"
+upsert VIMEO_SHOWCASE_ID "${VIMEO_SHOWCASE_ID:-}"
+upsert VIMEO_FREE_PREVIEW_ID "${VIMEO_FREE_PREVIEW_ID:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then

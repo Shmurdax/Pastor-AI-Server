@@ -66,3 +66,53 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Profile({self.user.username})"
+
+
+class MediaVideo(models.Model):
+    """Daily Devotional video synced from a Vimeo Folder."""
+
+    class AccessTier(models.TextChoices):
+        FREE_PREVIEW = "free_preview", "Free preview"
+        PREMIUM = "premium", "Premium"
+
+    vimeo_id = models.CharField(max_length=64, unique=True, db_index=True)
+    privacy_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Unlisted privacy hash from Vimeo URI (/videos/{id}:{hash}).",
+    )
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True, default="")
+    published_at = models.DateTimeField(db_index=True)
+    duration_seconds = models.PositiveIntegerField(default=0)
+    thumbnail_url = models.URLField(blank=True, default="")
+    access_tier = models.CharField(
+        max_length=32,
+        choices=AccessTier.choices,
+        default=AccessTier.PREMIUM,
+        db_index=True,
+    )
+    access_tier_manual = models.BooleanField(
+        default=False,
+        help_text="If set, Vimeo sync will not overwrite access_tier.",
+    )
+    is_published = models.BooleanField(default=True, db_index=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-published_at", "title"]
+
+    def __str__(self):
+        return f"{self.title} ({self.vimeo_id})"
+
+    @property
+    def duration_label(self) -> str:
+        total = int(self.duration_seconds or 0)
+        minutes, seconds = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes}:{seconds:02d}"
