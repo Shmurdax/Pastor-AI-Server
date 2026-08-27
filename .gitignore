@@ -16,6 +16,7 @@ postgres_data/
 uploads/
 storage/
 public_url.txt
+.cloudflared/
 .docker/
 .history/
 .vscode/

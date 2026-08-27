@@ -22,8 +22,9 @@
 #   Qwen2.5-14B-Instruct-AWQ + Christian LoRA, Django, Cloudflare tunnel,
 #   sermon RAG ingest into Qdrant collection sermon_brain
 #
-# After pod restart:
-#   bash /workspace/pastor-ai/start.sh
+# After pod restart (set this as the RunPod container start command):
+#   bash /workspace/pastor-ai/onboot.sh
+# Or: bash /workspace/pastor-ai/start.sh
 # =============================================================================
 set -euo pipefail
 
@@ -212,12 +213,8 @@ if [[ "$USE_DOCKER" == "yes" || ( "$USE_DOCKER" == "auto" && "$FORCE_DOCKER" == 
   fi
 fi
 
-if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    -o /usr/local/bin/cloudflared
-  chmod +x /usr/local/bin/cloudflared
-  log "cloudflared installed"
-fi
+# cloudflared is installed later via ensure_cloudflared_binary (also copied onto
+# the persistent volume so RunPod remigrations do not cause Cloudflare 1033).
 
 if [[ ! -x "$QDRANT_BIN" ]]; then
   log "Downloading Qdrant binary..."
@@ -246,6 +243,7 @@ cp -a "$REPO_ROOT/persist_runtime.sh" "$WS/persist_runtime.sh"
 cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
+[[ -f "$REPO_ROOT/onboot.sh" ]] && cp -a "$REPO_ROOT/onboot.sh" "$WS/onboot.sh"
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 chmod +x "$WS"/*.sh
@@ -266,6 +264,14 @@ fi
 source "$REPO_ROOT/persist_runtime.sh"
 ensure_persistent_postgres || service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
 ensure_persistent_uploads
+ensure_cloudflared_binary || warn "cloudflared missing; public hostname will return 1033 until it is installed"
+# Restore the named-tunnel token from /workspace/persistent after remigration.
+resolve_cloudflare_tunnel_token_file >/dev/null || true
+if [[ -f "$WS/onboot.sh" ]]; then
+  mkdir -p "$PERSIST_ROOT"
+  cp -a "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+  chmod +x "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+fi
 sleep 2
 
 # ---------------------------------------------------------------------------
@@ -418,6 +424,7 @@ date -Iseconds > "$MARKER"
 section "Install complete"
 echo "Workspace: $WS"
 echo "Public URL: $(cat "$WS/public_url.txt" 2>/dev/null || echo '(see start.sh / cloudflared)')"
-echo "After restart: bash $WS/start.sh"
+echo "After restart: bash $WS/onboot.sh  (or bash $WS/start.sh)"
+echo "RunPod start command: bash /workspace/pastor-ai/onboot.sh"
 echo "Update tokens:  nano $WS/tokens.env && bash $WS/apply-tokens.sh --restart"
 log "Done $(date -Iseconds)"
