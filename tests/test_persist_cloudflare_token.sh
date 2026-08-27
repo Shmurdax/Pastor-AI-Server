@@ -45,4 +45,11 @@ rm -f "$WS/.cloudflared/tunnel.token" "$PERSIST_ROOT/.cloudflared/tunnel.token"
 got="$(resolve_cloudflare_tunnel_token_file || true)"
 [[ -z "$got" ]] || fail "expected empty path when token is missing, got $got"
 
+# 5) Restore logs must not pollute stdout (start.sh captures the path).
+printf 'live-token-abc\n' > "$PERSIST_ROOT/.cloudflared/tunnel.token"
+rm -f "$WS/.cloudflared/tunnel.token"
+log() { echo "LOG-MUST-NOT-APPEAR $*"; }
+got="$(resolve_cloudflare_tunnel_token_file)"
+[[ "$got" == "$WS/.cloudflared/tunnel.token" ]] || fail "stdout polluted or wrong path: $got"
+
 echo "OK persist Cloudflare tunnel token remigration"

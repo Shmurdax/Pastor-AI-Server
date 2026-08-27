@@ -153,7 +153,8 @@ resolve_cloudflare_tunnel_token_file() {
   fi
   if [[ -z "$token" && -s "$persist_file" ]]; then
     token="$(_trim_tunnel_token "$(cat "$persist_file")")"
-    log "Restored Cloudflare tunnel token from $persist_file"
+    # stdout is the token path (captured by start.sh); keep restore notes on stderr.
+    echo "[✔] Restored Cloudflare tunnel token from $persist_file" >&2
   fi
   if [[ -z "$token" ]]; then
     return 0
