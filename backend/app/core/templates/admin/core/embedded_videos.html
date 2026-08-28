@@ -66,7 +66,11 @@
         </td>
         <td>
           {% if video.has_transcript %}
-            {{ video.transcript_segment_count }} line{{ video.transcript_segment_count|pluralize }}
+            {% if video.transcript_segment_count %}
+              {{ video.transcript_segment_count }} line{{ video.transcript_segment_count|pluralize }}
+            {% else %}
+              Available
+            {% endif %}
           {% else %}
             No transcript yet
           {% endif %}

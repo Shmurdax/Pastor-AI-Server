@@ -191,8 +191,11 @@ def _build_embedded_video(
 ) -> EmbeddedVideo:
     media_path = find_media_for_vimeo_id(vimeo_id, upload_dir)
     sidecar_path = find_sidecar_for_vimeo_id(vimeo_id, upload_dir, media_path)
-    payload = load_sidecar_payload(sidecar_path) if sidecar_path else None
-    segments = segments_from_sidecar_payload(payload) if payload else []
+    payload = None
+    segments: list[TranscriptSegmentView] = []
+    if include_segments and sidecar_path:
+        payload = load_sidecar_payload(sidecar_path)
+        segments = segments_from_sidecar_payload(payload) if payload else []
     document = documents.get(vimeo_id)
     sidecar_title = str(payload.get("title") or "").strip() if payload else ""
     document_title = (document.title or "").strip() if document else ""
@@ -212,6 +215,7 @@ def _build_embedded_video(
         source_name = document.source_name
     elif media_path:
         source_name = media_path.name
+    has_transcript = bool(segments) if include_segments else sidecar_path is not None
     video = EmbeddedVideo(
         vimeo_id=vimeo_id,
         watch_url=vimeo_watch_url(vimeo_id),
@@ -220,14 +224,14 @@ def _build_embedded_video(
         source_name=source_name,
         media_name=media_path.name if media_path else None,
         has_media=media_path is not None,
-        has_transcript=bool(segments),
+        has_transcript=has_transcript,
         transcript_segment_count=len(segments),
         featured=featured,
         document_title=document_title or None,
         sidecar_title=sidecar_title or None,
         whisper_model=str(payload.get("whisper_model") or "") or None if payload else None,
-        transcript_source=sidecar_path.name if sidecar_path and segments else None,
-        segments=segments if include_segments else [],
+        transcript_source=sidecar_path.name if sidecar_path and has_transcript else None,
+        segments=segments,
     )
     return video
 
@@ -269,8 +273,9 @@ def get_embedded_video(vimeo_id: str, upload_dir: Optional[Path] = None) -> Opti
     root = (upload_dir or admin_video_ingestion_dir()).resolve()
     featured_ids = {item["vimeo_id"] for item in FEATURED_VIMEO_VIDEOS if item.get("vimeo_id")}
     documents = _documents_by_vimeo_id()
-    known_ids = {item.vimeo_id for item in list_embedded_videos(root)}
-    if parsed not in known_ids and parsed not in featured_ids:
+    media_path = find_media_for_vimeo_id(parsed, root)
+    sidecar_path = find_sidecar_for_vimeo_id(parsed, root, media_path)
+    if parsed not in featured_ids and parsed not in documents and media_path is None and sidecar_path is None:
         return None
     return _build_embedded_video(
         parsed,
