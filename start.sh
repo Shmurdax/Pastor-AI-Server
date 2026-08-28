@@ -188,6 +188,7 @@ if ! vllm_healthy; then
     export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
     export HF_TOKEN='${HF_TOK}' &&
     export HF_HUB_ENABLE_HF_TRANSFER=0 &&
+    export FLASHINFER_DISABLE_VERSION_CHECK=1 &&
     python -m vllm.entrypoints.openai.api_server \
       --model '${BASE_MODEL}' \
       --served-model-name '${SERVED_NAME}' \
