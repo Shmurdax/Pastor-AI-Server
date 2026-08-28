@@ -6,9 +6,10 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    # Keep manage.py / background ingestion off the GPU (vLLM owns VRAM).
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    os.environ.setdefault("EMBEDDING_DEVICE", "cpu")
+    from pastor_ai.gpu_env import apply_hide_gpu
+
+    # Gunicorn/migrate stay off the GPU. Video ingest worker keeps CUDA for Whisper.
+    apply_hide_gpu(argv=sys.argv)
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pastor_ai.settings")
     try:
         from django.core.management import execute_from_command_line

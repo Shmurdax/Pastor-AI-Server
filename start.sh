@@ -43,6 +43,21 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/persist_runtime.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/gpu_runtime.sh"
+gpu_detect
+if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
+  log "GPU: ${GPU_NAME:-unknown} compute_cap=${GPU_COMPUTE_CAP:-?} MIG=${GPU_MIG_UUID:-none} ${GPU_MIG_GB:+${GPU_MIG_GB}GB}"
+fi
+if [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
+  WHISPER_DEVICE=cpu
+elif [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
+  case "${WHISPER_DEVICE:-auto}" in
+    cpu|auto|gpu|"") WHISPER_DEVICE=cuda ;;
+  esac
+else
+  WHISPER_DEVICE="${WHISPER_DEVICE:-cpu}"
+fi
 
 stop_screen() { screen -S "$1" -X quit 2>/dev/null || true; }
 
@@ -119,8 +134,9 @@ fi
 # vLLM
 if ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
-  FREE_MIB="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || echo 0)"
-  if [[ "${FREE_MIB:-0}" -lt 8000 ]]; then
+  gpu_ensure_vllm_stack
+  FREE_MIB="$(gpu_free_mib || true)"
+  if [[ -n "${FREE_MIB}" && "${FREE_MIB}" -lt 8000 ]]; then
     warn "GPU has only ${FREE_MIB:-?} MiB free (need ~8GB+). Ghost VRAM from dead host processes?"
     warn "In RunPod: Stop this pod fully → wait 30s → Start again, then re-run start.sh"
   fi
@@ -135,17 +151,33 @@ if ! vllm_healthy; then
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
   MAX_LEN="${VLLM_MAX_MODEL_LEN:-4096}"
-  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
+  DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
+  if [[ -z "$GPU_UTIL" ]]; then
+    GPU_UTIL="$DEFAULT_UTIL"
+  elif [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]] && awk "BEGIN{exit !($GPU_UTIL > $DEFAULT_UTIL)}"; then
+    log "Capping vLLM gpu-memory-utilization at ${DEFAULT_UTIL} for 24GB MIG (Whisper headroom)"
+    GPU_UTIL="$DEFAULT_UTIL"
+  fi
+  CUDA_DEV_EXPORT=""
+  if [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
+    CUDA_DEV_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}' &&"
+  fi
+  ENFORCE_EAGER=""
+  if [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
+    ENFORCE_EAGER="--enforce-eager"
+  fi
   LORA_ARGS=""
   if [[ -f "$LORA_DIR/adapter_model.safetensors" ]]; then
     LORA_ARGS="--enable-lora --lora-modules ${SERVED_NAME}=${LORA_DIR} --max-lora-rank 16"
-    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}'"
+    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}' util=${GPU_UTIL}"
   else
     BASE_MODEL="${SERVED_NAME}"
     warn "LoRA missing at $LORA_DIR — starting base/model id only: $BASE_MODEL"
   fi
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
+    ${CUDA_DEV_EXPORT}
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
     export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
     export HF_TOKEN='${HF_TOK}' &&
@@ -159,6 +191,7 @@ if ! vllm_healthy; then
       --max-model-len ${MAX_LEN} \
       --gpu-memory-utilization ${GPU_UTIL} \
       --trust-remote-code \
+      ${ENFORCE_EAGER} \
       >> '${LOG_DIR}/vllm.log' 2>&1
   "
   log "vLLM starting on :${VLLM_PORT} (first load downloads model — check ${LOG_DIR}/vllm.log)"
@@ -220,8 +253,7 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
-  # Hide GPUs from Django only — vLLM keeps the GPU in its own screen.
-  # Prevents MiniLM embeddings from CUDA-OOM during admin ingestion.
+  # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
@@ -229,7 +261,7 @@ screen -dmS django bash -c "
   export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
   export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}' &&
   export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
-  export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}' &&
+  export WHISPER_DEVICE='cpu' &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   python manage.py migrate --noinput &&
@@ -242,14 +274,23 @@ curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJ
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
 
 # Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
+# On GPU pods Whisper uses leftover MIG VRAM; MiniLM embeddings stay on CPU.
 stop_screen video-ingest
+VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES=''"
+if [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
+  VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}'"
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=1"
+else
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+fi
 screen -dmS video-ingest bash -c "
   set -a
   source '${CONFIG_ENV}'
   set +a
   source '${VENV_DIR}/bin/activate'
   cd '${APP_DIR}'
-  export CUDA_VISIBLE_DEVICES=''
+  ${VIDEO_ALLOW_GPU}
+  ${VIDEO_CUDA_EXPORT}
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
@@ -258,7 +299,7 @@ screen -dmS video-ingest bash -c "
   export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}'
   export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
   export WHISPER_MODEL='${WHISPER_MODEL:-base}'
-  export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}'
+  export WHISPER_DEVICE='${WHISPER_DEVICE}'
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
   export PYTHONUNBUFFERED=1

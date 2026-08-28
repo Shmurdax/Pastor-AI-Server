@@ -1,9 +1,10 @@
 """
 Shared embedding helpers.
 
-vLLM owns nearly all GPU VRAM on the RunPod host. Sentence-Transformers /
-MiniLM must stay on CPU for both chat retrieval and admin ingestion, or
-embedding calls raise CUDA OOM and ingestion jobs fail mid-batch.
+vLLM owns most GPU VRAM on the RunPod host (including 24GB MIG slices).
+Sentence-Transformers / MiniLM stay on CPU for chat retrieval and Django
+admin ingestion so they cannot CUDA-OOM against the chat model. Whisper
+transcription runs in a separate worker that may use leftover CUDA.
 """
 from __future__ import annotations
 

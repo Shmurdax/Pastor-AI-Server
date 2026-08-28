@@ -18,7 +18,8 @@
 #
 # What this installs (native path — default, works on RunPod):
 #   apt packages, Docker + NVIDIA Container Toolkit (best-effort),
-#   PostgreSQL, Qdrant, Python venv, torch cu128, vLLM 0.8.5,
+#   PostgreSQL, Qdrant, Python venv, torch (cu128 or cu129 Blackwell),
+#   vLLM 0.8.5 on Ada/Hopper or vLLM >=0.11 on Blackwell sm_120,
 #   Qwen2.5-14B-Instruct-AWQ + Christian LoRA, Django, Cloudflare tunnel,
 #   sermon RAG ingest into Qdrant collection sermon_brain
 #
@@ -240,6 +241,7 @@ rsync -a --delete --exclude='.git' \
   "$REPO_ROOT/frontend/" "$FRONTEND_DIR/"
 cp -a "$REPO_ROOT/start.sh" "$WS/start.sh"
 cp -a "$REPO_ROOT/persist_runtime.sh" "$WS/persist_runtime.sh"
+cp -a "$REPO_ROOT/gpu_runtime.sh" "$WS/gpu_runtime.sh"
 cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
@@ -320,6 +322,9 @@ QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
 INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
 VIDEO_INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_video_ingestion
+WHISPER_MODEL=base
+WHISPER_DEVICE=auto
+WHISPER_CACHE_DIR=/workspace/persistent/whisper
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
@@ -357,16 +362,11 @@ pip install -q --upgrade pip
 if [[ -f "$APP_DIR/requirements.txt" ]]; then
   pip install -q --cache-dir "$PIP_CACHE_DIR" -r "$APP_DIR/requirements.txt"
 fi
-pip install -q --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
-pip install -q --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1" "huggingface_hub>=0.30.0,<1.0"
-if ! python -c "import vllm" 2>/dev/null; then
-  log "Installing vLLM 0.8.5 (CUDA 12.x)..."
-  pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.8.5" \
-    || pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.7.3" \
-    || die "vLLM install failed"
-fi
-pip install -q --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1"
+# shellcheck disable=SC1091
+source "$REPO_ROOT/gpu_runtime.sh"
+gpu_detect
+gpu_ensure_vllm_stack
+pip install -q --cache-dir "$PIP_CACHE_DIR" "huggingface_hub>=0.30.0,<1.0"
 pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
 pip install -q --cache-dir "$PIP_CACHE_DIR" hf_transfer 2>/dev/null || true
 log "Python env ready: torch $(python -c 'import torch; print(torch.__version__)') vllm $(python -c 'import vllm; print(vllm.__version__)')"
