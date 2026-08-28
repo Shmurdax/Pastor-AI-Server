@@ -27,12 +27,10 @@
     border-radius: 6px;
     overflow: hidden;
   }
-  .embedded-player-frame iframe {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    border: 0;
+  .embedded-player-help {
+    margin: 8px 0 0;
+    font-size: 12px;
+    opacity: 0.85;
   }
   .embedded-transcript {
     border: 1px solid var(--hairline-color, #ddd);
@@ -125,11 +123,17 @@
         <iframe
           id="embedded-vimeo-player"
           src="{{ video.embed_src }}"
-          allow="autoplay; fullscreen; picture-in-picture; clipboard-write"
+          allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+          referrerpolicy="strict-origin-when-cross-origin"
           allowfullscreen
           title="Vimeo player for {{ video.vimeo_id }}"
         ></iframe>
       </div>
+      <p class="embedded-player-help">
+        If Vimeo blocks playback here, allow this admin site in the video’s embed privacy settings,
+        or
+        <a href="{{ video.watch_url }}" target="_blank" rel="noopener">open the video on Vimeo</a>.
+      </p>
     </div>
     <aside class="embedded-transcript" id="embedded-transcript">
       <h2>Transcript</h2>
