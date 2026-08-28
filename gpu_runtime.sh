@@ -174,16 +174,6 @@ gpu_install_vllm_stack() {
   export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
   export TMPDIR="${TMPDIR:-/workspace/tmp}"
   mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
-gpu_install_vllm_stack() {
-  local py pip_bin index extra
-  [[ -n "${VENV_DIR:-}" && -x "${VENV_DIR}/bin/pip" ]] || die "venv missing at ${VENV_DIR:-unset}"
-  pip_bin="${VENV_DIR}/bin/pip"
-  py="${VENV_DIR}/bin/python"
-  index="$(gpu_torch_index_url)"
-  extra=("--extra-index-url" "$index")
-  export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
-  export TMPDIR="${TMPDIR:-/workspace/tmp}"
-  mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
   if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
     log "Installing vLLM + PyTorch CUDA 12.9+ for Blackwell (sm_120)"
     "$pip_bin" uninstall -y torch torchvision torchaudio torchcodec vllm 2>/dev/null || true
@@ -200,6 +190,7 @@ gpu_install_vllm_stack() {
       || die "vLLM install failed"
     "$pip_bin" install --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1" || true
   fi
+  gpu_export_cuda_libs
   "$pip_bin" uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
   log "Python GPU stack: torch $($py -c 'import torch; print(torch.__version__)') vllm $($py -c 'import vllm; print(vllm.__version__)')"
 }
