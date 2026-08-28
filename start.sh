@@ -169,7 +169,14 @@ if ! vllm_healthy; then
     CUDA_LD_EXPORT="export LD_LIBRARY_PATH='${LD_LIBRARY_PATH}' &&"
   fi
   ENFORCE_EAGER=""
-  if [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
+  ATTN_EXPORT=""
+  if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
+    # FlashInfer 0.6.x treats sm_120 as below sm75 and aborts graph capture.
+    ATTN_EXPORT="export VLLM_ATTENTION_BACKEND='${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}' &&"
+    if [[ "${VLLM_ENFORCE_EAGER:-1}" != "0" ]]; then
+      ENFORCE_EAGER="--enforce-eager"
+    fi
+  elif [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
     ENFORCE_EAGER="--enforce-eager"
   fi
   LORA_ARGS=""
@@ -184,6 +191,7 @@ if ! vllm_healthy; then
     source '${VENV_DIR}/bin/activate' &&
     ${CUDA_DEV_EXPORT}
     ${CUDA_LD_EXPORT}
+    ${ATTN_EXPORT}
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
     export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
     export HF_TOKEN='${HF_TOK}' &&
