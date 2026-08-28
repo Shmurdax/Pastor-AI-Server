@@ -106,14 +106,44 @@ gpu_cuda13_lib_dir() {
   py="$(gpu_venv_python)" || return 0
   "$py" - <<'PY'
 import pathlib
+import sys
+
+def find_lib(root: pathlib.Path):
+    direct = root / "cu13" / "lib" / "libcudart.so.13"
+    if direct.exists():
+        return direct.parent
+    try:
+        for path in root.rglob("libcudart.so.13"):
+            return path.parent
+    except OSError:
+        return None
+    return None
+
+roots = []
 try:
     import nvidia
+    if getattr(nvidia, "__file__", None):
+        roots.append(pathlib.Path(nvidia.__file__).resolve().parent)
+    for entry in getattr(nvidia, "__path__", []) or []:
+        roots.append(pathlib.Path(entry))
 except Exception:
-    raise SystemExit(0)
-root = pathlib.Path(nvidia.__file__).resolve().parent
-for path in root.rglob("libcudart.so.13"):
-    print(path.parent)
-    break
+    pass
+for sp in sys.path:
+    if sp:
+        roots.append(pathlib.Path(sp) / "nvidia")
+seen = set()
+for root in roots:
+    try:
+        root = root.resolve()
+    except Exception:
+        continue
+    if root in seen or not root.exists():
+        continue
+    seen.add(root)
+    found = find_lib(root)
+    if found:
+        print(found)
+        break
 PY
 }
 
