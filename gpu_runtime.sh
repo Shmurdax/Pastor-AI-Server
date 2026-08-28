@@ -101,6 +101,30 @@ gpu_venv_python() {
   fi
 }
 
+gpu_cuda13_lib_dir() {
+  local py
+  py="$(gpu_venv_python)" || return 0
+  "$py" - <<'PY'
+import pathlib
+try:
+    import nvidia
+except Exception:
+    raise SystemExit(0)
+root = pathlib.Path(nvidia.__file__).resolve().parent
+for path in root.rglob("libcudart.so.13"):
+    print(path.parent)
+    break
+PY
+}
+
+gpu_export_cuda_libs() {
+  local dir
+  dir="$(gpu_cuda13_lib_dir || true)"
+  if [[ -n "${dir:-}" && -d "$dir" ]]; then
+    export LD_LIBRARY_PATH="${dir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  fi
+}
+
 gpu_torch_supports_device() {
   local py
   py="$(gpu_venv_python)" || return 1
@@ -150,6 +174,16 @@ gpu_install_vllm_stack() {
   export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
   export TMPDIR="${TMPDIR:-/workspace/tmp}"
   mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
+gpu_install_vllm_stack() {
+  local py pip_bin index extra
+  [[ -n "${VENV_DIR:-}" && -x "${VENV_DIR}/bin/pip" ]] || die "venv missing at ${VENV_DIR:-unset}"
+  pip_bin="${VENV_DIR}/bin/pip"
+  py="${VENV_DIR}/bin/python"
+  index="$(gpu_torch_index_url)"
+  extra=("--extra-index-url" "$index")
+  export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
+  export TMPDIR="${TMPDIR:-/workspace/tmp}"
+  mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
   if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
     log "Installing vLLM + PyTorch CUDA 12.9+ for Blackwell (sm_120)"
     "$pip_bin" uninstall -y torch torchvision torchaudio torchcodec vllm 2>/dev/null || true
@@ -157,6 +191,7 @@ gpu_install_vllm_stack() {
     "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" "vllm>=0.11" "${extra[@]}" \
       || "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" vllm --extra-index-url https://download.pytorch.org/whl/cu128 \
       || die "vLLM install failed for Blackwell"
+    gpu_export_cuda_libs
   else
     log "Installing PyTorch CUDA 12.8 + vLLM 0.8.5"
     "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url "$index"

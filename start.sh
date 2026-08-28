@@ -163,6 +163,11 @@ if ! vllm_healthy; then
   if [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
     CUDA_DEV_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}' &&"
   fi
+  gpu_export_cuda_libs
+  CUDA_LD_EXPORT=""
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    CUDA_LD_EXPORT="export LD_LIBRARY_PATH='${LD_LIBRARY_PATH}' &&"
+  fi
   ENFORCE_EAGER=""
   if [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
     ENFORCE_EAGER="--enforce-eager"
@@ -178,6 +183,7 @@ if ! vllm_healthy; then
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
     ${CUDA_DEV_EXPORT}
+    ${CUDA_LD_EXPORT}
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
     export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
     export HF_TOKEN='${HF_TOK}' &&
