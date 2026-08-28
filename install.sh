@@ -24,8 +24,7 @@
 #   sermon RAG ingest into Qdrant collection sermon_brain
 #
 # After pod restart (set this as the RunPod container start command):
-#   bash /workspace/pastor-ai/onboot.sh
-# Or: bash /workspace/pastor-ai/start.sh
+#   bash /workspace/pastor-ai/onboot.sh || bash /workspace/persistent/onboot.sh
 # =============================================================================
 set -euo pipefail
 
@@ -275,8 +274,10 @@ ensure_cloudflared_binary || warn "cloudflared missing; public hostname will ret
 resolve_cloudflare_tunnel_token_file >/dev/null || true
 if [[ -f "$WS/onboot.sh" ]]; then
   mkdir -p "$PERSIST_ROOT"
-  cp -a "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
-  chmod +x "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+  ensure_persistent_boot_bundle || {
+    cp -a "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+    chmod +x "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+  }
 fi
 sleep 2
 
@@ -429,7 +430,7 @@ date -Iseconds > "$MARKER"
 section "Install complete"
 echo "Workspace: $WS"
 echo "Public URL: $(cat "$WS/public_url.txt" 2>/dev/null || echo '(see start.sh / cloudflared)')"
-echo "After restart: bash $WS/onboot.sh  (or bash $WS/start.sh)"
-echo "RunPod start command: bash /workspace/pastor-ai/onboot.sh"
+echo "After restart: bash $WS/onboot.sh || bash /workspace/persistent/onboot.sh"
+echo "RunPod start command: bash /workspace/pastor-ai/onboot.sh || bash /workspace/persistent/onboot.sh"
 echo "Update tokens:  nano $WS/tokens.env && bash $WS/apply-tokens.sh --restart"
 log "Done $(date -Iseconds)"

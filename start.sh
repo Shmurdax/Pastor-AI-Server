@@ -43,6 +43,9 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/persist_runtime.sh"
+restore_workspace_from_persist || true
+ensure_persistent_boot_bundle || true
+ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
 gpu_detect

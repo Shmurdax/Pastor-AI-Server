@@ -23,6 +23,21 @@ PERSIST_CLOUDFLARED="${PERSIST_CLOUDFLARED:-$PERSIST_ROOT/bin/cloudflared}"
 WS_CLOUDFLARED="${WS_CLOUDFLARED:-/workspace/bin/cloudflared}"
 CLOUDFLARED_RELEASE_URL="${CLOUDFLARED_RELEASE_URL:-https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64}"
 PERSIST_TUNNEL_TOKEN="${PERSIST_TUNNEL_TOKEN:-$PERSIST_ROOT/.cloudflared/tunnel.token}"
+PERSIST_BOOT="${PERSIST_BOOT:-$PERSIST_ROOT/boot}"
+PERSIST_CONFIG="${PERSIST_CONFIG:-$PERSIST_ROOT/config.env}"
+PERSIST_TOKENS="${PERSIST_TOKENS:-$PERSIST_ROOT/tokens.env}"
+PERSIST_QDRANT_BIN="${PERSIST_QDRANT_BIN:-$PERSIST_ROOT/bin/qdrant}"
+WS_QDRANT_BIN="${WS_QDRANT_BIN:-${QDRANT_BIN:-/workspace/bin/qdrant}}"
+QDRANT_RELEASE_URL="${QDRANT_RELEASE_URL:-https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz}"
+SEED_INGEST_DUMP="${SEED_INGEST_DUMP:-${WS:-/workspace/pastor-ai}/seed/ingested_catalog.dump}"
+PERSIST_BOOT_SCRIPTS=(
+  onboot.sh
+  start.sh
+  persist_runtime.sh
+  gpu_runtime.sh
+  apply-tokens.sh
+  install.sh
+)
 
 detect_pg_version() {
   ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1
@@ -269,6 +284,147 @@ _restore_persistent_postgres() {
   fi
   warn "pg_restore did not recreate core_ingesteddocument — dump left untouched for retry"
   return 1
+}
+
+# Data-only catalog from git (no users, sessions, chat, or tokens). Used when a
+# new network volume has no /workspace/persistent/postgres/ai_db.dump yet.
+# Requires Django migrations to have created the tables first.
+restore_seed_ingested_catalog() {
+  local seed="${SEED_INGEST_DUMP:-}"
+  local persist_seed="${PERSIST_PG_ROOT}/ingested_catalog.dump"
+  if [[ ! -s "$seed" && -s "$persist_seed" ]]; then
+    seed="$persist_seed"
+  fi
+  if [[ -s "$seed" && ! -s "$persist_seed" ]]; then
+    mkdir -p "$PERSIST_PG_ROOT"
+    cp -f "$seed" "$persist_seed" 2>/dev/null || true
+    chmod a+r "$persist_seed" 2>/dev/null || true
+  fi
+  [[ -s "$seed" ]] || return 0
+  _pg_ready || return 0
+  local live_count
+  live_count="$(_pg_doc_count || true)"
+  if [[ -n "$live_count" && "$live_count" != "0" ]]; then
+    return 0
+  fi
+  local user="${POSTGRES_USER:-pastor}"
+  local db="${POSTGRES_DB:-ai_db}"
+  log "Restoring ingested catalog seed from $seed"
+  su -s /bin/bash postgres -c "pg_restore --no-owner --role='${user}' --data-only --disable-triggers -d '${db}' '${seed}'" \
+    >/dev/null 2>&1 || true
+  live_count="$(_pg_doc_count || true)"
+  if [[ -n "$live_count" && "$live_count" != "0" ]]; then
+    log "Restored ingested catalog seed (${live_count} documents)"
+    return 0
+  fi
+  warn "Seed catalog restore did not load core_ingesteddocument"
+  return 1
+}
+
+_copy_secret_file() {
+  local src="$1" dest="$2"
+  [[ -s "$src" ]] || return 1
+  mkdir -p "$(dirname "$dest")"
+  cp -f "$src" "$dest"
+  chmod 600 "$dest" 2>/dev/null || true
+}
+
+# Mirror config/tokens onto the network volume. Never print file contents.
+mirror_runtime_secrets() {
+  local ws_root="${WS:-/workspace/pastor-ai}"
+  if [[ -s "$ws_root/config.env" ]]; then
+    _copy_secret_file "$ws_root/config.env" "$PERSIST_CONFIG" || true
+  fi
+  if [[ -s "$ws_root/tokens.env" ]]; then
+    _copy_secret_file "$ws_root/tokens.env" "$PERSIST_TOKENS" || true
+  fi
+}
+
+ensure_persistent_boot_bundle() {
+  local ws_root="${WS:-/workspace/pastor-ai}"
+  mkdir -p "$PERSIST_BOOT" "$(dirname "$PERSIST_QDRANT_BIN")"
+  local name src
+  for name in "${PERSIST_BOOT_SCRIPTS[@]}"; do
+    src="$ws_root/$name"
+    if [[ -f "$src" ]]; then
+      cp -a "$src" "$PERSIST_BOOT/$name"
+      chmod +x "$PERSIST_BOOT/$name" 2>/dev/null || true
+    fi
+  done
+  if [[ -f "$ws_root/onboot.sh" ]]; then
+    cp -a "$ws_root/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+    chmod +x "$PERSIST_ROOT/onboot.sh" 2>/dev/null || true
+  elif [[ -f "$PERSIST_BOOT/onboot.sh" ]]; then
+    cp -a "$PERSIST_BOOT/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+    chmod +x "$PERSIST_ROOT/onboot.sh" 2>/dev/null || true
+  fi
+  if [[ -s "$ws_root/seed/ingested_catalog.dump" ]]; then
+    mkdir -p "$PERSIST_PG_ROOT"
+    cp -f "$ws_root/seed/ingested_catalog.dump" "$PERSIST_PG_ROOT/ingested_catalog.dump" 2>/dev/null || true
+  fi
+  mirror_runtime_secrets
+  if [[ -x "${WS_QDRANT_BIN}" ]]; then
+    cp -f "${WS_QDRANT_BIN}" "$PERSIST_QDRANT_BIN" 2>/dev/null || true
+    chmod +x "$PERSIST_QDRANT_BIN" 2>/dev/null || true
+  fi
+}
+
+restore_workspace_from_persist() {
+  local ws_root="${WS:-/workspace/pastor-ai}"
+  mkdir -p "$ws_root"
+  local name
+  for name in "${PERSIST_BOOT_SCRIPTS[@]}"; do
+    if [[ ! -f "$ws_root/$name" && -f "$PERSIST_BOOT/$name" ]]; then
+      cp -a "$PERSIST_BOOT/$name" "$ws_root/$name"
+      chmod +x "$ws_root/$name" 2>/dev/null || true
+      log "Restored $name from $PERSIST_BOOT"
+    fi
+  done
+  if [[ ! -s "$ws_root/config.env" && -s "$PERSIST_CONFIG" ]]; then
+    _copy_secret_file "$PERSIST_CONFIG" "$ws_root/config.env" || true
+    log "Restored config.env from persistent volume"
+  fi
+  if [[ ! -s "$ws_root/tokens.env" && -s "$PERSIST_TOKENS" ]]; then
+    _copy_secret_file "$PERSIST_TOKENS" "$ws_root/tokens.env" || true
+    log "Restored tokens.env from persistent volume"
+  fi
+  if [[ ! -s "$ws_root/seed/ingested_catalog.dump" && -s "$PERSIST_PG_ROOT/ingested_catalog.dump" ]]; then
+    mkdir -p "$ws_root/seed"
+    cp -f "$PERSIST_PG_ROOT/ingested_catalog.dump" "$ws_root/seed/ingested_catalog.dump" 2>/dev/null || true
+  fi
+}
+
+ensure_qdrant_binary() {
+  local dest="${WS_QDRANT_BIN}"
+  mkdir -p "$(dirname "$dest")" "$(dirname "$PERSIST_QDRANT_BIN")"
+  if [[ ! -x "$dest" ]]; then
+    if [[ -x "$PERSIST_QDRANT_BIN" ]]; then
+      cp -f "$PERSIST_QDRANT_BIN" "$dest"
+      chmod +x "$dest"
+      log "Restored qdrant from $PERSIST_QDRANT_BIN"
+    else
+      warn "qdrant missing — downloading"
+      local tmp
+      tmp="$(mktemp -d)"
+      if curl -fL --retry 3 --retry-delay 2 -o "$tmp/qdrant.tgz" "$QDRANT_RELEASE_URL"; then
+        tar -xzf "$tmp/qdrant.tgz" -C "$tmp"
+        if [[ -f "$tmp/qdrant" ]]; then
+          mv -f "$tmp/qdrant" "$dest"
+          chmod +x "$dest"
+          log "qdrant installed"
+        else
+          warn "qdrant archive missing binary"
+        fi
+      else
+        warn "qdrant download failed"
+      fi
+      rm -rf "$tmp"
+    fi
+  fi
+  [[ -x "$dest" ]] || return 1
+  cp -f "$dest" "$PERSIST_QDRANT_BIN" 2>/dev/null || true
+  chmod +x "$PERSIST_QDRANT_BIN" 2>/dev/null || true
+  return 0
 }
 
 ensure_persistent_postgres() {
