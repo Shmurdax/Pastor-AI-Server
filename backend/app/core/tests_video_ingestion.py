@@ -245,6 +245,11 @@ class VideoIngestionAdminTests(TestCase):
         self.assertEqual(reverse("admin:core_video_ingestion"), "/admin/core/video-ingestion/")
         self.assertEqual(reverse("admin:core_video_ingestion_chunk"), "/admin/core/video-ingestion/chunk/")
         self.assertEqual(reverse("admin:core_ingested_videos"), "/admin/core/ingested-videos/")
+        self.assertEqual(reverse("admin:core_embedded_videos"), "/admin/core/embedded-videos/")
+        self.assertEqual(
+            reverse("admin:core_embedded_video_detail", args=["1217796650"]),
+            "/admin/core/embedded-videos/1217796650/",
+        )
         self.assertTrue(
             reverse("admin:core_ingested_video_file", args=["sermon.mp4"]).endswith(
                 "/ingested-videos/file/sermon.mp4/"
