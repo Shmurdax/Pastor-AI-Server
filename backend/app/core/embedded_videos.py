@@ -109,6 +109,28 @@ def _iter_media_files(upload_dir: Path) -> Iterable[Path]:
         yield path
 
 
+def _index_media_and_sidecars(upload_dir: Path) -> tuple[dict[str, Path], dict[str, Path]]:
+    media: dict[str, Path] = {}
+    sidecars: dict[str, Path] = {}
+    if not upload_dir.is_dir():
+        return media, sidecars
+    for path in upload_dir.iterdir():
+        if not path.is_file():
+            continue
+        name = path.name
+        if name.endswith(".transcript.json"):
+            vimeo_id = parse_vimeo_id(name[: -len(".transcript.json")])
+            if vimeo_id and vimeo_id not in sidecars:
+                sidecars[vimeo_id] = path
+            continue
+        if path.suffix.lower() not in MEDIA_EXTENSIONS:
+            continue
+        vimeo_id = parse_vimeo_id_from_filename(name)
+        if vimeo_id and vimeo_id not in media:
+            media[vimeo_id] = path
+    return media, sidecars
+
+
 def find_media_for_vimeo_id(vimeo_id: str, upload_dir: Path) -> Optional[Path]:
     for ext in sorted(MEDIA_EXTENSIONS):
         candidate = upload_dir / f"{vimeo_id}{ext}"
@@ -188,9 +210,13 @@ def _build_embedded_video(
     documents: dict[str, IngestedDocument],
     featured: bool = False,
     include_segments: bool = False,
+    media_path: Optional[Path] = None,
+    sidecar_path: Optional[Path] = None,
 ) -> EmbeddedVideo:
-    media_path = find_media_for_vimeo_id(vimeo_id, upload_dir)
-    sidecar_path = find_sidecar_for_vimeo_id(vimeo_id, upload_dir, media_path)
+    if media_path is None:
+        media_path = find_media_for_vimeo_id(vimeo_id, upload_dir)
+    if sidecar_path is None:
+        sidecar_path = find_sidecar_for_vimeo_id(vimeo_id, upload_dir, media_path)
     payload = None
     segments: list[TranscriptSegmentView] = []
     if include_segments and sidecar_path:
@@ -240,16 +266,11 @@ def list_embedded_videos(upload_dir: Optional[Path] = None) -> list[EmbeddedVide
     root = (upload_dir or admin_video_ingestion_dir()).resolve()
     documents = _documents_by_vimeo_id()
     featured_ids = [item["vimeo_id"] for item in FEATURED_VIMEO_VIDEOS if item.get("vimeo_id")]
+    media_index, sidecar_index = _index_media_and_sidecars(root)
     discovered: set[str] = set(featured_ids)
     discovered.update(documents.keys())
-    for path in _iter_media_files(root):
-        vimeo_id = parse_vimeo_id_from_filename(path.name)
-        if vimeo_id:
-            discovered.add(vimeo_id)
-    for sidecar in root.glob("*.transcript.json"):
-        vimeo_id = parse_vimeo_id(sidecar.name[: -len(".transcript.json")])
-        if vimeo_id:
-            discovered.add(vimeo_id)
+    discovered.update(media_index.keys())
+    discovered.update(sidecar_index.keys())
 
     videos = [
         _build_embedded_video(
@@ -257,6 +278,8 @@ def list_embedded_videos(upload_dir: Optional[Path] = None) -> list[EmbeddedVide
             upload_dir=root,
             documents=documents,
             featured=vimeo_id in featured_ids,
+            media_path=media_index.get(vimeo_id),
+            sidecar_path=sidecar_index.get(vimeo_id),
         )
         for vimeo_id in discovered
     ]
