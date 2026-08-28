@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Persist sermon PDFs, ingested videos, a Postgres dump, and the Cloudflare
-# named-tunnel token/binary on the RunPod network volume.
+# Persist sermon PDFs, ingested videos, a Postgres dump, the ingested-catalog
+# git seed, and the Cloudflare named-tunnel token/binary on the RunPod network volume.
 # Container-local /var/lib/postgresql and git-synced backend/app/uploads are wiped
 # on pod recreate / install.sh rsync --delete. Keep durable data outside the repo tree.
 #
@@ -23,6 +23,9 @@ PERSIST_CLOUDFLARED="${PERSIST_CLOUDFLARED:-$PERSIST_ROOT/bin/cloudflared}"
 WS_CLOUDFLARED="${WS_CLOUDFLARED:-/workspace/bin/cloudflared}"
 CLOUDFLARED_RELEASE_URL="${CLOUDFLARED_RELEASE_URL:-https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64}"
 PERSIST_TUNNEL_TOKEN="${PERSIST_TUNNEL_TOKEN:-$PERSIST_ROOT/.cloudflared/tunnel.token}"
+# Directory of this file (repo root or /workspace/pastor-ai after install sync).
+_PERSIST_RUNTIME_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SEED_INGEST_DUMP="${SEED_INGEST_DUMP:-$_PERSIST_RUNTIME_DIR/seed/ingested_catalog.dump}"
 
 detect_pg_version() {
   ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1
@@ -268,6 +271,41 @@ _restore_persistent_postgres() {
     return 0
   fi
   warn "pg_restore did not recreate core_ingesteddocument — dump left untouched for retry"
+  return 1
+}
+
+# Data-only catalog from git (no users, sessions, chat, or tokens). Used when a
+# new network volume has no /workspace/persistent/postgres/ai_db.dump yet.
+# Requires Django migrations to have created the tables first.
+restore_seed_ingested_catalog() {
+  local seed="${SEED_INGEST_DUMP:-}"
+  local persist_seed="${PERSIST_PG_ROOT}/ingested_catalog.dump"
+  if [[ ! -s "$seed" && -s "$persist_seed" ]]; then
+    seed="$persist_seed"
+  fi
+  if [[ -s "$seed" && ! -s "$persist_seed" ]]; then
+    mkdir -p "$PERSIST_PG_ROOT"
+    cp -f "$seed" "$persist_seed" 2>/dev/null || true
+    chmod a+r "$persist_seed" 2>/dev/null || true
+  fi
+  [[ -s "$seed" ]] || return 0
+  _pg_ready || return 0
+  local live_count
+  live_count="$(_pg_doc_count || true)"
+  if [[ -n "$live_count" && "$live_count" != "0" ]]; then
+    return 0
+  fi
+  local user="${POSTGRES_USER:-pastor}"
+  local db="${POSTGRES_DB:-ai_db}"
+  log "Restoring ingested catalog seed from $seed"
+  su -s /bin/bash postgres -c "pg_restore --no-owner --role='${user}' --data-only --disable-triggers -d '${db}' '${seed}'" \
+    >/dev/null 2>&1 || true
+  live_count="$(_pg_doc_count || true)"
+  if [[ -n "$live_count" && "$live_count" != "0" ]]; then
+    log "Restored ingested catalog seed (${live_count} documents)"
+    return 0
+  fi
+  warn "Seed catalog restore did not load core_ingesteddocument"
   return 1
 }
 

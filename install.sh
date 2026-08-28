@@ -244,6 +244,10 @@ cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
 [[ -f "$REPO_ROOT/onboot.sh" ]] && cp -a "$REPO_ROOT/onboot.sh" "$WS/onboot.sh"
+if [[ -f "$REPO_ROOT/seed/ingested_catalog.dump" ]]; then
+  mkdir -p "$WS/seed"
+  cp -a "$REPO_ROOT/seed/ingested_catalog.dump" "$WS/seed/ingested_catalog.dump"
+fi
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 chmod +x "$WS"/*.sh
@@ -400,6 +404,7 @@ export DJANGO_SECURE_SSL_REDIRECT=false
 export DJANGO_SESSION_COOKIE_SECURE=false
 export DJANGO_CSRF_COOKIE_SECURE=false
 python manage.py migrate --noinput
+restore_seed_ingested_catalog || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
 log "Django ready (admin login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"

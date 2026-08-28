@@ -74,6 +74,12 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq ffmpeg >/dev/null || warn "ffmpeg apt install failed; video ingestion will not transcribe"
 fi
 ensure_persistent_postgres || service postgresql start 2>/dev/null || true
+# Schema must exist before the git seed dump (data-only) can load on a new volume.
+if [[ -x "${VENV_DIR}/bin/python" && -f "${APP_DIR}/manage.py" ]]; then
+  ( source "${VENV_DIR}/bin/activate" && cd "${APP_DIR}" && python manage.py migrate --noinput ) \
+    >/dev/null 2>&1 || true
+fi
+restore_seed_ingested_catalog || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" 2>/dev/null | grep -q 1 \
