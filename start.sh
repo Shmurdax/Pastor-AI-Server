@@ -172,7 +172,8 @@ if ! vllm_healthy; then
   ATTN_EXPORT=""
   if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
     # FlashInfer 0.6.x treats sm_120 as below sm75 and aborts graph capture.
-    ATTN_EXPORT="export VLLM_ATTENTION_BACKEND='${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}' &&"
+    # FlashInfer 0.6.x JIT uses TORCH_CUDA_ARCH_LIST; empty/old lists fail sm_120 as "< sm75".
+    ATTN_EXPORT="export VLLM_ATTENTION_BACKEND='${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}' && export TORCH_CUDA_ARCH_LIST='${TORCH_CUDA_ARCH_LIST:-12.0}' && export VLLM_USE_FLASHINFER_SAMPLER=0 &&"
     if [[ "${VLLM_ENFORCE_EAGER:-1}" != "0" ]]; then
       ENFORCE_EAGER="--enforce-eager"
     fi
