@@ -1,9 +1,9 @@
 """
 Whisper transcription for admin video ingestion.
 
-Runs on CPU by default so it does not compete with vLLM for GPU VRAM.
-ffmpeg extracts a 16 kHz mono WAV first; openai-whisper then returns
-segment timestamps for RAG citations.
+Uses CUDA when WHISPER_DEVICE=auto/cuda and a GPU is visible (MIG leftover
+VRAM after vLLM). ffmpeg extracts a 16 kHz mono WAV first; openai-whisper
+then returns segment timestamps for RAG citations.
 """
 from __future__ import annotations
 
@@ -27,9 +27,24 @@ def whisper_model_name() -> str:
     return (os.getenv("WHISPER_MODEL") or "base").strip() or "base"
 
 
+def _cuda_is_available() -> bool:
+    if not (os.getenv("CUDA_VISIBLE_DEVICES", "0").strip()):
+        return False
+    try:
+        import torch
+    except Exception:
+        return False
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def whisper_device() -> str:
-    raw = (os.getenv("WHISPER_DEVICE") or "cpu").strip().lower()
-    return raw or "cpu"
+    raw = (os.getenv("WHISPER_DEVICE") or "auto").strip().lower() or "auto"
+    if raw in {"auto", "gpu"}:
+        return "cuda" if _cuda_is_available() else "cpu"
+    return raw
 
 
 def whisper_language() -> Optional[str]:

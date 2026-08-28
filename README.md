@@ -25,7 +25,7 @@ bash install.sh
 1. Install system packages (git, Python, Postgres, screen, …)
 2. Install Docker + NVIDIA Container Toolkit when possible (falls back to **native** if Docker cannot run — current RunPod production path)
 3. Sync `backend/` + `frontend/` onto `/workspace/pastor-ai`
-4. Create Python venv with torch cu128 + **vLLM 0.8.5**
+4. Create Python venv with **vLLM** (CUDA 12.8 on Ada/Hopper, CUDA 12.9+ on Blackwell / RTX PRO 6000 MIG)
 5. Download the Christian LoRA from Hugging Face
 6. Migrate Django, start Qdrant / vLLM / Django / Cloudflare tunnel
 7. Ingest `backend/app/converted_markdown` into Qdrant `sermon_brain`

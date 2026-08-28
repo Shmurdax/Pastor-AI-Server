@@ -18,12 +18,14 @@
 #
 # What this installs (native path — default, works on RunPod):
 #   apt packages, Docker + NVIDIA Container Toolkit (best-effort),
-#   PostgreSQL, Qdrant, Python venv, torch cu128, vLLM 0.8.5,
+#   PostgreSQL, Qdrant, Python venv, torch (cu128 or cu129 Blackwell),
+#   vLLM 0.8.5 on Ada/Hopper or vLLM >=0.11 on Blackwell sm_120,
 #   Qwen2.5-14B-Instruct-AWQ + Christian LoRA, Django, Cloudflare tunnel,
 #   sermon RAG ingest into Qdrant collection sermon_brain
 #
-# After pod restart:
-#   bash /workspace/pastor-ai/start.sh
+# After pod restart (set this as the RunPod container start command):
+#   bash /workspace/pastor-ai/onboot.sh
+# Or: bash /workspace/pastor-ai/start.sh
 # =============================================================================
 set -euo pipefail
 
@@ -212,12 +214,8 @@ if [[ "$USE_DOCKER" == "yes" || ( "$USE_DOCKER" == "auto" && "$FORCE_DOCKER" == 
   fi
 fi
 
-if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    -o /usr/local/bin/cloudflared
-  chmod +x /usr/local/bin/cloudflared
-  log "cloudflared installed"
-fi
+# cloudflared is installed later via ensure_cloudflared_binary (also copied onto
+# the persistent volume so RunPod remigrations do not cause Cloudflare 1033).
 
 if [[ ! -x "$QDRANT_BIN" ]]; then
   log "Downloading Qdrant binary..."
@@ -243,9 +241,15 @@ rsync -a --delete --exclude='.git' \
   "$REPO_ROOT/frontend/" "$FRONTEND_DIR/"
 cp -a "$REPO_ROOT/start.sh" "$WS/start.sh"
 cp -a "$REPO_ROOT/persist_runtime.sh" "$WS/persist_runtime.sh"
+cp -a "$REPO_ROOT/gpu_runtime.sh" "$WS/gpu_runtime.sh"
 cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
+[[ -f "$REPO_ROOT/onboot.sh" ]] && cp -a "$REPO_ROOT/onboot.sh" "$WS/onboot.sh"
+if [[ -f "$REPO_ROOT/seed/ingested_catalog.dump" ]]; then
+  mkdir -p "$WS/seed"
+  cp -a "$REPO_ROOT/seed/ingested_catalog.dump" "$WS/seed/ingested_catalog.dump"
+fi
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 chmod +x "$WS"/*.sh
@@ -266,6 +270,14 @@ fi
 source "$REPO_ROOT/persist_runtime.sh"
 ensure_persistent_postgres || service postgresql start 2>/dev/null || pg_ctlcluster 16 main start 2>/dev/null || pg_ctlcluster 15 main start 2>/dev/null || true
 ensure_persistent_uploads
+ensure_cloudflared_binary || warn "cloudflared missing; public hostname will return 1033 until it is installed"
+# Restore the named-tunnel token from /workspace/persistent after remigration.
+resolve_cloudflare_tunnel_token_file >/dev/null || true
+if [[ -f "$WS/onboot.sh" ]]; then
+  mkdir -p "$PERSIST_ROOT"
+  cp -a "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+  chmod +x "$WS/onboot.sh" "$PERSIST_ROOT/onboot.sh"
+fi
 sleep 2
 
 # ---------------------------------------------------------------------------
@@ -310,6 +322,9 @@ QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
 INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
 VIDEO_INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_video_ingestion
+WHISPER_MODEL=base
+WHISPER_DEVICE=auto
+WHISPER_CACHE_DIR=/workspace/persistent/whisper
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
@@ -347,16 +362,11 @@ pip install -q --upgrade pip
 if [[ -f "$APP_DIR/requirements.txt" ]]; then
   pip install -q --cache-dir "$PIP_CACHE_DIR" -r "$APP_DIR/requirements.txt"
 fi
-pip install -q --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
-pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
-pip install -q --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1" "huggingface_hub>=0.30.0,<1.0"
-if ! python -c "import vllm" 2>/dev/null; then
-  log "Installing vLLM 0.8.5 (CUDA 12.x)..."
-  pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.8.5" \
-    || pip install -q --cache-dir "$PIP_CACHE_DIR" "vllm==0.7.3" \
-    || die "vLLM install failed"
-fi
-pip install -q --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1"
+# shellcheck disable=SC1091
+source "$REPO_ROOT/gpu_runtime.sh"
+gpu_detect
+gpu_ensure_vllm_stack
+pip install -q --cache-dir "$PIP_CACHE_DIR" "huggingface_hub>=0.30.0,<1.0"
 pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
 pip install -q --cache-dir "$PIP_CACHE_DIR" hf_transfer 2>/dev/null || true
 log "Python env ready: torch $(python -c 'import torch; print(torch.__version__)') vllm $(python -c 'import vllm; print(vllm.__version__)')"
@@ -394,6 +404,7 @@ export DJANGO_SECURE_SSL_REDIRECT=false
 export DJANGO_SESSION_COOKIE_SECURE=false
 export DJANGO_CSRF_COOKIE_SECURE=false
 python manage.py migrate --noinput
+restore_seed_ingested_catalog || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
 log "Django ready (admin login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
@@ -418,6 +429,7 @@ date -Iseconds > "$MARKER"
 section "Install complete"
 echo "Workspace: $WS"
 echo "Public URL: $(cat "$WS/public_url.txt" 2>/dev/null || echo '(see start.sh / cloudflared)')"
-echo "After restart: bash $WS/start.sh"
+echo "After restart: bash $WS/onboot.sh  (or bash $WS/start.sh)"
+echo "RunPod start command: bash /workspace/pastor-ai/onboot.sh"
 echo "Update tokens:  nano $WS/tokens.env && bash $WS/apply-tokens.sh --restart"
 log "Done $(date -Iseconds)"
