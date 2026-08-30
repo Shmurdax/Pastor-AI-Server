@@ -51,8 +51,8 @@ class EmbeddedVideoMatchingTests(TestCase):
 
     def test_featured_video_uses_mapped_ingest_transcript(self):
         IngestedDocument.objects.create(
-            source_name="387034308.m4a",
-            title="387034308",
+            source_name="382080991.m4a",
+            title="382080991",
             file_hash="c" * 64,
             original_extension=".m4a",
             source_kind="video",
@@ -60,12 +60,12 @@ class EmbeddedVideoMatchingTests(TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "387034308.m4a").write_bytes(b"audio")
-            (root / "387034308.transcript.json").write_text(
+            (root / "382080991.m4a").write_bytes(b"audio")
+            (root / "382080991.transcript.json").write_text(
                 json.dumps(
                     {
-                        "title": "387034308",
-                        "source_name": "387034308.m4a",
+                        "title": "382080991",
+                        "source_name": "382080991.m4a",
                         "whisper_model": "base",
                         "segments_normalized": [
                             {
@@ -74,9 +74,9 @@ class EmbeddedVideoMatchingTests(TestCase):
                                 "text": "With man it may be impossible, but with God it is not.",
                             },
                             {
-                                "start": 30,
-                                "end": 58,
-                                "text": "Welcome to walking through the word with Don and Susan.",
+                                "start": 57,
+                                "end": 80,
+                                "text": "We're in Genesis 11 today on day four. Yes. January 4th.",
                             },
                         ],
                     }
@@ -86,12 +86,12 @@ class EmbeddedVideoMatchingTests(TestCase):
             video = get_embedded_video("1217796650", upload_dir=root)
         self.assertIsNotNone(video)
         self.assertTrue(video.has_transcript)
-        self.assertEqual(video.source_name, "387034308.m4a")
-        self.assertEqual(video.transcript_source, "387034308.transcript.json")
-        self.assertEqual(video.title, "Walk Through the Word — February 3")
+        self.assertEqual(video.source_name, "382080991.m4a")
+        self.assertEqual(video.transcript_source, "382080991.transcript.json")
+        self.assertEqual(video.title, "Walk Through the Word — January 4")
         self.assertEqual(
             video.segments[1].text,
-            "Welcome to walking through the word with Don and Susan.",
+            "We're in Genesis 11 today on day four. Yes. January 4th.",
         )
 
     def test_matches_sidecar_and_document_title(self):
@@ -233,13 +233,13 @@ class EmbeddedVideosAdminTests(TestCase):
     def test_detail_uses_mapped_ingest_transcript(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "387034308.transcript.json").write_text(
+            (root / "382080991.transcript.json").write_text(
                 json.dumps(
                     {
-                        "title": "387034308",
-                        "source_name": "387034308.m4a",
+                        "title": "382080991",
+                        "source_name": "382080991.m4a",
                         "segments_normalized": [
-                            {"start": 0, "end": 14, "text": "With God it is not impossible."},
+                            {"start": 57, "end": 80, "text": "Genesis 11 today on day four. January 4th."},
                         ],
                     }
                 ),
@@ -250,9 +250,9 @@ class EmbeddedVideosAdminTests(TestCase):
                     reverse("admin:core_embedded_video_detail", args=["1217796650"])
                 )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Walk Through the Word")
-        self.assertContains(response, "With God it is not impossible.")
-        self.assertContains(response, "387034308.transcript.json")
+        self.assertContains(response, "Walk Through the Word — January 4")
+        self.assertContains(response, "Genesis 11 today on day four. January 4th.")
+        self.assertContains(response, "382080991.transcript.json")
         self.assertNotContains(response, "No matching transcript was found")
 
     def test_unknown_detail_is_404(self):

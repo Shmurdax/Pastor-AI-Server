@@ -23,9 +23,10 @@ FEATURED_VIMEO_VIDEOS = (
     {
         "vimeo_id": "1217796650",
         "watch_url": "https://vimeo.com/1217796650?fl=ip&fe=ec",
-        "fallback_title": "Walk Through the Word — February 3",
-        # Live ingest: 387034308.m4a ends at 947.0s — same 15:47 runtime as this embed.
-        "match_source_stem": "387034308",
+        "fallback_title": "Walk Through the Word — January 4",
+        # Live ingest of the January 4 session (Genesis 11 / Tower of Babel).
+        # Vimeo title for 1217796650 is "Copy of January 4".
+        "match_source_stem": "382080991",
     },
 )
 
