@@ -402,3 +402,10 @@ echo "RunPod proxy: https://${RUNPOD_POD_ID:-PODID}-${DJANGO_PORT}.proxy.runpod.
 echo "Logs: $LOG_DIR/"
 echo ""
 warn "First chat may take several minutes while the LLM loads into GPU memory."
+
+# When onboot.sh is the RunPod start command it sets PASTOR_KEEP_ALIVE=1.
+# Sleep here if we were exec'd as that command so the container does not exit.
+if [[ "${PASTOR_KEEP_ALIVE:-}" == "1" ]]; then
+  log "Keeping container alive (PASTOR_KEEP_ALIVE=1)"
+  exec sleep infinity
+fi

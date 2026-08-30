@@ -47,7 +47,9 @@ bash /workspace/pastor-ai/onboot.sh || bash /workspace/persistent/onboot.sh
 `onboot.sh` reinstalls `screen` / Postgres / ffmpeg / LibreOffice, restores
 `cloudflared` + the named-tunnel token, restores boot scripts and `config.env`
 from `/workspace/persistent` if the pastor-ai tree was wiped, then runs
-`start.sh`. That brings back Django, Qdrant, vLLM (detecting the current MIG
+`start.sh` and **stays running** (`sleep infinity`). `start.sh` returns after
+launching screens; if it is the container PID, RunPod restart-loops every
+~20s. That brings back Django, Qdrant, vLLM (detecting the current MIG
 UUID — do not hardcode it), the Whisper video worker, and the public hostname.
 
 `start.sh` also copies `onboot.sh`, `start.sh`, `gpu_runtime.sh`, and secrets
