@@ -15,12 +15,21 @@ class ApiService {
     String query,
     String sessionId, {
     bool regenerate = false,
+    String language = 'en',
   }) async {
     return _apiClient.chat(
       query: query,
       sessionId: sessionId,
       regenerate: regenerate,
+      language: language,
     );
+  }
+
+  Future<List<String>> translateTexts({
+    required List<String> texts,
+    required String language,
+  }) {
+    return _apiClient.translateTexts(texts: texts, language: language);
   }
 
   Future<Map<String, dynamic>> getIngestedDocuments({

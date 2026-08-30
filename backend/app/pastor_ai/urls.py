@@ -31,6 +31,7 @@ from core.views import (
     IngestedDocumentFileAPIView,
     SermonPdfByNameAPIView,
     PrayerRequestAPIView,
+    TranslateAPIView,
     ResponseReportAPIView,
 )
 from .frontend import serve_frontend
@@ -55,6 +56,7 @@ urlpatterns = [
 
     # Chat + prayer + ingested docs
     path('api/chat/', ChatAPIView.as_view(), name='chat_api'),
+    path('api/translate/', TranslateAPIView.as_view(), name='translate_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
     path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view(), name='prayer_request_detail_api'),
     path('api/response-reports/', ResponseReportAPIView.as_view(), name='response_reports_api'),

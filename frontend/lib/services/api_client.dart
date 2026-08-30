@@ -40,6 +40,7 @@ class ApiClient {
     required String query,
     required String sessionId,
     bool regenerate = false,
+    String language = 'en',
   }) async {
     final res = await _client.post(
       Uri.parse(_resolveUrl('/api/chat/')),
@@ -48,10 +49,30 @@ class ApiClient {
         'query': query,
         'session_id': sessionId,
         'regenerate': regenerate,
+        'language': language,
       }),
     );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<List<String>> translateTexts({
+    required List<String> texts,
+    required String language,
+  }) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/translate/')),
+      headers: _headers(json: true),
+      body: jsonEncode({
+        'texts': texts,
+        'language': language,
+      }),
+    );
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final out = body['texts'];
+    if (out is! List) return texts;
+    return out.map((e) => e?.toString() ?? '').toList();
   }
 
   Future<Map<String, dynamic>> getIngestedDocuments({

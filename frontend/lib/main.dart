@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
+import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
@@ -14,6 +16,7 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
+import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -68,8 +71,12 @@ InputDecoration _authInputDecoration(String label) => InputDecoration(
     );
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
-void main() => runApp(      ChangeNotifierProvider(
-        create: (_) => AuthController(),
+void main() => runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthController()),
+          ChangeNotifierProvider(create: (_) => LocaleController()..load()),
+        ],
         child: const SermonBrainApp(),
       ),
     );
@@ -121,6 +128,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
   bool _eventsNavPanelOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
+
+  AppStrings get _s => context.read<LocaleController>().strings;
+  String get _languageCode => context.read<LocaleController>().languageCode;
+  String? _appliedLanguageCode;
+  bool _translatingThread = false;
+  LocaleController? _localeListener;
 
   // State
   final List<Map<String, dynamic>> _messages = [];
@@ -206,7 +219,78 @@ final bibleRefRegex = RegExp(
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _syncAuthState();
       await _handleBillingReturn();
+      if (!mounted) return;
+      _localeListener = context.read<LocaleController>();
+      _appliedLanguageCode = _localeListener!.languageCode;
+      _localeListener!.addListener(_onLocaleChanged);
     });
+  }
+
+  void _onLocaleChanged() {
+    if (!mounted || _localeListener == null) return;
+    final next = _localeListener!.languageCode;
+    if (next == _appliedLanguageCode) return;
+    _appliedLanguageCode = next;
+    _retranslateThreadForLanguage(next);
+  }
+
+  String _messageDisplayText(Map<String, dynamic> msg) {
+    final key = msg['localKey'] as String?;
+    if (key == 'responseCancelled') return _s.responseCancelled;
+    if (key == 'serverError') return _s.serverError;
+    return (msg['text'] as String?) ?? '';
+  }
+
+  Future<void> _retranslateThreadForLanguage(String language) async {
+    if (_translatingThread || !mounted) return;
+
+    // Local system bubbles update immediately via localKey + setState.
+    var touchedLocal = false;
+    for (final msg in _messages) {
+      if (msg['role'] == 'ai' && msg['localKey'] is String) {
+        touchedLocal = true;
+        break;
+      }
+    }
+    if (touchedLocal) setState(() {});
+
+    final aiIndexes = <int>[];
+    final texts = <String>[];
+    for (var i = 0; i < _messages.length; i++) {
+      final msg = _messages[i];
+      if (msg['role'] != 'ai') continue;
+      if (msg['localKey'] is String) continue;
+      final text = (msg['text'] as String?)?.trim() ?? '';
+      if (text.isEmpty) continue;
+      aiIndexes.add(i);
+      texts.add(text);
+    }
+    if (texts.isEmpty) return;
+
+    setState(() => _translatingThread = true);
+    try {
+      final translated = await _apiService.translateTexts(
+        texts: texts,
+        language: language,
+      );
+      if (!mounted || language != _languageCode) return;
+      setState(() {
+        for (var i = 0; i < aiIndexes.length; i++) {
+          if (i >= translated.length) break;
+          final next = translated[i].trim();
+          if (next.isEmpty) continue;
+          _messages[aiIndexes[i]] = {
+            ..._messages[aiIndexes[i]],
+            'text': _boldBibleReferences(next),
+          };
+        }
+      });
+      await _persistChatHistory();
+    } catch (e) {
+      debugPrint('Thread retranslate failed: $e');
+    } finally {
+      if (mounted) setState(() => _translatingThread = false);
+    }
   }
 
   /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
@@ -301,6 +385,7 @@ final bibleRefRegex = RegExp(
     setState(() => _isListening = true);
     try {
       await _speechToText.listen(
+        localeId: context.read<LocaleController>().language.speechLocaleId,
         onResult: (result) {
           if (!mounted) return;
           final spoken = result.recognizedWords.trim();
@@ -391,7 +476,7 @@ final bibleRefRegex = RegExp(
         }
       }
     }
-    return 'New conversation';
+    return _s.newConversation;
   }
 
   Map<String, dynamic> _currentChatSnapshot() => {
@@ -443,17 +528,17 @@ final bibleRefRegex = RegExp(
     final delete = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete chat?', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
+        title: Text(_s.deleteChatTitle, style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
         content: Text(
-          'Remove “${title.length > 60 ? '${title.substring(0, 60)}…' : title}” from your history? This cannot be undone.',
+          _s.deleteChatBody(title.length > 60 ? '${title.substring(0, 60)}…' : title),
           style: GoogleFonts.figtree(color: Colors.black87),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(_s.cancel)),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(backgroundColor: _pink),
-            child: Text('Delete', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+            child: Text(_s.delete, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -477,13 +562,14 @@ final bibleRefRegex = RegExp(
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chat deleted'), duration: Duration(seconds: 2)),
+        SnackBar(content: Text(_s.chatDeleted), duration: const Duration(seconds: 2)),
       );
     }
   }
 
   @override
   void dispose() {
+    _localeListener?.removeListener(_onLocaleChanged);
     if (ChatNavActions.openEvents == _openChurchEvents) {
       ChatNavActions.openEvents = null;
     }
@@ -562,7 +648,7 @@ final bibleRefRegex = RegExp(
       if (!mounted) return;
       setState(() {
         _prayerSubmitting = false;
-        _prayerError = 'Could not submit your prayer request. Please try again.';
+        _prayerError = _s.prayerSubmitFailed;
       });
     }
   }
@@ -683,14 +769,14 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open source for "$stem".')),
+        SnackBar(content: Text(_s.couldNotOpenSource(stem))),
       );
     }
   } catch (e, st) {
     debugPrint('Error opening sermon link: $e\n$st');
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open source for "$stem".')),
+        SnackBar(content: Text(_s.couldNotOpenSource(stem))),
       );
     }
   }
@@ -700,7 +786,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Copied to clipboard!'), duration: Duration(seconds: 2)),
+        SnackBar(content: Text(_s.copiedToClipboard), duration: const Duration(seconds: 2)),
       );
     }
   }
@@ -745,7 +831,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
       await _syncAuthState();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Signed in as ${context.read<AuthController>().user?.name ?? 'user'}')),
+          SnackBar(content: Text(_s.signedInAs(context.read<AuthController>().user?.name ?? 'user'))),
         );
       }
     }
@@ -883,7 +969,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
           _sidebarPanel = _SidebarPanel.sermonLibrary;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Signed out')),
+          SnackBar(content: Text(_s.signedOut)),
         );
       },
     );
@@ -895,7 +981,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
     setState(() {
       _isLoading = false;
       _activeClient = null;
-      _messages.add({"role": "ai", "text": "_Response cancelled by user._"});
+      _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
     });
     _scrollToBottom();
   }
@@ -916,6 +1002,8 @@ Future<void> _sendMessage() async {
 }
 
   void _regenerateResponse(int index) {
+    if (index <= 0 || index >= _messages.length) return;
+    if (_messages[index]['localKey'] is String) return;
     final userMessage = _messages[index - 1];
     if (userMessage["role"] != "user") return;
     final prompt = userMessage["text"] as String;
@@ -938,7 +1026,12 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     _scrollToBottom();
 
   try {
-    final data = await _apiService.sendMessage(userText, sessionId, regenerate: regenerate);
+    final data = await _apiService.sendMessage(
+      userText,
+      sessionId,
+      regenerate: regenerate,
+      language: _languageCode,
+    );
     if (!mounted || _activeClient == null) return;
     await _persistSessionId();
 
@@ -974,7 +1067,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     await _persistChatHistory();
   } catch (e) {
     if (_activeClient != null) {
-      setState(() => _messages.add({"role": "ai", "text": "Error: Could not connect to the server."}));
+      setState(() => _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError}));
       _scrollToBottom();
     }
   } finally {
@@ -1016,6 +1109,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    context.watch<LocaleController>();
     if (!_authInitialized && auth.isAuthenticated) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _syncAuthState());
     }
@@ -1056,11 +1150,12 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ),
         actions: [
+          LanguageSelector(isMobile: isMobile),
           if (auth.isAuthenticated && auth.user!.isStaff)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
               child: IconButton(
-                tooltip: 'Prayer inbox',
+                tooltip: _s.prayerInbox,
                 onPressed: _openPrayerInbox,
                 icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
               ),
@@ -1090,7 +1185,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                   _sidebarPanel = _SidebarPanel.sermonLibrary;
                 });
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Signed out')),
+                  SnackBar(content: Text(_s.signedOut)),
                 );
               },
             ),
@@ -1100,9 +1195,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildNavButton("Home", () => _launchUrl("https://thenordins.org/")),
-                  _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store")),
-                  _buildNavButton("Events", _openChurchEvents),
+                  _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
+                  _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store")),
+                  _buildNavButton(_s.events, _openChurchEvents),
                   NordinsAiNavMenu(
                     onAiHome: _focusChatNav,
                     onMedia: _openMedia,
@@ -1211,9 +1306,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 
     return Row(
       children: [
-        tab('Sermons', _SidebarPanel.sermonLibrary, Icons.menu_book_outlined),
+        tab(_s.sermons, _SidebarPanel.sermonLibrary, Icons.menu_book_outlined),
         const SizedBox(width: 8),
-        tab('Chats', _SidebarPanel.previousChats, Icons.history),
+        tab(_s.chats, _SidebarPanel.previousChats, Icons.history),
       ],
     );
   }
@@ -1222,8 +1317,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     if (_chatHistoryEntries.isEmpty) {
       return Text(
         auth.hasPremiumAccess
-            ? 'Your saved chats will appear here. Start a conversation to build history.'
-            : 'Your most recent chat is saved here. Upgrade to Premium for unlimited history.',
+            ? _s.historyEmptySignedIn
+            : _s.historyEmptyGuest,
         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14),
       );
     }
@@ -1234,8 +1329,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         if (!auth.hasPremiumAccess) ...[
           Text(
             auth.isAuthenticated
-                ? 'Free plan: only your most recent chat is kept.'
-                : 'Guest: only your most recent chat is kept. Sign in & go Premium for unlimited history.',
+                ? _s.historyHintFree
+                : _s.historyHintGuest,
             style: GoogleFonts.figtree(color: _gold, fontSize: 12, height: 1.35),
           ),
           const SizedBox(height: 10),
@@ -1253,7 +1348,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   }
 
   Widget _buildChatHistoryLink(Map<String, dynamic> entry) {
-    final title = (entry['title'] as String? ?? 'Conversation').trim();
+    final title = (entry['title'] as String? ?? _s.conversation).trim();
     final updatedAt = entry['updatedAt'] as int?;
     final isActive = entry['sessionId'] == sessionId;
     String subtitle = '';
@@ -1338,7 +1433,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    tooltip: 'Delete chat',
+                    tooltip: _s.deleteChat,
                   ),
                 ],
               ),
@@ -1370,9 +1465,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           children: [
             if (isMobile) ...[
               Wrap(spacing: 4, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                _buildNavButton("Home", () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
-                _buildNavButton("Store", () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
-                _buildNavButton("Events", _openChurchEvents, textColor: Colors.white),
+                _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
+                _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
+                _buildNavButton(_s.events, _openChurchEvents, textColor: Colors.white),
                 NordinsAiNavMenu(
                   onAiHome: () {
                     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
@@ -1392,14 +1487,14 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             _buildSidebarTabSwitcher(),
             const SizedBox(height: 20),
             if (_sidebarPanel == _SidebarPanel.sermonLibrary) ...[
-              Text("Sermon Library",
+              Text(_s.sermonLibrary,
                   style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Container(height: 2, width: 40, color: _gold),
               const SizedBox(height: 20),
               Expanded(
                 child: _librarySermons.isEmpty && _previousSermons.isEmpty
-                    ? Text("Relevant sermons will appear here after you ask a question.",
+                    ? Text(_s.sermonLibraryEmpty,
                         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
                     : ListView(
                         physics: _eventsNavPanelOpen
@@ -1413,7 +1508,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                               const Expanded(child: Divider(color: Colors.white24)),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Text("Last Question's Sources",
+                                child: Text(_s.lastQuestionSources,
                                     style: GoogleFonts.figtree(
                                         color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
                               ),
@@ -1427,7 +1522,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                       ),
               ),
             ] else ...[
-              Text("Previous Chats",
+              Text(_s.previousChats,
                   style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Container(height: 2, width: 40, color: _gold),
@@ -1443,7 +1538,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 child: OutlinedButton.icon(
                   onPressed: _clearChat,
                   icon: const Icon(Icons.delete_sweep_outlined, color: _gold, size: 20),
-                  label: Text("New Chat",
+                  label: Text(_s.newChat,
                       style: GoogleFonts.figtree(
                           color: _gold, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   style: OutlinedButton.styleFrom(
@@ -1492,7 +1587,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                       const Icon(Icons.volunteer_activism, color: _gold, size: 22),
                       const SizedBox(width: 8),
                       Text(
-                        'Prayer Request Form',
+                        _s.prayerRequestForm,
                         style: GoogleFonts.figtree(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -1504,7 +1599,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         ),
       );
       return iconOnlyCollapsed
-          ? Tooltip(message: 'Prayer Request Form', child: fab)
+          ? Tooltip(message: _s.prayerRequestForm, child: fab)
           : fab;
     }
 
@@ -1537,7 +1632,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Prayer Request',
+                      _s.prayerRequest,
                       style: GoogleFonts.figtree(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -1559,13 +1654,13 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           const Icon(Icons.check_circle_outline, color: Colors.green, size: 48),
                           const SizedBox(height: 12),
                           Text(
-                            'Your prayer request has been received.',
+                            _s.prayerReceived,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w600, color: _navy),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Our prayer team will be lifting you up.',
+                            _s.prayerTeamLifting,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),
@@ -1577,7 +1672,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'Share your prayer need with us.',
+                              _s.sharePrayerNeed,
                               style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                             ),
                             const SizedBox(height: 16),
@@ -1600,16 +1695,16 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                                   : (v) => setState(() => _submitAnonymously = v ?? false),
                               contentPadding: EdgeInsets.zero,
                               controlAffinity: ListTileControlAffinity.leading,
-                              title: Text('Submit anonymously', style: GoogleFonts.figtree(fontSize: 14, color: _navy)),
+                              title: Text(_s.submitAnonymously, style: GoogleFonts.figtree(fontSize: 14, color: _navy)),
                               activeColor: _navy,
                             ),
                             if (!_submitAnonymously) ...[
                               TextFormField(
                                 controller: _prayerNameController,
-                                decoration: _authInputDecoration('Name'),
+                                decoration: _authInputDecoration(_s.name),
                                 validator: (v) {
                                   if (_submitAnonymously) return null;
-                                  if (v == null || v.trim().isEmpty) return 'Enter your name';
+                                  if (v == null || v.trim().isEmpty) return _s.enterYourName;
                                   return null;
                                 },
                               ),
@@ -1617,11 +1712,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                               TextFormField(
                                 controller: _prayerEmailController,
                                 keyboardType: TextInputType.emailAddress,
-                                decoration: _authInputDecoration('Email'),
+                                decoration: _authInputDecoration(_s.email),
                                 validator: (v) {
                                   if (_submitAnonymously) return null;
-                                  if (v == null || v.trim().isEmpty) return 'Enter your email';
-                                  if (!v.contains('@')) return 'Enter a valid email';
+                                  if (v == null || v.trim().isEmpty) return _s.enterYourEmail;
+                                  if (!v.contains('@')) return _s.enterValidEmail;
                                   return null;
                                 },
                               ),
@@ -1630,17 +1725,17 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                             TextFormField(
                               controller: _prayerPhoneController,
                               keyboardType: TextInputType.phone,
-                              decoration: _authInputDecoration('Phone (optional)'),
+                              decoration: _authInputDecoration(_s.phoneOptional),
                             ),
                             const SizedBox(height: 12),
                             TextFormField(
                               controller: _prayerTextController,
                               minLines: 4,
                               maxLines: 6,
-                              decoration: _authInputDecoration('Your prayer request'),
+                              decoration: _authInputDecoration(_s.yourPrayerRequest),
                               validator: (v) {
                                 if (v == null || v.trim().length < 10) {
-                                  return 'Please share at least a few words (10+ characters)';
+                                  return _s.prayerTooShort;
                                 }
                                 return null;
                               },
@@ -1660,7 +1755,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                                       width: 20,
                                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                     )
-                                  : Text('Submit Prayer Request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                                  : Text(_s.submitPrayerRequest, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                             ),
                           ],
                         ),
@@ -1726,7 +1821,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Sign in to save chat history across devices.',
+          _s.signInToSave,
           textAlign: TextAlign.center,
           style: GoogleFonts.figtree(color: Colors.white70, fontSize: 12),
         ),
@@ -1739,7 +1834,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: Text('Sign in', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          child: Text(_s.signIn, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
         ),
       ],
     );
@@ -1793,7 +1888,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                                 onPressed: _scrollToBottom,
                                 icon: const Icon(Icons.arrow_downward, size: 16),
                                 label: Text(
-                                  'Back to bottom',
+                                  _s.backToBottom,
                                   style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
                                 ),
                                 style: TextButton.styleFrom(
@@ -1836,7 +1931,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           const Icon(Icons.auto_awesome, color: _gold, size: 40),
                           const SizedBox(height: 16),
                           Text(
-                            "Welcome to the Nordin's AI Assistant",
+                            _s.welcomeTitle,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: isMobile ? 18 : 22,
@@ -1846,7 +1941,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information. Please verify insights with your Bible.",
+                            _s.welcomeBody,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),
@@ -1870,6 +1965,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                   child: Image.asset('assets/images/nordins_transparent_logo.png', height: 48),
                 ),
               ),
+            ),
+          ),
+        if (_translatingThread)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              _s.translatingReplies,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
             ),
           ),
         _buildInputArea(isMobile),
@@ -1904,7 +2008,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MarkdownBody(
-            data: msg["text"],
+            data: _messageDisplayText(msg),
             styleSheet: MarkdownStyleSheet(
               p: GoogleFonts.figtree(
                 fontSize: 15, 
@@ -1924,8 +2028,8 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 // The Copy button remains available for all messages
                 _buildActionButton(
                   icon: Icons.copy_rounded,
-                  tooltip: "Copy to clipboard",
-                  onTap: () => _copyToClipboard(msg["text"]),
+                  tooltip: _s.copyToClipboard,
+                  onTap: () => _copyToClipboard(_messageDisplayText(msg)),
                 ),
                 
                 // The Regenerate button only appears if this is the latest AI message
@@ -1933,7 +2037,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                   const SizedBox(width: 4),
                   _buildActionButton(
                     icon: Icons.refresh_rounded,
-                    tooltip: "Regenerate response",
+                    tooltip: _s.regenerateResponse,
                     onTap: _isLoading ? null : () => _regenerateResponse(index),
                   ),
                 ],
@@ -2002,7 +2106,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                     }
                   },
                   decoration: InputDecoration(
-                    hintText: _isListening ? 'Listening… speak your question' : 'How can I help you?',
+                    hintText: _isListening ? _s.listeningHint : _s.howCanIHelp,
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
                   ),
@@ -2013,7 +2117,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: Tooltip(
-                    message: _isListening ? 'Stop voice input' : 'Ask with voice',
+                    message: _isListening ? _s.stopVoiceInput : _s.askWithVoice,
                     child: GestureDetector(
                       onTap: _toggleVoiceInput,
                       child: AnimatedBuilder(

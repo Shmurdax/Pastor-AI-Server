@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
-import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -327,6 +329,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final isMobile = screenWidth < 600;
     final items = _filteredItems;
     final useGrid = screenWidth >= 720;
+    final s = context.watch<LocaleController>().strings;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -357,16 +360,17 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           ),
         ),
         actions: [
+          LanguageSelector(isMobile: isMobile),
           if (!isMobile)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _NavButton(label: 'Home', onTap: () => _launchUrl('https://thenordins.org/')),
-                  _NavButton(label: 'Store', onTap: () => _launchUrl('https://thenordins.org/store')),
+                  _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
+                  _NavButton(label: s.store, onTap: () => _launchUrl('https://thenordins.org/store')),
                   _NavButton(
-                    label: 'Events',
+                    label: s.events,
                     onTap: () => _toggleEvents(open: true),
                     active: _eventsOpen,
                   ),
@@ -384,7 +388,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 20.0, right: 4),
               child: IconButton(
-                tooltip: 'Events',
+                tooltip: s.events,
                 onPressed: () => _toggleEvents(open: true),
                 icon: Icon(Icons.event_outlined, color: _eventsOpen ? _gold : _navy),
               ),
