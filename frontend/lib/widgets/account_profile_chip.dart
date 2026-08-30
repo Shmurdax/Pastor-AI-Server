@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
+import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -20,6 +21,7 @@ class AccountProfileChip extends StatelessWidget {
     this.onOpenMedia,
     this.onOpenSubscriptions,
     this.onOpenPrayerInbox,
+    this.onOpenResponseReports,
     this.onSignedOut,
   });
 
@@ -28,6 +30,7 @@ class AccountProfileChip extends StatelessWidget {
   final VoidCallback? onOpenMedia;
   final VoidCallback? onOpenSubscriptions;
   final VoidCallback? onOpenPrayerInbox;
+  final VoidCallback? onOpenResponseReports;
   final VoidCallback? onSignedOut;
 
   @override
@@ -50,6 +53,7 @@ class AccountProfileChip extends StatelessWidget {
             onOpenMedia: onOpenMedia,
             onOpenSubscriptions: onOpenSubscriptions,
             onOpenPrayerInbox: onOpenPrayerInbox,
+            onOpenResponseReports: onOpenResponseReports,
             onSignedOut: onSignedOut,
           ),
           child: Padding(
@@ -86,6 +90,7 @@ Future<void> showAccountProfileSheet(
   VoidCallback? onOpenMedia,
   VoidCallback? onOpenSubscriptions,
   VoidCallback? onOpenPrayerInbox,
+  VoidCallback? onOpenResponseReports,
   VoidCallback? onSignedOut,
 }) {
   if (context.read<AuthController>().user == null) return Future.value();
@@ -210,6 +215,31 @@ Future<void> showAccountProfileSheet(
                       },
                       icon: const Icon(Icons.volunteer_activism_outlined),
                       label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _navy,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        if (onOpenResponseReports != null) {
+                          onOpenResponseReports();
+                        } else {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ResponseReportsInboxScreen(apiService: apiService),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.flag_outlined),
+                      label: Text('Response reports', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                       style: FilledButton.styleFrom(
                         backgroundColor: _navy,
                         padding: const EdgeInsets.symmetric(vertical: 14),

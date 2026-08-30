@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
-import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/models/media_item.dart';
-import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
-import 'package:flutter_application_1/widgets/account_profile_chip.dart';
-import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
+import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -21,7 +20,7 @@ const _gold = Color(0xFFD4AF37);
 const _surface = Color(0xFFF4F4F9);
 
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
-/// Catalog is mock/placeholder until real media is ingested.
+/// Catalog loads from GET /api/media/ (Vimeo sync); falls back to local mock.
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({super.key});
 
@@ -35,17 +34,43 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   final _apiService = ApiService();
   final _searchController = TextEditingController();
   bool _eventsOpen = false;
+  bool _catalogLoading = true;
+  List<MediaItem> _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   MediaAccessTier? _tierFilter;
   int? _yearFilter;
 
+  /// Premium unlock from logged-in profile (`is_premium` / staff).
   bool get _hasPremiumAccess => context.watch<AuthController>().hasPremiumAccess;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCatalog();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadCatalog() async {
+    try {
+      final items = await _apiService.listMediaVideos();
+      if (!mounted) return;
+      setState(() {
+        _catalogItems = items.isNotEmpty ? items : List<MediaItem>.from(MediaCatalog.allItems);
+        _catalogLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
+        _catalogLoading = false;
+      });
+    }
   }
 
   Future<void> _launchUrl(String urlString) async {
@@ -61,14 +86,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     );
   }
 
-  void _openPrayerInbox() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PrayerInboxScreen(apiService: _apiService),
-      ),
-    );
-  }
-
   void _goToAiHome() {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
@@ -77,11 +94,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     setState(() => _eventsOpen = open ?? !_eventsOpen);
   }
 
-  /// Video catalog. Premium episodes stay visible and locked for free accounts.
+  /// Catalog visible for the current access level (video-only).
   List<MediaItem> get _accessibleItems {
-    return MediaCatalog.allItems
-        .where((item) => item.contentType == MediaContentType.video)
-        .toList();
+    return _catalogItems.where((item) {
+      if (item.contentType != MediaContentType.video) return false;
+      if (!_hasPremiumAccess && item.accessTier != MediaAccessTier.freePreview) {
+        return false;
+      }
+      return true;
+    }).toList();
   }
 
   List<MediaItem> get _filteredItems {
@@ -125,12 +146,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   void _openItem(MediaItem item) {
-    final hasPremiumAccess = context.read<AuthController>().hasPremiumAccess;
-    if (item.isLockedForUser(hasPremiumAccess: hasPremiumAccess)) {
+    if (item.isPlayable) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _WatchEpisodeScreen(item: item),
+        ),
+      );
+      return;
+    }
+    if (item.accessTier == MediaAccessTier.premium) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'This episode is for Premium members. Subscribe to unlock the full library.',
+            'This episode is for Premium members. Subscribe to unlock when media goes live.',
             style: GoogleFonts.figtree(),
           ),
           action: SnackBarAction(
@@ -138,14 +166,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             onPressed: _openSubscriptions,
           ),
           duration: const Duration(seconds: 5),
-        ),
-      );
-      return;
-    }
-    if (item.isPlayable) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => _WatchEpisodeScreen(item: item),
         ),
       );
       return;
@@ -309,9 +329,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final isMobile = screenWidth < 600;
     final items = _filteredItems;
     final useGrid = screenWidth >= 720;
-    final auth = context.watch<AuthController>();
     final s = context.watch<LocaleController>().strings;
-    final hasPremiumAccess = auth.hasPremiumAccess;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -343,25 +361,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         ),
         actions: [
           LanguageSelector(isMobile: isMobile),
-          if (auth.isAuthenticated && auth.user!.isStaff)
-            Padding(
-              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
-              child: IconButton(
-                tooltip: s.prayerInbox,
-                onPressed: _openPrayerInbox,
-                icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
-              ),
-            ),
-          if (auth.isAuthenticated)
-            AccountProfileChip(
-              apiService: _apiService,
-              isMobile: isMobile,
-              onOpenSubscriptions: _openSubscriptions,
-              onOpenPrayerInbox: _openPrayerInbox,
-              onSignedOut: () {
-                if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-            ),
           if (!isMobile)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
@@ -415,10 +414,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _CreatorHeader(
-                              onSubscribe: _openSubscriptions,
-                              hasPremiumAccess: hasPremiumAccess,
-                            ),
+                            _CreatorHeader(onSubscribe: _openSubscriptions),
                             const SizedBox(height: 28),
                             _SearchBar(
                               controller: _searchController,
@@ -474,9 +470,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _hasPremiumAccess
-                                  ? '${_sort.label} · ${MediaCatalog.allItems.length} devotionals in catalog'
-                                  : 'Free preview · Subscribe to unlock the full library',
+                              _catalogLoading
+                                  ? 'Loading devotionals…'
+                                  : _hasPremiumAccess
+                                      ? '${_sort.label} · ${_catalogItems.length} devotionals in catalog'
+                                      : 'Free preview · Subscribe to unlock the full library',
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),
                           ],
@@ -537,7 +535,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           constraints: const BoxConstraints(maxWidth: 560),
                           child: _MediaPostCard(
                             item: items.first,
-                            hasPremiumAccess: hasPremiumAccess,
                             onTap: () => _openItem(items.first),
                           ),
                         ),
@@ -558,7 +555,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         (context, index) => _MediaPostCard(
                           item: items[index],
                           compact: true,
-                          hasPremiumAccess: hasPremiumAccess,
                           onTap: () => _openItem(items[index]),
                         ),
                         childCount: items.length,
@@ -574,7 +570,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _MediaPostCard(
                             item: items[index],
-                            hasPremiumAccess: hasPremiumAccess,
                             onTap: () => _openItem(items[index]),
                           ),
                         ),
@@ -591,7 +586,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
               right: 0,
               child: ChurchEventsNavOverlay(
                 apiService: _apiService,
-                isStaff: context.watch<AuthController>().user?.isStaff ?? false,
+                isStaff: false,
                 onClose: () => _toggleEvents(open: false),
               ),
             ),
@@ -602,13 +597,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 }
 
 class _CreatorHeader extends StatelessWidget {
-  const _CreatorHeader({
-    required this.onSubscribe,
-    required this.hasPremiumAccess,
-  });
+  const _CreatorHeader({required this.onSubscribe});
 
   final VoidCallback onSubscribe;
-  final bool hasPremiumAccess;
 
   @override
   Widget build(BuildContext context) {
@@ -681,21 +672,19 @@ class _CreatorHeader extends StatelessWidget {
             'to preview the experience.',
             style: GoogleFonts.figtree(fontSize: 14, height: 1.5, color: Colors.black87),
           ),
-          if (!hasPremiumAccess) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onSubscribe,
-              icon: const Icon(Icons.lock_open_outlined, size: 18),
-              label: Text(
-                'Unlock with Premium',
-                style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: _navy,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-              ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onSubscribe,
+            icon: const Icon(Icons.lock_open_outlined, size: 18),
+            label: Text(
+              'Unlock with Premium',
+              style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
             ),
-          ],
+            style: FilledButton.styleFrom(
+              backgroundColor: _navy,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            ),
+          ),
         ],
       ),
     );
@@ -874,18 +863,16 @@ class _MediaPostCard extends StatelessWidget {
   const _MediaPostCard({
     required this.item,
     required this.onTap,
-    required this.hasPremiumAccess,
     this.compact = false,
   });
 
   final MediaItem item;
   final VoidCallback onTap;
-  final bool hasPremiumAccess;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final locked = item.isLockedForUser(hasPremiumAccess: hasPremiumAccess);
+    final locked = !item.isPlayable && item.accessTier == MediaAccessTier.premium;
 
     return Material(
       color: Colors.transparent,
@@ -908,18 +895,37 @@ class _MediaPostCard extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              _navy,
-                              _navy.withValues(alpha: 0.75),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                      if (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty)
+                        Image.network(
+                          item.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  _navy,
+                                  _navy.withValues(alpha: 0.75),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                _navy,
+                                _navy.withValues(alpha: 0.75),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                           ),
                         ),
-                      ),
+                      Container(color: Colors.black.withValues(alpha: 0.28)),
                       Center(
                         child: Icon(
                           locked ? Icons.lock_outline : Icons.play_circle_filled,
@@ -937,8 +943,8 @@ class _MediaPostCard extends StatelessWidget {
                           right: 10,
                           top: 10,
                           child: _Badge(
-                            label: locked ? 'Premium' : 'Member',
-                            highlight: locked,
+                            label: 'Premium',
+                            highlight: !item.isPlayable,
                           ),
                         ),
                       if (item.durationLabel != null)
@@ -969,21 +975,13 @@ class _MediaPostCard extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
-                    child: _MediaPostCardBody(
-                      item: item,
-                      compact: true,
-                      locked: locked,
-                    ),
+                    child: _MediaPostCardBody(item: item, compact: true),
                   ),
                 )
               else
                 Padding(
                   padding: const EdgeInsets.all(18),
-                  child: _MediaPostCardBody(
-                    item: item,
-                    compact: false,
-                    locked: locked,
-                  ),
+                  child: _MediaPostCardBody(item: item, compact: false),
                 ),
             ],
           ),
@@ -994,15 +992,10 @@ class _MediaPostCard extends StatelessWidget {
 }
 
 class _MediaPostCardBody extends StatelessWidget {
-  const _MediaPostCardBody({
-    required this.item,
-    required this.compact,
-    required this.locked,
-  });
+  const _MediaPostCardBody({required this.item, required this.compact});
 
   final MediaItem item;
   final bool compact;
-  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -1051,17 +1044,7 @@ class _MediaPostCardBody extends StatelessWidget {
             ),
           ],
         ),
-        if (locked) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Premium members only',
-            style: GoogleFonts.figtree(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: Colors.black38,
-            ),
-          ),
-        ] else if (!item.isPlayable) ...[
+        if (!item.isPlayable) ...[
           const SizedBox(height: 6),
           Text(
             'Coming soon',
@@ -1113,27 +1096,33 @@ class _WatchEpisodeScreen extends StatefulWidget {
 }
 
 class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
-  late final VideoPlayerController _controller;
-  late final Future<void> _initializeFuture;
+  VideoPlayerController? _controller;
+  Future<void>? _initializeFuture;
   bool _showControls = true;
+
+  bool get _useVimeo =>
+      widget.item.vimeoId != null && widget.item.vimeoId!.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset(widget.item.videoAssetPath!);
-    _initializeFuture = _controller.initialize().then((_) {
-      if (!mounted) return;
-      setState(() {});
-      _controller.play();
-    });
-    _controller.addListener(() {
-      if (mounted) setState(() {});
-    });
+    if (!_useVimeo && widget.item.videoAssetPath != null) {
+      final controller = VideoPlayerController.asset(widget.item.videoAssetPath!);
+      _controller = controller;
+      _initializeFuture = controller.initialize().then((_) {
+        if (!mounted) return;
+        setState(() {});
+        controller.play();
+      });
+      controller.addListener(() {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -1141,6 +1130,111 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
     final m = d.inMinutes.remainder(60).toString().padLeft(1, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  Widget _buildPlayer() {
+    if (_useVimeo) {
+      return VimeoPlayerEmbed(
+        vimeoId: widget.item.vimeoId!.trim(),
+        privacyHash: widget.item.vimeoPrivacyHash,
+      );
+    }
+
+    final future = _initializeFuture;
+    final controller = _controller;
+    if (future == null || controller == null) {
+      return Center(
+        child: Text(
+          'No playable video for this episode.',
+          style: GoogleFonts.figtree(color: Colors.white70),
+        ),
+      );
+    }
+
+    return FutureBuilder<void>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(
+            child: CircularProgressIndicator(color: _gold),
+          );
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Unable to load video.',
+              style: GoogleFonts.figtree(color: Colors.white70),
+            ),
+          );
+        }
+        return GestureDetector(
+          onTap: () => setState(() => _showControls = !_showControls),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: controller.value.size.width,
+                  height: controller.value.size.height,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              if (_showControls) ...[
+                IconButton(
+                  iconSize: 64,
+                  color: Colors.white,
+                  onPressed: () {
+                    setState(() {
+                      if (controller.value.isPlaying) {
+                        controller.pause();
+                      } else {
+                        controller.play();
+                      }
+                    });
+                  },
+                  icon: Icon(
+                    controller.value.isPlaying
+                        ? Icons.pause_circle_filled
+                        : Icons.play_circle_filled,
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Column(
+                    children: [
+                      VideoProgressIndicator(
+                        controller,
+                        allowScrubbing: true,
+                        colors: const VideoProgressColors(
+                          playedColor: _gold,
+                          bufferedColor: Colors.white38,
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_formatDuration(controller.value.position)} / '
+                          '${_formatDuration(controller.value.duration)}',
+                          style: GoogleFonts.figtree(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -1176,90 +1270,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
                       aspectRatio: 16 / 9,
                       child: ColoredBox(
                         color: Colors.black,
-                        child: FutureBuilder<void>(
-                          future: _initializeFuture,
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState != ConnectionState.done) {
-                              return const Center(
-                                child: CircularProgressIndicator(color: _gold),
-                              );
-                            }
-                            if (snapshot.hasError) {
-                              return Center(
-                                child: Text(
-                                  'Unable to load video.',
-                                  style: GoogleFonts.figtree(color: Colors.white70),
-                                ),
-                              );
-                            }
-                            return GestureDetector(
-                              onTap: () => setState(() => _showControls = !_showControls),
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  FittedBox(
-                                    fit: BoxFit.contain,
-                                    child: SizedBox(
-                                      width: _controller.value.size.width,
-                                      height: _controller.value.size.height,
-                                      child: VideoPlayer(_controller),
-                                    ),
-                                  ),
-                                  if (_showControls) ...[
-                                    IconButton(
-                                      iconSize: 64,
-                                      color: Colors.white,
-                                      onPressed: () {
-                                        setState(() {
-                                          if (_controller.value.isPlaying) {
-                                            _controller.pause();
-                                          } else {
-                                            _controller.play();
-                                          }
-                                        });
-                                      },
-                                      icon: Icon(
-                                        _controller.value.isPlaying
-                                            ? Icons.pause_circle_filled
-                                            : Icons.play_circle_filled,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      left: 12,
-                                      right: 12,
-                                      bottom: 12,
-                                      child: Column(
-                                        children: [
-                                          VideoProgressIndicator(
-                                            _controller,
-                                            allowScrubbing: true,
-                                            colors: const VideoProgressColors(
-                                              playedColor: _gold,
-                                              bufferedColor: Colors.white38,
-                                              backgroundColor: Colors.white24,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Align(
-                                            alignment: Alignment.centerRight,
-                                            child: Text(
-                                              '${_formatDuration(_controller.value.position)} / '
-                                              '${_formatDuration(_controller.value.duration)}',
-                                              style: GoogleFonts.figtree(
-                                                color: Colors.white70,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                        child: _buildPlayer(),
                       ),
                     ),
                   ),

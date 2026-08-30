@@ -8,13 +8,17 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.models import PrayerRequest, ChurchEvent
+from core.models import PrayerRequest, ChurchEvent, ResponseReport
 
+from .models import MediaVideo
 from .serializers import (
     ChurchEventSerializer,
     ChurchEventWriteSerializer,
+    MediaVideoSerializer,
     PrayerRequestSerializer,
     PrayerRequestStaffUpdateSerializer,
+    ResponseReportSerializer,
+    ResponseReportStaffUpdateSerializer,
 )
 
 
@@ -91,3 +95,45 @@ class PrayerRequestDetailAPI(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(PrayerRequestSerializer(prayer).data)
+
+
+class ResponseReportDetailAPI(APIView):
+    """GET/PATCH /api/response-reports/<id>/ — staff view and status updates."""
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def get(self, request, pk):
+        report = get_object_or_404(ResponseReport, pk=pk)
+        return Response(ResponseReportSerializer(report).data)
+
+    def patch(self, request, pk):
+        from django.utils import timezone
+
+        report = get_object_or_404(ResponseReport, pk=pk)
+        serializer = ResponseReportStaffUpdateSerializer(
+            report,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        report = serializer.save()
+        if "status" in serializer.validated_data:
+            if report.status == ResponseReport.Status.NEW:
+                report.reviewed_at = None
+            else:
+                report.reviewed_at = timezone.now()
+            report.save(update_fields=["reviewed_at"])
+        return Response(ResponseReportSerializer(report).data)
+
+
+class MediaVideoListAPI(APIView):
+    """GET /api/media/ — public list of published Daily Devotionals."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        qs = MediaVideo.objects.filter(is_published=True).order_by(
+            "-published_at",
+            "title",
+        )
+        return Response({"results": MediaVideoSerializer(qs, many=True).data})

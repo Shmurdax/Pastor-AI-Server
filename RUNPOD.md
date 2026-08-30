@@ -16,11 +16,18 @@
 
 /workspace/persistent/          # survives container recreate + install.sh rsync
   postgres/ai_db.dump           # ingested document catalog (pg_dump)
+  postgres/ingested_catalog.dump # git seed catalog (empty-volume fallback)
   uploads/admin_ingestion/      # original sermon PDFs for library links
   uploads/admin_video_ingestion/ # original sermon videos + Whisper transcript sidecars
+  boot/                         # onboot.sh, start.sh, gpu_runtime.sh, persist_runtime.sh
+  onboot.sh                     # fallback RunPod start command
+  config.env / tokens.env       # mirrored secrets (mode 600; not in git)
+  bin/cloudflared bin/qdrant    # binaries restored into /usr/local/bin and /workspace/bin
+  .cloudflared/tunnel.token     # named Cloudflare tunnel token
+  whisper/                      # Whisper model cache
 ```
 
-Live Postgres cannot use this volume as `PGDATA` (the volume cannot `chown` to user `postgres`). `start.sh` / `install.sh` keep the cluster on local disk, dump/restore `ai_db` onto `/workspace/persistent/postgres/ai_db.dump`, and symlink `backend/app/uploads/admin_ingestion` to the persistent PDF folder. Re-run `start.sh` after a pod stop/start or a full remigration so those bindings are restored.
+Live Postgres cannot use this volume as `PGDATA` (the volume cannot `chown` to user `postgres`). `start.sh` / `install.sh` keep the cluster on local disk, dump/restore `ai_db` onto `/workspace/persistent/postgres/ai_db.dump`, and symlink `backend/app/uploads/admin_ingestion` to the persistent PDF folder. After a pod stop/start or remigration, `onboot.sh` restores packages, the tunnel, boot scripts, and those bindings.
 
 ## Fresh install
 
@@ -29,10 +36,29 @@ export HF_TOKEN=hf_...
 bash <(curl -fsSL https://raw.githubusercontent.com/GavWrecker/Pastor-AI-Server/master/install.sh)
 ```
 
-## Restart after stop/start
+## Restart after stop/start or remigration
+
+Set the RunPod **container start command** to:
 
 ```bash
-bash /workspace/pastor-ai/start.sh
+bash /workspace/pastor-ai/onboot.sh || bash /workspace/persistent/onboot.sh
+```
+
+`onboot.sh` reinstalls `screen` / Postgres / ffmpeg / LibreOffice, restores
+`cloudflared` + the named-tunnel token, restores boot scripts and `config.env`
+from `/workspace/persistent` if the pastor-ai tree was wiped, then runs
+`start.sh`. That brings back Django, Qdrant, vLLM (detecting the current MIG
+UUID — do not hardcode it), the Whisper video worker, and the public hostname.
+
+`start.sh` also copies `onboot.sh`, `start.sh`, `gpu_runtime.sh`, and secrets
+into `/workspace/persistent/boot` so the next remigration has a fallback.
+
+Keep the network volume attached at `/workspace`. Sermon PDFs, videos,
+transcripts, the Postgres dump, Whisper cache, Qdrant storage, venv, and LoRA
+live there and survive container recreate.
+
+```bash
+bash /workspace/pastor-ai/onboot.sh
 ```
 
 ## Common issues

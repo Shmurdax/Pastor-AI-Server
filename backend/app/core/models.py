@@ -175,6 +175,60 @@ class PrayerRequest(models.Model):
         return f"Prayer from {label} ({self.created_at:%Y-%m-%d})"
 
 
+class ResponseReport(models.Model):
+    """User reports against a specific AI chat response."""
+
+    class Reason(models.TextChoices):
+        INACCURATE = "inaccurate", "Inaccurate information"
+        OFF_TOPIC = "off_topic", "Off topic"
+        HARMFUL_UNSAFE = "harmful_unsafe", "Harmful or unsafe"
+        CONFUSING = "confusing", "Confusing or unclear"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        REVIEWED = "reviewed", "Reviewed"
+        DISMISSED = "dismissed", "Dismissed"
+
+    chat_message = models.ForeignKey(
+        ChatMessage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    user_query_snapshot = models.TextField()
+    ai_response_snapshot = models.TextField()
+    reason = models.CharField(max_length=32, choices=Reason.choices)
+    details = models.TextField(blank=True, max_length=2000)
+    session_id = models.TextField(blank=True)
+    user = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="response_reports",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEW,
+    )
+    staff_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["session_id", "chat_message"]),
+        ]
+
+    def __str__(self):
+        return f"Report {self.id} ({self.reason}) — {self.status}"
+
+
 class ChurchEvent(models.Model):
     """Public church calendar events (staff-managed)."""
 

@@ -1,5 +1,7 @@
 import 'package:flutter_application_1/models/church_event.dart';
+import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
+import 'package:flutter_application_1/models/response_report.dart';
 
 import 'api_client.dart';
 
@@ -94,4 +96,39 @@ class ApiService {
       _apiClient.mockActivatePremium(billingPeriod: billingPeriod);
 
   Future<Map<String, dynamic>> cancelSubscription() => _apiClient.cancelSubscription();
+
+  Future<Map<String, dynamic>> submitResponseReport({
+    required int messageId,
+    required String reason,
+    required String sessionId,
+    String details = '',
+  }) {
+    return _apiClient.submitResponseReport(
+      messageId: messageId,
+      reason: reason,
+      sessionId: sessionId,
+      details: details,
+    );
+  }
+
+  Future<List<ResponseReportItem>> listResponseReports({String? status}) {
+    return _apiClient.listResponseReports(status: status);
+  }
+
+  Future<ResponseReportItem> updateResponseReport(
+    int id, {
+    String? status,
+    String? staffNotes,
+  }) {
+    return _apiClient.updateResponseReport(
+      id,
+      status: status,
+      staffNotes: staffNotes,
+    );
+  }
+
+  Future<List<MediaItem>> listMediaVideos() async {
+    final rows = await _apiClient.listMediaVideos();
+    return rows.map(MediaItem.fromApiJson).toList();
+  }
 }

@@ -28,8 +28,10 @@ from .models import (
     IngestionJobLog,
     PrayerRequest,
     ChurchEvent,
+    ResponseReport,
 )
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
+from .embedded_videos import get_embedded_video, list_embedded_videos
 from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
@@ -765,6 +767,38 @@ def _admin_ingested_video_file_view(request, file_name: str):
     )
 
 
+
+def _admin_embedded_videos_view(request):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    videos = list_embedded_videos()
+    context = {
+        **admin.site.each_context(request),
+        "title": "Embedded Videos",
+        "videos": videos,
+    }
+    return TemplateResponse(request, "admin/core/embedded_videos.html", context)
+
+
+def _admin_embedded_video_detail_view(request, vimeo_id: str):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    video = get_embedded_video(vimeo_id)
+    if video is None:
+        raise Http404("Embedded video was not found.")
+
+    context = {
+        **admin.site.each_context(request),
+        "title": video.title,
+        "video": video,
+    }
+    return TemplateResponse(request, "admin/core/embedded_video_detail.html", context)
+
+
 def _get_urls():
     custom_urls = [
         path(
@@ -806,6 +840,16 @@ def _get_urls():
             "core/ingested-videos/file/<path:file_name>/",
             admin.site.admin_view(_admin_ingested_video_file_view),
             name="core_ingested_video_file",
+        ),
+        path(
+            "core/embedded-videos/",
+            admin.site.admin_view(_admin_embedded_videos_view),
+            name="core_embedded_videos",
+        ),
+        path(
+            "core/embedded-videos/<str:vimeo_id>/",
+            admin.site.admin_view(_admin_embedded_video_detail_view),
+            name="core_embedded_video_detail",
         ),
     ]
     return custom_urls + _original_get_urls()
@@ -873,6 +917,17 @@ def _get_app_list(request, app_label=None):
                     "name": "Ingested Videos Browser",
                     "object_name": "CoreIngestedVideosTool",
                     "admin_url": reverse("admin:core_ingested_videos"),
+                    "add_url": None,
+                    "view_only": True,
+                    "perms": {"add": False, "change": True, "delete": False, "view": True},
+                }
+            )
+        if "CoreEmbeddedVideosTool" not in existing_object_names:
+            custom_entries.append(
+                {
+                    "name": "Embedded Videos",
+                    "object_name": "CoreEmbeddedVideosTool",
+                    "admin_url": reverse("admin:core_embedded_videos"),
                     "add_url": None,
                     "view_only": True,
                     "perms": {"add": False, "change": True, "delete": False, "view": True},
@@ -980,6 +1035,75 @@ class PrayerRequestAdmin(admin.ModelAdmin):
             return '—'
         label = obj.user.get_full_name() or obj.user.username
         return format_html('{} &lt;{}&gt;', label, obj.user.email)
+
+
+@admin.register(ResponseReport)
+class ResponseReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "reason",
+        "status",
+        "created_at",
+        "response_preview",
+        "reporter_label",
+    )
+    list_filter = ("reason", "status", "created_at")
+    search_fields = (
+        "user_query_snapshot",
+        "ai_response_snapshot",
+        "details",
+        "staff_notes",
+        "session_id",
+    )
+    date_hierarchy = "created_at"
+    list_editable = ("status",)
+    readonly_fields = (
+        "chat_message",
+        "user_query_snapshot",
+        "ai_response_snapshot",
+        "session_id",
+        "user",
+        "created_at",
+        "reviewed_at",
+    )
+    fieldsets = (
+        (
+            "Report",
+            {
+                "fields": ("reason", "details", "status", "staff_notes", "reviewed_at"),
+            },
+        ),
+        (
+            "Reported content",
+            {
+                "fields": (
+                    "chat_message",
+                    "user_query_snapshot",
+                    "ai_response_snapshot",
+                ),
+            },
+        ),
+        (
+            "Meta",
+            {
+                "classes": ("collapse",),
+                "fields": ("session_id", "user", "created_at"),
+            },
+        ),
+    )
+
+    @admin.display(description="AI response preview")
+    def response_preview(self, obj):
+        text = (obj.ai_response_snapshot or "").replace("\n", " ").strip()
+        if len(text) > 80:
+            text = f"{text[:77]}..."
+        return text or "—"
+
+    @admin.display(description="Reporter")
+    def reporter_label(self, obj):
+        if obj.user_id is None:
+            return "Guest"
+        return obj.user.get_full_name() or obj.user.username or obj.user.email
 
 
 @admin.register(ChurchEvent)

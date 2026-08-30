@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
+import 'package:flutter_application_1/models/response_report.dart';
 import 'package:http/http.dart' as http;
 
 /// When false, POSTs to Django `POST /api/prayer-requests/` with body:
@@ -262,6 +263,70 @@ class ApiClient {
     );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> submitResponseReport({
+    required int messageId,
+    required String reason,
+    required String sessionId,
+    String details = '',
+  }) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/response-reports/')),
+      headers: _headers(json: true),
+      body: jsonEncode({
+        'message_id': messageId,
+        'reason': reason,
+        'details': details,
+        'session_id': sessionId,
+      }),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<List<ResponseReportItem>> listResponseReports({String? status}) async {
+    final qp = <String, String>{};
+    if (status != null && status.trim().isNotEmpty) qp['status'] = status.trim();
+    final uri = Uri.parse(_resolveUrl('/api/response-reports/')).replace(
+      queryParameters: qp.isEmpty ? null : qp,
+    );
+    final res = await _client.get(uri, headers: _headers());
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = body['results'] as List<dynamic>? ?? [];
+    return results
+        .map((e) => ResponseReportItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ResponseReportItem> updateResponseReport(
+    int id, {
+    String? status,
+    String? staffNotes,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (status != null) payload['status'] = status;
+    if (staffNotes != null) payload['staff_notes'] = staffNotes;
+
+    final res = await _client.patch(
+      Uri.parse(_resolveUrl('/api/response-reports/$id/')),
+      headers: _headers(json: true),
+      body: jsonEncode(payload),
+    );
+    _ensureOk(res);
+    return ResponseReportItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<List<Map<String, dynamic>>> listMediaVideos() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/media/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = body['results'] as List<dynamic>? ?? [];
+    return results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
   void _ensureOk(http.Response res) {

@@ -9,6 +9,7 @@ import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
+import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/services/api_service.dart';
@@ -844,6 +845,45 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
+  void _openResponseReportsInbox() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ResponseReportsInboxScreen(apiService: _apiService),
+      ),
+    );
+  }
+
+  Future<void> _reportResponse(int index) async {
+    final msg = _messages[index];
+    final rawId = msg['message_id'];
+    final messageId = rawId is int ? rawId : int.tryParse('$rawId');
+    if (messageId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This response cannot be reported yet.')),
+      );
+      return;
+    }
+    if (msg['reported'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You already reported this response.')),
+      );
+      return;
+    }
+    final ok = await showReportResponseSheet(
+      context: context,
+      apiService: _apiService,
+      messageId: messageId,
+      sessionId: sessionId,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _messages[index]['reported'] = true);
+    await _persistChatHistory();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Thanks — your report was submitted.')),
+    );
+  }
+
   void _openSubscriptions() {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -920,6 +960,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
       onOpenMedia: _openMedia,
       onOpenSubscriptions: _openSubscriptions,
       onOpenPrayerInbox: _openPrayerInbox,
+      onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
         if (!mounted) return;
         setState(() {
@@ -1005,10 +1046,13 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       }
 
       // 2. Add the new message to the chat
+      final messageId = data['message_id'];
       _messages.add({
          "role": "ai",
          "text": _boldBibleReferences(data['answer'] as String),
          "sources": List<String>.from(data['sources'] ?? []),
+         if (messageId != null) "message_id": messageId,
+         "reported": false,
     });
       
       // 3. Only update the library if the response actually used sermon sources
@@ -1116,6 +1160,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
               ),
             ),
+          if (auth.isAuthenticated && auth.user!.isStaff)
+            Padding(
+              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              child: IconButton(
+                tooltip: 'Response reports',
+                onPressed: _openResponseReportsInbox,
+                icon: const Icon(Icons.flag_outlined, color: _navy),
+              ),
+            ),
           if (auth.isAuthenticated)
             AccountProfileChip(
               apiService: _apiService,
@@ -1123,6 +1176,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               onOpenMedia: _openMedia,
               onOpenSubscriptions: _openSubscriptions,
               onOpenPrayerInbox: _openPrayerInbox,
+              onOpenResponseReports: _openResponseReportsInbox,
               onSignedOut: () {
                 if (!mounted) return;
                 setState(() {
@@ -1985,6 +2039,16 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                     icon: Icons.refresh_rounded,
                     tooltip: _s.regenerateResponse,
                     onTap: _isLoading ? null : () => _regenerateResponse(index),
+                  ),
+                ],
+                if (msg["message_id"] != null) ...[
+                  const SizedBox(width: 4),
+                  _buildActionButton(
+                    icon: msg["reported"] == true ? Icons.flag : Icons.flag_outlined,
+                    tooltip: msg["reported"] == true ? "Already reported" : "Report response",
+                    onTap: msg["reported"] == true || _isLoading
+                        ? null
+                        : () => _reportResponse(index),
                   ),
                 ],
               ],

@@ -1,0 +1,223 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .embedded-detail-wrap {
+    max-width: 1400px;
+  }
+  .embedded-detail-meta {
+    margin: 0 0 16px;
+    max-width: 80ch;
+  }
+  .embedded-detail-meta p {
+    margin: 0 0 6px;
+  }
+  .embedded-split {
+    display: grid;
+    grid-template-columns: minmax(320px, 1.15fr) minmax(280px, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  .embedded-player-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .embedded-player-help {
+    margin: 8px 0 0;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .embedded-transcript {
+    border: 1px solid var(--hairline-color, #ddd);
+    border-radius: 6px;
+    background: var(--body-bg, #fff);
+    max-height: min(70vh, 720px);
+    overflow: auto;
+  }
+  .embedded-transcript h2 {
+    margin: 0;
+    padding: 12px 14px 8px;
+    font-size: 15px;
+  }
+  .embedded-transcript-help {
+    margin: 0;
+    padding: 0 14px 10px;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .embedded-transcript-empty {
+    padding: 0 14px 16px;
+  }
+  .transcript-line {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    border-top: 1px solid var(--hairline-color, #eee);
+    background: transparent;
+    color: inherit;
+    padding: 10px 14px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .transcript-line:hover,
+  .transcript-line.is-active {
+    background: var(--selected-bg, #e8f0fe);
+  }
+  .transcript-time {
+    display: block;
+    font-size: 11px;
+    opacity: 0.75;
+    margin-bottom: 4px;
+  }
+  .transcript-text {
+    display: block;
+    line-height: 1.45;
+  }
+  @media (max-width: 900px) {
+    .embedded-split {
+      grid-template-columns: 1fr;
+    }
+    .embedded-transcript {
+      max-height: 50vh;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="embedded-detail-wrap">
+  <p>
+    <a href="{% url 'admin:core_embedded_videos' %}">Back to Embedded Videos</a>
+  </p>
+  <h1>{{ video.title }}</h1>
+  <div class="embedded-detail-meta">
+    <p>
+      Vimeo:
+      <a href="{{ video.watch_url }}" target="_blank" rel="noopener">{{ video.watch_url }}</a>
+    </p>
+    <p>
+      Matched audio:
+      {% if video.source_name %}
+        {{ video.source_name }}
+      {% else %}
+        none on disk
+      {% endif %}
+      {% if video.transcript_source %}
+        · Transcript: {{ video.transcript_source }}
+      {% endif %}
+      {% if video.whisper_model %}
+        · Whisper model: {{ video.whisper_model }}
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="embedded-split">
+    <div class="embedded-player">
+      <div class="embedded-player-frame">
+        <iframe
+          id="embedded-vimeo-player"
+          src="{{ video.embed_src }}"
+          allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allowfullscreen
+          title="Vimeo player for {{ video.vimeo_id }}"
+        ></iframe>
+      </div>
+      <p class="embedded-player-help">
+        If Vimeo blocks playback here, allow this admin site in the video’s embed privacy settings,
+        or
+        <a href="{{ video.watch_url }}" target="_blank" rel="noopener">open the video on Vimeo</a>.
+      </p>
+    </div>
+    <aside class="embedded-transcript" id="embedded-transcript">
+      <h2>Transcript</h2>
+      {% if video.has_transcript %}
+        <p class="embedded-transcript-help">Click a line to seek the video to that timestamp.</p>
+        {% for segment in video.segments %}
+          <button
+            type="button"
+            class="transcript-line"
+            data-start="{{ segment.start }}"
+            data-end="{{ segment.end }}"
+          >
+            <span class="transcript-time">{{ segment.range_label }}</span>
+            <span class="transcript-text">{{ segment.text }}</span>
+          </button>
+        {% endfor %}
+      {% else %}
+        <p class="embedded-transcript-empty">
+          No matching transcript was found for Vimeo ID {{ video.vimeo_id }}.
+          Ingest the audio as <code>{{ video.vimeo_id }}.m4a</code> (or another media
+          extension) so Whisper can write a <code>.transcript.json</code> sidecar.
+        </p>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://player.vimeo.com/api/player.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var iframe = document.getElementById("embedded-vimeo-player");
+    if (!iframe || typeof Vimeo === "undefined" || !Vimeo.Player) {
+      return;
+    }
+    var player = new Vimeo.Player(iframe);
+    var lines = Array.prototype.slice.call(document.querySelectorAll(".transcript-line"));
+    if (!lines.length) {
+      return;
+    }
+
+    function setActive(seconds) {
+      var active = null;
+      lines.forEach(function (line) {
+        var start = parseFloat(line.getAttribute("data-start") || "0");
+        var end = parseFloat(line.getAttribute("data-end") || "0");
+        var isActive = seconds >= start && (end <= start ? seconds >= start : seconds < end);
+        line.classList.toggle("is-active", isActive);
+        if (isActive) {
+          active = line;
+        }
+      });
+      return active;
+    }
+
+    lines.forEach(function (line) {
+      line.addEventListener("click", function () {
+        var start = parseFloat(line.getAttribute("data-start") || "0");
+        player.setCurrentTime(start).then(function () {
+          return player.play();
+        }).catch(function () {
+          /* Autoplay can be blocked; seeking still applied. */
+        });
+      });
+    });
+
+    player.on("timeupdate", function (data) {
+      var active = setActive(data.seconds || 0);
+      if (active && active.dataset.pinned !== "1") {
+        var panel = document.getElementById("embedded-transcript");
+        if (!panel) {
+          return;
+        }
+        var lineTop = active.offsetTop;
+        var lineBottom = lineTop + active.offsetHeight;
+        var viewTop = panel.scrollTop;
+        var viewBottom = viewTop + panel.clientHeight;
+        if (lineTop < viewTop + 80 || lineBottom > viewBottom - 20) {
+          panel.scrollTo({ top: Math.max(0, lineTop - 120), behavior: "smooth" });
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}

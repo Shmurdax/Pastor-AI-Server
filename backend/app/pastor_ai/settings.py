@@ -271,3 +271,14 @@ _billing_mock_raw = os.environ.get("BILLING_MOCK_CHECKOUT", "") or _load_dotenv_
 )
 BILLING_MOCK_CHECKOUT = _billing_mock_raw.strip().lower()
 
+# Vimeo Folder sync for Daily Devotionals media library.
+# Folder URL example: https://vimeo.com/user/21759939/folder/24205069
+VIMEO_ACCESS_TOKEN = os.environ.get("VIMEO_ACCESS_TOKEN", "") or _load_dotenv_value("VIMEO_ACCESS_TOKEN")
+VIMEO_FOLDER_ID = os.environ.get("VIMEO_FOLDER_ID", "") or _load_dotenv_value("VIMEO_FOLDER_ID")
+VIMEO_USER_ID = os.environ.get("VIMEO_USER_ID", "") or _load_dotenv_value("VIMEO_USER_ID")
+# Deprecated alias — still read if VIMEO_FOLDER_ID is empty.
+VIMEO_SHOWCASE_ID = os.environ.get("VIMEO_SHOWCASE_ID", "") or _load_dotenv_value("VIMEO_SHOWCASE_ID")
+VIMEO_FREE_PREVIEW_ID = (
+    os.environ.get("VIMEO_FREE_PREVIEW_ID", "") or _load_dotenv_value("VIMEO_FREE_PREVIEW_ID")
+)
+

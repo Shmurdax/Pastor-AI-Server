@@ -62,6 +62,8 @@ upsert HUGGING_FACE_HUB_TOKEN "${HUGGING_FACE_HUB_TOKEN:-}"
 upsert NGROK_AUTH_TOKEN "${NGROK_AUTH_TOKEN:-}"
 upsert NGROK_DOMAIN "${NGROK_DOMAIN:-}"
 upsert TUNNEL "${TUNNEL:-}"
+upsert PUBLIC_DOMAIN "${PUBLIC_DOMAIN:-}"
+upsert CLOUDFLARE_TUNNEL_TOKEN "${CLOUDFLARE_TUNNEL_TOKEN:-}"
 upsert DJANGO_SECRET_KEY "${DJANGO_SECRET_KEY:-}"
 upsert POSTGRES_PASSWORD "${POSTGRES_PASSWORD:-}"
 upsert PUBLIC_API_KEY "${PUBLIC_API_KEY:-}"
@@ -73,6 +75,11 @@ upsert STRIPE_PRICE_MONTHLY "${STRIPE_PRICE_MONTHLY:-}"
 upsert STRIPE_PRICE_YEARLY "${STRIPE_PRICE_YEARLY:-}"
 upsert PUBLIC_APP_URL "${PUBLIC_APP_URL:-}"
 upsert BILLING_MOCK_CHECKOUT "${BILLING_MOCK_CHECKOUT:-}"
+upsert VIMEO_ACCESS_TOKEN "${VIMEO_ACCESS_TOKEN:-}"
+upsert VIMEO_FOLDER_ID "${VIMEO_FOLDER_ID:-}"
+upsert VIMEO_USER_ID "${VIMEO_USER_ID:-}"
+upsert VIMEO_SHOWCASE_ID "${VIMEO_SHOWCASE_ID:-}"
+upsert VIMEO_FREE_PREVIEW_ID "${VIMEO_FREE_PREVIEW_ID:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then
@@ -88,6 +95,18 @@ if [[ -n "${HF_TOKEN:-}" && "${HF_TOKEN}" != *paste_here* ]]; then
   printf '%s' "$HF_TOKEN" > "$WS/.huggingface/token"
   chmod 600 "${HF_HOME:-$WS/hf_cache}/token" "$WS/.huggingface/token" 2>/dev/null || true
   echo "  wrote HF token files"
+fi
+
+# Keep the named Cloudflare tunnel token on the network volume so remigration
+# can restore it even if /workspace/pastor-ai/.cloudflared is wiped.
+if [[ -f "$WS/persist_runtime.sh" ]]; then
+  log()  { echo "  $*"; }
+  warn() { echo "  $*" >&2; }
+  # shellcheck disable=SC1091
+  source "$WS/persist_runtime.sh"
+  if [[ -n "$(resolve_cloudflare_tunnel_token_file 2>/dev/null || true)" ]]; then
+    echo "  persisted Cloudflare tunnel token onto ${PERSIST_TUNNEL_TOKEN:-$PERSIST_ROOT/.cloudflared/tunnel.token}"
+  fi
 fi
 
 echo "Done."

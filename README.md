@@ -25,7 +25,7 @@ bash install.sh
 1. Install system packages (git, Python, Postgres, screen, …)
 2. Install Docker + NVIDIA Container Toolkit when possible (falls back to **native** if Docker cannot run — current RunPod production path)
 3. Sync `backend/` + `frontend/` onto `/workspace/pastor-ai`
-4. Create Python venv with torch cu128 + **vLLM 0.8.5**
+4. Create Python venv with **vLLM** (CUDA 12.8 on Ada/Hopper, CUDA 12.9+ on Blackwell / RTX PRO 6000 MIG)
 5. Download the Christian LoRA from Hugging Face
 6. Migrate Django, start Qdrant / vLLM / Django / Cloudflare tunnel
 7. Ingest `backend/app/converted_markdown` into Qdrant `sermon_brain`
@@ -104,3 +104,30 @@ cd frontend && flutter build web --release --dart-define=API_BASE_URL=
 
 `start.sh` / `install.sh` automatically prefer `frontend/build/web` when present.
 Same-origin API calls (`API_BASE_URL` empty) talk to Django on the ngrok/public URL.
+
+## Vimeo Daily Devotionals
+
+Media gallery videos sync from a **Vimeo Folder** (unlisted videos supported).
+
+Example folder: `https://vimeo.com/user/21759939/folder/24205069`
+
+1. Keep devotionals in that folder; allow embedding on each video (add your site domain if required).
+2. Create an API token with `public` + `private` scopes (token user must be able to read the folder).
+3. Set in `tokens.env` then `bash apply-tokens.sh`:
+
+```bash
+VIMEO_ACCESS_TOKEN=...
+VIMEO_FOLDER_ID=24205069
+VIMEO_USER_ID=21759939
+VIMEO_FREE_PREVIEW_ID=...      # optional: one free intro video id
+```
+
+4. Sync:
+
+```bash
+cd backend/app && python manage.py sync_vimeo_media
+```
+
+`deploy_update.sh` runs this sync after migrate when the token and folder id are set.
+Public catalog: `GET /api/media/`.
+

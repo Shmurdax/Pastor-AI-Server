@@ -48,6 +48,14 @@ cd "$APP_DIR"
 export FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$FRONTEND_DIR/build/web}"
 python manage.py migrate --noinput 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log"
 
+if [[ -n "${VIMEO_ACCESS_TOKEN:-}" && -n "${VIMEO_FOLDER_ID:-${VIMEO_SHOWCASE_ID:-}}" ]]; then
+  log "Syncing Vimeo Folder media"
+  python manage.py sync_vimeo_media 2>&1 | tee -a "$LOG_DIR/deploy-vimeo-sync.log" \
+    || warn "Vimeo media sync failed (continuing deploy)"
+else
+  warn "VIMEO_ACCESS_TOKEN / VIMEO_FOLDER_ID not set — skipping media sync"
+fi
+
 if [[ -z "${GOOGLE_CLIENT_ID:-}" ]]; then
   warn "GOOGLE_CLIENT_ID is empty in config.env — Google Sign-In will return 503"
   warn "Set it in tokens.env and run: bash $WS/apply-tokens.sh"
@@ -76,6 +84,8 @@ bash "$WS/start.sh"
 log "Health checks (localhost)"
 curl -sf -o /dev/null -w "  GET /api/church-events/ → %{http_code}\n" \
   "http://127.0.0.1:${DJANGO_PORT:-8000}/api/church-events/" || true
+curl -sf -o /dev/null -w "  GET /api/media/ → %{http_code}\n" \
+  "http://127.0.0.1:${DJANGO_PORT:-8000}/api/media/" || true
 curl -sf -o /dev/null -w "  POST /api/auth/google/ → %{http_code}\n" \
   -X POST "http://127.0.0.1:${DJANGO_PORT:-8000}/api/auth/google/" \
   -H "Content-Type: application/json" \

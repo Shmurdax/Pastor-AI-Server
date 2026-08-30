@@ -43,6 +43,24 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/persist_runtime.sh"
+restore_workspace_from_persist || true
+ensure_persistent_boot_bundle || true
+ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/gpu_runtime.sh"
+gpu_detect
+if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
+  log "GPU: ${GPU_NAME:-unknown} compute_cap=${GPU_COMPUTE_CAP:-?} MIG=${GPU_MIG_UUID:-none} ${GPU_MIG_GB:+${GPU_MIG_GB}GB}"
+fi
+if [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
+  WHISPER_DEVICE=cpu
+elif [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
+  case "${WHISPER_DEVICE:-auto}" in
+    cpu|auto|gpu|"") WHISPER_DEVICE=cuda ;;
+  esac
+else
+  WHISPER_DEVICE="${WHISPER_DEVICE:-cpu}"
+fi
 
 stop_screen() { screen -S "$1" -X quit 2>/dev/null || true; }
 
@@ -74,6 +92,12 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   apt-get update -qq && apt-get install -y -qq ffmpeg >/dev/null || warn "ffmpeg apt install failed; video ingestion will not transcribe"
 fi
 ensure_persistent_postgres || service postgresql start 2>/dev/null || true
+# Schema must exist before the git seed dump (data-only) can load on a new volume.
+if [[ -x "${VENV_DIR}/bin/python" && -f "${APP_DIR}/manage.py" ]]; then
+  ( source "${VENV_DIR}/bin/activate" && cd "${APP_DIR}" && python manage.py migrate --noinput ) \
+    >/dev/null 2>&1 || true
+fi
+restore_seed_ingested_catalog || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" 2>/dev/null | grep -q 1 \
@@ -113,8 +137,9 @@ fi
 # vLLM
 if ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
-  FREE_MIB="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || echo 0)"
-  if [[ "${FREE_MIB:-0}" -lt 8000 ]]; then
+  gpu_ensure_vllm_stack
+  FREE_MIB="$(gpu_free_mib || true)"
+  if [[ -n "${FREE_MIB}" && "${FREE_MIB}" -lt 8000 ]]; then
     warn "GPU has only ${FREE_MIB:-?} MiB free (need ~8GB+). Ghost VRAM from dead host processes?"
     warn "In RunPod: Stop this pod fully → wait 30s → Start again, then re-run start.sh"
   fi
@@ -129,21 +154,53 @@ if ! vllm_healthy; then
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
   MAX_LEN="${VLLM_MAX_MODEL_LEN:-4096}"
-  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-0.90}"
+  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
+  DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
+  if [[ -z "$GPU_UTIL" ]]; then
+    GPU_UTIL="$DEFAULT_UTIL"
+  elif [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]] && awk "BEGIN{exit !($GPU_UTIL > $DEFAULT_UTIL)}"; then
+    log "Capping vLLM gpu-memory-utilization at ${DEFAULT_UTIL} for 24GB MIG (Whisper headroom)"
+    GPU_UTIL="$DEFAULT_UTIL"
+  fi
+  CUDA_DEV_EXPORT=""
+  if [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
+    CUDA_DEV_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}' &&"
+  fi
+  gpu_export_cuda_libs
+  CUDA_LD_EXPORT=""
+  if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+    CUDA_LD_EXPORT="export LD_LIBRARY_PATH='${LD_LIBRARY_PATH}' &&"
+  fi
+  ENFORCE_EAGER=""
+  ATTN_EXPORT=""
+  if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
+    # FlashInfer 0.6.x treats sm_120 as below sm75 and aborts graph capture.
+    # FlashInfer 0.6.x JIT uses TORCH_CUDA_ARCH_LIST; empty/old lists fail sm_120 as "< sm75".
+    ATTN_EXPORT="export VLLM_ATTENTION_BACKEND='${VLLM_ATTENTION_BACKEND:-TRITON_ATTN}' && export TORCH_CUDA_ARCH_LIST='${TORCH_CUDA_ARCH_LIST:-12.0}' && export VLLM_USE_FLASHINFER_SAMPLER=0 &&"
+    if [[ "${VLLM_ENFORCE_EAGER:-1}" != "0" ]]; then
+      ENFORCE_EAGER="--enforce-eager"
+    fi
+  elif [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
+    ENFORCE_EAGER="--enforce-eager"
+  fi
   LORA_ARGS=""
   if [[ -f "$LORA_DIR/adapter_model.safetensors" ]]; then
     LORA_ARGS="--enable-lora --lora-modules ${SERVED_NAME}=${LORA_DIR} --max-lora-rank 16"
-    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}'"
+    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}' util=${GPU_UTIL}"
   else
     BASE_MODEL="${SERVED_NAME}"
     warn "LoRA missing at $LORA_DIR — starting base/model id only: $BASE_MODEL"
   fi
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
+    ${CUDA_DEV_EXPORT}
+    ${CUDA_LD_EXPORT}
+    ${ATTN_EXPORT}
     export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
     export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
     export HF_TOKEN='${HF_TOK}' &&
     export HF_HUB_ENABLE_HF_TRANSFER=0 &&
+    export FLASHINFER_DISABLE_VERSION_CHECK=1 &&
     python -m vllm.entrypoints.openai.api_server \
       --model '${BASE_MODEL}' \
       --served-model-name '${SERVED_NAME}' \
@@ -153,6 +210,7 @@ if ! vllm_healthy; then
       --max-model-len ${MAX_LEN} \
       --gpu-memory-utilization ${GPU_UTIL} \
       --trust-remote-code \
+      ${ENFORCE_EAGER} \
       >> '${LOG_DIR}/vllm.log' 2>&1
   "
   log "vLLM starting on :${VLLM_PORT} (first load downloads model — check ${LOG_DIR}/vllm.log)"
@@ -165,6 +223,8 @@ fi
 ensure_persistent_uploads
 export INGESTION_UPLOAD_DIR="${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}"
 export VIDEO_INGESTION_UPLOAD_DIR="${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}"
+export VIDEO_INGESTION_JOBS_DIR="${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}"
+export VIDEO_INGESTION_CHUNKS_DIR="${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}"
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Flutter build dir: $FRONTEND_BUILD_DIR"
 stop_screen django
@@ -212,14 +272,15 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
-  # Hide GPUs from Django only — vLLM keeps the GPU in its own screen.
-  # Prevents MiniLM embeddings from CUDA-OOM during admin ingestion.
+  # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
   export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
+  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
+  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}' &&
   export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
-  export WHISPER_DEVICE='${WHISPER_DEVICE:-cpu}' &&
+  export WHISPER_DEVICE='cpu' &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   python manage.py migrate --noinput &&
@@ -230,6 +291,42 @@ screen -dmS django bash -c "
 sleep 3
 curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJANGO_PORT}" \
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
+
+# Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
+# On GPU pods Whisper uses leftover MIG VRAM; MiniLM embeddings stay on CPU.
+stop_screen video-ingest
+VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES=''"
+if [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
+  VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}'"
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=1"
+else
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+fi
+screen -dmS video-ingest bash -c "
+  set -a
+  source '${CONFIG_ENV}'
+  set +a
+  source '${VENV_DIR}/bin/activate'
+  cd '${APP_DIR}'
+  ${VIDEO_ALLOW_GPU}
+  ${VIDEO_CUDA_EXPORT}
+  export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
+  export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
+  export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
+  export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}'
+  export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}'
+  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}'
+  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
+  export WHISPER_MODEL='${WHISPER_MODEL:-base}'
+  export WHISPER_DEVICE='${WHISPER_DEVICE}'
+  export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
+  export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
+  export PYTHONUNBUFFERED=1
+  exec python -u manage.py run_video_ingestion_worker >> '${LOG_DIR}/video_ingest_worker.log' 2>&1
+"
+sleep 1
+screen -ls | grep -q 'video-ingest' && log "Video ingest worker on screen video-ingest" \
+  || warn "Video ingest worker did not start — see ${LOG_DIR}/video_ingest_worker.log"
 
 # Tunnel. Production uses a named Cloudflare tunnel; tokens.env may still say ngrok.
 if [[ "${TUNNEL:-}" == "ngrok" ]] && ! command -v ngrok >/dev/null 2>&1; then
@@ -258,34 +355,37 @@ case "$TUNNEL" in
     fi
     ;;
   *)
-    command -v cloudflared >/dev/null || die "cloudflared not installed"
-    stop_screen cloudflared
-    # Kill any leftover quick/named tunnel process so we don't keep an old URL.
-    pkill -f 'cloudflared tunnel' 2>/dev/null || true
-    : > "$LOG_DIR/cloudflared.log"
-    TOKEN_FILE="${CLOUDFLARE_TUNNEL_TOKEN_FILE:-$WS/.cloudflared/tunnel.token}"
-    PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-christianaiapophatictestdomain.com}"
-    if [[ -f "$TOKEN_FILE" ]]; then
-      # Named Cloudflare tunnel (custom domain) — preferred over quick tunnels.
-      screen -dmS cloudflared bash -c \
-        "cloudflared tunnel --no-autoupdate run --token \"\$(cat '${TOKEN_FILE}')\" >> '${LOG_DIR}/cloudflared.log' 2>&1"
-      echo "https://${PUBLIC_DOMAIN}" > "$WS/public_url.txt"
-      sleep 5
-      if pgrep -f 'cloudflared tunnel' >/dev/null 2>&1; then
-        log "Public URL (Cloudflare named tunnel): https://${PUBLIC_DOMAIN}"
-      else
-        warn "Named tunnel failed to start — see ${LOG_DIR}/cloudflared.log"
-      fi
+    if ! ensure_cloudflared_binary; then
+      warn "Skipping Cloudflare tunnel — public hostname will return 1033 until cloudflared is installed"
     else
-      screen -dmS cloudflared bash -c \
-        "cloudflared tunnel --url http://127.0.0.1:${DJANGO_PORT} >> '${LOG_DIR}/cloudflared.log' 2>&1"
-      sleep 8
-      URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/cloudflared.log" | head -1 || true)"
-      if [[ -n "$URL" ]]; then
-        echo "$URL" > "$WS/public_url.txt"
-        log "Public URL (Cloudflare quick tunnel): $URL"
+      stop_screen cloudflared
+      # Kill any leftover quick/named tunnel process so we don't keep an old URL.
+      pkill -f 'cloudflared tunnel' 2>/dev/null || true
+      : > "$LOG_DIR/cloudflared.log"
+      TOKEN_FILE="$(resolve_cloudflare_tunnel_token_file)"
+      PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-christianaiapophatictestdomain.com}"
+      if [[ -n "${TOKEN_FILE}" && -f "$TOKEN_FILE" ]]; then
+        # Named Cloudflare tunnel (custom domain) — preferred over quick tunnels.
+        screen -dmS cloudflared bash -c \
+          "cloudflared tunnel --no-autoupdate run --token \"\$(cat '${TOKEN_FILE}')\" >> '${LOG_DIR}/cloudflared.log' 2>&1"
+        echo "https://${PUBLIC_DOMAIN}" > "$WS/public_url.txt"
+        sleep 5
+        if pgrep -f 'cloudflared tunnel' >/dev/null 2>&1; then
+          log "Public URL (Cloudflare named tunnel): https://${PUBLIC_DOMAIN}"
+        else
+          warn "Named tunnel failed to start — see ${LOG_DIR}/cloudflared.log"
+        fi
       else
-        warn "Cloudflare URL not ready — check ${LOG_DIR}/cloudflared.log"
+        screen -dmS cloudflared bash -c \
+          "cloudflared tunnel --url http://127.0.0.1:${DJANGO_PORT} >> '${LOG_DIR}/cloudflared.log' 2>&1"
+        sleep 8
+        URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/cloudflared.log" | head -1 || true)"
+        if [[ -n "$URL" ]]; then
+          echo "$URL" > "$WS/public_url.txt"
+          log "Public URL (Cloudflare quick tunnel): $URL"
+        else
+          warn "Cloudflare URL not ready — check ${LOG_DIR}/cloudflared.log"
+        fi
       fi
     fi
     ;;
