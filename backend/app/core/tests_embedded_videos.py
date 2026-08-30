@@ -49,6 +49,51 @@ class EmbeddedVideoMatchingTests(TestCase):
         )
         self.assertEqual(featured.embed_url, "https://player.vimeo.com/video/1217796650")
 
+    def test_featured_video_uses_mapped_ingest_transcript(self):
+        IngestedDocument.objects.create(
+            source_name="387034308.m4a",
+            title="387034308",
+            file_hash="c" * 64,
+            original_extension=".m4a",
+            source_kind="video",
+            chunk_count=3,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "387034308.m4a").write_bytes(b"audio")
+            (root / "387034308.transcript.json").write_text(
+                json.dumps(
+                    {
+                        "title": "387034308",
+                        "source_name": "387034308.m4a",
+                        "whisper_model": "base",
+                        "segments_normalized": [
+                            {
+                                "start": 0,
+                                "end": 14,
+                                "text": "With man it may be impossible, but with God it is not.",
+                            },
+                            {
+                                "start": 30,
+                                "end": 58,
+                                "text": "Welcome to walking through the word with Don and Susan.",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            video = get_embedded_video("1217796650", upload_dir=root)
+        self.assertIsNotNone(video)
+        self.assertTrue(video.has_transcript)
+        self.assertEqual(video.source_name, "387034308.m4a")
+        self.assertEqual(video.transcript_source, "387034308.transcript.json")
+        self.assertEqual(video.title, "Walk Through the Word — February 3")
+        self.assertEqual(
+            video.segments[1].text,
+            "Welcome to walking through the word with Don and Susan.",
+        )
+
     def test_matches_sidecar_and_document_title(self):
         IngestedDocument.objects.create(
             source_name="1217796650.m4a",
@@ -171,6 +216,9 @@ class EmbeddedVideosAdminTests(TestCase):
         self.assertContains(response, "The Lord is my shepherd.")
         self.assertContains(response, "00:08–00:16")
         self.assertContains(response, "player.vimeo.com/api/player.js")
+        self.assertContains(response, ".embedded-player-frame iframe")
+        self.assertContains(response, "width: 100%")
+        self.assertContains(response, "height: 100%")
 
     def test_detail_shows_empty_transcript_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -181,6 +229,31 @@ class EmbeddedVideosAdminTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "player.vimeo.com/video/1217796650")
         self.assertContains(response, "No matching transcript was found")
+
+    def test_detail_uses_mapped_ingest_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "387034308.transcript.json").write_text(
+                json.dumps(
+                    {
+                        "title": "387034308",
+                        "source_name": "387034308.m4a",
+                        "segments_normalized": [
+                            {"start": 0, "end": 14, "text": "With God it is not impossible."},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("core.embedded_videos.admin_video_ingestion_dir", return_value=root):
+                response = self.client.get(
+                    reverse("admin:core_embedded_video_detail", args=["1217796650"])
+                )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Walk Through the Word")
+        self.assertContains(response, "With God it is not impossible.")
+        self.assertContains(response, "387034308.transcript.json")
+        self.assertNotContains(response, "No matching transcript was found")
 
     def test_unknown_detail_is_404(self):
         with tempfile.TemporaryDirectory() as tmp:

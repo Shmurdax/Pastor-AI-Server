@@ -4,7 +4,9 @@
 {{ block.super }}
 <style>
   .embedded-detail-wrap {
-    max-width: 1400px;
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
   }
   .embedded-detail-meta {
     margin: 0 0 16px;
@@ -15,17 +17,28 @@
   }
   .embedded-split {
     display: grid;
-    grid-template-columns: minmax(320px, 1.15fr) minmax(280px, 1fr);
+    grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
     gap: 18px;
-    align-items: start;
+    align-items: stretch;
+  }
+  .embedded-player {
+    min-width: 0;
   }
   .embedded-player-frame {
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: min(72vh, calc(100vw * 9 / 16));
+    min-height: 240px;
     background: #000;
     border-radius: 6px;
     overflow: hidden;
+  }
+  .embedded-player-frame iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
   }
   .embedded-player-help {
     margin: 8px 0 0;
@@ -36,7 +49,7 @@
     border: 1px solid var(--hairline-color, #ddd);
     border-radius: 6px;
     background: var(--body-bg, #fff);
-    max-height: min(70vh, 720px);
+    max-height: min(72vh, calc(100vw * 9 / 16));
     overflow: auto;
   }
   .embedded-transcript h2 {
@@ -123,6 +136,8 @@
         <iframe
           id="embedded-vimeo-player"
           src="{{ video.embed_src }}"
+          width="100%"
+          height="100%"
           allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
           referrerpolicy="strict-origin-when-cross-origin"
           allowfullscreen

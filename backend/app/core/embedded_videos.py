@@ -17,11 +17,15 @@ from .video_ingestion import MEDIA_EXTENSIONS
 VIMEO_ID_RE = re.compile(r"^(\d{6,12})$")
 
 # Known Vimeo pages to embed even before a local file exists.
+# match_source_stem: older ingested audio/transcript whose words are this video
+# (same sermon re-uploaded to a new Vimeo id).
 FEATURED_VIMEO_VIDEOS = (
     {
         "vimeo_id": "1217796650",
         "watch_url": "https://vimeo.com/1217796650?fl=ip&fe=ec",
-        "fallback_title": "Vimeo 1217796650",
+        "fallback_title": "Walk Through the Word — February 3",
+        # Live ingest: 387034308.m4a ends at 947.0s — same 15:47 runtime as this embed.
+        "match_source_stem": "387034308",
     },
 )
 
@@ -98,6 +102,23 @@ def _featured_fallback_titles() -> dict[str, str]:
     }
 
 
+def _featured_match_stems() -> dict[str, str]:
+    return {
+        item["vimeo_id"]: str(item["match_source_stem"]).strip()
+        for item in FEATURED_VIMEO_VIDEOS
+        if item.get("vimeo_id") and item.get("match_source_stem")
+    }
+
+
+def lookup_stems_for_vimeo_id(vimeo_id: str) -> list[str]:
+    """Filenames to try: the embed id, then any mapped older ingest stem."""
+    stems = [vimeo_id]
+    mapped = _featured_match_stems().get(vimeo_id)
+    if mapped and mapped not in stems:
+        stems.append(mapped)
+    return stems
+
+
 def _iter_media_files(upload_dir: Path) -> Iterable[Path]:
     if not upload_dir.is_dir():
         return
@@ -132,12 +153,15 @@ def _index_media_and_sidecars(upload_dir: Path) -> tuple[dict[str, Path], dict[s
 
 
 def find_media_for_vimeo_id(vimeo_id: str, upload_dir: Path) -> Optional[Path]:
-    for ext in sorted(MEDIA_EXTENSIONS):
-        candidate = upload_dir / f"{vimeo_id}{ext}"
-        if candidate.is_file():
-            return candidate
+    stems = lookup_stems_for_vimeo_id(vimeo_id)
+    for stem in stems:
+        for ext in sorted(MEDIA_EXTENSIONS):
+            candidate = upload_dir / f"{stem}{ext}"
+            if candidate.is_file():
+                return candidate
+    wanted = set(stems)
     for path in _iter_media_files(upload_dir):
-        if parse_vimeo_id_from_filename(path.name) == vimeo_id:
+        if parse_vimeo_id_from_filename(path.name) in wanted:
             return path
     return None
 
@@ -146,8 +170,14 @@ def find_sidecar_for_vimeo_id(vimeo_id: str, upload_dir: Path, media_path: Optio
     candidates = []
     if media_path is not None:
         candidates.append(media_path.with_suffix(".transcript.json"))
-    candidates.append(upload_dir / f"{vimeo_id}.transcript.json")
+    for stem in lookup_stems_for_vimeo_id(vimeo_id):
+        candidates.append(upload_dir / f"{stem}.transcript.json")
+    seen: set[Path] = set()
     for candidate in candidates:
+        resolved = candidate.resolve() if candidate.exists() else candidate
+        if resolved in seen:
+            continue
+        seen.add(resolved)
         if candidate.is_file():
             return candidate
     return None
@@ -222,15 +252,20 @@ def _build_embedded_video(
     if include_segments and sidecar_path:
         payload = load_sidecar_payload(sidecar_path)
         segments = segments_from_sidecar_payload(payload) if payload else []
-    document = documents.get(vimeo_id)
+    document = None
+    for stem in lookup_stems_for_vimeo_id(vimeo_id):
+        document = documents.get(stem)
+        if document:
+            break
     sidecar_title = str(payload.get("title") or "").strip() if payload else ""
     document_title = (document.title or "").strip() if document else ""
     fallback_title = _featured_fallback_titles().get(vimeo_id, f"Vimeo {vimeo_id}")
+    rejected_titles = set(lookup_stems_for_vimeo_id(vimeo_id))
     title = next(
         (
             candidate
             for candidate in (document_title, sidecar_title, fallback_title)
-            if candidate and candidate != vimeo_id
+            if candidate and candidate not in rejected_titles
         ),
         fallback_title,
     )
