@@ -7,7 +7,9 @@
 #
 # Remigration wipes container packages (/usr/local/bin, apt pkgs, screen).
 # Restore boot scripts + secrets from the network volume, reinstall runtime
-# deps, restore the tunnel token/binary, then exec start.sh.
+# deps, restore the tunnel token/binary, then run start.sh and stay alive.
+# Do not `exec start.sh`: that script returns after launching screens, and
+# exiting the container start command makes RunPod restart-loop.
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -66,4 +68,17 @@ if [[ ! -f "$START_SH" ]]; then
   echo "Missing $START_SH — clone/install Pastor-AI or restore from $PERSIST_ROOT/boot" >&2
   exit 1
 fi
-exec bash "$START_SH"
+
+# start.sh launches services in screen and returns. Keep this process so the
+# container does not exit (RunPod treats that as a crash and restarts).
+export PASTOR_KEEP_ALIVE="${PASTOR_KEEP_ALIVE:-1}"
+set +e
+bash "$START_SH"
+start_rc=$?
+set -e
+if [[ "$start_rc" -ne 0 ]]; then
+  warn "start.sh exited $start_rc — keeping container alive"
+else
+  log "start.sh finished; keeping container alive"
+fi
+exec sleep infinity
