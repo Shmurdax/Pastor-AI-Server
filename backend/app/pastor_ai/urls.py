@@ -35,8 +35,10 @@ from core.views import (
     ResponseReportAPIView,
 )
 from .frontend import serve_frontend
+from .robots import robots_txt_view
 
 urlpatterns = [
+    path("robots.txt", robots_txt_view, name="robots_txt"),
     path('admin/', admin.site.urls),
 
     # Auth — Flutter AuthService paths
