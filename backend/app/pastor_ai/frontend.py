@@ -48,4 +48,9 @@ def serve_frontend(request, path: str = ""):
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+    # Flutter embeds Vimeo through a same-origin iframe of /vimeo_embed.html so
+    # player.vimeo.com sees this site as the referrer. Global X_FRAME_OPTIONS=DENY
+    # would make Chrome report "<this domain> refused to connect."
+    if file_path.name == "vimeo_embed.html":
+        response["X-Frame-Options"] = "SAMEORIGIN"
     return response
