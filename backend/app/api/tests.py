@@ -270,3 +270,47 @@ class CancelSubscriptionTests(TestCase):
         self.assertFalse(res.data["user"]["is_premium"])
         self.assertEqual(res.data["user"]["subscription_status"], "canceled")
         self.assertFalse(res.data["user"]["cancel_at_period_end"])
+
+
+class EmailPasswordAuthCsrfTests(TestCase):
+    """Flutter web POSTs JSON without a CSRF token; an admin session cookie
+    must not turn login/register into 403 CSRF Failed."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.member = User.objects.create_user(
+            username="premium.tester@localhost",
+            email="premium.tester@localhost",
+            password="TestPremium2026!",
+            first_name="Premium",
+            last_name="Tester",
+        )
+        self.member.profile.subscription_status = "active"
+        self.member.profile.save(update_fields=["subscription_status"])
+        self.admin = User.objects.create_superuser(
+            username="admin",
+            email="admin@localhost",
+            password="admin123",
+        )
+
+    def test_login_succeeds_while_django_admin_session_is_active(self):
+        self.client.force_login(self.admin)
+        res = self.client.post(
+            "/api/auth/login/",
+            {"email": "premium.tester@localhost", "password": "TestPremium2026!"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["user"]["email"], "premium.tester@localhost")
+        self.assertTrue(res.data["user"]["is_premium"])
+        self.assertFalse(res.data["user"]["is_staff"])
+        self.assertIn("token", res.data)
+
+    def test_me_uses_bearer_token_not_admin_session(self):
+        token = Token.objects.create(user=self.member).key
+        self.client.force_login(self.admin)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        res = self.client.get("/api/auth/me/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["user"]["email"], "premium.tester@localhost")
+        self.assertFalse(res.data["user"]["is_staff"])

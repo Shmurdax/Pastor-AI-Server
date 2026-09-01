@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from rest_framework import permissions, status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,6 +18,9 @@ from .serializers import (
 
 
 class RegisterView(APIView):
+    # Token-only / no session: an admin session cookie would make DRF enforce CSRF
+    # on this POST and Flutter web does not send a CSRF token → 403.
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -31,6 +35,7 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -52,6 +57,7 @@ class LoginView(APIView):
 
 
 class MeView(APIView):
+    authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -59,6 +65,7 @@ class MeView(APIView):
 
 
 class LogoutView(APIView):
+    authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -75,6 +82,7 @@ class GoogleAuthView(APIView):
     -> { "token": "...", "user": { id, email, name, avatar_url } }
     """
 
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
