@@ -283,7 +283,7 @@ class CreateCheckoutSessionView(APIView):
                 profile.save(update_fields=["stripe_customer_id"])
 
             session = stripe.checkout.Session.create(
-                ui_mode="embedded",
+                ui_mode="embedded_page",
                 mode="subscription",
                 customer=customer_id,
                 client_reference_id=str(request.user.id),

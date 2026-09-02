@@ -131,11 +131,23 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
         options['onComplete'] = handleComplete.toJS;
       }
 
-      final checkoutPromise = stripe.callMethod(
-        'initEmbeddedCheckout'.toJS,
-        options,
-      ) as JSPromise<JSAny?>;
-      final checkout = (await checkoutPromise.toDart)! as JSObject;
+      // Stripe renamed ui_mode embedded → embedded_page; JS API is now
+      // createEmbeddedCheckoutPage (initEmbeddedCheckout kept as fallback).
+      JSObject checkout;
+      final createPage = stripe.getProperty('createEmbeddedCheckoutPage'.toJS);
+      if (createPage != null) {
+        final checkoutPromise = (createPage as JSFunction).callAsFunction(
+          stripe,
+          options,
+        ) as JSPromise<JSAny?>;
+        checkout = (await checkoutPromise.toDart)! as JSObject;
+      } else {
+        final checkoutPromise = stripe.callMethod(
+          'initEmbeddedCheckout'.toJS,
+          options,
+        ) as JSPromise<JSAny?>;
+        checkout = (await checkoutPromise.toDart)! as JSObject;
+      }
       _checkout = checkout;
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
 
