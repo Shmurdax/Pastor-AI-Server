@@ -174,6 +174,160 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final isMobile = MediaQuery.of(context).size.width < 600;
     final auth = context.watch<AuthController>();
 
+    final showingStripe = _stripeConfigured &&
+        _publishableKey != null &&
+        _clientSecret != null &&
+        !_loadingConfig &&
+        !_startingCheckout &&
+        _error == null;
+
+    final checkoutContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Complete your Premium plan',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.figtree(
+            fontSize: isMobile ? 26 : 32,
+            fontWeight: FontWeight.bold,
+            color: _navy,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Container(height: 2, width: 48, color: _gold),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Signed in as ${auth.user?.email ?? 'member'}',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
+        ),
+        const SizedBox(height: 28),
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              colors: [_pink, _navy],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Premium',
+                style: GoogleFonts.figtree(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _periodLabel,
+                style: GoogleFonts.figtree(
+                  fontSize: 14,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _priceLabel,
+                    style: GoogleFonts.figtree(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _pricePeriod,
+                      style: GoogleFonts.figtree(
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        Text(
+          'Payment details',
+          style: GoogleFonts.figtree(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: _navy,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _mockCheckout
+              ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
+              : 'Card and billing fields are provided by Stripe. '
+                  'Your card details never touch our servers.',
+          style: GoogleFonts.figtree(
+            fontSize: 14,
+            height: 1.45,
+            color: Colors.black54,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_loadingConfig || _startingCheckout)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(child: CircularProgressIndicator(color: _navy)),
+          )
+        else if (_error != null && !_mockCheckout) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Text(
+              _error!,
+              style: GoogleFonts.figtree(color: Colors.red.shade800),
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: _loadConfigAndStart,
+            child: const Text('Try again'),
+          ),
+        ] else if (_mockCheckout)
+          _MockCheckoutForm(
+            billingPeriod: _periodApiValue,
+            priceLabel: '$_priceLabel $_pricePeriod',
+            onSuccess: _onMockCheckoutSuccess,
+          )
+        else if (showingStripe)
+          const SizedBox.shrink()
+        else
+          const _SetupHint(),
+        if (!_mockCheckout && !showingStripe) ...[
+          const SizedBox(height: 16),
+          Text(
+            'After paying, Stripe returns you to the app and unlocks '
+            'unlimited chat history for Premium.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
+          ),
+        ],
+      ],
+    );
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -191,169 +345,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
         ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(isMobile ? 24 : 40),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: showingStripe
+          ? Column(
               children: [
-                Text(
-                  'Complete your Premium plan',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(
-                    fontSize: isMobile ? 26 : 32,
-                    fontWeight: FontWeight.bold,
-                    color: _navy,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Container(height: 2, width: 48, color: _gold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Signed in as ${auth.user?.email ?? 'member'}',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
-                ),
-                const SizedBox(height: 28),
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      colors: [_pink, _navy],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      isMobile ? 24 : 40,
+                      isMobile ? 24 : 40,
+                      isMobile ? 24 : 40,
+                      16,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: checkoutContent,
+                      ),
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Premium',
-                        style: GoogleFonts.figtree(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _periodLabel,
-                        style: GoogleFonts.figtree(
-                          fontSize: 14,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _priceLabel,
-                            style: GoogleFonts.figtree(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              _pricePeriod,
-                              style: GoogleFonts.figtree(
-                                fontSize: 14,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
                 ),
-                const SizedBox(height: 28),
-                Text(
-                  'Payment details',
-                  style: GoogleFonts.figtree(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _navy,
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isMobile ? 24 : 40,
+                    0,
+                    isMobile ? 24 : 40,
+                    isMobile ? 24 : 32,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _mockCheckout
-                      ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
-                      : 'Card and billing fields are provided by Stripe. '
-                          'Your card details never touch our servers.',
-                  style: GoogleFonts.figtree(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (_loadingConfig || _startingCheckout)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(child: CircularProgressIndicator(color: _navy)),
-                  )
-                else if (_error != null && !_mockCheckout) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Text(
-                      _error!,
-                      style: GoogleFonts.figtree(color: Colors.red.shade800),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: StripeEmbeddedCheckout(
+                        key: ValueKey(_clientSecret),
+                        publishableKey: _publishableKey!,
+                        clientSecret: _clientSecret!,
+                        height: isMobile ? 560 : 520,
+                        onComplete: _onStripeCheckoutComplete,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: _loadConfigAndStart,
-                    child: const Text('Try again'),
-                  ),
-                ] else if (_mockCheckout)
-                  _MockCheckoutForm(
-                    billingPeriod: _periodApiValue,
-                    priceLabel: '$_priceLabel $_pricePeriod',
-                    onSuccess: _onMockCheckoutSuccess,
-                  )
-                else if (_stripeConfigured &&
-                    _publishableKey != null &&
-                    _clientSecret != null)
-                  StripeEmbeddedCheckout(
-                    publishableKey: _publishableKey!,
-                    clientSecret: _clientSecret!,
-                    height: isMobile ? 560 : 520,
-                    onComplete: () {
-                      _onStripeCheckoutComplete();
-                    },
-                  )
-                else
-                  const _SetupHint(),
-                if (!_mockCheckout) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'After paying, Stripe returns you to the app and unlocks '
-                    'unlimited chat history for Premium.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
-                  ),
-                ],
+                ),
               ],
+            )
+          : Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(isMobile ? 24 : 40),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: checkoutContent,
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stripe checkout</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      background: #ffffff;
+      overflow-x: hidden;
+    }
+    #checkout {
+      width: 100%;
+      min-height: 100%;
+    }
+    .loading, .err {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px;
+      text-align: center;
+      color: #1b264f;
+    }
+    .err {
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">Loading secure payment form…</div>
+  <div id="checkout"></div>
+  <script>
+    (function () {
+      var checkout = null;
+      var started = false;
+      var clientSecret = '';
+
+      function post(type, extra) {
+        if (!window.parent || window.parent === window) return;
+        var payload = { source: 'pastor-stripe-checkout', type: type };
+        if (extra) {
+          for (var key in extra) {
+            if (Object.prototype.hasOwnProperty.call(extra, key)) {
+              payload[key] = extra[key];
+            }
+          }
+        }
+        window.parent.postMessage(payload, window.location.origin);
+      }
+
+      function showError(message) {
+        var loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+        document.getElementById('checkout').innerHTML =
+          '<p class="err">' + String(message || 'Checkout failed') + '</p>';
+        post('error', { message: String(message || 'Checkout failed') });
+      }
+
+      function destroyCheckout() {
+        if (checkout && typeof checkout.destroy === 'function') {
+          try { checkout.destroy(); } catch (_) {}
+        }
+        checkout = null;
+      }
+
+      async function startCheckout(data) {
+        if (started) return;
+        started = true;
+
+        try {
+          if (!window.Stripe) {
+            throw new Error('Stripe.js is unavailable.');
+          }
+          var publishableKey = (data.publishableKey || '').trim();
+          clientSecret = (data.clientSecret || '').trim();
+          if (!publishableKey || !clientSecret) {
+            throw new Error('Missing Stripe checkout credentials.');
+          }
+
+          var stripe = Stripe(publishableKey);
+          if (typeof stripe.createEmbeddedCheckoutPage !== 'function') {
+            throw new Error('Stripe.js createEmbeddedCheckoutPage is unavailable.');
+          }
+
+          checkout = await stripe.createEmbeddedCheckoutPage({
+            fetchClientSecret: function () {
+              return Promise.resolve(clientSecret);
+            },
+            onComplete: function () {
+              post('complete');
+            },
+          });
+
+          var loading = document.getElementById('loading');
+          if (loading) loading.style.display = 'none';
+          checkout.mount('#checkout');
+          post('ready');
+        } catch (err) {
+          showError(err && err.message ? err.message : err);
+        }
+      }
+
+      window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        var data = event.data;
+        if (!data || data.source !== 'pastor-stripe-parent') return;
+        if (data.type === 'stripe-init') {
+          startCheckout(data);
+        } else if (data.type === 'stripe-destroy') {
+          destroyCheckout();
+        }
+      });
+
+      post('loaded');
+    })();
+  </script>
+</body>
+</html>

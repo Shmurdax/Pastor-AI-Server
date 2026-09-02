@@ -1,16 +1,19 @@
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+
 import 'dart:async';
-import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
+import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:web/web.dart' as web;
 
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 
-/// Stripe Embedded Checkout (card + billing fields) for Flutter web.
+/// Stripe Embedded Checkout via a same-origin iframe relay page.
+///
+/// Mounting Stripe directly in [HtmlElementView] can freeze Flutter web; the
+/// relay isolates Stripe.js from the Flutter canvas (same pattern as Vimeo).
 class StripeEmbeddedCheckout extends StatefulWidget {
   const StripeEmbeddedCheckout({
     super.key,
@@ -33,133 +36,85 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
   static int _viewSeq = 0;
 
   late final String _viewType;
-  late final String _elementId;
-  String? _error;
+  html.IFrameElement? _iframe;
+  html.EventListener? _messageListener;
   bool _loading = true;
-  JSObject? _checkout;
+  bool _initialized = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _viewSeq += 1;
-    _elementId = 'stripe-embed-$_viewSeq';
-    _viewType = 'stripe-embedded-checkout-$_viewSeq';
+    _viewType = 'stripe-checkout-relay-$_viewSeq';
+
+    _messageListener = _onWindowMessage;
+    html.window.addEventListener('message', _messageListener);
 
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
-      final div = web.HTMLDivElement()
-        ..id = _elementId
+      final iframe = html.IFrameElement()
+        ..src = '/stripe_checkout_embed.html'
+        ..style.border = 'none'
         ..style.width = '100%'
-        ..style.minHeight = '${widget.height.toInt()}px';
-      return div;
+        ..style.height = '100%'
+        ..allow = 'payment *';
+      _iframe = iframe;
+      return iframe;
     });
+  }
 
-    unawaited(_mountCheckout());
+  void _onWindowMessage(html.Event event) {
+    final messageEvent = event as html.MessageEvent;
+    if (messageEvent.origin != html.window.location.origin) return;
+
+    final data = messageEvent.data;
+    if (data is! Map) return;
+    if (data['source'] != 'pastor-stripe-checkout') return;
+
+    switch (data['type']) {
+      case 'loaded':
+        _sendInit();
+      case 'ready':
+        if (mounted) setState(() => _loading = false);
+      case 'complete':
+        widget.onComplete?.call();
+      case 'error':
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _error = (data['message'] as String?) ?? 'Checkout failed.';
+          });
+        }
+    }
+  }
+
+  void _sendInit() {
+    if (_initialized) return;
+    final iframe = _iframe;
+    if (iframe == null) return;
+    _initialized = true;
+    iframe.contentWindow?.postMessage(
+      {
+        'source': 'pastor-stripe-parent',
+        'type': 'stripe-init',
+        'publishableKey': widget.publishableKey,
+        'clientSecret': widget.clientSecret,
+      },
+      html.window.location.origin,
+    );
   }
 
   @override
   void dispose() {
-    try {
-      _checkout?.callMethod('destroy'.toJS);
-    } catch (_) {}
+    final listener = _messageListener;
+    if (listener != null) {
+      html.window.removeEventListener('message', listener);
+    }
+    _iframe?.contentWindow?.postMessage(
+      {'source': 'pastor-stripe-parent', 'type': 'stripe-destroy'},
+      html.window.location.origin,
+    );
     super.dispose();
-  }
-
-  Future<void> _ensureStripeJs() async {
-    bool ready() {
-      final stripe = web.window.getProperty('Stripe'.toJS);
-      return stripe != null;
-    }
-
-    if (web.document.querySelector('script[data-pastor-stripe="1"]') != null) {
-      for (var i = 0; i < 50; i++) {
-        if (ready()) return;
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-      if (ready()) return;
-    }
-
-    final completer = Completer<void>();
-    final script = web.HTMLScriptElement()
-      ..src = 'https://js.stripe.com/v3/'
-      ..async = true;
-    script.setAttribute('data-pastor-stripe', '1');
-    script.onload = (web.Event _) {
-      if (!completer.isCompleted) completer.complete();
-    }.toJS;
-    script.onerror = (web.Event _) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('Failed to load Stripe.js'));
-      }
-    }.toJS;
-    web.document.head!.append(script);
-    await completer.future;
-
-    for (var i = 0; i < 50; i++) {
-      if (ready()) return;
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-    if (!ready()) {
-      throw StateError('Stripe.js loaded but window.Stripe is unavailable.');
-    }
-  }
-
-  Future<void> _mountCheckout() async {
-    try {
-      await _ensureStripeJs();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      for (var i = 0; i < 40; i++) {
-        if (web.document.getElementById(_elementId) != null) break;
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-
-      final stripeFactory = web.window.getProperty('Stripe'.toJS) as JSFunction;
-      final stripe = stripeFactory.callAsConstructor(widget.publishableKey.toJS) as JSObject;
-
-      // fetchClientSecret must return a Promise<string>
-      JSPromise<JSString> fetchClientSecret(JSAny? _) {
-        return Future<JSString>.value(widget.clientSecret.toJS).toJS;
-      }
-
-      final options = JSObject();
-      options['fetchClientSecret'] = fetchClientSecret.toJS;
-      final onComplete = widget.onComplete;
-      if (onComplete != null) {
-        void handleComplete() {
-          onComplete();
-        }
-
-        options['onComplete'] = handleComplete.toJS;
-      }
-
-      // Stripe renamed ui_mode embedded → embedded_page; JS API is now
-      // createEmbeddedCheckoutPage (initEmbeddedCheckout kept as fallback).
-      JSObject checkout;
-      final createPage = stripe.getProperty('createEmbeddedCheckoutPage'.toJS);
-      if (createPage != null) {
-        final checkoutPromise = (createPage as JSFunction).callAsFunction(
-          stripe,
-          options,
-        ) as JSPromise<JSAny?>;
-        checkout = (await checkoutPromise.toDart)! as JSObject;
-      } else {
-        final checkoutPromise = stripe.callMethod(
-          'initEmbeddedCheckout'.toJS,
-          options,
-        ) as JSPromise<JSAny?>;
-        checkout = (await checkoutPromise.toDart)! as JSObject;
-      }
-      _checkout = checkout;
-      checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
-
-      if (mounted) setState(() => _loading = false);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
-        });
-      }
-    }
   }
 
   @override
@@ -182,39 +137,41 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       );
     }
 
-    return Stack(
-      children: [
-        SizedBox(
-          height: widget.height,
-          width: double.infinity,
-          child: HtmlElementView(viewType: _viewType),
-        ),
-        if (_loading)
+    return SizedBox(
+      height: widget.height,
+      width: double.infinity,
+      child: Stack(
+        children: [
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(color: _navy),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Loading secure payment form…',
-                    style: GoogleFonts.figtree(color: _navy),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Powered by Stripe',
-                    style: GoogleFonts.figtree(fontSize: 12, color: _gold),
-                  ),
-                ],
+            child: HtmlElementView(viewType: _viewType),
+          ),
+          if (_loading)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: _navy),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Loading secure payment form…',
+                      style: GoogleFonts.figtree(color: _navy),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Powered by Stripe',
+                      style: GoogleFonts.figtree(fontSize: 12, color: _gold),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

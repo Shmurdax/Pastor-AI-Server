@@ -284,6 +284,7 @@ class CreateCheckoutSessionView(APIView):
 
             session = stripe.checkout.Session.create(
                 ui_mode="embedded_page",
+                redirect_on_completion="if_required",
                 mode="subscription",
                 customer=customer_id,
                 client_reference_id=str(request.user.id),
