@@ -223,7 +223,8 @@ import stripe
 stripe.api_key = sys.argv[1]
 try:
     acct = stripe.Account.retrieve()
-    print(f"Stripe account: {acct.get('id', '?')} ({acct.get('settings', {}).get('dashboard', {}).get('display_name') or 'unnamed'})")
+    name = getattr(getattr(getattr(acct, "settings", None), "dashboard", None), "display_name", None) or "unnamed"
+    print(f"Stripe account: {acct.id} ({name})")
 except stripe.error.AuthenticationError:
     print("ERROR: Invalid STRIPE_SECRET_KEY — authentication failed.", file=sys.stderr)
     sys.exit(1)
