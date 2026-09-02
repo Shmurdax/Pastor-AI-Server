@@ -248,6 +248,9 @@ class ApiClient {
       headers: _headers(json: true),
       body: jsonEncode({}),
     );
+    if (res.statusCode == 404) {
+      return {'ok': false, 'not_found': true};
+    }
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }

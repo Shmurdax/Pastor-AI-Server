@@ -99,6 +99,32 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     }
   }
 
+  Future<void> _showNoPremiumAccessDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Premium access',
+          style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          "No Premium access detected, contact Pastor Don's support team for assistance.",
+          style: GoogleFonts.figtree(height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: Text(
+              'OK',
+              style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _restoreAccess() async {
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated || auth.user?.isPaidPremium == true) return;
@@ -107,6 +133,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     try {
       _apiService.setAccessToken(auth.token);
       final result = await _apiService.syncSubscription();
+      if (result['not_found'] == true) {
+        if (!mounted) return;
+        await _showNoPremiumAccessDialog();
+        return;
+      }
+
       final userJson = result['user'];
       if (userJson is Map<String, dynamic>) {
         await auth.applyUser(AuthUser.fromJson(userJson));
@@ -119,9 +151,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           const SnackBar(content: Text('Premium access restored.')),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No active Stripe subscription found for this account.')),
-        );
+        await _showNoPremiumAccessDialog();
       }
     } catch (e) {
       if (!mounted) return;
