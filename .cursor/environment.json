@@ -1,7 +1,7 @@
 {
   "name": "Pastor-AI minimal (auth + billing)",
   "install": "bash scripts/env-install.sh",
-  "start": "bash apply-tokens.sh --validate-stripe || true",
+  "start": "bash scripts/check-stripe-secrets.sh || true",
   "terminals": [
     {
       "name": "django-minimal",
