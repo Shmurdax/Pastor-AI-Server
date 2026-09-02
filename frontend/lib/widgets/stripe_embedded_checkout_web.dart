@@ -38,8 +38,9 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
   late final String _viewType;
   html.IFrameElement? _iframe;
   html.EventListener? _messageListener;
+  Timer? _initRetryTimer;
+  Timer? _loadTimeoutTimer;
   bool _loading = true;
-  bool _initialized = false;
   String? _error;
 
   @override
@@ -58,8 +59,22 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
         ..style.width = '100%'
         ..style.height = '100%'
         ..allow = 'payment *';
+      iframe.onLoad.listen((_) => _sendInit());
       _iframe = iframe;
       return iframe;
+    });
+
+    _initRetryTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (_error != null || !_loading || !mounted) return;
+      _sendInit();
+    });
+    _loadTimeoutTimer = Timer(const Duration(seconds: 45), () {
+      if (!mounted || !_loading) return;
+      setState(() {
+        _loading = false;
+        _error =
+            'Payment form timed out loading. Hard-refresh the page and try again.';
+      });
     });
   }
 
@@ -67,33 +82,44 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     final messageEvent = event as html.MessageEvent;
     if (messageEvent.origin != html.window.location.origin) return;
 
-    final data = messageEvent.data;
-    if (data is! Map) return;
-    if (data['source'] != 'pastor-stripe-checkout') return;
+    final payload = _messagePayload(messageEvent.data);
+    if (payload == null) return;
+    if (payload['source'] != 'pastor-stripe-checkout') return;
 
-    switch (data['type']) {
+    switch (payload['type']) {
       case 'loaded':
         _sendInit();
       case 'ready':
+        _initRetryTimer?.cancel();
+        _loadTimeoutTimer?.cancel();
         if (mounted) setState(() => _loading = false);
       case 'complete':
         widget.onComplete?.call();
       case 'error':
+        _initRetryTimer?.cancel();
+        _loadTimeoutTimer?.cancel();
         if (mounted) {
           setState(() {
             _loading = false;
-            _error = (data['message'] as String?) ?? 'Checkout failed.';
+            _error = (payload['message'] as String?) ?? 'Checkout failed.';
           });
         }
     }
   }
 
+  Map<String, dynamic>? _messagePayload(Object? data) {
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return null;
+  }
+
   void _sendInit() {
-    if (_initialized) return;
-    final iframe = _iframe;
-    if (iframe == null) return;
-    _initialized = true;
-    iframe.contentWindow?.postMessage(
+    if (_error != null || !_loading) return;
+    final target = _iframe?.contentWindow;
+    if (target == null) return;
+
+    target.postMessage(
       {
         'source': 'pastor-stripe-parent',
         'type': 'stripe-init',
@@ -106,6 +132,8 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
 
   @override
   void dispose() {
+    _initRetryTimer?.cancel();
+    _loadTimeoutTimer?.cancel();
     final listener = _messageListener;
     if (listener != null) {
       html.window.removeEventListener('message', listener);
@@ -147,26 +175,28 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
           ),
           if (_loading)
             Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(color: _navy),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Loading secure payment form…',
-                      style: GoogleFonts.figtree(color: _navy),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Powered by Stripe',
-                      style: GoogleFonts.figtree(fontSize: 12, color: _gold),
-                    ),
-                  ],
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(color: _navy),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Loading secure payment form…',
+                        style: GoogleFonts.figtree(color: _navy),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Powered by Stripe',
+                        style: GoogleFonts.figtree(fontSize: 12, color: _gold),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

@@ -4,6 +4,14 @@ from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, Http404
 
+# Same-origin iframe embeds (Stripe checkout relay, Vimeo relay).
+_FRAME_EMBED_FILES = frozenset(
+    {
+        "stripe_checkout_embed.html",
+        "vimeo_embed.html",
+    }
+)
+
 
 def _resolve_frontend_dir(configured_dir: Path) -> Path:
     """Accept either a Flutter project root (build/web) or a prebuilt web dir."""
@@ -48,4 +56,7 @@ def serve_frontend(request, path: str = ""):
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+    if file_path.name in _FRAME_EMBED_FILES:
+        # Default X_FRAME_OPTIONS=DENY blocks our own checkout/Vimeo iframes.
+        response["X-Frame-Options"] = "SAMEORIGIN"
     return response
