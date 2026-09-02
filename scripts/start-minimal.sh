@@ -29,9 +29,17 @@ log()  { echo -e "\033[0;32m[minimal]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[minimal]\033[0m $*"; }
 die()  { echo -e "\033[0;31m[minimal]\033[0m $*" >&2; exit 1; }
 
+_has_stripe_env_secrets() {
+  local key val
+  for key in STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY; do
+    val="$(printenv "$key" 2>/dev/null || true)"
+    [[ -n "$val" ]] || return 1
+  done
+}
+
 [[ -x "$VENV/bin/python" ]] || die "Missing venv at $VENV — run install.sh or create venv first."
 
-if [[ -f "$WS/tokens.env" || -n "${STRIPE_SECRET_KEY:-}" ]]; then
+if [[ -f "$WS/tokens.env" || _has_stripe_env_secrets ]]; then
   APPLY_ARGS=()
   [[ "$VALIDATE_STRIPE" -eq 1 ]] && APPLY_ARGS+=(--validate-stripe)
   bash "$WS/apply-tokens.sh" "${APPLY_ARGS[@]}" || true
@@ -58,9 +66,13 @@ export FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$WS/frontend}"
 export PUBLIC_APP_URL="${PUBLIC_APP_URL:-http://127.0.0.1:${PORT}}"
 
 # Merge Cursor/cloud secrets (not written to config.env on disk).
+declare -A ENV_SECRET_OVERRIDE=()
 for key in STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET BILLING_MOCK_CHECKOUT; do
-  val="${!key:-}"
-  [[ -n "$val" ]] && export "$key=$val"
+  val="$(printenv "$key" 2>/dev/null || true)"
+  [[ -n "$val" ]] && ENV_SECRET_OVERRIDE[$key]="$val"
+done
+for key in "${!ENV_SECRET_OVERRIDE[@]}"; do
+  export "$key=${ENV_SECRET_OVERRIDE[$key]}"
 done
 
 # If Stripe keys are missing, fall back to mock checkout for local billing tests.

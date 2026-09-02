@@ -44,14 +44,37 @@ STRIPE_ENV_KEYS=(
 _merge_env_overrides() {
   local key val
   for key in "${STRIPE_ENV_KEYS[@]}"; do
-    val="${!key:-}"
+    val="${ENV_SECRET_OVERRIDE[$key]:-${!key:-}}"
     [[ -n "$val" ]] || continue
     export "$key=$val"
   done
 }
 
 _has_stripe_env_secrets() {
-  [[ -n "${STRIPE_SECRET_KEY:-}" && -n "${STRIPE_PUBLISHABLE_KEY:-}" ]]
+  local key
+  for key in STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY; do
+    [[ -n "${ENV_SECRET_OVERRIDE[$key]:-$(printenv "$key" 2>/dev/null || true)}" ]] || return 1
+  done
+}
+
+# Capture Cursor/CI secrets before tokens.env can blank them with empty assignments.
+declare -A ENV_SECRET_OVERRIDE=()
+for key in "${STRIPE_ENV_KEYS[@]}"; do
+  val="$(printenv "$key" 2>/dev/null || true)"
+  [[ -n "$val" ]] && ENV_SECRET_OVERRIDE[$key]="$val"
+done
+
+_load_tokens_env() {
+  # Empty STRIPE_*= lines in tokens.env must not wipe Cursor-injected secrets.
+  local filtered
+  filtered="$(mktemp)"
+  grep -v -E '^(STRIPE_SECRET_KEY|STRIPE_PUBLISHABLE_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PRICE_MONTHLY|STRIPE_PRICE_YEARLY|PUBLIC_APP_URL|BILLING_MOCK_CHECKOUT)=$' \
+    "$TOKENS" > "$filtered"
+  # shellcheck disable=SC1090
+  set -a
+  source "$filtered"
+  set +a
+  rm -f "$filtered"
 }
 
 if [[ ! -f "$TOKENS" ]]; then
@@ -67,10 +90,7 @@ if [[ ! -f "$TOKENS" ]]; then
     exit 1
   fi
 else
-  # shellcheck disable=SC1090
-  set -a
-  source "$TOKENS"
-  set +a
+  _load_tokens_env
 fi
 
 _merge_env_overrides
