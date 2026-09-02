@@ -1,0 +1,18 @@
+{
+  "name": "Pastor-AI minimal (auth + billing)",
+  "install": "bash scripts/env-install.sh",
+  "start": "bash apply-tokens.sh --validate-stripe || true",
+  "terminals": [
+    {
+      "name": "django-minimal",
+      "command": "bash scripts/start-minimal.sh",
+      "description": "Django + Flutter web on port 8000 without vLLM/Qdrant chat stack"
+    }
+  ],
+  "ports": [
+    {
+      "name": "web",
+      "port": 8000
+    }
+  ]
+}
