@@ -7,6 +7,25 @@ from rest_framework.test import APIClient
 
 
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
+class AuthConfigViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_returns_public_google_client_id(self):
+        res = self.client.get("/api/auth/config/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["google_configured"])
+        self.assertEqual(res.data["google_client_id"], "test-google-client.apps.googleusercontent.com")
+
+    @override_settings(GOOGLE_CLIENT_ID="")
+    def test_returns_empty_when_not_configured(self):
+        res = self.client.get("/api/auth/config/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["google_configured"])
+        self.assertEqual(res.data["google_client_id"], "")
+
+
+@override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class GoogleAuthViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()

@@ -4,6 +4,7 @@ URL configuration for pastor_ai project.
 from django.contrib import admin
 from django.urls import path, re_path
 from api.auth_views import (
+    AuthConfigView,
     GoogleAuthView,
     LoginView,
     LogoutView,
@@ -45,6 +46,7 @@ urlpatterns = [
     # Auth — Flutter AuthService paths
     path('api/auth/register/', RegisterView.as_view()),
     path('api/auth/login/', LoginView.as_view()),
+    path('api/auth/config/', AuthConfigView.as_view()),
     path('api/auth/google/', GoogleAuthView.as_view()),
     path('api/auth/me/', MeView.as_view()),
     path('api/auth/logout/', LogoutView.as_view()),

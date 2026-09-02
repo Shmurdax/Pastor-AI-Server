@@ -67,7 +67,7 @@ export PUBLIC_APP_URL="${PUBLIC_APP_URL:-http://127.0.0.1:${PORT}}"
 
 # Merge Cursor/cloud secrets (not written to config.env on disk).
 declare -A ENV_SECRET_OVERRIDE=()
-for key in STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET BILLING_MOCK_CHECKOUT; do
+for key in STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY STRIPE_WEBHOOK_SECRET BILLING_MOCK_CHECKOUT GOOGLE_CLIENT_ID; do
   val="$(printenv "$key" 2>/dev/null || true)"
   [[ -n "$val" ]] && ENV_SECRET_OVERRIDE[$key]="$val"
 done

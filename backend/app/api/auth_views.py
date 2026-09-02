@@ -51,6 +51,21 @@ class LoginView(APIView):
         return Response({"token": token.key, "user": UserSerializer(user).data})
 
 
+class AuthConfigView(APIView):
+    """Public auth config for the Flutter client (Google client ID is not secret)."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        client_id = getattr(settings, "GOOGLE_CLIENT_ID", "") or ""
+        return Response(
+            {
+                "google_configured": bool(client_id),
+                "google_client_id": client_id,
+            }
+        )
+
+
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -62,7 +77,6 @@ class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # Deletes the token so it can no longer authenticate requests.
         Token.objects.filter(user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

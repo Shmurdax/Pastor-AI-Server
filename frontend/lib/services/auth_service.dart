@@ -4,7 +4,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 const kUseMockAuth = bool.fromEnvironment('USE_MOCK_AUTH', defaultValue: false);
-const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
 class AuthUser {
@@ -111,15 +110,78 @@ class AuthService {
   AuthService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
 
-  /// Shared plugin instance so the web GIS `renderButton` and token exchange
-  /// use the same client configuration.
-  static final GoogleSignIn googleSignIn = GoogleSignIn(
-    clientId: _googleClientId.isNotEmpty ? _googleClientId : null,
-    scopes: const <String>['email', 'profile', 'openid'],
-  );
+  static const String _compileTimeGoogleClientId =
+      String.fromEnvironment('GOOGLE_CLIENT_ID');
+
+  static String? _resolvedGoogleClientId;
+  static GoogleSignIn? _googleSignIn;
+  static Future<void>? _googleInitFuture;
+
+  static String? get resolvedGoogleClientId {
+    if (_resolvedGoogleClientId != null && _resolvedGoogleClientId!.isNotEmpty) {
+      return _resolvedGoogleClientId;
+    }
+    if (_compileTimeGoogleClientId.isNotEmpty) {
+      return _compileTimeGoogleClientId;
+    }
+    return null;
+  }
 
   static bool get isGoogleConfigured =>
-      kUseMockAuth || _googleClientId.isNotEmpty;
+      kUseMockAuth || (resolvedGoogleClientId?.isNotEmpty ?? false);
+
+  static GoogleSignIn get googleSignIn {
+    final gsi = _googleSignIn;
+    if (gsi == null) {
+      throw AuthException('Google Sign-In is not configured. Set GOOGLE_CLIENT_ID.');
+    }
+    return gsi;
+  }
+
+  /// Loads GOOGLE_CLIENT_ID from compile-time defines or GET /api/auth/config/.
+  static Future<void> ensureGoogleSignInReady() {
+    return _googleInitFuture ??= _initializeGoogleSignIn();
+  }
+
+  static Future<void> _initializeGoogleSignIn() async {
+    if (kUseMockAuth) return;
+
+    var clientId = _compileTimeGoogleClientId;
+    if (clientId.isEmpty) {
+      try {
+        final client = http.Client();
+        try {
+          final base = _baseUrlForConfig();
+          final uri = base.isEmpty
+              ? Uri.parse('/api/auth/config/')
+              : Uri.parse('${base.endsWith('/') ? base : '$base/'}api/auth/config/');
+          final res = await client.get(
+            uri,
+            headers: const {'Accept': 'application/json'},
+          );
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            final body = jsonDecode(res.body) as Map<String, dynamic>;
+            clientId = (body['google_client_id'] as String?) ?? '';
+          }
+        } finally {
+          client.close();
+        }
+      } catch (_) {
+        // Fall through — button stays disabled if config cannot load.
+      }
+    }
+
+    if (clientId.isEmpty) return;
+
+    _resolvedGoogleClientId = clientId;
+    _googleSignIn ??= GoogleSignIn(
+      clientId: clientId,
+      scopes: const <String>['email', 'profile', 'openid'],
+    );
+  }
+
+  static String _baseUrlForConfig() =>
+      const String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
   String _resolveUrl(String path) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
