@@ -125,25 +125,58 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<bool> _confirmSessionIfNeeded() async {
-    final sessionId = _sessionId;
-    if (sessionId == null || sessionId.isEmpty) return false;
+  Future<bool> _applyUserFromBillingResponse(Map<String, dynamic> status) async {
+    final auth = context.read<AuthController>();
+    final userJson = status['user'];
+    if (userJson is Map<String, dynamic>) {
+      await auth.applyUser(AuthUser.fromJson(userJson));
+    } else {
+      await auth.refreshMe();
+    }
+    return status['status'] == 'complete' || auth.hasPremiumAccess;
+  }
+
+  Future<bool> _syncSubscriptionFallback() async {
     try {
       final auth = context.read<AuthController>();
       _api.setAccessToken(auth.token);
-      final status = await _api.getCheckoutSessionStatus(sessionId);
-      final userJson = status['user'];
+      final result = await _api.syncSubscription();
+      final userJson = result['user'];
       if (userJson is Map<String, dynamic>) {
         await auth.applyUser(AuthUser.fromJson(userJson));
       } else {
         await auth.refreshMe();
       }
-      return status['status'] == 'complete';
+      return auth.hasPremiumAccess;
     } catch (_) {
-      if (!mounted) return false;
-      await context.read<AuthController>().refreshMe();
       return false;
     }
+  }
+
+  Future<bool> _confirmSessionIfNeeded() async {
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.isEmpty) {
+      return _syncSubscriptionFallback();
+    }
+
+    final auth = context.read<AuthController>();
+    _api.setAccessToken(auth.token);
+
+    for (var attempt = 0; attempt < 10; attempt++) {
+      try {
+        final status = await _api.getCheckoutSessionStatus(sessionId);
+        if (await _applyUserFromBillingResponse(status)) {
+          return true;
+        }
+      } catch (_) {
+        if (!mounted) return false;
+      }
+      if (attempt < 9) {
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+      }
+    }
+
+    return _syncSubscriptionFallback();
   }
 
   Future<void> _returnToChatbot() async {
@@ -159,8 +192,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _onStripeCheckoutComplete() async {
     final complete = await _confirmSessionIfNeeded();
-    if (!mounted || !complete) return;
-    await _showPurchaseCompleteAndReturn();
+    if (!mounted) return;
+    if (complete) {
+      await _showPurchaseCompleteAndReturn();
+      return;
+    }
+    setState(() {
+      _error =
+          'Payment received, but Premium has not unlocked yet. '
+          'Wait a moment and tap Try again, or open Subscriptions and tap Restore access.';
+    });
   }
 
   Future<void> _onMockCheckoutSuccess(AuthUser user) async {

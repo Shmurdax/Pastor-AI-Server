@@ -242,6 +242,16 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> syncSubscription() async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/billing/sync-subscription/')),
+      headers: _headers(json: true),
+      body: jsonEncode({}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   /// TEMPORARY mock activate — never send card fields. Remove with mock checkout.
   Future<Map<String, dynamic>> mockActivatePremium({
     required String billingPeriod,

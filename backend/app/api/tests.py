@@ -270,3 +270,90 @@ class CancelSubscriptionTests(TestCase):
         self.assertFalse(res.data["user"]["is_premium"])
         self.assertEqual(res.data["user"]["subscription_status"], "canceled")
         self.assertFalse(res.data["user"]["cancel_at_period_end"])
+
+
+@override_settings(
+    STRIPE_SECRET_KEY="sk_test_x",
+    STRIPE_PUBLISHABLE_KEY="pk_test_x",
+    BILLING_MOCK_CHECKOUT="false",
+)
+class CheckoutSessionStatusTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="buyer@church.org",
+            email="buyer@church.org",
+            password="BuyerPass123!",
+        )
+        self.token = Token.objects.create(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+
+    @patch("api.billing_views.stripe.Subscription.retrieve")
+    @patch("api.billing_views.stripe.checkout.Session.retrieve")
+    def test_complete_session_grants_premium(self, mock_retrieve, mock_sub_retrieve):
+        mock_retrieve.return_value = {
+            "id": "cs_test_1",
+            "status": "complete",
+            "payment_status": "paid",
+            "client_reference_id": str(self.user.id),
+            "customer": "cus_test_1",
+            "subscription": "sub_test_1",
+            "metadata": {"billing_period": "monthly"},
+        }
+        mock_sub_retrieve.return_value = {
+            "id": "sub_test_1",
+            "status": "active",
+            "customer": "cus_test_1",
+            "cancel_at_period_end": False,
+            "current_period_end": 1893456000,
+            "items": {"data": [{"price": {"recurring": {"interval": "month"}}}]},
+        }
+
+        res = self.client.get("/api/billing/session-status/?session_id=cs_test_1")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "complete")
+        self.assertTrue(res.data["user"]["is_premium"])
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.subscription_status, "active")
+        self.assertEqual(self.user.profile.stripe_subscription_id, "sub_test_1")
+
+
+@override_settings(
+    STRIPE_SECRET_KEY="sk_test_x",
+    STRIPE_PUBLISHABLE_KEY="pk_test_x",
+    BILLING_MOCK_CHECKOUT="false",
+)
+class SyncSubscriptionTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="sync@church.org",
+            email="sync@church.org",
+            password="SyncPass123!",
+        )
+        self.user.profile.stripe_customer_id = "cus_test_sync"
+        self.user.profile.save(update_fields=["stripe_customer_id"])
+        self.token = Token.objects.create(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+
+    @patch("api.billing_views.stripe.Subscription.list")
+    def test_sync_subscription_restores_premium(self, mock_list):
+        mock_list.return_value = {
+            "data": [
+                {
+                    "id": "sub_test_sync",
+                    "status": "active",
+                    "customer": "cus_test_sync",
+                    "cancel_at_period_end": False,
+                    "current_period_end": 1893456000,
+                    "items": {"data": [{"price": {"recurring": {"interval": "year"}}}]},
+                }
+            ]
+        }
+
+        res = self.client.post("/api/billing/sync-subscription/", {}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["user"]["is_premium"])
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.subscription_status, "active")
+        self.assertEqual(self.user.profile.billing_period, "yearly")

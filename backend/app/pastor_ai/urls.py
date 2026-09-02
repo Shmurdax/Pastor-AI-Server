@@ -17,6 +17,7 @@ from api.billing_views import (
     CreateCheckoutSessionView,
     MockActivatePremiumView,
     StripeWebhookView,
+    SyncSubscriptionView,
 )
 from api.views import (
     ChurchEventDetailAPI,
@@ -52,6 +53,7 @@ urlpatterns = [
     path('api/billing/config/', BillingConfigView.as_view()),
     path('api/billing/create-checkout-session/', CreateCheckoutSessionView.as_view()),
     path('api/billing/session-status/', CheckoutSessionStatusView.as_view()),
+    path('api/billing/sync-subscription/', SyncSubscriptionView.as_view()),
     path('api/billing/mock-activate/', MockActivatePremiumView.as_view()),
     path('api/billing/cancel-subscription/', CancelSubscriptionView.as_view()),
     path('api/billing/webhook/', StripeWebhookView.as_view()),

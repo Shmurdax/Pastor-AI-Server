@@ -42,6 +42,7 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   final _apiService = ApiService();
   bool _eventsOpen = false;
+  bool _restoringAccess = false;
   BillingPeriod _billingPeriod = BillingPeriod.monthly;
 
   Future<void> _launchUrl(String urlString) async {
@@ -95,6 +96,40 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (!mounted) return;
     if (signedIn == true && context.read<AuthController>().isAuthenticated) {
       _openCheckout();
+    }
+  }
+
+  Future<void> _restoreAccess() async {
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated || auth.user?.isPaidPremium == true) return;
+
+    setState(() => _restoringAccess = true);
+    try {
+      _apiService.setAccessToken(auth.token);
+      final result = await _apiService.syncSubscription();
+      final userJson = result['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      if (auth.hasPremiumAccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Premium access restored.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No active Stripe subscription found for this account.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _restoringAccess = false);
     }
   }
 
@@ -370,6 +405,27 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                             ],
                           ),
                         ),
+                      if (auth.isAuthenticated && !paid) ...[
+                        const SizedBox(height: 20),
+                        Center(
+                          child: TextButton(
+                            onPressed: _restoringAccess ? null : _restoreAccess,
+                            child: _restoringAccess
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Text(
+                                    'Already subscribed? Restore access',
+                                    style: GoogleFonts.figtree(
+                                      color: _navy,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
                       if (paid && !cancelScheduled) ...[
                         const SizedBox(height: 28),
                         Center(

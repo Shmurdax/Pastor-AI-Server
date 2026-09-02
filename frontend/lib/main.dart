@@ -322,19 +322,39 @@ final bibleRefRegex = RegExp(
     if (!auth.isAuthenticated) return;
     _apiService.setAccessToken(auth.token);
     try {
-      final status = await _apiService.getCheckoutSessionStatus(sessionId);
-      final userJson = status['user'];
+      for (var attempt = 0; attempt < 8; attempt++) {
+        final status = await _apiService.getCheckoutSessionStatus(sessionId);
+        final userJson = status['user'];
+        if (userJson is Map<String, dynamic>) {
+          await auth.applyUser(AuthUser.fromJson(userJson));
+        } else {
+          await auth.refreshMe();
+        }
+        if (!mounted) return;
+        final complete =
+            status['status'] == 'complete' || auth.hasPremiumAccess;
+        if (complete) {
+          await _reloadChatHistory();
+          if (!mounted) return;
+          await showPurchaseCompleteDialog(context);
+          return;
+        }
+        if (attempt < 7) {
+          await Future<void>.delayed(const Duration(milliseconds: 800));
+        }
+      }
+
+      final sync = await _apiService.syncSubscription();
+      final userJson = sync['user'];
       if (userJson is Map<String, dynamic>) {
         await auth.applyUser(AuthUser.fromJson(userJson));
       } else {
         await auth.refreshMe();
       }
       if (!mounted) return;
-      // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
       if (!mounted) return;
-      final complete = status['status'] == 'complete' || auth.hasPremiumAccess;
-      if (complete) {
+      if (auth.hasPremiumAccess) {
         await showPurchaseCompleteDialog(context);
       }
     } catch (_) {

@@ -178,6 +178,99 @@ def _billing_period_from_subscription(subscription: dict | stripe.Subscription) 
         return ""
 
 
+def _stripe_id(value) -> str:
+    if not value:
+        return ""
+    if isinstance(value, dict):
+        return str(value.get("id") or "")
+    return str(value)
+
+
+def _checkout_session_complete(session) -> bool:
+    session_status = session.get("status") or ""
+    payment_status = session.get("payment_status") or ""
+    return session_status == "complete" or payment_status in {
+        "paid",
+        "no_payment_required",
+    }
+
+
+def _sync_profile_from_stripe_subscription(profile: Profile, subscription) -> None:
+    stripe_status = subscription.get("status") or ""
+    if stripe_status not in {"active", "trialing"}:
+        return
+    _apply_subscription_to_profile(
+        profile,
+        status_value=Profile.SubscriptionStatus.ACTIVE,
+        customer_id=_stripe_id(subscription.get("customer")) or profile.stripe_customer_id,
+        subscription_id=_stripe_id(subscription.get("id")) or profile.stripe_subscription_id,
+        billing_period=_billing_period_from_subscription(subscription) or profile.billing_period,
+        cancel_at_period_end=bool(subscription.get("cancel_at_period_end")),
+        current_period_end=_datetime_from_stripe_ts(subscription.get("current_period_end")),
+    )
+
+
+def _sync_profile_from_checkout_session(profile: Profile, session) -> None:
+    if not _checkout_session_complete(session):
+        return
+
+    period = (session.get("metadata") or {}).get("billing_period") or ""
+    sub_id = _stripe_id(session.get("subscription"))
+    customer_id = _stripe_id(session.get("customer"))
+    period_end = None
+    cancel_at_period_end = False
+
+    if sub_id:
+        try:
+            subscription = stripe.Subscription.retrieve(sub_id)
+            period = period or _billing_period_from_subscription(subscription)
+            period_end = _datetime_from_stripe_ts(subscription.get("current_period_end"))
+            cancel_at_period_end = bool(subscription.get("cancel_at_period_end"))
+        except stripe.error.StripeError:
+            logger.exception("Failed retrieving subscription %s for checkout sync", sub_id)
+
+    _apply_subscription_to_profile(
+        profile,
+        status_value=Profile.SubscriptionStatus.ACTIVE,
+        customer_id=customer_id,
+        subscription_id=sub_id,
+        billing_period=period,
+        cancel_at_period_end=cancel_at_period_end,
+        current_period_end=period_end,
+    )
+
+
+def _sync_profile_from_stripe_customer(profile: Profile) -> bool:
+    sub_id = profile.stripe_subscription_id
+    if sub_id:
+        try:
+            subscription = stripe.Subscription.retrieve(sub_id)
+            if subscription.get("status") in {"active", "trialing"}:
+                _sync_profile_from_stripe_subscription(profile, subscription)
+                return True
+        except stripe.error.StripeError:
+            logger.exception("Failed retrieving subscription %s", sub_id)
+
+    customer_id = profile.stripe_customer_id
+    if not customer_id:
+        return False
+
+    try:
+        subscriptions = stripe.Subscription.list(customer=customer_id, limit=10)
+        for subscription in subscriptions.get("data") or []:
+            if subscription.get("status") in {"active", "trialing"}:
+                _sync_profile_from_stripe_subscription(profile, subscription)
+                return True
+    except stripe.error.StripeError:
+        logger.exception("Failed listing subscriptions for customer %s", customer_id)
+    return False
+
+
+def _serialized_user(user: User) -> dict:
+    refreshed = User.objects.select_related("profile").get(pk=user.pk)
+    return UserSerializer(refreshed).data
+
+
 class BillingConfigView(APIView):
     """Public config the Flutter checkout page needs (publishable key only)."""
 
@@ -353,26 +446,39 @@ class CheckoutSessionStatusView(APIView):
             )
 
         profile = _get_or_create_profile(request.user)
-        payment_status = session.get("status")
-        if payment_status == "complete":
-            period = (session.get("metadata") or {}).get("billing_period") or ""
-            sub_id = session.get("subscription") or ""
-            if isinstance(sub_id, dict):
-                sub_id = sub_id.get("id") or ""
-            _apply_subscription_to_profile(
-                profile,
-                status_value=Profile.SubscriptionStatus.ACTIVE,
-                customer_id=session.get("customer") or "",
-                subscription_id=sub_id or "",
-                billing_period=period,
-            )
+        if _checkout_session_complete(session):
+            _sync_profile_from_checkout_session(profile, session)
 
         return Response(
             {
-                "status": payment_status,
-                "user": UserSerializer(request.user).data,
+                "status": session.get("status") or "",
+                "payment_status": session.get("payment_status") or "",
+                "user": _serialized_user(request.user),
             }
         )
+
+
+class SyncSubscriptionView(APIView):
+    """Reconcile Premium from Stripe when checkout callbacks/webhooks were missed."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not _stripe_configured():
+            return Response(
+                {"detail": "Stripe is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        _ensure_stripe()
+        profile = _get_or_create_profile(request.user)
+        if not _sync_profile_from_stripe_customer(profile):
+            return Response(
+                {"detail": "No active Stripe subscription found for this account."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({"ok": True, "user": _serialized_user(request.user)})
 
 
 class CancelSubscriptionView(APIView):
@@ -506,17 +612,7 @@ class StripeWebhookView(APIView):
             logger.warning("checkout.session.completed with no matching user: %s", session.get("id"))
             return
         period = (session.get("metadata") or {}).get("billing_period") or ""
-        sub_id = session.get("subscription") or ""
-        if isinstance(sub_id, dict):
-            sub_id = sub_id.get("id") or ""
-        _apply_subscription_to_profile(
-            profile,
-            status_value=Profile.SubscriptionStatus.ACTIVE,
-            customer_id=session.get("customer") or "",
-            subscription_id=sub_id or "",
-            billing_period=period,
-            cancel_at_period_end=False,
-        )
+        _sync_profile_from_checkout_session(profile, session)
 
     def _on_subscription_updated(self, subscription) -> None:
         profile = self._profile_for_stripe_object(subscription)
