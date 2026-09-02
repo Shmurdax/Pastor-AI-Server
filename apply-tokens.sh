@@ -9,20 +9,50 @@ WS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOKENS="${TOKENS_FILE:-$WS/tokens.env}"
 CONFIG="${CONFIG_ENV:-$WS/config.env}"
 
+# Keys that may come from Cursor environment secrets or CI (override tokens.env).
+STRIPE_ENV_KEYS=(
+  STRIPE_SECRET_KEY
+  STRIPE_PUBLISHABLE_KEY
+  STRIPE_WEBHOOK_SECRET
+  STRIPE_PRICE_MONTHLY
+  STRIPE_PRICE_YEARLY
+  PUBLIC_APP_URL
+  BILLING_MOCK_CHECKOUT
+)
+
+_merge_env_overrides() {
+  local key val
+  for key in "${STRIPE_ENV_KEYS[@]}"; do
+    val="${!key:-}"
+    [[ -n "$val" ]] || continue
+    export "$key=$val"
+  done
+}
+
+_has_stripe_env_secrets() {
+  [[ -n "${STRIPE_SECRET_KEY:-}" && -n "${STRIPE_PUBLISHABLE_KEY:-}" ]]
+}
+
 if [[ ! -f "$TOKENS" ]]; then
-  if [[ -f "$WS/tokens.env.example" ]]; then
+  if _has_stripe_env_secrets; then
+    echo "Using Stripe keys from environment (no $TOKENS yet)."
+  elif [[ -f "$WS/tokens.env.example" ]]; then
     cp "$WS/tokens.env.example" "$TOKENS"
     echo "Created $TOKENS from example — edit it, paste tokens, re-run this script."
+    echo "Or add STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY as environment secrets."
+    exit 1
+  else
+    echo "Missing $TOKENS" >&2
     exit 1
   fi
-  echo "Missing $TOKENS" >&2
-  exit 1
+else
+  # shellcheck disable=SC1090
+  set -a
+  source "$TOKENS"
+  set +a
 fi
 
-# shellcheck disable=SC1090
-set -a
-source "$TOKENS"
-set +a
+_merge_env_overrides
 
 if [[ ! -f "$CONFIG" ]]; then
   echo "Missing $CONFIG — run install.sh first (or create config.env)." >&2
@@ -34,7 +64,7 @@ upsert() {
   [[ -z "$val" ]] && return 0
   # Skip unedited placeholders
   case "$val" in
-    *paste_here*|hf_paste_here|ghp_paste_here) return 0 ;;
+    *paste_here*|hf_paste_here|ghp_paste_here|sk_test_paste_here|pk_test_paste_here) return 0 ;;
   esac
   if grep -q "^${key}=" "$CONFIG" 2>/dev/null; then
     # Escape sed specials in value
@@ -80,6 +110,19 @@ upsert VIMEO_FOLDER_ID "${VIMEO_FOLDER_ID:-}"
 upsert VIMEO_USER_ID "${VIMEO_USER_ID:-}"
 upsert VIMEO_SHOWCASE_ID "${VIMEO_SHOWCASE_ID:-}"
 upsert VIMEO_FREE_PREVIEW_ID "${VIMEO_FREE_PREVIEW_ID:-}"
+
+# Auto-disable mock checkout when real Stripe test/live keys are configured.
+if [[ -n "${STRIPE_SECRET_KEY:-}" && -n "${STRIPE_PUBLISHABLE_KEY:-}" ]]; then
+  case "${STRIPE_SECRET_KEY}${STRIPE_PUBLISHABLE_KEY}" in
+    *paste_here*) ;;
+    *)
+      if [[ -z "${BILLING_MOCK_CHECKOUT:-}" ]]; then
+        BILLING_MOCK_CHECKOUT=false
+      fi
+      upsert BILLING_MOCK_CHECKOUT "${BILLING_MOCK_CHECKOUT:-false}"
+      ;;
+  esac
+fi
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then
