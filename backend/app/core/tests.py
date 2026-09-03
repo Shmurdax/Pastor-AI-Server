@@ -1,5 +1,10 @@
 import unittest
 
+from .chat_system_prompt import (
+    biblical_characters_instruction,
+    build_chat_system_prompt,
+    find_biblical_character_names,
+)
 from .document_cleanup import (
     clean_extracted_document,
     clean_markdown_document,
@@ -14,6 +19,26 @@ from .website_crawl.extract import (
     html_to_markdown,
     source_name_for_url,
 )
+
+
+class ChatSystemPromptTests(unittest.TestCase):
+    def test_finds_biblical_character_names(self):
+        names = find_biblical_character_names("What did Moses and Timothy teach about faith?")
+        lowered = {n.lower() for n in names}
+        self.assertIn("moses", lowered)
+        self.assertIn("timothy", lowered)
+
+    def test_no_biblical_names_when_absent(self):
+        self.assertEqual(find_biblical_character_names("How should pastors prepare a sermon?"), [])
+
+    def test_prompt_requires_sermon_notes_and_long_paragraphs(self):
+        prompt = build_chat_system_prompt(biblical_names=["Moses"])
+        self.assertIn("Susan Nordin", prompt)
+        self.assertIn("multiple long paragraphs", prompt)
+        self.assertIn("sermon notes", prompt)
+        self.assertIn("Quality and pastoral depth", prompt)
+        self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
+        self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
 
 class ScopeGateParserTests(unittest.TestCase):

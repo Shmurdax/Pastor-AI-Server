@@ -32,7 +32,7 @@ def _chat_llm():
         api_key="not-needed",
         model=os.getenv("VLLM_MODEL", "christianai"),
         temperature=0.2,
-        max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "1200")),
+        max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "2400")),
         timeout=float(os.getenv("CHAT_TIMEOUT_S", "120")),
         default_headers={"ngrok-skip-browser-warning": "true"},
     )

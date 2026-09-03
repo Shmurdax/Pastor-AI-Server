@@ -153,7 +153,7 @@ if ! vllm_healthy; then
   LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
-  MAX_LEN="${VLLM_MAX_MODEL_LEN:-4096}"
+  MAX_LEN="${VLLM_MAX_MODEL_LEN:-8192}"
   GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
   DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
   if [[ -z "$GPU_UTIL" ]]; then

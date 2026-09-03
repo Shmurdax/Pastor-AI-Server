@@ -77,8 +77,8 @@ class DeletionResult:
 # Larger chunking for Bible documents keeps the corpus lighter-weight
 # (fewer embeddings/points) than sermon-sized uploads.
 DEFAULT_SPLITTER_KWARGS = {
-    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "1000")),
-    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "150")),
+    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "1800")),
+    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "250")),
     "separators": ["\n\n", "\n", " ", ""],
 }
 BIBLE_SPLITTER_KWARGS = {

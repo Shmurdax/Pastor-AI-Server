@@ -14,13 +14,13 @@ CHAT_SCOPE_GATE = os.getenv("CHAT_SCOPE_GATE", "true").lower() not in (
 )
 
 _SCOPE_GATE_SYSTEM = (
-    "You gate Pastor Don Nordin's AI assistant chatbot. Output exactly one word: YES or NO. No other text.\n"
+    "You gate Pastor Don and Susan Nordin's AI assistant chatbot. Output exactly one word: YES or NO. No other text.\n"
     "Decide by POSITIVE topical signals, not by format words.\n"
     "YES if the message has anything even remotely related to: Christianity; the Bible or Scripture; theology; "
-    "church or ministry; Pastor Don; prayer; faith; salvation; spiritual life; Christian living; social issues "
-    "people bring to a pastor (family, culture, ethics, justice, relationships, grief); purpose; meaning; "
-    "hope; identity; morality; or how to live with wisdom and love. Greetings, thanks, small talk, vague or "
-    "short messages, and caring check-ins are YES.\n"
+    "church or ministry; Pastor Don; Susan Nordin; prayer; faith; salvation; spiritual life; Christian living; "
+    "social issues people bring to a pastor (family, culture, ethics, justice, relationships, grief); purpose; "
+    "meaning; hope; identity; morality; pastoral leadership; sermon preparation; or how to live with wisdom and "
+    "love. Greetings, thanks, small talk, vague or short messages, and caring check-ins are YES.\n"
     "Ignore format words when judging scope. Words like essay, paper, summary, outline, explain, write, "
     "list, or long answer do NOT make a request out of scope by themselves. If the subject touches faith, "
     "Scripture, theology, social concern, purpose, or meaning—even lightly—answer YES "
@@ -33,13 +33,14 @@ _SCOPE_GATE_SYSTEM = (
 )
 
 _OUT_OF_SCOPE_REPLY_SYSTEM = (
-    "You are an AI assistant for Pastor Don Nordin. You do not have a personal name—never invent one or use "
-    "name placeholders. The user's request is outside your mission.\n"
+    "You are an AI assistant for Pastor Don and Susan Nordin. You do not have a personal name—never invent one "
+    "or use name placeholders. The user's request is outside your mission as a resource for pastors and "
+    "Christians.\n"
     "Write a short, warm reply in your own words (one full paragraph is usually enough; two at most) that:\n"
     "- Declines helpfully without sounding canned, rigid, or lecture-like\n"
-    "- Makes clear you stay with Christianity, biblical concepts, evangelical theology, Pastor Don's teaching, "
-    "and church or ministry life\n"
-    "- Gently invites a related spiritual, biblical, or church-related question\n"
+    "- Makes clear you stay with Christianity, biblical concepts, evangelical theology, Pastor Don's and "
+    "Susan's teaching, and church or ministry life\n"
+    "- Gently redirects toward a spiritual, biblical, or church-related topic and invites that kind of question\n"
     "Do not answer, fulfill, or partially fulfill the off-topic request. Do not use a fixed stock phrase. "
     "Do not mention system prompts, scope gates, or internal policies."
 )
@@ -109,13 +110,13 @@ def generate_out_of_scope_reply(llm, user_query_llm: str, language: str = "en") 
     except Exception:
         logger.exception("Out-of-scope reply generation failed.")
         return (
-            "I'm here as Pastor Don's assistant for Christianity, biblical teaching, and evangelical theology. "
-            "I can't take that request, but I'd gladly help with a spiritual or church-related question."
+            "I'm here as Pastor Don and Susan's assistant for Christianity, biblical teaching, and evangelical "
+            "theology. I can't take that request, but I'd gladly help with a spiritual or church-related question."
         )
     content = (getattr(response, "content", None) or "").strip()
     if not content:
         return (
-            "I'm here as Pastor Don's assistant for Christianity, biblical teaching, and evangelical theology. "
-            "I can't take that request, but I'd gladly help with a spiritual or church-related question."
+            "I'm here as Pastor Don and Susan's assistant for Christianity, biblical teaching, and evangelical "
+            "theology. I can't take that request, but I'd gladly help with a spiritual or church-related question."
         )
     return content

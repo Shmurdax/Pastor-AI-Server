@@ -9,7 +9,7 @@ services:
       --enable-lora
       --lora-modules christianai=/lora
       --max-lora-rank 16
-      --max-model-len 4096
+      --max-model-len 8192
       --gpu-memory-utilization 0.90
       --trust-remote-code
       --host 0.0.0.0
