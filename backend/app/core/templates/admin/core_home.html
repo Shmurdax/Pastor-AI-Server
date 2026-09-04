@@ -283,6 +283,7 @@
         Technical tables for debugging ingestion jobs, chunks, auth, and API models. Most admins can ignore this section.
       </p>
       {% for app in advanced_app_list %}
+      {% if app.name and app.models %}
       <div class="pastor-advanced-group">
         <div class="pastor-advanced-group-header">{{ app.name }}</div>
         <ul class="pastor-advanced-list">
@@ -305,6 +306,7 @@
           {% endfor %}
         </ul>
       </div>
+      {% endif %}
       {% empty %}
       <p class="pastor-advanced-note">No advanced models available.</p>
       {% endfor %}
