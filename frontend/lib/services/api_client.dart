@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/models/response_report.dart';
@@ -27,9 +28,9 @@ class ApiClient {
     return '$base${normalizedPath.substring(1)}';
   }
 
-  Map<String, String> _headers({bool json = false}) => {
+  Map<String, String> _headers({bool json = false, String? accept}) => {
         if (json) 'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Accept': accept ?? 'application/json',
         if (_apiKey.isNotEmpty) 'X-API-Key': _apiKey,
         // DRF TokenAuthentication expects "Token <key>", not Bearer.
         if (_accessToken != null && _accessToken!.isNotEmpty)
@@ -54,6 +55,73 @@ class ApiClient {
     );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Streams model tokens as they are generated. [onDelta] receives each text chunk.
+  /// Returns the final payload (`answer`, `sources`, `message_id`).
+  Future<Map<String, dynamic>> chatStream({
+    required String query,
+    required String sessionId,
+    bool regenerate = false,
+    String language = 'en',
+    http.Client? client,
+    required void Function(String delta) onDelta,
+  }) async {
+    final httpClient = client ?? _client;
+    final request = http.Request('POST', Uri.parse(_resolveUrl('/api/chat/')));
+    request.headers.addAll(
+      _headers(json: true, accept: 'text/event-stream, application/json'),
+    );
+    request.body = jsonEncode({
+      'query': query,
+      'session_id': sessionId,
+      'regenerate': regenerate,
+      'language': language,
+      'stream': true,
+    });
+
+    final streamed = await httpClient.send(request);
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      final body = await streamed.stream.bytesToString();
+      throw Exception('HTTP ${streamed.statusCode}: $body');
+    }
+
+    final contentType = streamed.headers['content-type'] ?? '';
+    if (!contentType.contains('event-stream')) {
+      final body = await streamed.stream.bytesToString();
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('Unexpected chat response');
+      }
+      final answer = decoded['answer']?.toString() ?? '';
+      if (answer.isNotEmpty) onDelta(answer);
+      return decoded;
+    }
+
+    final carry = StringBuffer();
+    Map<String, dynamic>? done;
+    String assembled = '';
+    await for (final chunk in streamed.stream.transform(utf8.decoder)) {
+      for (final event in consumeSseChunk(carry, chunk)) {
+        if (event.isDelta && event.text.isNotEmpty) {
+          assembled += event.text;
+          onDelta(event.text);
+        } else if (event.isDone) {
+          done = {
+            'answer': event.answer.isNotEmpty ? event.answer : assembled,
+            'sources': event.sources,
+            if (event.messageId != null) 'message_id': event.messageId,
+          };
+        } else if (event.isError) {
+          throw Exception(event.error.isNotEmpty ? event.error : 'Chat stream failed');
+        }
+      }
+    }
+    if (done != null) return done;
+    if (assembled.isNotEmpty) {
+      return {'answer': assembled, 'sources': <String>[]};
+    }
+    throw Exception('Chat stream ended without a response');
   }
 
   Future<List<String>> translateTexts({

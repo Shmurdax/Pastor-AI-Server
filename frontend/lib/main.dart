@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/chat_input_limits.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
@@ -146,6 +147,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _speechAvailable = false;
   bool _isListening = false;
   String _textBeforeSpeech = '';
+  String _streamRaw = '';
+  /// True while the latest AI bubble is still receiving generated tokens.
+  bool get _isStreamingReply {
+    if (_messages.isEmpty) return false;
+    return _messages.last['role'] == 'ai' && _messages.last['streaming'] == true;
+  }
+
+  bool get _showThinkingLogo {
+    if (!_isLoading) return false;
+    if (!_isStreamingReply) return true;
+    final text = (_messages.last['text'] as String?) ?? '';
+    return text.trim().isEmpty;
+  }
   /// Full [_buildInputArea] height including bottom inset; grows with multiline input.
   double _inputAreaHeight = _layoutBottomInsetDesktop + _chatInputBarBlockHeight;
   http.Client? _activeClient;
@@ -209,6 +223,7 @@ final bibleRefRegex = RegExp(
   void initState() {
     super.initState();
     ChatNavActions.openEvents = _openChurchEvents;
+    _controller.addListener(_enforceChatInputLimit);
     _scrollController.addListener(() {
       final isFarFromBottom =
           _scrollController.offset < _scrollController.position.maxScrollExtent - 500;
@@ -224,6 +239,17 @@ final bibleRefRegex = RegExp(
       _appliedLanguageCode = _localeListener!.languageCode;
       _localeListener!.addListener(_onLocaleChanged);
     });
+  }
+
+  void _enforceChatInputLimit() {
+    final text = _controller.text;
+    final clamped = clampChatInput(text);
+    if (clamped == text) return;
+    final offset = _controller.selection.baseOffset.clamp(0, clamped.length);
+    _controller.value = TextEditingValue(
+      text: clamped,
+      selection: TextSelection.collapsed(offset: offset),
+    );
   }
 
   void _onLocaleChanged() {
@@ -389,7 +415,7 @@ final bibleRefRegex = RegExp(
         onResult: (result) {
           if (!mounted) return;
           final spoken = result.recognizedWords.trim();
-          final next = '$_textBeforeSpeech$spoken';
+          final next = clampChatInput('$_textBeforeSpeech$spoken');
           _controller.value = TextEditingValue(
             text: next,
             selection: TextSelection.collapsed(offset: next.length),
@@ -654,7 +680,21 @@ final bibleRefRegex = RegExp(
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
-  void _scrollToBottom() {
+  void _scrollToBottom({bool followStream = false}) {
+    if (followStream) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        final position = _scrollController.position;
+        final distance = position.maxScrollExtent - position.pixels;
+        if (_showBackToBottomButton && distance > 80) return;
+        _scrollController.jumpTo(position.maxScrollExtent);
+        if (mounted && _showBackToBottomButton) {
+          setState(() => _showBackToBottomButton = false);
+        }
+      });
+      return;
+    }
+
     Future<void> scrollSmoothly() async {
       if (!_scrollController.hasClients) return;
 
@@ -981,9 +1021,44 @@ Future<void> _launchSermonDoc(String sermonName) async {
     setState(() {
       _isLoading = false;
       _activeClient = null;
-      _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
+      _finalizeStreamingMessageOnStop();
     });
     _scrollToBottom();
+  }
+
+  void _finalizeStreamingMessageOnStop() {
+    if (_isStreamingReply) {
+      final last = _messages.last;
+      last['streaming'] = false;
+      if (_streamRaw.trim().isEmpty) {
+        last['localKey'] = 'responseCancelled';
+        last['text'] = _s.responseCancelled;
+      }
+      _streamRaw = '';
+      return;
+    }
+    _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
+    _streamRaw = '';
+  }
+
+  void _appendStreamDelta(String delta) {
+    if (delta.isEmpty) return;
+    _streamRaw += delta;
+    final display = _boldBibleReferences(_streamRaw);
+    if (!mounted) return;
+    setState(() {
+      if (_isStreamingReply) {
+        _messages.last['text'] = display;
+      } else {
+        _messages.add({
+          "role": "ai",
+          "text": display,
+          "streaming": true,
+          "reported": false,
+        });
+      }
+    });
+    _scrollToBottom(followStream: true);
   }
 
 Future<void> _sendMessage() async {
@@ -995,7 +1070,7 @@ Future<void> _sendMessage() async {
     if (mounted) setState(() => _isListening = false);
   }
 
-  final userText = _controller.text.trim();
+  final userText = clampChatInput(_controller.text.trim());
   if (userText.isEmpty) return;
   _controller.clear();
   await _submitMessage(userText, addUserMessage: true);
@@ -1012,6 +1087,7 @@ Future<void> _sendMessage() async {
   }
 
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
+  _streamRaw = '';
   setState(() {
     if (addUserMessage) {
       _messages.add({"role": "user", "text": userText});
@@ -1019,62 +1095,83 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     }
     _isLoading = true;
     _activeClient = http.Client();
-    
-    // NOTE: We no longer clear or move sermons here. 
-    // This keeps the current sources visible while the AI is "typing."
   });
-    _scrollToBottom();
+  _scrollToBottom();
 
   try {
-    final data = await _apiService.sendMessage(
+    final data = await _apiService.streamMessage(
       userText,
       sessionId,
       regenerate: regenerate,
       language: _languageCode,
+      client: _activeClient,
+      onDelta: _appendStreamDelta,
     );
     if (!mounted || _activeClient == null) return;
     await _persistSessionId();
 
+    final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
+    final messageId = data['message_id'];
     setState(() {
-      // 1. THE SHIFT: Now that the response is complete, 
-      // move the "current" sermons to the "previous" list.
       if (_librarySermons.isNotEmpty) {
         _previousSermons = [..._librarySermons, ..._previousSermons]
             .toSet()
-            .take(25) // Keeping the expanded limit we discussed
+            .take(25)
             .toList();
       }
 
-      // 2. Add the new message to the chat
-      final messageId = data['message_id'];
-      _messages.add({
-         "role": "ai",
-         "text": _boldBibleReferences(data['answer'] as String),
-         "sources": List<String>.from(data['sources'] ?? []),
-         if (messageId != null) "message_id": messageId,
-         "reported": false,
-    });
-      
-      // 3. Only update the library if the response actually used sermon sources
+      if (_isStreamingReply) {
+        _messages.last['text'] = answer;
+        _messages.last['streaming'] = false;
+        _messages.last['sources'] = List<String>.from(data['sources'] ?? []);
+        _messages.last['reported'] = false;
+        if (messageId != null) _messages.last['message_id'] = messageId;
+      } else {
+        _messages.add({
+          "role": "ai",
+          "text": answer,
+          "sources": List<String>.from(data['sources'] ?? []),
+          if (messageId != null) "message_id": messageId,
+          "reported": false,
+        });
+      }
+
       final newSources = _parseSources(data['sources']);
       if (newSources.isNotEmpty) {
         _librarySermons = newSources;
-        // 4. Clean up: If a sermon is in 'Current', remove it from 'Previous'
         _previousSermons.removeWhere((s) => _librarySermons.contains(s));
       }
     });
-    _scrollToBottom();
+    _scrollToBottom(followStream: true);
     await _persistChatHistory();
+  } on http.ClientException {
+    if (!mounted) return;
   } catch (e) {
     if (_activeClient != null) {
-      setState(() => _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError}));
+      setState(() {
+        if (_isStreamingReply) {
+          _messages.last['streaming'] = false;
+          if (_streamRaw.trim().isEmpty) {
+            _messages.last['localKey'] = 'serverError';
+            _messages.last['text'] = _s.serverError;
+          }
+        } else {
+          _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError});
+        }
+      });
       _scrollToBottom();
     }
   } finally {
-    setState(() {
-      _isLoading = false;
-      _activeClient = null;
-    });
+    _streamRaw = '';
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+        _activeClient = null;
+        if (_isStreamingReply) {
+          _messages.last['streaming'] = false;
+        }
+      });
+    }
   }
 }
 
@@ -1876,7 +1973,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                             return _buildChatBubble(msg, msg["role"] == "user", isMobile, index);
                           },
                         ),
-                        if (_showBackToBottomButton && !_isLoading)
+                        if (_showBackToBottomButton)
                           Positioned(
                             left: narrowViewport ? (isMobile ? 8 : 12) : null,
                             right: narrowViewport ? null : (isMobile ? 8 : 12),
@@ -1953,7 +2050,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             ),
           ),
         ),
-        if (_isLoading)
+        if (_showThinkingLogo)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: AnimatedBuilder(
@@ -2021,7 +2118,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               ),
             ),
           ),
-          if (!isUser) ...[
+          if (!isUser && msg["streaming"] != true) ...[
             if (sources.isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildResponseSourcesDropdown(sources),
@@ -2090,31 +2187,62 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _chatFocusNode,
-                  onChanged: (_) {
-                    setState(() {});
-                    _scheduleInputAreaMeasure();
-                  },
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) {
-                    if (_isListening) {
-                      _speechToText.stop();
-                    }
-                    if (_controller.text.trim().isEmpty) {
-                      _chatFocusNode.requestFocus();
-                    } else if (!_isLoading) {
-                      _sendMessage();
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: _isListening ? _s.listeningHint : _s.howCanIHelp,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      key: const ValueKey('chatInputField'),
+                      controller: _controller,
+                      focusNode: _chatFocusNode,
+                      maxLength: kChatInputMaxLength,
+                      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(kChatInputMaxLength),
+                      ],
+                      onChanged: (_) {
+                        setState(() {});
+                        _scheduleInputAreaMeasure();
+                      },
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) {
+                        if (_isListening) {
+                          _speechToText.stop();
+                        }
+                        if (_controller.text.trim().isEmpty) {
+                          _chatFocusNode.requestFocus();
+                        } else if (!_isLoading) {
+                          _sendMessage();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        hintText: _isListening ? _s.listeningHint : _s.howCanIHelp,
+                        border: InputBorder.none,
+                        counterText: '',
+                        contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                      ),
+                    ),
+                    if (chatInputLength(_controller.text) >= kChatInputCounterThreshold)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8, bottom: 6),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${chatInputLength(_controller.text)} / $kChatInputMaxLength',
+                            key: const ValueKey('chatInputCharCount'),
+                            style: GoogleFonts.figtree(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: chatInputLength(_controller.text) >= kChatInputMaxLength
+                                  ? _pink
+                                  : _navy.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Padding(
