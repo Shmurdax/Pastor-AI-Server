@@ -2,6 +2,7 @@ import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/models/response_report.dart';
+import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
 
@@ -22,6 +23,24 @@ class ApiService {
       sessionId: sessionId,
       regenerate: regenerate,
       language: language,
+    );
+  }
+
+  Future<Map<String, dynamic>> streamMessage(
+    String query,
+    String sessionId, {
+    bool regenerate = false,
+    String language = 'en',
+    http.Client? client,
+    required void Function(String delta) onDelta,
+  }) {
+    return _apiClient.chatStream(
+      query: query,
+      sessionId: sessionId,
+      regenerate: regenerate,
+      language: language,
+      client: client,
+      onDelta: onDelta,
     );
   }
 

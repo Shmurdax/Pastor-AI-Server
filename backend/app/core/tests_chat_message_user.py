@@ -113,3 +113,24 @@ class ChatAPIUserLinkTests(TestCase):
         self.assertEqual(res.status_code, 200)
         msg = ChatMessage.objects.get()
         self.assertIsNone(msg.user_id)
+
+    @patch("core.views.query_in_scope", return_value=False)
+    @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
+    @patch("core.views.ChatOpenAI", return_value=MagicMock())
+    def test_stream_out_of_scope_sends_sse_deltas(self, _mock_llm, _mock_oos, _mock_scope):
+        res = self.client.post(
+            self.url,
+            {
+                "query": "What does Scripture say about hope?",
+                "session_id": "client-session-stream",
+                "stream": True,
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/event-stream", res["Content-Type"])
+        body = res.content.decode()
+        self.assertIn('"type": "delta"', body)
+        self.assertIn(OUT_OF_SCOPE_REPLY, body)
+        self.assertIn('"type": "done"', body)
+        self.assertEqual(ChatMessage.objects.get().ai_response, OUT_OF_SCOPE_REPLY)

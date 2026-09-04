@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.http import FileResponse
 from django.http import Http404
+from django.http import StreamingHttpResponse
 from django.urls import reverse
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -27,6 +28,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
+from .chat_sse import iter_chat_tokens, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
 from .pii_redaction import query_text_for_llm, redact_user_query
@@ -263,6 +265,72 @@ def _require_api_key(request):
     return None
 
 
+def _wants_chat_stream(request) -> bool:
+    return wants_chat_stream(
+        request.data.get("stream", False),
+        request.META.get("HTTP_ACCEPT", ""),
+    )
+
+
+def _sse(payload: dict) -> str:
+    return sse_pack(payload)
+
+
+def _sse_response(iterator):
+    response = StreamingHttpResponse(iterator, content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+def _iter_chat_tokens(bound_llm, messages):
+    return iter_chat_tokens(bound_llm, messages)
+
+
+def _save_ai_response(
+    *,
+    regenerate: bool,
+    target_message,
+    session_id: str,
+    chat_user,
+    user_query_stored: str,
+    answer: str,
+    allow_create: bool = True,
+):
+    if regenerate and target_message is not None:
+        target_message.ai_response = answer
+        if chat_user and target_message.user_id is None:
+            target_message.user = chat_user
+            target_message.save(update_fields=["ai_response", "user"])
+        else:
+            target_message.save(update_fields=["ai_response"])
+        return target_message
+    if not allow_create:
+        return None
+    return ChatMessage.objects.create(
+        session_id=session_id,
+        user=chat_user,
+        user_query=user_query_stored,
+        ai_response=answer,
+    )
+
+
+def _chat_payload(answer: str, sources=None, message_id=None) -> dict:
+    payload = {"answer": answer, "sources": list(sources or [])}
+    if message_id is not None:
+        payload["message_id"] = message_id
+    return payload
+
+
+def _immediate_sse(payload: dict):
+    if payload.get("answer"):
+        yield _sse({"type": "delta", "text": payload["answer"]})
+    done = {"type": "done", "answer": payload.get("answer", ""), "sources": payload.get("sources", [])}
+    if payload.get("message_id") is not None:
+        done["message_id"] = payload["message_id"]
+    yield _sse(done)
+
+
 def _client_fingerprint(request) -> str:
     forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
     client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR", "")
@@ -412,6 +480,7 @@ class ChatAPIView(APIView):
         client_session_id = request.data.get("session_id", "default_user")
         session_id = _scoped_session_id(request, client_session_id)
         regenerate = bool(request.data.get("regenerate", False))
+        want_stream = _wants_chat_stream(request)
         chat_language = normalize_chat_language(
             request.data.get("language") or request.data.get("locale")
         )
@@ -451,25 +520,21 @@ class ChatAPIView(APIView):
                 out_of_scope_reply = generate_out_of_scope_reply(
                     llm, user_query_llm, language=chat_language
                 )
-                saved_message = None
-                if regenerate and target_message:
-                    target_message.ai_response = out_of_scope_reply
-                    if chat_user and target_message.user_id is None:
-                        target_message.user = chat_user
-                        target_message.save(update_fields=["ai_response", "user"])
-                    else:
-                        target_message.save(update_fields=["ai_response"])
-                    saved_message = target_message
-                elif not regenerate:
-                    saved_message = ChatMessage.objects.create(
-                        session_id=session_id,
-                        user=chat_user,
-                        user_query=user_query_stored,
-                        ai_response=out_of_scope_reply,
-                    )
-                payload = {"answer": out_of_scope_reply, "sources": []}
-                if saved_message is not None:
-                    payload["message_id"] = saved_message.id
+                saved_message = _save_ai_response(
+                    regenerate=regenerate,
+                    target_message=target_message,
+                    session_id=session_id,
+                    chat_user=chat_user,
+                    user_query_stored=user_query_stored,
+                    answer=out_of_scope_reply,
+                    allow_create=not regenerate,
+                )
+                payload = _chat_payload(
+                    out_of_scope_reply,
+                    message_id=None if saved_message is None else saved_message.id,
+                )
+                if want_stream:
+                    return _sse_response(_immediate_sse(payload))
                 return Response(payload, status=status.HTTP_200_OK)
             # 1. SETUP: Vector store (skipped when scope gate refuses — saves Qdrant + embedding work)
             embeddings = _get_embeddings()
@@ -555,34 +620,71 @@ class ChatAPIView(APIView):
                 + history_messages
                 + [HumanMessage(content=user_query_llm)]
             )
-            response = llm.bind(max_tokens=completion_tokens).invoke(messages)
+            bound = llm.bind(max_tokens=completion_tokens)
 
-            # 6. PERSIST
-            if regenerate and target_message:
-                target_message.ai_response = response.content
-                if chat_user and target_message.user_id is None:
-                    target_message.user = chat_user
-                    target_message.save(update_fields=["ai_response", "user"])
-                else:
-                    target_message.save(update_fields=["ai_response"])
-                saved_message = target_message
-            else:
-                saved_message = ChatMessage.objects.create(
-                    session_id=session_id,
-                    user=chat_user,
-                    user_query=user_query_stored,
-                    ai_response=response.content,
-                )
+            if want_stream:
+                def token_events():
+                    assembled = []
+                    try:
+                        for text in _iter_chat_tokens(bound, messages):
+                            assembled.append(text)
+                            yield _sse({"type": "delta", "text": text})
+                        answer = "".join(assembled)
+                        saved_message = _save_ai_response(
+                            regenerate=regenerate,
+                            target_message=target_message,
+                            session_id=session_id,
+                            chat_user=chat_user,
+                            user_query_stored=user_query_stored,
+                            answer=answer,
+                        )
+                        unique_sources = sorted(
+                            {
+                                name
+                                for name in (_doc_source_label(doc) for doc in docs)
+                                if name and name != "Unknown"
+                            }
+                        )
+                        done = {
+                            "type": "done",
+                            "answer": answer,
+                            "sources": unique_sources if docs else [],
+                        }
+                        if saved_message is not None:
+                            done["message_id"] = saved_message.id
+                        logger.debug("Chat response generated successfully.")
+                        yield _sse(done)
+                    except Exception:
+                        logger.exception("Error while streaming chat tokens")
+                        yield _sse({
+                            "type": "error",
+                            "error": "I encountered a processing error while generating this answer. Please retry.",
+                        })
+
+                return _sse_response(token_events())
+
+            response = bound.invoke(messages)
+            saved_message = _save_ai_response(
+                regenerate=regenerate,
+                target_message=target_message,
+                session_id=session_id,
+                chat_user=chat_user,
+                user_query_stored=user_query_stored,
+                answer=response.content,
+            )
 
             # --- LOGGING: Success ---
             logger.debug("Chat response generated successfully.")
 
             unique_sources = sorted({name for name in (_doc_source_label(doc) for doc in docs) if name and name != "Unknown"})
-            return Response({
-                "answer": response.content,
-                "sources": unique_sources if docs else [],
-                "message_id": saved_message.id,
-            }, status=status.HTTP_200_OK)
+            return Response(
+                _chat_payload(
+                    response.content,
+                    sources=unique_sources if docs else [],
+                    message_id=None if saved_message is None else saved_message.id,
+                ),
+                status=status.HTTP_200_OK,
+            )
         except Exception as e:
             logger.exception("Error in Memory-RAG loop: %s", str(e))
             return Response({"error": "I encountered a processing error while generating this answer. Please retry."},
