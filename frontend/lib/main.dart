@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
@@ -480,8 +481,10 @@ final bibleRefRegex = RegExp(
                   .whereType<Map>()
                   .map((m) => Map<String, dynamic>.from(m)),
             );
-          _librarySermons = List<String>.from(entry['librarySermons'] ?? const []);
-          _previousSermons = List<String>.from(entry['previousSermons'] ?? const []);
+          _librarySermons = withoutVideoSermonSources(
+              List<String>.from(entry['librarySermons'] ?? const []));
+          _previousSermons = withoutVideoSermonSources(
+              List<String>.from(entry['previousSermons'] ?? const []));
           _isFirstMessage = _messages.isEmpty;
         });
         return;
@@ -510,8 +513,8 @@ final bibleRefRegex = RegExp(
         'title': _chatHistoryTitle(),
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
         'messages': _messages.map((m) => Map<String, dynamic>.from(m)).toList(),
-        'librarySermons': List<String>.from(_librarySermons),
-        'previousSermons': List<String>.from(_previousSermons),
+        'librarySermons': withoutVideoSermonSources(_librarySermons),
+        'previousSermons': withoutVideoSermonSources(_previousSermons),
       };
 
   Future<void> _persistChatHistory() async {
@@ -831,22 +834,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
     }
   }
 
-  List<String> _parseSources(dynamic raw) =>
-      List<String>.from(raw ?? [])
-          .map((s) {
-            var value = s.toString().trim();
-            for (final ext in const ['.md', '.docx', '.pdf', '.mp4', '.mov', '.mkv', '.webm', '.avi']) {
-              if (value.toLowerCase().endsWith(ext)) {
-                value = value.substring(0, value.length - ext.length).trim();
-                break;
-              }
-            }
-            return value;
-          })
-          .where((s) => s.isNotEmpty)
-          .toSet()
-          .take(5)
-          .toList();
+  List<String> _parseSources(dynamic raw) => parseSermonSources(raw);
 
   // ─── Chat Actions ───────────────────────────────────────────────────────────
   Future<void> _clearChat() async {
@@ -984,8 +972,10 @@ Future<void> _launchSermonDoc(String sermonName) async {
               .whereType<Map>()
               .map((m) => Map<String, dynamic>.from(m)),
         );
-      _librarySermons = List<String>.from(entry['librarySermons'] ?? const []);
-      _previousSermons = List<String>.from(entry['previousSermons'] ?? const []);
+      _librarySermons = withoutVideoSermonSources(
+          List<String>.from(entry['librarySermons'] ?? const []));
+      _previousSermons = withoutVideoSermonSources(
+          List<String>.from(entry['previousSermons'] ?? const []));
       _isFirstMessage = _messages.isEmpty;
       _showBackToBottomButton = false;
     });
@@ -1114,10 +1104,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final messageId = data['message_id'];
     setState(() {
       if (_librarySermons.isNotEmpty) {
-        _previousSermons = [..._librarySermons, ..._previousSermons]
-            .toSet()
-            .take(25)
-            .toList();
+        _previousSermons = withoutVideoSermonSources(
+          [..._librarySermons, ..._previousSermons],
+        ).toSet().take(25).toList();
       }
 
       if (_isStreamingReply) {
@@ -1136,7 +1125,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         });
       }
 
-      final newSources = _parseSources(data['sources']);
+      final newSources = librarySermonSources(data['sources']);
       if (newSources.isNotEmpty) {
         _librarySermons = newSources;
         _previousSermons.removeWhere((s) => _librarySermons.contains(s));
@@ -1590,7 +1579,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               Container(height: 2, width: 40, color: _gold),
               const SizedBox(height: 20),
               Expanded(
-                child: _librarySermons.isEmpty && _previousSermons.isEmpty
+                child: withoutVideoSermonSources(_librarySermons).isEmpty &&
+                        withoutVideoSermonSources(_previousSermons).isEmpty
                     ? Text(_s.sermonLibraryEmpty,
                         style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
                     : ListView(
@@ -1598,8 +1588,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                             ? const NeverScrollableScrollPhysics()
                             : const ClampingScrollPhysics(),
                         children: [
-                          ..._librarySermons.map(_buildSermonLink),
-                          if (_previousSermons.isNotEmpty) ...[
+                          ...withoutVideoSermonSources(_librarySermons)
+                              .map(_buildSermonLink),
+                          if (withoutVideoSermonSources(_previousSermons).isNotEmpty) ...[
                             const SizedBox(height: 20),
                             Row(children: [
                               const Expanded(child: Divider(color: Colors.white24)),
@@ -1612,7 +1603,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                               const Expanded(child: Divider(color: Colors.white24)),
                             ]),
                             const SizedBox(height: 10),
-                            ..._previousSermons.map(
+                            ...withoutVideoSermonSources(_previousSermons).map(
                                 (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
                           ],
                         ],
@@ -2389,7 +2380,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               minVerticalPadding: 10,
               contentPadding: const EdgeInsets.symmetric(horizontal: 4),
               leading: Icon(
-                source.contains('[') ? Icons.videocam_outlined : Icons.description_outlined,
+                isVideoSermonSource(source) ? Icons.videocam_outlined : Icons.description_outlined,
                 color: _navy,
                 size: 20,
               ),
@@ -2435,7 +2426,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               child: Row(
                 children: [
                   Icon(
-                    sermonTitle.contains('[') ? Icons.videocam_outlined : Icons.description_outlined,
+                    isVideoSermonSource(sermonTitle) ? Icons.videocam_outlined : Icons.description_outlined,
                     color: _gold,
                     size: 18,
                   ),
