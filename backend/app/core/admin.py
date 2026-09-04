@@ -1032,10 +1032,13 @@ def _split_admin_navigation(request):
             advanced_apps.append(
                 {
                     **app,
+                    "name": (app.get("name") or app.get("app_label") or "App").strip(),
                     "models": sorted(advanced, key=lambda model: model.get("name", "").lower()),
                 }
             )
 
+    advanced_apps = [app for app in advanced_apps if app.get("name") and app.get("models")]
+    advanced_apps.sort(key=lambda app: app.get("name", "").lower())
     pastoral_models.sort(key=lambda model: model.get("name", "").lower())
     return content_models, pastoral_models, advanced_apps
 
