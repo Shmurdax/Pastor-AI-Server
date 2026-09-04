@@ -43,6 +43,9 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("multiple long paragraphs", prompt)
         self.assertIn("sermon notes", prompt)
         self.assertIn("Quality and pastoral depth", prompt)
+        self.assertIn("REQUIRED QUOTES", prompt)
+        self.assertIn("word-for-word quotations", prompt)
+        self.assertIn("Never invent, polish, or reconstruct quotes", prompt)
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
