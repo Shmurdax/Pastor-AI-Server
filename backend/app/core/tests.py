@@ -11,7 +11,7 @@ from .document_cleanup import (
     format_cleanup_log,
 )
 from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
-from .scope_gate import parse_scope_gate_response
+from .scope_gate import always_in_scope_query, parse_scope_gate_response
 from .website_crawl.crawler import normalize_url, path_is_excluded
 from .website_crawl.extract import (
     classify_content_type,
@@ -46,6 +46,9 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("REQUIRED QUOTES", prompt)
         self.assertIn("word-for-word quotations", prompt)
         self.assertIn("Never invent, polish, or reconstruct quotes", prompt)
+        self.assertIn("Social issues are in scope", prompt)
+        self.assertIn("abortion", prompt.lower())
+        self.assertIn("Do not say you must redirect", prompt)
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
@@ -69,6 +72,22 @@ class ScopeGateParserTests(unittest.TestCase):
 
     def test_garbage_returns_none(self):
         self.assertIsNone(parse_scope_gate_response("maybe"))
+
+    def test_scope_gate_prompt_lists_abortion_and_broad_social_issues(self):
+        from .scope_gate import _SCOPE_GATE_SYSTEM
+
+        lowered = _SCOPE_GATE_SYSTEM.lower()
+        self.assertIn("abortion", lowered)
+        self.assertIn("prefer yes", lowered)
+        self.assertIn("do not answer no just because a topic is sensitive", lowered)
+        self.assertIn("can christians have abortions?", lowered)
+
+    def test_always_in_scope_for_abortion_and_christians(self):
+        self.assertTrue(always_in_scope_query("Can Christians have abortions?"))
+        self.assertTrue(always_in_scope_query("What about abortion?"))
+        self.assertTrue(always_in_scope_query("Tell me about marriage and divorce"))
+        self.assertFalse(always_in_scope_query("Write a Python sort function"))
+        self.assertFalse(always_in_scope_query("Who won the game last night?"))
 
 
 class PiiRedactionTests(unittest.TestCase):
