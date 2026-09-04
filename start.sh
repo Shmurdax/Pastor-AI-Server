@@ -283,6 +283,15 @@ screen -dmS django bash -c "
   export WHISPER_DEVICE='cpu' &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
+  export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
+  export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-8000}' &&
+  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-2400}' &&
+  export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-8192}' &&
+  export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
+  export RETRIEVAL_K='${RETRIEVAL_K:-16}' &&
+  export RETRIEVAL_THRESHOLD='${RETRIEVAL_THRESHOLD:-0.7}' &&
+  export INGEST_CHUNK_SIZE='${INGEST_CHUNK_SIZE:-1800}' &&
+  export INGEST_CHUNK_OVERLAP='${INGEST_CHUNK_OVERLAP:-250}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \

@@ -84,6 +84,16 @@ class PiiRedactionTests(unittest.TestCase):
         self.assertNotIn("Evergreen", out)
         self.assertIn(REDACTED, out)
 
+    def test_can_christians_question_kept(self):
+        """Sentence-start auxiliaries + demonyms must not become PII for RAG/scope."""
+        raw = "Can Christians drink alcohol?"
+        stored = redact_user_query(raw)
+        self.assertNotIn(REDACTED, stored)
+        self.assertIn("Christians", stored)
+        llm = query_text_for_llm(stored)
+        self.assertEqual(llm, raw)
+        self.assertNotIn("someone", llm.lower())
+
     def test_biblical_names_kept(self):
         out = redact_user_query("Paul and Timothy wrote about Mary Magdalene")
         self.assertNotIn(REDACTED, out)
