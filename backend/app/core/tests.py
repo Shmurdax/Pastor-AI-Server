@@ -28,6 +28,12 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("moses", lowered)
         self.assertIn("timothy", lowered)
 
+    def test_skips_christian_demonym(self):
+        names = find_biblical_character_names("Can Christians drink alcohol like Moses?")
+        lowered = {n.lower() for n in names}
+        self.assertNotIn("christians", lowered)
+        self.assertIn("moses", lowered)
+
     def test_no_biblical_names_when_absent(self):
         self.assertEqual(find_biblical_character_names("How should pastors prepare a sermon?"), [])
 

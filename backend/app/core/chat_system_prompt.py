@@ -11,6 +11,96 @@ from pathlib import Path
 _BIBLE_NAME_MIN_LEN = 3
 _BIBLE_NAME_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z']*")
 
+# bible_names.txt also protects demonyms/group labels for PII redaction; those are
+# not Biblical character names for prompt annotation.
+_NON_CHARACTER_BIBLE_TOKENS = frozenset(
+    {
+        "christian",
+        "christians",
+        "jew",
+        "jews",
+        "gentile",
+        "gentiles",
+        "hebrew",
+        "hebrews",
+        "israelite",
+        "israelites",
+        "pharisee",
+        "pharisees",
+        "sadducee",
+        "sadducees",
+        "scribe",
+        "scribes",
+        "apostle",
+        "apostles",
+        "disciple",
+        "disciples",
+        "prophet",
+        "prophets",
+        "priest",
+        "priests",
+        "levite",
+        "levites",
+        "roman",
+        "romans",
+        "greek",
+        "greeks",
+        "egypt",
+        "egyptian",
+        "egyptians",
+        "babylon",
+        "babylonian",
+        "babylonians",
+        "assyrian",
+        "assyrians",
+        "canaan",
+        "canaanite",
+        "canaanites",
+        "philistine",
+        "philistines",
+        "moabite",
+        "moabites",
+        "ammonite",
+        "ammonites",
+        "edomite",
+        "edomites",
+        "midianite",
+        "midianites",
+        "nazareth",
+        "galilee",
+        "judea",
+        "samaria",
+        "jerusalem",
+        "israel",
+        "judah",
+        "syria",
+        "assyria",
+        "persia",
+        "media",
+        "rome",
+        "greece",
+        "bible",
+        "scripture",
+        "scriptures",
+        "gospel",
+        "gospels",
+        "testament",
+        "covenant",
+        "church",
+        "temple",
+        "synagogue",
+        "sabbath",
+        "passover",
+        "pentecost",
+        "eden",
+        "heaven",
+        "hell",
+        "sheol",
+        "hades",
+        "paradise",
+    }
+)
+
 
 @lru_cache(maxsize=1)
 def _load_bible_names() -> frozenset[str]:
@@ -49,7 +139,16 @@ def find_biblical_character_names(text: str | None, *, limit: int = 12) -> list[
         }
         if raw.lower().endswith("'s"):
             variants.add(raw.lower()[:-2])
-        hit = next((v for v in variants if v in bible and len(v) >= _BIBLE_NAME_MIN_LEN), None)
+        hit = next(
+            (
+                v
+                for v in variants
+                if v in bible
+                and len(v) >= _BIBLE_NAME_MIN_LEN
+                and v not in _NON_CHARACTER_BIBLE_TOKENS
+            ),
+            None,
+        )
         if not hit or hit in seen:
             continue
         seen.add(hit)
