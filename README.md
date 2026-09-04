@@ -69,7 +69,7 @@ bash /workspace/pastor-ai/apply-tokens.sh --restart
 bash /workspace/pastor-ai/ingest_sermons.sh
 ```
 
-## Website crawl → RAG (thenordins.org + sister ministries)
+## Website scraping → RAG (thenordins.org + sister ministries)
 
 Allowlisted crawl of public ministry pages, teaching media, and book/resource descriptions into Qdrant `sermon_brain` (excludes cart/checkout/login/admin and socials):
 
@@ -78,7 +78,7 @@ bash /workspace/pastor-ai/crawl_websites.sh
 # or: cd /workspace/pastor-ai/backend/app && python manage.py crawl_websites
 ```
 
-Admin UI: **Website Crawl → RAG** under the Django admin Core section.
+Admin UI: **Website Scraping** under the Django admin Content tools section.
 
 ## Stack (current production)
 

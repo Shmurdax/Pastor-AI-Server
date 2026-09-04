@@ -3,48 +3,65 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
+  .ingestion-page { max-width: 820px; }
+
   .ingestion-dropzone {
-    border: 2px dashed #6c757d;
+    border: 2px dashed var(--hairline-color, var(--border-color, #6c757d));
     border-radius: 8px;
     padding: 22px 16px;
     text-align: center;
     cursor: pointer;
+    background: var(--darkened-bg, transparent);
+    color: var(--body-fg, inherit);
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .ingestion-dropzone:hover {
-    border-color: #417690;
+    border-color: var(--link-fg, var(--primary, #79aec8));
   }
 
   .ingestion-dropzone.is-dragover {
-    border-color: #417690;
-    background-color: rgba(65, 118, 144, 0.08);
+    border-color: var(--link-fg, var(--primary, #79aec8));
+    background: var(--selected-bg, var(--darkened-bg, transparent));
   }
 
   .ingestion-file-list {
     margin-top: 8px;
     font-size: 12px;
-    color: #666;
+    color: var(--body-quiet-color, inherit);
     word-break: break-word;
   }
 
   .ingestion-file-error {
     margin-top: 6px;
     font-size: 12px;
-    color: #ba2121;
+    color: var(--error-fg, #ba2121);
     display: none;
   }
 
-  .ingestion-progress-wrapper {
-    margin-top: 10px;
+  .ingestion-progress-panel {
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
+    border-radius: 8px;
+    background: var(--darkened-bg, transparent);
     display: none;
+  }
+
+  .ingestion-progress-panel.is-visible { display: block; }
+
+  .ingestion-progress-label {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--body-fg, inherit);
   }
 
   .ingestion-progress-track {
     width: 100%;
-    height: 8px;
+    height: 10px;
     border-radius: 999px;
-    background: rgba(108, 117, 125, 0.25);
+    background: var(--hairline-color, rgba(108, 117, 125, 0.25));
     overflow: hidden;
   }
 
@@ -52,38 +69,85 @@
     width: 0%;
     height: 100%;
     border-radius: 999px;
-    background: #417690;
-    transition: width 0.2s ease;
+    background: var(--link-fg, var(--primary, #79aec8));
+    transition: width 0.25s ease;
   }
 
-  .ingestion-progress-wrapper.is-indeterminate .ingestion-progress-bar {
+  .ingestion-progress-panel.is-indeterminate .ingestion-progress-bar {
     width: 35%;
     transform: translateX(-120%);
     animation: ingestion-indeterminate 1.2s ease-in-out infinite;
   }
 
   .ingestion-progress-text {
-    margin-top: 6px;
+    margin-top: 8px;
     font-size: 12px;
-    color: #666;
+    color: var(--body-quiet-color, inherit);
+    line-height: 1.45;
+  }
+
+  .ingestion-progress-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--body-fg, inherit);
+  }
+
+  .ingestion-status-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: lowercase;
+  }
+
+  .ingestion-status-pill.is-running {
+    background: color-mix(in srgb, #c17d11 22%, transparent);
+    color: var(--body-fg, #c17d11);
+  }
+  .ingestion-status-pill.is-completed {
+    background: color-mix(in srgb, #0f7b3b 22%, transparent);
+    color: var(--body-fg, #0f7b3b);
+  }
+  .ingestion-status-pill.is-failed {
+    background: color-mix(in srgb, #ba2121 22%, transparent);
+    color: var(--body-fg, #ba2121);
+  }
+
+  .ingestion-jobs-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .ingestion-jobs-table th,
+  .ingestion-jobs-table td {
+    text-align: left;
+    border-bottom: 1px solid var(--hairline-color, var(--border-color, #ddd));
+    padding: 8px 4px;
+    font-size: 13px;
+    color: var(--body-fg, inherit);
   }
 
   @keyframes ingestion-indeterminate {
-    0% {
-      transform: translateX(-120%);
-    }
-    100% {
-      transform: translateX(360%);
-    }
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(360%); }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="max-width: 760px;">
+<div class="ingestion-page"
+     data-jobs-status-url="{% url 'admin:core_ingestion_jobs_status' %}?kind=video">
   <h1>Video Ingestion</h1>
-  <p>Upload video or audio files of any common type (MP4, MOV, MKV, WebM, M4A, MP3, WAV, AAC, FLAC, and others). The original file is stored for later reference. Whisper then transcribes the audio with timestamps, the transcript is normalized to drop fillers, channel CTAs, and isolated talk that is not about Christianity, the Bible, or social ideas and issues, and the remaining timestamped lines are chunked into Qdrant.</p>
-  <p>You can drop a whole folder or hundreds of files (500+) at once. Each file is uploaded in 2&nbsp;MB pieces so Cloudflare does not close the connection on large sermons. Whisper runs on CPU so it does not compete with the chat GPU model for VRAM — a long sermon can take a while. Refresh this page to watch job progress.</p>
+  <p>
+    Upload video or audio files of any common type (MP4, MOV, MKV, WebM, M4A, MP3, WAV, AAC, FLAC, and others).
+    Titles are auto-cleaned for the sermon library, and near-duplicates are skipped.
+    Whisper transcribes with timestamps, then chunks are upserted into Qdrant.
+  </p>
+  <p>
+    Folders and large batches are supported. Each file uploads in 2&nbsp;MB pieces.
+    Long sermons can take a while — this page shows live progress and ETA.
+  </p>
   <p><a href="{% url 'admin:core_ingested_videos' %}">View all ingested videos and audio</a></p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
@@ -101,13 +165,13 @@
       </div>
       <div id="documents-file-list" class="ingestion-file-list">No files selected.</div>
       <div id="documents-file-error" class="ingestion-file-error"></div>
-      <div id="documents-progress-wrapper" class="ingestion-progress-wrapper" aria-live="polite">
+      <div id="documents-progress-panel" class="ingestion-progress-panel" aria-live="polite">
+        <div class="ingestion-progress-label" id="documents-progress-label">Upload</div>
         <div class="ingestion-progress-track">
-          <div class="ingestion-progress-bar"></div>
+          <div class="ingestion-progress-bar" id="documents-progress-bar"></div>
         </div>
-        <div id="documents-progress-text" class="ingestion-progress-text">
-          Upload in progress. Please wait...
-        </div>
+        <div id="documents-progress-text" class="ingestion-progress-text">Upload in progress. Please wait...</div>
+        <div id="documents-progress-meta" class="ingestion-progress-meta"></div>
       </div>
     </div>
     <div style="margin-bottom: 12px;">
@@ -120,39 +184,37 @@
   </form>
 
   <h2 style="margin-top: 24px;">Recent Ingestion Jobs</h2>
-  <table style="width: 100%; border-collapse: collapse;">
+  <table class="ingestion-jobs-table" id="documents-jobs-table">
     <thead>
       <tr>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Job</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Status</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Files</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Skipped</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Failed Files</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Chunks Added</th>
-        <th style="text-align: left; border-bottom: 1px solid #ddd;">Created</th>
+        <th>Job</th>
+        <th>Status</th>
+        <th>Files</th>
+        <th>Skipped</th>
+        <th>Failed</th>
+        <th>Chunks</th>
+        <th>Created</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="documents-jobs-body">
       {% for job in latest_jobs %}
-      <tr>
-        <td style="padding: 6px 0;"><a href="{% url 'admin:core_ingestionjob_change' job.id %}">#{{ job.id }}</a></td>
-        <td style="padding: 6px 0;">{{ job.status }}</td>
-        <td style="padding: 6px 0;">{{ job.files_processed }}/{{ job.files_received }}</td>
-        <td style="padding: 6px 0;">{{ job.files_skipped_as_duplicates }}</td>
-        <td style="padding: 6px 0;">
+      <tr data-job-id="{{ job.id }}">
+        <td><a href="{% url 'admin:core_ingestionjob_change' job.id %}">#{{ job.id }}</a></td>
+        <td><span class="ingestion-status-pill is-{{ job.status }}">{{ job.status }}</span></td>
+        <td>{{ job.files_processed }}/{{ job.files_received }}</td>
+        <td>{{ job.files_skipped_as_duplicates }}</td>
+        <td>
           {% if job.files_failed %}
             <a href="{% url 'admin:core_ingestionjobfilefailure_changelist' %}?job__id__exact={{ job.id }}">{{ job.files_failed }}</a>
           {% else %}
             0
           {% endif %}
         </td>
-        <td style="padding: 6px 0;">{{ job.chunks_created }}</td>
-        <td style="padding: 6px 0;">{{ job.created_at }}</td>
+        <td>{{ job.chunks_created }}</td>
+        <td>{{ job.created_at }}</td>
       </tr>
       {% empty %}
-      <tr>
-        <td colspan="7" style="padding: 6px 0;">No jobs yet.</td>
-      </tr>
+      <tr class="ingestion-jobs-empty"><td colspan="7">No jobs yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -167,9 +229,13 @@
     var dropzone = document.getElementById("documents-dropzone");
     var fileList = document.getElementById("documents-file-list");
     var fileError = document.getElementById("documents-file-error");
-    var progressWrapper = document.getElementById("documents-progress-wrapper");
-    var progressBar = progressWrapper && progressWrapper.querySelector(".ingestion-progress-bar");
+    var page = document.querySelector(".ingestion-page");
+    var progressPanel = document.getElementById("documents-progress-panel");
+    var progressLabel = document.getElementById("documents-progress-label");
+    var progressBar = document.getElementById("documents-progress-bar");
     var progressText = document.getElementById("documents-progress-text");
+    var progressMeta = document.getElementById("documents-progress-meta");
+    var jobsBody = document.getElementById("documents-jobs-body");
     var form = input && input.form;
     var submitButton = form && form.querySelector('button[type="submit"]');
     var allowedExtensions = {{ video_extensions|safe }};
@@ -182,8 +248,11 @@
     var CHUNK_BYTES = {{ video_chunk_bytes }};
     var MAX_UPLOAD_RETRIES = 6;
     var UPLOAD_TIMEOUT_MS = 120 * 1000;
+    var jobsStatusUrl = page && page.getAttribute("data-jobs-status-url");
+    var trackedJobIds = [];
+    var pollTimer = null;
 
-    if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressWrapper || !progressBar || !progressText || !form) {
+    if (!input || !folderInput || !filesButton || !folderButton || !dropzone || !fileList || !fileError || !progressPanel || !progressBar || !progressText || !form) {
       return;
     }
 
@@ -197,44 +266,142 @@
       fileError.style.display = "block";
     }
 
-    function showProgress(message) {
-      progressText.textContent = message;
-      progressWrapper.style.display = "block";
+    function showProgressPanel() {
+      progressPanel.classList.add("is-visible");
     }
 
     function hideProgress() {
-      progressWrapper.style.display = "none";
+      progressPanel.classList.remove("is-visible", "is-indeterminate");
     }
 
-    function setProgressPercentage(percentage) {
+    function setProgressPercentage(percentage, label, text, meta) {
       var bounded = Math.max(0, Math.min(100, percentage));
-      progressWrapper.classList.remove("is-indeterminate");
+      progressPanel.classList.remove("is-indeterminate");
       progressBar.style.transform = "none";
       progressBar.style.animation = "none";
       progressBar.style.width = bounded + "%";
-      progressText.textContent = "Upload progress: " + bounded + "%";
-      progressWrapper.style.display = "block";
+      if (label) progressLabel.textContent = label;
+      progressText.textContent = text || ("Upload progress: " + bounded + "%");
+      if (typeof meta !== "undefined") progressMeta.textContent = meta || "";
+      showProgressPanel();
     }
 
-    function setProcessingState() {
-      progressWrapper.classList.add("is-indeterminate");
+    function setProcessingState(message) {
+      progressPanel.classList.add("is-indeterminate");
       progressBar.style.width = "35%";
       progressBar.style.animation = "";
       progressBar.style.transform = "";
-      progressText.textContent = "Upload complete. Processing files on server...";
-      progressWrapper.style.display = "block";
+      progressLabel.textContent = "Processing";
+      progressText.textContent = message || "Upload complete. Processing files on server...";
+      progressMeta.textContent = "";
+      showProgressPanel();
     }
 
-    function setBatchProgress(currentBatch, totalBatches, phaseText) {
-      progressWrapper.classList.remove("is-indeterminate");
-      progressBar.style.transform = "none";
-      progressBar.style.animation = "none";
-      var ratio = totalBatches > 0 ? (currentBatch / totalBatches) : 0;
-      var percentage = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-      progressBar.style.width = percentage + "%";
-      progressText.textContent = phaseText + " (" + currentBatch + "/" + totalBatches + ")";
-      progressWrapper.style.display = "block";
+    function formatEta(seconds) {
+      if (seconds == null || seconds < 0) return "";
+      if (seconds < 60) return "~" + seconds + "s remaining";
+      var mins = Math.round(seconds / 60);
+      if (mins < 60) return "~" + mins + " min remaining";
+      var hours = Math.floor(mins / 60);
+      var rem = mins % 60;
+      return "~" + hours + "h " + rem + "m remaining";
     }
+
+    function renderJobs(jobs) {
+      if (!jobsBody) return;
+      if (!jobs || !jobs.length) {
+        jobsBody.innerHTML = '<tr class="ingestion-jobs-empty"><td colspan="7">No jobs yet.</td></tr>';
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < jobs.length; i += 1) {
+        var job = jobs[i];
+        var failedCell = job.files_failed
+          ? '<a href="' + (job.failures_url || "#") + '">' + job.files_failed + "</a>"
+          : "0";
+        html +=
+          '<tr data-job-id="' + job.id + '">' +
+          '<td><a href="' + job.admin_url + '">#' + job.id + "</a></td>" +
+          '<td><span class="ingestion-status-pill is-' + job.status + '">' + job.status + "</span></td>" +
+          "<td>" + job.files_processed + "/" + job.files_received + "</td>" +
+          "<td>" + job.files_skipped_as_duplicates + "</td>" +
+          "<td>" + failedCell + "</td>" +
+          "<td>" + job.chunks_created + "</td>" +
+          "<td>" + (job.created_at || "") + "</td>" +
+          "</tr>";
+      }
+      jobsBody.innerHTML = html;
+    }
+
+    function updateProcessingFromJob(job) {
+      if (!job) return;
+      var metaParts = [];
+      if (job.files_skipped_as_duplicates) metaParts.push("Skipped " + job.files_skipped_as_duplicates + " near-duplicates");
+      if (job.files_failed) metaParts.push("Failed " + job.files_failed);
+      var eta = formatEta(job.eta_s);
+      if (eta) metaParts.push(eta);
+      var current = job.current_file
+        ? ("Processing: " + job.current_file + " (" + job.done + "/" + job.total + ")")
+        : ("Processing " + job.done + "/" + job.total + " files");
+      if (job.status === "running") {
+        setProgressPercentage(job.percent || 0, "Processing", current, metaParts.join(" · "));
+      } else if (job.status === "completed") {
+        setProgressPercentage(100, "Completed", "Ingestion finished for job #" + job.id + ".", metaParts.join(" · "));
+      } else if (job.status === "failed") {
+        setProgressPercentage(job.percent || 0, "Failed", job.error_message || ("Job #" + job.id + " failed."), metaParts.join(" · "));
+      }
+    }
+
+    async function refreshJobs() {
+      if (!jobsStatusUrl) return null;
+      var response = await fetch(jobsStatusUrl, { headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" } });
+      if (!response.ok) return null;
+      var payload = await response.json();
+      if (!payload || !payload.ok) return null;
+      renderJobs(payload.jobs || []);
+      return payload.jobs || [];
+    }
+
+    async function pollTrackedJobs() {
+      var jobs = await refreshJobs();
+      if (!jobs) return;
+      var stillRunning = false;
+      for (var i = 0; i < trackedJobIds.length; i += 1) {
+        var id = trackedJobIds[i];
+        for (var j = 0; j < jobs.length; j += 1) {
+          if (jobs[j].id === id) {
+            updateProcessingFromJob(jobs[j]);
+            if (jobs[j].status === "running") stillRunning = true;
+          }
+        }
+      }
+      if (!stillRunning && trackedJobIds.length) {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        resetSubmitState();
+      }
+    }
+
+    function startPolling(jobIds) {
+      trackedJobIds = jobIds.slice();
+      if (pollTimer) clearInterval(pollTimer);
+      pollTrackedJobs();
+      pollTimer = setInterval(pollTrackedJobs, 2000);
+    }
+
+    refreshJobs().then(function (jobs) {
+      if (!jobs) return;
+      var running = [];
+      for (var i = 0; i < jobs.length; i += 1) {
+        if (jobs[i].status === "running") running.push(jobs[i].id);
+      }
+      if (running.length) {
+        updateProcessingFromJob(jobs.find(function (j) { return j.id === running[0]; }));
+        startPolling(running);
+      }
+    });
 
     function resetSubmitState() {
       if (submitButton) {
@@ -581,12 +748,13 @@
       if (fileSize < 1) {
         progressText.textContent =
           "Skipping empty file " + (fileIndex + 1) + "/" + totalFiles + ": " + (file && file.name ? file.name : "unnamed");
-        return 0;
+        return { bytes: 0, jobId: null };
       }
       file = readable;
       var chunkCount = Math.ceil(fileSize / CHUNK_BYTES);
       var uploadId = randomUuid();
       var sentInFile = 0;
+      var jobId = null;
 
       for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
         var start = chunkIndex * CHUNK_BYTES;
@@ -608,20 +776,23 @@
         formData.append("chunk", blob, file.name + ".part" + chunkIndex);
 
         var label = file.name + " chunk " + (chunkIndex + 1) + "/" + chunkCount;
-        await postFormWithRetry(formData, label, function (loaded, total) {
+        var payload = await postFormWithRetry(formData, label, function (loaded, total) {
           var chunkBytes = total > 0 ? loaded : 0;
           var overall = totalBytes > 0 ? (bytesAlreadySent + sentInFile + chunkBytes) / totalBytes : 0;
           var pct = Math.max(0, Math.min(100, Math.round(overall * 100)));
-          setProgressPercentage(pct);
-          progressText.textContent =
+          setProgressPercentage(
+            pct,
+            "Upload",
             "Uploading " + (fileIndex + 1) + "/" + totalFiles + ": " + file.name +
-            " (piece " + (chunkIndex + 1) + "/" + chunkCount + ", " + pct + "%)";
+              " (piece " + (chunkIndex + 1) + "/" + chunkCount + ", " + pct + "%)"
+          );
         });
+        if (payload && payload.job_id) jobId = payload.job_id;
         sentInFile += blob.size;
         var overallDone = totalBytes > 0 ? (bytesAlreadySent + sentInFile) / totalBytes : 0;
-        setProgressPercentage(Math.round(overallDone * 100));
+        setProgressPercentage(Math.round(overallDone * 100), "Upload");
       }
-      return fileSize;
+      return { bytes: fileSize, jobId: jobId };
     }
 
     dropzone.addEventListener("click", function () {
@@ -725,17 +896,17 @@
         totalBytes += allFiles[sizeIdx] && typeof allFiles[sizeIdx].size === "number" ? allFiles[sizeIdx].size : 0;
       }
 
-      setProgressPercentage(0);
-      progressText.textContent = "Uploading " + allFiles.length + " file(s) in 2 MB pieces...";
+      setProgressPercentage(0, "Upload", "Uploading " + allFiles.length + " file(s) in 2 MB pieces...");
 
       (async function () {
         try {
           var bytesAlreadySent = 0;
           var uploadedCount = 0;
           var skippedEmpty = [];
+          var jobIds = [];
           for (var fileIdx = 0; fileIdx < allFiles.length; fileIdx += 1) {
             var current = allFiles[fileIdx];
-            var sent = await uploadFileInChunks(
+            var result = await uploadFileInChunks(
               current,
               fileIdx,
               allFiles.length,
@@ -743,9 +914,10 @@
               totalBytes,
               replaceExisting
             );
-            if (sent > 0) {
+            if (result.bytes > 0) {
               uploadedCount += 1;
-              bytesAlreadySent += sent;
+              bytesAlreadySent += result.bytes;
+              if (result.jobId) jobIds.push(result.jobId);
             } else if (!current || !current.size) {
               skippedEmpty.push(current && current.name ? current.name : "unnamed");
             }
@@ -763,9 +935,13 @@
             resetSubmitState();
             return;
           }
-          setProgressPercentage(100);
-          setProcessingState();
-          window.location.href = form.action || window.location.href;
+          setProgressPercentage(100, "Upload", "All uploads finished. Processing on server...");
+          if (jobIds.length) {
+            setProcessingState("Starting background processing for job #" + jobIds[jobIds.length - 1] + "...");
+            startPolling(jobIds);
+          } else {
+            resetSubmitState();
+          }
         } catch (err) {
           showError("Upload failed: " + (err && err.message ? err.message : "Please try again."));
           hideProgress();

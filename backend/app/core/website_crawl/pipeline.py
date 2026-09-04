@@ -180,6 +180,6 @@ def enqueue_website_crawl_job(
         status="running",
         files_received=0,
     )
-    IngestionJobLog.objects.create(job=job, message="Website crawl job queued for background processing.")
+    IngestionJobLog.objects.create(job=job, message="Website scraping job queued for background processing.")
     enqueue_website_crawl(job_id=job.id, replace_existing_sources=replace_existing_sources)
     return job
