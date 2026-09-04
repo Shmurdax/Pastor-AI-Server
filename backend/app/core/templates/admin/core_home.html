@@ -108,6 +108,8 @@
     border: 1px solid var(--hairline-color, var(--border-color, #ccc));
     border-radius: 10px;
     background: var(--body-bg, transparent);
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .pastor-advanced > summary {
@@ -117,6 +119,9 @@
     font-weight: 700;
     color: var(--body-fg, inherit);
     user-select: none;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .pastor-advanced > summary::-webkit-details-marker {
@@ -136,20 +141,84 @@
 
   .pastor-advanced-body {
     border-top: 1px solid var(--hairline-color, var(--border-color, #ccc));
-    padding: 8px 8px 12px;
+    padding: 8px 12px 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  .pastor-advanced-body .module {
+  /* Force every nested app group/header to the same full card width. */
+  .pastor-advanced-group {
+    margin: 0 0 12px;
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
+    border-radius: 8px;
+    background: var(--darkened-bg, transparent);
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .pastor-advanced-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .pastor-advanced-group-header {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    font-weight: 700;
+    color: var(--body-fg, inherit);
+    background: var(--selected-bg, var(--darkened-bg, transparent));
+    border-bottom: 1px solid var(--hairline-color, var(--border-color, #ccc));
+  }
+
+  .pastor-advanced-list {
+    list-style: none;
     margin: 0;
-    border: none;
-    box-shadow: none;
-    background: transparent;
+    padding: 0;
+    width: 100%;
+  }
+
+  .pastor-advanced-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--hairline-color, var(--border-color, #ccc));
+    color: var(--body-fg, inherit);
+  }
+
+  .pastor-advanced-list li:last-child {
+    border-bottom: none;
+  }
+
+  .pastor-advanced-list a {
+    color: var(--link-fg, var(--primary, #79aec8));
+    text-decoration: none;
+  }
+
+  .pastor-advanced-list a:hover {
+    text-decoration: underline;
+  }
+
+  .pastor-advanced-actions {
+    display: inline-flex;
+    gap: 12px;
+    flex-shrink: 0;
+    font-size: 12px;
   }
 
   .pastor-advanced-note {
-    margin: 0 12px 10px;
+    margin: 0 0 10px;
     color: var(--body-quiet-color, inherit);
     font-size: 12px;
+  }
+
+  /* Keep Content tools / Pastoral / Advanced outer cards the same width. */
+  .pastor-section,
+  .pastor-advanced {
+    max-width: 100%;
   }
 </style>
 {% endblock %}
@@ -213,7 +282,32 @@
       <p class="pastor-advanced-note">
         Technical tables for debugging ingestion jobs, chunks, auth, and API models. Most admins can ignore this section.
       </p>
-      {% include "admin/app_list.html" with app_list=advanced_app_list show_changelinks=True %}
+      {% for app in advanced_app_list %}
+      <div class="pastor-advanced-group">
+        <div class="pastor-advanced-group-header">{{ app.name }}</div>
+        <ul class="pastor-advanced-list">
+          {% for model in app.models %}
+          <li>
+            {% if model.admin_url %}
+              <a href="{{ model.admin_url }}">{{ model.name }}</a>
+            {% else %}
+              <span>{{ model.name }}</span>
+            {% endif %}
+            <span class="pastor-advanced-actions">
+              {% if model.add_url %}
+                <a href="{{ model.add_url }}" class="addlink">Add</a>
+              {% endif %}
+              {% if model.admin_url %}
+                <a href="{{ model.admin_url }}" class="changelink">Change</a>
+              {% endif %}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% empty %}
+      <p class="pastor-advanced-note">No advanced models available.</p>
+      {% endfor %}
     </div>
   </details>
 </div>
