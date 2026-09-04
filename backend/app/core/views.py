@@ -813,6 +813,10 @@ class ResponseReportAPIView(APIView):
     """GET/POST /api/response-reports/ — public submit + staff inbox list."""
 
     renderer_classes = [JSONRenderer]
+    # Token auth attaches the signed-in reporter. Do not enable SessionAuthentication:
+    # a Django admin/session cookie would require CSRF on POST and Flutter fetch does
+    # not send one → 403 "Could not submit report."
+    authentication_classes = [TokenAuthentication]
 
     def get_permissions(self):
         from rest_framework.permissions import IsAdminUser
