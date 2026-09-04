@@ -4,128 +4,224 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
-  .core-tools-module {
-    margin-top: 20px;
-    width: 100%;
+  :root {
+    --pastor-teal: #417690;
+    --pastor-teal-soft: rgba(65, 118, 144, 0.08);
+    --pastor-border: #d9e2e8;
+    --pastor-muted: #5f6b73;
+    --pastor-surface: #ffffff;
+    --pastor-page: #f5f8fa;
   }
 
-  #content-main .module table {
-    width: 100%;
+  #content-main {
+    background: transparent;
   }
 
-  .core-tools-header {
+  .pastor-home {
+    max-width: 1100px;
+  }
+
+  .pastor-section {
+    margin: 0 0 22px;
+    background: var(--pastor-surface);
+    border: 1px solid var(--pastor-border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .pastor-section-header {
     margin: 0;
-    padding: 12px 12px 6px;
-    font-size: 16px;
-    font-weight: 600;
+    padding: 14px 16px 6px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f2a30;
   }
 
-  .core-tools-intro {
-    padding: 0 12px 12px;
+  .pastor-section-intro {
     margin: 0;
+    padding: 0 16px 14px;
+    color: var(--pastor-muted);
+    font-size: 13px;
+    line-height: 1.45;
   }
 
-  .core-tools-grid {
+  .pastor-tools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 12px;
-    padding: 0 12px 14px;
+    padding: 0 16px 16px;
   }
 
-  .core-tool-card {
-    border: 1px solid var(--hairline-color, #ddd);
-    border-radius: 6px;
-    padding: 12px;
-    background: var(--body-bg, #fff);
+  .pastor-tool-card {
+    border: 1px solid var(--pastor-border);
+    border-radius: 8px;
+    padding: 14px;
+    background: #fff;
     display: flex;
     flex-direction: column;
+    min-height: 128px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .core-tool-title {
+  .pastor-tool-card:hover {
+    border-color: var(--pastor-teal);
+    box-shadow: 0 1px 0 rgba(65, 118, 144, 0.12);
+  }
+
+  .pastor-tool-title {
     margin: 0 0 8px;
-    font-weight: 600;
     font-size: 14px;
+    font-weight: 700;
+    color: #1f2a30;
   }
 
-  .core-tool-description {
-    margin: 0 0 10px;
+  .pastor-tool-description {
+    margin: 0 0 auto;
     font-size: 12px;
-    line-height: 1.4;
-    opacity: 0.9;
-    min-height: 2.8em;
+    line-height: 1.45;
+    color: var(--pastor-muted);
+    padding-bottom: 12px;
   }
 
-  .core-tool-link {
-  display: block;
-  margin: 0;
-  font-weight: 600;
-}
+  .pastor-tool-link {
+    color: var(--pastor-teal);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .pastor-tool-link:hover {
+    text-decoration: underline;
+  }
+
+  .pastor-link-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    padding: 0 16px 16px;
+  }
+
+  .pastor-link-row a {
+    color: var(--pastor-teal);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .pastor-link-row a:hover {
+    text-decoration: underline;
+  }
+
+  .pastor-advanced {
+    margin: 0 0 8px;
+    border: 1px solid var(--pastor-border);
+    border-radius: 10px;
+    background: var(--pastor-surface);
+  }
+
+  .pastor-advanced > summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 14px 16px;
+    font-weight: 700;
+    color: #3a474f;
+    user-select: none;
+  }
+
+  .pastor-advanced > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .pastor-advanced > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 8px;
+    color: var(--pastor-teal);
+  }
+
+  .pastor-advanced[open] > summary::before {
+    content: "▾";
+  }
+
+  .pastor-advanced-body {
+    border-top: 1px solid var(--pastor-border);
+    padding: 8px 8px 12px;
+  }
+
+  .pastor-advanced-body .module {
+    margin: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .pastor-advanced-note {
+    margin: 0 12px 10px;
+    color: var(--pastor-muted);
+    font-size: 12px;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div id="content-main">
-  <div class="app-core module core-tools-module">
-    <h2 class="core-tools-header">Core Admin Tools</h2>
-
-    <p class="core-tools-intro">
-      Quick access to ingestion and document browsing features.
+<div id="content-main" class="pastor-home">
+  <div class="pastor-section">
+    <h2 class="pastor-section-header">Content tools</h2>
+    <p class="pastor-section-intro">
+      Everyday ingestion and browsing. Titles are cleaned for the sermon library; near-duplicates are skipped automatically.
     </p>
-
-    <div class="core-tools-grid">
-      <div class="core-tool-card">
-        <h3 class="core-tool-title">Document Ingestion</h3>
-        <p class="core-tool-description">
-          Upload DOCX/PDF, convert to PDF when needed, dedupe, and upsert chunks to Qdrant.
-        </p>
-        <a class="core-tool-link" href="{% url 'admin:core_ingestion' %}">
-          Open ingestion panel
-        </a>
+    <div class="pastor-tools-grid">
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Document Ingestion</h3>
+        <p class="pastor-tool-description">Upload PDF/DOCX for the sermon library. Convert, clean, embed, and track live progress.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_ingestion' %}">Open →</a>
       </div>
-
-      <div class="core-tool-card">
-        <h3 class="core-tool-title">Video Ingestion</h3>
-        <p class="core-tool-description">
-          Upload sermon videos and audio (m4a, mp3, wav, and others), transcribe with Whisper timestamps, drop off-topic fluff, and upsert to Qdrant.
-        </p>
-        <a class="core-tool-link" href="{% url 'admin:core_video_ingestion' %}">
-          Open video ingestion panel
-        </a>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Video Ingestion</h3>
+        <p class="pastor-tool-description">Upload sermon video/audio, Whisper-transcribe, and upsert timestamped chunks to Qdrant.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_video_ingestion' %}">Open →</a>
       </div>
-
-      <div class="core-tool-card">
-        <h3 class="core-tool-title">Ingested PDF Documents</h3>
-        <p class="core-tool-description">
-          Browse converted PDFs, search by filename, and paginate through your ingestion folder.
-        </p>
-        <a class="core-tool-link" href="{% url 'admin:core_ingested_documents' %}">
-          Open documents browser
-        </a>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Website Scraping</h3>
+        <p class="pastor-tool-description">Pull allowlisted ministry website pages and PDFs into the knowledge base.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_website_crawl' %}">Open →</a>
       </div>
-
-      <div class="core-tool-card">
-        <h3 class="core-tool-title">Ingested Videos</h3>
-        <p class="core-tool-description">
-          Browse original video files and timestamped Whisper transcript sidecars.
-        </p>
-        <a class="core-tool-link" href="{% url 'admin:core_ingested_videos' %}">
-          Open videos browser
-        </a>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Ingested Documents</h3>
+        <p class="pastor-tool-description">Browse stored PDFs from document ingestion.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_ingested_documents' %}">Open →</a>
       </div>
-
-      <div class="core-tool-card">
-        <h3 class="core-tool-title">Embedded Videos</h3>
-        <p class="core-tool-description">
-          Watch a Vimeo sermon beside the matching Whisper transcript from ingested audio.
-        </p>
-        <a class="core-tool-link" href="{% url 'admin:core_embedded_videos' %}">
-          Open embedded videos
-        </a>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Ingested Videos</h3>
+        <p class="pastor-tool-description">Browse original media files and Whisper transcript sidecars.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_ingested_videos' %}">Open →</a>
+      </div>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Embedded Videos</h3>
+        <p class="pastor-tool-description">Watch a Vimeo sermon beside the matching Whisper transcript.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_embedded_videos' %}">Open →</a>
       </div>
     </div>
   </div>
 
-  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+  <div class="pastor-section">
+    <h2 class="pastor-section-header">Pastoral</h2>
+    <p class="pastor-section-intro">Day-to-day church operations.</p>
+    <div class="pastor-link-row">
+      {% for item in pastoral_models %}
+        <a href="{{ item.admin_url }}">{{ item.name }}</a>
+      {% empty %}
+        <span style="color: var(--pastor-muted); font-size: 13px;">No pastoral models available.</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <details class="pastor-advanced">
+    <summary>Advanced settings</summary>
+    <div class="pastor-advanced-body">
+      <p class="pastor-advanced-note">
+        Technical tables for debugging ingestion jobs, chunks, auth, and API models. Most admins can ignore this section.
+      </p>
+      {% include "admin/app_list.html" with app_list=advanced_app_list show_changelinks=True %}
+    </div>
+  </details>
 </div>
 
 <div id="content-related">

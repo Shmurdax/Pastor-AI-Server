@@ -39,7 +39,7 @@ def _run_website_crawl_job(job_id: int, replace_existing_sources: bool) -> None:
         # Local import avoids circular import at module load.
         from .pipeline import run_website_crawl_and_ingest
 
-        log_job("Website crawl started in background worker.")
+        log_job("Website scraping started in background worker.")
         result = run_website_crawl_and_ingest(
             replace_existing_sources=replace_existing_sources,
             log_fn=None,  # pipeline writes IngestionJobLog when job is passed
@@ -51,6 +51,7 @@ def _run_website_crawl_job(job_id: int, replace_existing_sources: bool) -> None:
         job.chunks_created = result.chunks_created
         job.status = "completed"
         job.finished_at = timezone.now()
+        job.current_file = ""
         job.save(
             update_fields=[
                 "files_received",
@@ -59,16 +60,18 @@ def _run_website_crawl_job(job_id: int, replace_existing_sources: bool) -> None:
                 "chunks_created",
                 "status",
                 "finished_at",
+                "current_file",
             ]
         )
-        log_job("Website crawl job finished.")
+        log_job("Website scraping job finished.")
     except Exception as exc:
         job.status = "failed"
         job.error_message = str(exc)
         job.finished_at = timezone.now()
-        job.save(update_fields=["status", "error_message", "finished_at"])
-        IngestionJobLog.objects.create(job=job, message=f"Website crawl failed: {exc}")
-        logger.exception("Website crawl job %s failed", job_id)
+        job.current_file = ""
+        job.save(update_fields=["status", "error_message", "finished_at", "current_file"])
+        IngestionJobLog.objects.create(job=job, message=f"Website scraping failed: {exc}")
+        logger.exception("Website scraping job %s failed", job_id)
     finally:
         dump_persistent_postgres()
         close_old_connections()

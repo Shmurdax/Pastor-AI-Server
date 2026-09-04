@@ -102,9 +102,19 @@ class ChatMessageAdmin(admin.ModelAdmin):
 @admin.register(IngestedDocument)
 class IngestedDocumentAdmin(admin.ModelAdmin):
     list_display = ("title", "source_name", "source_kind", "original_extension", "chunk_count", "updated_at")
-    search_fields = ("title", "source_name", "file_hash")
+    search_fields = ("title", "source_name", "normalized_title", "file_hash", "content_hash")
     list_filter = ("source_kind", "original_extension", "updated_at")
-    readonly_fields = ("source_name", "file_hash", "original_extension", "source_kind", "chunk_count", "created_at", "updated_at")
+    readonly_fields = (
+        "source_name",
+        "normalized_title",
+        "file_hash",
+        "content_hash",
+        "original_extension",
+        "source_kind",
+        "chunk_count",
+        "created_at",
+        "updated_at",
+    )
     actions = ("delete_selected_with_vectors",)
 
     @admin.action(description="Delete selected documents from Django and Qdrant")
@@ -168,7 +178,7 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "created_at",
         "finished_at",
     )
-    search_fields = ("started_by", "error_message")
+    search_fields = ("started_by", "error_message", "current_file")
     list_filter = ("job_kind", "status", "replace_existing_sources", "created_at")
     readonly_fields = (
         "started_by",
@@ -181,6 +191,7 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "files_failed",
         "chunks_created",
         "chunks_skipped_as_duplicates",
+        "current_file",
         "error_message",
         "created_at",
         "updated_at",
@@ -590,15 +601,15 @@ def _admin_website_crawl_view(request):
             )
             messages.success(
                 request,
-                f"Website crawl started in background (job #{job.id}). Refresh this page to monitor progress.",
+                f"Website scraping started in background (job #{job.id}). Refresh this page to monitor progress.",
             )
         except Exception as exc:
-            messages.error(request, f"Website crawl failed to start: {exc}")
+            messages.error(request, f"Website scraping failed to start: {exc}")
         return HttpResponseRedirect(request.path)
 
     context = {
         **admin.site.each_context(request),
-        "title": "Website Crawl → RAG",
+        "title": "Website Scraping",
         "latest_jobs": IngestionJob.objects.filter(job_kind="website")[:15],
         "allowlisted_domains": sorted(ALLOWED_DOMAINS),
     }
@@ -799,6 +810,70 @@ def _admin_embedded_video_detail_view(request, vimeo_id: str):
     return TemplateResponse(request, "admin/core/embedded_video_detail.html", context)
 
 
+def _job_status_payload(job: IngestionJob) -> dict:
+    done = job.files_processed + job.files_skipped_as_duplicates + job.files_failed
+    total = job.files_received or 0
+    percent = int(round((done / total) * 100)) if total else 0
+    latest_log = job.logs.order_by("-created_at").values_list("message", flat=True).first() or ""
+    started = job.created_at
+    elapsed_s = None
+    eta_s = None
+    if started:
+        end = job.finished_at or timezone.now()
+        elapsed_s = max(0, int((end - started).total_seconds()))
+        if job.status == "running" and done > 0 and total > done:
+            rate = elapsed_s / done
+            eta_s = int(rate * (total - done))
+    return {
+        "id": job.id,
+        "status": job.status,
+        "job_kind": job.job_kind,
+        "files_received": job.files_received,
+        "files_processed": job.files_processed,
+        "files_skipped_as_duplicates": job.files_skipped_as_duplicates,
+        "files_failed": job.files_failed,
+        "chunks_created": job.chunks_created,
+        "current_file": job.current_file or "",
+        "done": done,
+        "total": total,
+        "percent": min(100, max(0, percent)),
+        "elapsed_s": elapsed_s,
+        "eta_s": eta_s,
+        "latest_log": latest_log,
+        "error_message": job.error_message or "",
+        "created_at": job.created_at.isoformat() if job.created_at else "",
+        "finished_at": job.finished_at.isoformat() if job.finished_at else "",
+        "admin_url": reverse("admin:core_ingestionjob_change", args=[job.id]),
+        "failures_url": (
+            reverse("admin:core_ingestionjobfilefailure_changelist") + f"?job__id__exact={job.id}"
+            if job.files_failed
+            else ""
+        ),
+    }
+
+
+def _admin_ingestion_job_status_view(request, job_id: int):
+    if not request.user.is_staff:
+        return JsonResponse({"ok": False, "error": "Forbidden"}, status=403)
+    job = IngestionJob.objects.filter(id=job_id).first()
+    if not job:
+        return JsonResponse({"ok": False, "error": "Job not found"}, status=404)
+    return JsonResponse({"ok": True, "job": _job_status_payload(job)})
+
+
+def _admin_ingestion_jobs_status_view(request):
+    if not request.user.is_staff:
+        return JsonResponse({"ok": False, "error": "Forbidden"}, status=403)
+    kind = (request.GET.get("kind") or "").strip().lower()
+    qs = IngestionJob.objects.all()
+    if kind == "document":
+        qs = qs.exclude(job_kind="video")
+    elif kind in {"video", "website"}:
+        qs = qs.filter(job_kind=kind)
+    jobs = [_job_status_payload(job) for job in qs[:15]]
+    return JsonResponse({"ok": True, "jobs": jobs})
+
+
 def _get_urls():
     custom_urls = [
         path(
@@ -820,6 +895,16 @@ def _get_urls():
             "core/website-crawl/",
             admin.site.admin_view(_admin_website_crawl_view),
             name="core_website_crawl",
+        ),
+        path(
+            "core/ingestion-jobs/status/",
+            admin.site.admin_view(_admin_ingestion_jobs_status_view),
+            name="core_ingestion_jobs_status",
+        ),
+        path(
+            "core/ingestion-jobs/<int:job_id>/status/",
+            admin.site.admin_view(_admin_ingestion_job_status_view),
+            name="core_ingestion_job_status",
         ),
         path(
             "core/ingested-documents/",
@@ -859,91 +944,158 @@ _original_get_urls = admin.site.get_urls
 admin.site.get_urls = _get_urls
 
 
+PASTORAL_OBJECT_NAMES = {"PrayerRequest", "ResponseReport", "ChurchEvent"}
+CONTENT_TOOL_OBJECT_NAMES = {
+    "CoreIngestionTool",
+    "CoreVideoIngestionTool",
+    "CoreWebsiteCrawlTool",
+    "CoreIngestedDocumentsTool",
+    "CoreIngestedVideosTool",
+    "CoreEmbeddedVideosTool",
+}
+ADVANCED_CORE_OBJECT_NAMES = {
+    "IngestedDocument",
+    "IngestedChunk",
+    "IngestionJob",
+    "IngestionJobLog",
+    "IngestionJobFileFailure",
+    "ChatMessage",
+}
+
+
+def _content_tool_entries():
+    return [
+        {
+            "name": "Document Ingestion",
+            "object_name": "CoreIngestionTool",
+            "admin_url": reverse("admin:core_ingestion"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Video Ingestion",
+            "object_name": "CoreVideoIngestionTool",
+            "admin_url": reverse("admin:core_video_ingestion"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Website Scraping",
+            "object_name": "CoreWebsiteCrawlTool",
+            "admin_url": reverse("admin:core_website_crawl"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Ingested Documents Browser",
+            "object_name": "CoreIngestedDocumentsTool",
+            "admin_url": reverse("admin:core_ingested_documents"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Ingested Videos Browser",
+            "object_name": "CoreIngestedVideosTool",
+            "admin_url": reverse("admin:core_ingested_videos"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Embedded Videos",
+            "object_name": "CoreEmbeddedVideosTool",
+            "admin_url": reverse("admin:core_embedded_videos"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+    ]
+
+
+def _split_admin_navigation(request):
+    """Build Content / Pastoral / Advanced groupings for home + sidebar."""
+    raw = _original_get_app_list(request)
+    pastoral_models = []
+    advanced_apps = []
+    content_models = _content_tool_entries()
+
+    for app in raw:
+        models = list(app.get("models") or [])
+        pastoral = [m for m in models if m.get("object_name") in PASTORAL_OBJECT_NAMES]
+        advanced = [m for m in models if m.get("object_name") not in PASTORAL_OBJECT_NAMES]
+        pastoral_models.extend(pastoral)
+        if advanced:
+            advanced_apps.append(
+                {
+                    **app,
+                    "models": sorted(advanced, key=lambda model: model.get("name", "").lower()),
+                }
+            )
+
+    pastoral_models.sort(key=lambda model: model.get("name", "").lower())
+    return content_models, pastoral_models, advanced_apps
+
+
 def _get_app_list(request, app_label=None):
-    app_list = _original_get_app_list(request, app_label=app_label)
-    for app_dict in app_list:
-        if app_dict.get("app_label") != "core":
-            continue
+    """Sidebar navigation: Content tools, Pastoral, Advanced settings."""
+    if app_label:
+        return _original_get_app_list(request, app_label=app_label)
 
-        existing_object_names = {model.get("object_name") for model in app_dict.get("models", [])}
-        custom_entries = []
-        if "CoreIngestionTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Document Ingestion",
-                    "object_name": "CoreIngestionTool",
-                    "admin_url": reverse("admin:core_ingestion"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
-        if "CoreVideoIngestionTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Video Ingestion",
-                    "object_name": "CoreVideoIngestionTool",
-                    "admin_url": reverse("admin:core_video_ingestion"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
-        if "CoreWebsiteCrawlTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Website Crawl → RAG",
-                    "object_name": "CoreWebsiteCrawlTool",
-                    "admin_url": reverse("admin:core_website_crawl"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
-        if "CoreIngestedDocumentsTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Ingested Documents Browser",
-                    "object_name": "CoreIngestedDocumentsTool",
-                    "admin_url": reverse("admin:core_ingested_documents"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
-        if "CoreIngestedVideosTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Ingested Videos Browser",
-                    "object_name": "CoreIngestedVideosTool",
-                    "admin_url": reverse("admin:core_ingested_videos"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
-        if "CoreEmbeddedVideosTool" not in existing_object_names:
-            custom_entries.append(
-                {
-                    "name": "Embedded Videos",
-                    "object_name": "CoreEmbeddedVideosTool",
-                    "admin_url": reverse("admin:core_embedded_videos"),
-                    "add_url": None,
-                    "view_only": True,
-                    "perms": {"add": False, "change": True, "delete": False, "view": True},
-                }
-            )
+    content_models, pastoral_models, advanced_apps = _split_admin_navigation(request)
+    app_list = [
+        {
+            "name": "Content tools",
+            "app_label": "content_tools",
+            "app_url": reverse("admin:core_ingestion"),
+            "has_module_perms": True,
+            "models": content_models,
+        },
+        {
+            "name": "Pastoral",
+            "app_label": "pastoral",
+            "app_url": "#",
+            "has_module_perms": True,
+            "models": pastoral_models,
+        },
+        {
+            "name": "Advanced settings",
+            "app_label": "advanced_settings",
+            "app_url": "#",
+            "has_module_perms": True,
+            "models": [
+                model
+                for app in advanced_apps
+                for model in app.get("models", [])
+            ],
+        },
+    ]
+    # Drop empty groups.
+    return [app for app in app_list if app.get("models")]
 
-        app_dict.setdefault("models", []).extend(custom_entries)
-        app_dict["models"].sort(key=lambda model: model.get("name", "").lower())
-        break
 
-    return app_list
+def _admin_index(request, extra_context=None):
+    content_models, pastoral_models, advanced_apps = _split_admin_navigation(request)
+    context = {
+        **admin.site.each_context(request),
+        "title": admin.site.index_title,
+        "subtitle": None,
+        "app_list": _get_app_list(request),
+        "pastoral_models": pastoral_models,
+        "advanced_app_list": advanced_apps,
+        **(extra_context or {}),
+    }
+    request.current_app = admin.site.name
+    return TemplateResponse(request, admin.site.index_template or "admin/index.html", context)
 
 
 _original_get_app_list = admin.site.get_app_list
 admin.site.get_app_list = _get_app_list
 admin.site.index_template = "admin/core_home.html"
+admin.site.index = _admin_index
 
 
 @admin.register(PrayerRequest)
