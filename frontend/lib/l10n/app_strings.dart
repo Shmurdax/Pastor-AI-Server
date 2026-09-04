@@ -46,6 +46,8 @@ class AppStrings {
   String get backToBottom => _t('backToBottom');
   String get copyToClipboard => _t('copyToClipboard');
   String get regenerateResponse => _t('regenerateResponse');
+  String sermonSourcesCount(int count) =>
+      _t('sermonSourcesCount').replaceAll('{n}', '$count');
   String get copiedToClipboard => _t('copiedToClipboard');
   String get responseCancelled => _t('responseCancelled');
   String get serverError => _t('serverError');
@@ -124,6 +126,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Ask with voice',
     'stopVoiceInput': 'Stop voice input',
     'backToBottom': 'Back to bottom',
+    'sermonSourcesCount': 'Sermon sources ({n})',
     'copyToClipboard': 'Copy to clipboard',
     'regenerateResponse': 'Regenerate response',
     'copiedToClipboard': 'Copied to clipboard!',
@@ -197,6 +200,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Preguntar con la voz',
     'stopVoiceInput': 'Detener entrada de voz',
     'backToBottom': 'Volver abajo',
+    'sermonSourcesCount': 'Fuentes del sermón ({n})',
     'copyToClipboard': 'Copiar al portapapeles',
     'regenerateResponse': 'Regenerar respuesta',
     'copiedToClipboard': '¡Copiado al portapapeles!',
@@ -271,6 +275,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Demander à la voix',
     'stopVoiceInput': "Arrêter l'entrée vocale",
     'backToBottom': 'Retour en bas',
+    'sermonSourcesCount': 'Sources du sermon ({n})',
     'copyToClipboard': 'Copier dans le presse-papiers',
     'regenerateResponse': 'Régénérer la réponse',
     'copiedToClipboard': 'Copié dans le presse-papiers !',
@@ -345,6 +350,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Perguntar com a voz',
     'stopVoiceInput': 'Parar entrada de voz',
     'backToBottom': 'Voltar ao final',
+    'sermonSourcesCount': 'Fontes do sermão ({n})',
     'copyToClipboard': 'Copiar para a área de transferência',
     'regenerateResponse': 'Regenerar resposta',
     'copiedToClipboard': 'Copiado para a área de transferência!',
@@ -419,6 +425,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Mit Stimme fragen',
     'stopVoiceInput': 'Spracheingabe stoppen',
     'backToBottom': 'Nach unten',
+    'sermonSourcesCount': 'Predigtquellen ({n})',
     'copyToClipboard': 'In Zwischenablage kopieren',
     'regenerateResponse': 'Antwort neu erzeugen',
     'copiedToClipboard': 'In Zwischenablage kopiert!',
@@ -487,6 +494,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': '음성으로 질문',
     'stopVoiceInput': '음성 입력 중지',
     'backToBottom': '맨 아래로',
+    'sermonSourcesCount': '설교 출처 ({n})',
     'copyToClipboard': '클립보드에 복사',
     'regenerateResponse': '응답 다시 생성',
     'copiedToClipboard': '클립보드에 복사되었습니다!',
@@ -552,6 +560,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': '语音提问',
     'stopVoiceInput': '停止语音输入',
     'backToBottom': '回到底部',
+    'sermonSourcesCount': '讲道来源 ({n})',
     'copyToClipboard': '复制到剪贴板',
     'regenerateResponse': '重新生成回复',
     'copiedToClipboard': '已复制到剪贴板！',

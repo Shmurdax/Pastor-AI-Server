@@ -17,6 +17,11 @@ void main() {
     expect(s.sermonLibrary, 'Sermon Library');
   });
 
+  test('sermonSourcesCount interpolates the source count', () {
+    expect(AppStrings('en').sermonSourcesCount(3), 'Sermon sources (3)');
+    expect(AppStrings('es').sermonSourcesCount(2), 'Fuentes del sermón (2)');
+  });
+
   test('appLanguageByCode accepts locale prefixes', () {
     expect(appLanguageByCode('es-MX').code, 'es');
     expect(appLanguageByCode('zh_CN').code, 'zh');

@@ -1985,6 +1985,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, int index) {
   // Logic to determine if this is the most recent message in the chat
   final isLastMessage = index == _messages.length - 1;
+  final sources = isUser ? const <String>[] : _parseSources(msg['sources']);
 
   return Align(
     alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -2021,6 +2022,10 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
             ),
           ),
           if (!isUser) ...[
+            if (sources.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _buildResponseSourcesDropdown(sources),
+            ],
             const SizedBox(height: 10),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -2226,6 +2231,52 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResponseSourcesDropdown(List<String> sources) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 4),
+        visualDensity: VisualDensity.compact,
+        collapsedIconColor: _navy,
+        iconColor: _navy,
+        collapsedShape: const RoundedRectangleBorder(),
+        shape: const RoundedRectangleBorder(),
+        title: Text(
+          _s.sermonSourcesCount(sources.length),
+          style: GoogleFonts.figtree(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: _navy,
+          ),
+        ),
+        children: [
+          for (final source in sources)
+            ListTile(
+              dense: true,
+              minVerticalPadding: 10,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              leading: Icon(
+                source.contains('[') ? Icons.videocam_outlined : Icons.description_outlined,
+                color: _navy,
+                size: 20,
+              ),
+              title: Text(
+                source,
+                style: GoogleFonts.figtree(
+                  fontSize: 14,
+                  color: _navy,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _navy.withValues(alpha: 0.35),
+                ),
+              ),
+              onTap: () => _launchSermonDoc(source),
+            ),
+        ],
       ),
     );
   }
