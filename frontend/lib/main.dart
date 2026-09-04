@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/chat_input_limits.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
@@ -209,6 +210,7 @@ final bibleRefRegex = RegExp(
   void initState() {
     super.initState();
     ChatNavActions.openEvents = _openChurchEvents;
+    _controller.addListener(_enforceChatInputLimit);
     _scrollController.addListener(() {
       final isFarFromBottom =
           _scrollController.offset < _scrollController.position.maxScrollExtent - 500;
@@ -224,6 +226,17 @@ final bibleRefRegex = RegExp(
       _appliedLanguageCode = _localeListener!.languageCode;
       _localeListener!.addListener(_onLocaleChanged);
     });
+  }
+
+  void _enforceChatInputLimit() {
+    final text = _controller.text;
+    final clamped = clampChatInput(text);
+    if (clamped == text) return;
+    final offset = _controller.selection.baseOffset.clamp(0, clamped.length);
+    _controller.value = TextEditingValue(
+      text: clamped,
+      selection: TextSelection.collapsed(offset: offset),
+    );
   }
 
   void _onLocaleChanged() {
@@ -389,7 +402,7 @@ final bibleRefRegex = RegExp(
         onResult: (result) {
           if (!mounted) return;
           final spoken = result.recognizedWords.trim();
-          final next = '$_textBeforeSpeech$spoken';
+          final next = clampChatInput('$_textBeforeSpeech$spoken');
           _controller.value = TextEditingValue(
             text: next,
             selection: TextSelection.collapsed(offset: next.length),
@@ -995,7 +1008,7 @@ Future<void> _sendMessage() async {
     if (mounted) setState(() => _isListening = false);
   }
 
-  final userText = _controller.text.trim();
+  final userText = clampChatInput(_controller.text.trim());
   if (userText.isEmpty) return;
   _controller.clear();
   await _submitMessage(userText, addUserMessage: true);
@@ -2085,31 +2098,62 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _chatFocusNode,
-                  onChanged: (_) {
-                    setState(() {});
-                    _scheduleInputAreaMeasure();
-                  },
-                  minLines: 1,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) {
-                    if (_isListening) {
-                      _speechToText.stop();
-                    }
-                    if (_controller.text.trim().isEmpty) {
-                      _chatFocusNode.requestFocus();
-                    } else if (!_isLoading) {
-                      _sendMessage();
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: _isListening ? _s.listeningHint : _s.howCanIHelp,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      key: const ValueKey('chatInputField'),
+                      controller: _controller,
+                      focusNode: _chatFocusNode,
+                      maxLength: kChatInputMaxLength,
+                      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(kChatInputMaxLength),
+                      ],
+                      onChanged: (_) {
+                        setState(() {});
+                        _scheduleInputAreaMeasure();
+                      },
+                      minLines: 1,
+                      maxLines: 5,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) {
+                        if (_isListening) {
+                          _speechToText.stop();
+                        }
+                        if (_controller.text.trim().isEmpty) {
+                          _chatFocusNode.requestFocus();
+                        } else if (!_isLoading) {
+                          _sendMessage();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        hintText: _isListening ? _s.listeningHint : _s.howCanIHelp,
+                        border: InputBorder.none,
+                        counterText: '',
+                        contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 14, bottom: 14),
+                      ),
+                    ),
+                    if (chatInputLength(_controller.text) >= kChatInputCounterThreshold)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8, bottom: 6),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${chatInputLength(_controller.text)} / $kChatInputMaxLength',
+                            key: const ValueKey('chatInputCharCount'),
+                            style: GoogleFonts.figtree(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: chatInputLength(_controller.text) >= kChatInputMaxLength
+                                  ? _pink
+                                  : _navy.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Padding(
