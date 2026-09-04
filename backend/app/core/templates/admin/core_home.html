@@ -4,27 +4,18 @@
 {% block extrastyle %}
 {{ block.super }}
 <style>
-  :root {
-    --pastor-teal: #417690;
-    --pastor-teal-soft: rgba(65, 118, 144, 0.08);
-    --pastor-border: #d9e2e8;
-    --pastor-muted: #5f6b73;
-    --pastor-surface: #ffffff;
-    --pastor-page: #f5f8fa;
-  }
-
-  #content-main {
-    background: transparent;
-  }
-
+  /*
+    Match Django admin light/dark theme instead of forcing white cards.
+    Uses Django's own CSS variables so Content tools blend with the sidebar.
+  */
   .pastor-home {
     max-width: 1100px;
   }
 
   .pastor-section {
     margin: 0 0 22px;
-    background: var(--pastor-surface);
-    border: 1px solid var(--pastor-border);
+    background: var(--body-bg, transparent);
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
     border-radius: 10px;
     overflow: hidden;
   }
@@ -34,13 +25,13 @@
     padding: 14px 16px 6px;
     font-size: 17px;
     font-weight: 700;
-    color: #1f2a30;
+    color: var(--body-fg, inherit);
   }
 
   .pastor-section-intro {
     margin: 0;
     padding: 0 16px 14px;
-    color: var(--pastor-muted);
+    color: var(--body-quiet-color, inherit);
     font-size: 13px;
     line-height: 1.45;
   }
@@ -53,44 +44,45 @@
   }
 
   .pastor-tool-card {
-    border: 1px solid var(--pastor-border);
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
     border-radius: 8px;
     padding: 14px;
-    background: #fff;
+    background: var(--darkened-bg, var(--body-bg, transparent));
     display: flex;
     flex-direction: column;
     min-height: 128px;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .pastor-tool-card:hover {
-    border-color: var(--pastor-teal);
-    box-shadow: 0 1px 0 rgba(65, 118, 144, 0.12);
+    border-color: var(--link-fg, var(--primary, #79aec8));
+    background: var(--selected-bg, var(--darkened-bg, transparent));
   }
 
   .pastor-tool-title {
     margin: 0 0 8px;
     font-size: 14px;
     font-weight: 700;
-    color: #1f2a30;
+    color: var(--body-fg, inherit);
   }
 
   .pastor-tool-description {
     margin: 0 0 auto;
     font-size: 12px;
     line-height: 1.45;
-    color: var(--pastor-muted);
+    color: var(--body-quiet-color, inherit);
     padding-bottom: 12px;
   }
 
   .pastor-tool-link {
-    color: var(--pastor-teal);
+    color: var(--link-fg, var(--primary, #79aec8));
     font-weight: 700;
     text-decoration: none;
   }
 
   .pastor-tool-link:hover {
     text-decoration: underline;
+    color: var(--link-hover-color, var(--link-fg, inherit));
   }
 
   .pastor-link-row {
@@ -101,20 +93,21 @@
   }
 
   .pastor-link-row a {
-    color: var(--pastor-teal);
+    color: var(--link-fg, var(--primary, #79aec8));
     font-weight: 600;
     text-decoration: none;
   }
 
   .pastor-link-row a:hover {
     text-decoration: underline;
+    color: var(--link-hover-color, var(--link-fg, inherit));
   }
 
   .pastor-advanced {
     margin: 0 0 8px;
-    border: 1px solid var(--pastor-border);
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
     border-radius: 10px;
-    background: var(--pastor-surface);
+    background: var(--body-bg, transparent);
   }
 
   .pastor-advanced > summary {
@@ -122,7 +115,7 @@
     list-style: none;
     padding: 14px 16px;
     font-weight: 700;
-    color: #3a474f;
+    color: var(--body-fg, inherit);
     user-select: none;
   }
 
@@ -134,7 +127,7 @@
     content: "▸";
     display: inline-block;
     margin-right: 8px;
-    color: var(--pastor-teal);
+    color: var(--link-fg, var(--primary, #79aec8));
   }
 
   .pastor-advanced[open] > summary::before {
@@ -142,7 +135,7 @@
   }
 
   .pastor-advanced-body {
-    border-top: 1px solid var(--pastor-border);
+    border-top: 1px solid var(--hairline-color, var(--border-color, #ccc));
     padding: 8px 8px 12px;
   }
 
@@ -150,11 +143,12 @@
     margin: 0;
     border: none;
     box-shadow: none;
+    background: transparent;
   }
 
   .pastor-advanced-note {
     margin: 0 12px 10px;
-    color: var(--pastor-muted);
+    color: var(--body-quiet-color, inherit);
     font-size: 12px;
   }
 </style>
@@ -208,7 +202,7 @@
       {% for item in pastoral_models %}
         <a href="{{ item.admin_url }}">{{ item.name }}</a>
       {% empty %}
-        <span style="color: var(--pastor-muted); font-size: 13px;">No pastoral models available.</span>
+        <span style="color: var(--body-quiet-color, inherit); font-size: 13px;">No pastoral models available.</span>
       {% endfor %}
     </div>
   </div>
