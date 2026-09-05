@@ -53,6 +53,9 @@ source "$SCRIPT_DIR/vllm_runtime.sh"
 gpu_detect
 VLLM_URL="$(vllm_resolved_url)"
 VLLM_API_KEY="$(vllm_resolved_api_key)"
+if whisper_is_remote; then
+  WHISPER_URL="$(whisper_runsync_url)"
+fi
 if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
   log "GPU: ${GPU_NAME:-unknown} compute_cap=${GPU_COMPUTE_CAP:-?} MIG=${GPU_MIG_UUID:-none} ${GPU_MIG_GB:+${GPU_MIG_GB}GB}"
 fi
@@ -321,14 +324,21 @@ curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJ
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
 
 # Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
-# On GPU pods Whisper uses leftover MIG VRAM; MiniLM embeddings stay on CPU.
+# On GPU pods Whisper uses leftover MIG VRAM unless a serverless Whisper endpoint
+# is configured. MiniLM embeddings stay on CPU.
 stop_screen video-ingest
 VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES=''"
-if [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
+if whisper_is_remote; then
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+  log "Video ingest will call serverless GPU Whisper at $(whisper_runsync_url)"
+elif [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
   VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}'"
   VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=1"
 else
   VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+  if vllm_cpu_only_pod; then
+    warn "CPU pod has no RUNPOD_WHISPER_ENDPOINT_ID — video ingest will use local CPU Whisper (slow)"
+  fi
 fi
 screen -dmS video-ingest bash -c "
   set -a
@@ -347,6 +357,11 @@ screen -dmS video-ingest bash -c "
   export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
   export WHISPER_MODEL='${WHISPER_MODEL:-base}'
   export WHISPER_DEVICE='${WHISPER_DEVICE}'
+  export WHISPER_MODE='${WHISPER_MODE:-}'
+  export WHISPER_URL='${WHISPER_URL:-}'
+  export RUNPOD_WHISPER_ENDPOINT_ID='${RUNPOD_WHISPER_ENDPOINT_ID:-}'
+  export WHISPER_API_KEY='${WHISPER_API_KEY:-}'
+  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}'
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
   export PYTHONUNBUFFERED=1

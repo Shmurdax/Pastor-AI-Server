@@ -1,9 +1,12 @@
 """
 Whisper transcription for admin video ingestion.
 
-Uses CUDA when WHISPER_DEVICE=auto/cuda and a GPU is visible (MIG leftover
-VRAM after vLLM). ffmpeg extracts a 16 kHz mono WAV first; openai-whisper
-then returns segment timestamps for RAG citations.
+ffmpeg always extracts a 16 kHz mono WAV on the web/db host. Transcription
+runs on:
+- a RunPod Serverless GPU worker when RUNPOD_WHISPER_ENDPOINT_ID / WHISPER_MODE
+  is set (CPU web pod), or
+- local CUDA when WHISPER_DEVICE=auto/cuda and a GPU is visible, or
+- local CPU otherwise.
 """
 from __future__ import annotations
 
@@ -121,6 +124,15 @@ def transcribe_audio_file(
     *,
     log_fn: Optional[Callable[[str], None]] = None,
 ) -> List[TranscriptSegment]:
+    from .whisper_remote import transcribe_audio_remote, whisper_is_remote
+
+    if whisper_is_remote():
+        if log_fn:
+            log_fn(
+                f"Running serverless GPU Whisper ({whisper_model_name()}) on {Path(audio_path).name}."
+            )
+        return transcribe_audio_remote(Path(audio_path), log_fn=log_fn)
+
     model = _load_whisper_model()
     language = whisper_language()
     if log_fn:

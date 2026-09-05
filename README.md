@@ -85,13 +85,14 @@ Admin UI: **Website Scraping** under the Django admin Content tools section.
 | Component | Detail |
 |-----------|--------|
 | LLM | `Qwen/Qwen2.5-14B-Instruct-AWQ` + LoRA `apophaticai/qwen2.5-14b-christianai-v1` (served as `christianai`) — local GPU **or** [RunPod Serverless](RUNPOD.md#cpu-web-pod--serverless-vllm) |
+| Whisper | Local CUDA leftover, local CPU, **or** a separate [serverless Faster-Whisper](RUNPOD.md#2b-serverless-whisper-for-video-ingest) GPU endpoint |
 | API | Django/gunicorn `:8000` (CPU) |
 | Vectors | Qdrant `:6333` collection `sermon_brain` |
 | DB | Postgres `ai_db` |
 | UI | Flutter web build in `frontend/` |
 | Tunnel | Cloudflare quick tunnel (default) |
 
-See [RUNPOD.md](RUNPOD.md) for troubleshooting (ghost VRAM, ports, tokens) and for splitting the GPU into a **RunPod Serverless vLLM** endpoint while Django/Postgres/Qdrant stay on a cheaper CPU pod.
+See [RUNPOD.md](RUNPOD.md) for troubleshooting (ghost VRAM, ports, tokens) and for splitting chat vLLM **and** Whisper onto RunPod Serverless GPUs while Django/Postgres/Qdrant stay on a cheaper CPU pod.
 
 
 ## Frontend (Flutter)

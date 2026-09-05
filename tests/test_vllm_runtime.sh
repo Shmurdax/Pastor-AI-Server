@@ -8,7 +8,7 @@ source "$ROOT/vllm_runtime.sh"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
-unset RUNPOD_VLLM_ENDPOINT_ID VLLM_URL VLLM_MODE CPU_ONLY VLLM_API_KEY RUNPOD_API_KEY VLLM_PORT || true
+unset RUNPOD_VLLM_ENDPOINT_ID VLLM_URL VLLM_MODE CPU_ONLY VLLM_API_KEY RUNPOD_API_KEY VLLM_PORT RUNPOD_WHISPER_ENDPOINT_ID WHISPER_URL WHISPER_MODE || true
 VLLM_URL="http://127.0.0.1:8010/v1"
 vllm_use_local_server || fail "localhost vLLM should start a local server"
 vllm_url_is_local "$VLLM_URL" || fail "127.0.0.1 should be local"
@@ -66,7 +66,18 @@ grep -q '^CHAT_TIMEOUT_S=600$' "$TMP" || fail "serverless timeout should bump to
 grep -q '^CPU_ONLY=1$' "$TMP" || fail "CPU_ONLY not written"
 grep -q '^RUNPOD_API_KEY=rp_cfg$' "$TMP" || fail "api key not written"
 
+unset RUNPOD_VLLM_ENDPOINT_ID VLLM_URL VLLM_MODE VLLM_API_KEY || true
+CPU_ONLY=1
+RUNPOD_WHISPER_ENDPOINT_ID="wh9"
+WHISPER_MODE=serverless
+vllm_apply_config "$TMP"
+grep -q '^WHISPER_URL=https://api.runpod.ai/v2/wh9/runsync$' "$TMP" || fail "whisper url not written"
+grep -q '^RUNPOD_WHISPER_ENDPOINT_ID=wh9$' "$TMP" || fail "whisper endpoint not written"
+whisper_is_remote || fail "whisper_is_remote should be true with endpoint id"
+[[ "$(whisper_runsync_url)" == "https://api.runpod.ai/v2/wh9/runsync" ]] || fail "whisper runsync url"
+
 grep -q 'vllm_use_local_server' "$ROOT/start.sh" || fail "start.sh must skip local vLLM when remote"
+grep -q 'RUNPOD_WHISPER_ENDPOINT_ID' "$ROOT/start.sh" || fail "start.sh must export whisper endpoint"
 grep -q 'vllm_runtime.sh' "$ROOT/install.sh" || fail "install.sh must ship vllm_runtime.sh"
 grep -q 'CPU_ONLY' "$ROOT/install.sh" || fail "install.sh must support CPU_ONLY"
 

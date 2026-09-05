@@ -54,6 +54,40 @@ vllm_use_local_server() {
   vllm_url_is_local "$(vllm_resolved_url)"
 }
 
+whisper_runsync_url() {
+  local id url
+  id="${RUNPOD_WHISPER_ENDPOINT_ID:-}"
+  id="${id#"${id%%[![:space:]]*}"}"
+  id="${id%"${id##*[![:space:]]}"}"
+  if [[ -n "$id" ]]; then
+    printf '%s\n' "https://api.runpod.ai/v2/${id}/runsync"
+    return 0
+  fi
+  url="${WHISPER_URL:-}"
+  url="${url%/}"
+  [[ -z "$url" ]] && return 0
+  if [[ "$url" == */runsync ]]; then
+    printf '%s\n' "$url"
+  elif [[ "$url" == */run ]]; then
+    printf '%s\n' "${url}sync"
+  elif [[ "$url" =~ ^https://api\.runpod\.ai/v2/[^/]+$ ]]; then
+    printf '%s\n' "${url}/runsync"
+  else
+    printf '%s\n' "$url"
+  fi
+}
+
+whisper_is_remote() {
+  local mode
+  mode="$(_vllm_lc "${WHISPER_MODE:-}")"
+  case "$mode" in
+    serverless|remote|gpu) return 0 ;;
+  esac
+  [[ -n "${RUNPOD_WHISPER_ENDPOINT_ID:-}" ]] && return 0
+  [[ "$(whisper_runsync_url)" == https://api.runpod.ai/* ]] && return 0
+  return 1
+}
+
 vllm_upsert_config() {
   local config="${1:-}"
   local key="$2"
@@ -91,5 +125,11 @@ vllm_apply_config() {
     if [[ -z "${CHAT_TIMEOUT_S:-}" ]] || awk "BEGIN{exit !(${CHAT_TIMEOUT_S:-0} < 600)}"; then
       vllm_upsert_config "$config" CHAT_TIMEOUT_S 600
     fi
+  fi
+  if whisper_is_remote; then
+    vllm_upsert_config "$config" WHISPER_MODE "${WHISPER_MODE:-serverless}"
+    vllm_upsert_config "$config" WHISPER_URL "$(whisper_runsync_url)"
+    [[ -n "${RUNPOD_WHISPER_ENDPOINT_ID:-}" ]] && \
+      vllm_upsert_config "$config" RUNPOD_WHISPER_ENDPOINT_ID "${RUNPOD_WHISPER_ENDPOINT_ID}"
   fi
 }

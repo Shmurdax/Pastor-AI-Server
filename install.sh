@@ -273,6 +273,7 @@ fi
 mkdir -p "$WS/scripts" "$WS/serverless"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
 [[ -f "$REPO_ROOT/serverless/vllm.env.example" ]] && cp -a "$REPO_ROOT/serverless/vllm.env.example" "$WS/serverless/vllm.env.example"
+[[ -f "$REPO_ROOT/serverless/whisper.env.example" ]] && cp -a "$REPO_ROOT/serverless/whisper.env.example" "$WS/serverless/whisper.env.example"
 [[ -f "$REPO_ROOT/RUNPOD.md" ]] && cp -a "$REPO_ROOT/RUNPOD.md" "$WS/RUNPOD.md"
 chmod +x "$WS"/*.sh "$WS/scripts/"*.sh 2>/dev/null || chmod +x "$WS"/*.sh
 [[ -f "$APP_DIR/manage.py" ]] || die "manage.py missing after sync"

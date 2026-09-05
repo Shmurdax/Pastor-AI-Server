@@ -86,6 +86,10 @@ upsert RUNPOD_VLLM_ENDPOINT_ID "${RUNPOD_VLLM_ENDPOINT_ID:-}"
 upsert VLLM_URL "${VLLM_URL:-}"
 upsert VLLM_MODE "${VLLM_MODE:-}"
 upsert CPU_ONLY "${CPU_ONLY:-}"
+upsert RUNPOD_WHISPER_ENDPOINT_ID "${RUNPOD_WHISPER_ENDPOINT_ID:-}"
+upsert WHISPER_URL "${WHISPER_URL:-}"
+upsert WHISPER_MODE "${WHISPER_MODE:-}"
+upsert WHISPER_API_KEY "${WHISPER_API_KEY:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then

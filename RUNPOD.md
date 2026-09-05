@@ -122,14 +122,40 @@ Do **not** install vLLM on this machine:
 ```bash
 export CPU_ONLY=1
 export VLLM_MODE=serverless
-export RUNPOD_VLLM_ENDPOINT_ID=your_endpoint_id
+export RUNPOD_VLLM_ENDPOINT_ID=your_vllm_endpoint_id
+export WHISPER_MODE=serverless
+export RUNPOD_WHISPER_ENDPOINT_ID=your_whisper_endpoint_id
 export RUNPOD_API_KEY=rpa_...
 SKIP_INGEST=1 bash install.sh
 ```
 
 Or put those keys in `tokens.env` and run `bash apply-tokens.sh --restart`.
 `start.sh` will skip `screen` session `vllm` and point Gunicorn at the
-serverless OpenAI base URL. MiniLM embeddings and Whisper stay on CPU.
+serverless OpenAI base URL. MiniLM embeddings stay on the CPU pod. Video
+ingest still runs ffmpeg locally, then calls a **second** serverless GPU
+endpoint for Whisper (do not put Whisper on the 14B vLLM worker).
+
+### 2b) Serverless Whisper for video ingest
+
+1. In RunPod Hub deploy **worker-faster_whisper** (not worker-vllm).
+2. Use a small GPU (T4 / L4 / 8–16GB). Whisper `base` does not need 24GB.
+3. Active workers `0`, max workers `1`, idle timeout `60–120s`,
+   execution timeout `600s`. See [`serverless/whisper.env.example`](serverless/whisper.env.example).
+4. Set on the CPU pod (same `RUNPOD_API_KEY` as chat is fine):
+
+```bash
+export WHISPER_MODE=serverless
+export RUNPOD_WHISPER_ENDPOINT_ID=your_whisper_endpoint_id
+bash apply-tokens.sh --restart
+```
+
+A 20-minute sermon is typically **about 1–3 minutes** of GPU Whisper time
+(plus a few seconds of local ffmpeg + MiniLM). Without this endpoint the
+CPU pod falls back to local Whisper (~10–15 minutes).
+
+Long audio is compressed to mp3 on the CPU pod. If the payload is still
+too large for one `/runsync` request, ingest splits it into overlapping
+chunks and stitches timestamps.
 
 ### 3) What still runs on the CPU pod
 
@@ -137,9 +163,10 @@ serverless OpenAI base URL. MiniLM embeddings and Whisper stay on CPU.
 |---------|--------|
 | Django / Flutter web | CPU pod `:8000` |
 | Postgres + Qdrant | CPU pod |
-| Whisper video ingest | CPU (slower than leftover GPU VRAM; still works) |
+| ffmpeg audio extract + MiniLM embeddings | CPU pod |
 | Cloudflare tunnel | CPU pod |
-| vLLM + Christian LoRA | Serverless GPU workers, billed per second |
+| Chat LLM (vLLM + Christian LoRA) | Serverless GPU endpoint A |
+| Whisper video ingest | Serverless GPU endpoint B |
 
 ### Cost / UX tradeoff
 
