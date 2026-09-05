@@ -77,7 +77,13 @@ RunPod host nginx often binds **8001**. vLLM uses **8010**.
 Some RunPod images cannot run a Docker daemon (iptables/netfilter). `install.sh` still installs Docker when possible, then uses the **native** path that matches production.
 
 ### Chat “Could not connect”
-Usually empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
+The Flutter UI maps **any** `/api/chat/` exception to `Error: Could not connect to the server.` The homepage can still load. Usual causes on the CPU web pod:
+
+1. **vLLM serverless worker never becomes healthy.** Two current traps:
+   - RunPod’s `ADA_48_PRO` pool includes `NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb`. `runpod/worker-v1-vllm` CUDA 12 cannot start on those slices. Pin the endpoint to `AMPERE_48` + `ADA_48_PRO` minus that MIG type (`create_runpod_endpoints.sh` does this after create). Use 48GB Ampere/Ada cards only — 24GB A5000/L4/4090 OOM with 14B AWQ + LoRA.
+   - `LORA_MODULES` must be a **single JSON object** (`{"name":"christianai","path":"apophaticai/qwen2.5-14b-christianai-v1"}`), not a JSON array. worker-v1-vllm v2.26 forwards the env as one `--lora-modules` argument, and current vLLM rejects a list with `LoRAModulePath() argument after ** must be a mapping, not list`.
+2. **Gunicorn missing `RUNPOD_API_KEY`.** RunPod Serverless then returns `401 invalid api key`. `get_chat_llm` loads `config.env` / `tokens.env` so this does not depend on the worker process environment.
+3. Empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
 
 ### Private LoRA 404
 `HF_TOKEN` must belong to an account that can open
@@ -163,7 +169,7 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 **Chat (endpoint A)**
 
 1. Open [worker-vllm Hub](https://console.runpod.io/hub/runpod-workers/worker-vllm) → **Deploy**.
-2. GPU: **24GB+**. Active workers `0`, max workers `1`, idle timeout `180` seconds,
+2. GPU: **48GB Ampere/Ada** (A40 / A6000 / L40S / 6000 Ada). Active workers `0`, max workers `1`, idle timeout `180` seconds. Exclude Blackwell MIG 2g.48gb from `ADA_48_PRO`.
    execution timeout `600` seconds, **FlashBoot** on.
 3. Paste env from [`serverless/vllm.env.example`](serverless/vllm.env.example).
    Set `HF_TOKEN` to a token that can read the private Christian LoRA.

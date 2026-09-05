@@ -44,6 +44,9 @@ assert env["ENABLE_LORA"] == "true"
 assert env["OPENAI_SERVED_MODEL_NAME_OVERRIDE"] == "christianai"
 assert "christianai" in env["LORA_MODULES"]
 assert "apophaticai/qwen2.5-14b-christianai-v1" in env["LORA_MODULES"]
+lora = json.loads(env["LORA_MODULES"])
+assert isinstance(lora, dict), env["LORA_MODULES"]
+assert lora["name"] == "christianai"
 assert env["RAW_OPENAI_OUTPUT"] == "1"
 assert env["DOWNLOAD_DIR"] == "/models"
 assert env["HF_HOME"] == "/models"
@@ -55,8 +58,15 @@ assert vllm_e["idleTimeout"] >= 120
 assert vllm_e["executionTimeoutMs"] >= 600000
 assert vllm_e["flashboot"] is True
 gpus = vllm_e["gpuTypeIds"]
-assert "NVIDIA RTX A5000" in gpus or "NVIDIA L4" in gpus
+assert "NVIDIA A40" in gpus or "NVIDIA RTX A6000" in gpus
+assert "NVIDIA RTX A5000" not in gpus
+assert "NVIDIA L4" not in gpus
+assert "NVIDIA GeForce RTX 4090" not in gpus
 assert "Tesla T4" not in gpus  # 16GB T4 is for Whisper, not 14B chat
+patch = load("vllm_gpu_patch.json")
+assert "AMPERE_48" in patch["gpu"]["pools"]
+assert "ADA_48_PRO" in patch["gpu"]["pools"]
+assert any("MIG 2g.48gb" in t for t in patch["gpu"]["excludedTypes"])
 
 assert wh_t["isServerless"] is True
 assert "faster-whisper" in wh_t["imageName"]

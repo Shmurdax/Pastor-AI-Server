@@ -33,8 +33,15 @@ WHISPER_TEMPLATE_NAME="${WHISPER_TEMPLATE_NAME:-pastor-ai-whisper}"
 VLLM_ENDPOINT_NAME="${VLLM_ENDPOINT_NAME:-pastor-ai-chat-vllm}"
 WHISPER_ENDPOINT_NAME="${WHISPER_ENDPOINT_NAME:-pastor-ai-whisper}"
 
-VLLM_GPU_TYPE_IDS="${VLLM_GPU_TYPE_IDS:-NVIDIA RTX A5000,NVIDIA L4,NVIDIA GeForce RTX 4090,NVIDIA RTX A6000,NVIDIA L40,NVIDIA RTX 6000 Ada Generation}"
+# 48GB Ampere/Ada only. 24GB cards OOM on 14B AWQ+LoRA. RunPod maps L40 / 6000 Ada
+# onto ADA_48_PRO, which currently also contains Blackwell MIG 2g.48gb — exclude it
+# after create (worker-v1-vllm CUDA 12 cannot start on those slices).
+VLLM_GPU_TYPE_IDS="${VLLM_GPU_TYPE_IDS:-NVIDIA A40,NVIDIA RTX A6000,NVIDIA L40S,NVIDIA RTX 6000 Ada Generation,NVIDIA L40}"
+VLLM_EXCLUDED_GPU_TYPE_IDS="${VLLM_EXCLUDED_GPU_TYPE_IDS:-NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb}"
+VLLM_GPU_POOLS="${VLLM_GPU_POOLS:-AMPERE_48,ADA_48_PRO}"
+VLLM_ALLOWED_CUDA_VERSIONS="${VLLM_ALLOWED_CUDA_VERSIONS:-12.4,12.8}"
 WHISPER_GPU_TYPE_IDS="${WHISPER_GPU_TYPE_IDS:-NVIDIA RTX A4000,NVIDIA L4,NVIDIA RTX A2000,NVIDIA GeForce RTX 3080,NVIDIA GeForce RTX 3090,NVIDIA RTX A5000}"
+REST_V2="${RUNPOD_REST_V2_URL:-https://api.runpod.io/v2}"
 
 VLLM_WORKERS_MIN="${VLLM_WORKERS_MIN:-0}"
 VLLM_WORKERS_MAX="${VLLM_WORKERS_MAX:-1}"
@@ -82,6 +89,7 @@ Optional:
                              for vLLM so 14B weights survive scale-to-zero)
   VLLM_IMAGE / WHISPER_IMAGE
   VLLM_GPU_TYPE_IDS / WHISPER_GPU_TYPE_IDS   comma-separated RunPod GPU names
+  VLLM_EXCLUDED_GPU_TYPE_IDS  subtracted from ADA_48_PRO / AMPERE_48 (Blackwell MIG)
 
 Do not put Whisper on the 14B vLLM worker. This script always creates two
 separate templates/endpoints unless you pass --vllm-only or --whisper-only.
@@ -138,6 +146,48 @@ unique_name() {
   printf '%s-%s-%s' "$base" "$(date +%Y%m%d%H%M%S)" "${RANDOM:-$$}"
 }
 
+vllm_gpu_patch_json() {
+  python3 - "$VLLM_GPU_POOLS" "$VLLM_EXCLUDED_GPU_TYPE_IDS" "$VLLM_ALLOWED_CUDA_VERSIONS" <<'PY'
+import json, sys
+pools = [p.strip() for p in sys.argv[1].split(",") if p.strip()]
+excluded = [p.strip() for p in sys.argv[2].split(",") if p.strip()]
+cudas = [p.strip() for p in sys.argv[3].split(",") if p.strip()]
+print(json.dumps({
+    "gpu": {
+        "pools": pools,
+        "count": 1,
+        "excludedTypes": excluded,
+        "allowedCudaVersions": cudas,
+        "minCudaVersion": "",
+    }
+}))
+PY
+}
+
+pin_vllm_endpoint_gpus() {
+  local endpoint_id="$1"
+  local body url tmp http
+  body="$(vllm_gpu_patch_json)"
+  write_payload vllm_gpu_patch "$body"
+  url="${REST_V2}/serverless/${endpoint_id}"
+  tmp="$(mktemp)"
+  http="$(curl -sS -X PATCH \
+    -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -o "$tmp" -w '%{http_code}' \
+    --data "$body" \
+    "$url" || true)"
+  if [[ ! "$http" =~ ^2 ]]; then
+    warn "Could not pin vLLM GPUs (PATCH ${url} → HTTP ${http}). Exclude Blackwell MIG 2g.48gb in the console or workers may land on CUDA-13 slices that never start."
+    python3 -m json.tool <"$tmp" >&2 2>/dev/null || cat "$tmp" >&2
+    echo >&2
+    rm -f "$tmp"
+    return 0
+  fi
+  log "Pinned vLLM workers to ${VLLM_GPU_POOLS} minus ${VLLM_EXCLUDED_GPU_TYPE_IDS}"
+  rm -f "$tmp"
+}
+
 rp_request() {
   local method="$1" path="$2" body="${3:-}"
   local url="${API}${path}"
@@ -188,8 +238,12 @@ vllm_env_json() {
   python3 - "$hf_token" <<'PY'
 import json, os, sys
 hf_token = sys.argv[1]
-lora = [{"name": os.environ.get("LORA_NAME", "christianai"),
-         "path": os.environ.get("LORA_PATH", "apophaticai/qwen2.5-14b-christianai-v1")}]
+# worker-v1-vllm v2.26 passes LORA_MODULES as a single --lora-modules argv.
+# Current vLLM does LoRAModulePath(**json.loads(arg)), which rejects a JSON array.
+lora = {
+    "name": os.environ.get("LORA_NAME", "christianai"),
+    "path": os.environ.get("LORA_PATH", "apophaticai/qwen2.5-14b-christianai-v1"),
+}
 env = {
     "MODEL_NAME": os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-AWQ"),
     "MAX_MODEL_LEN": os.environ.get("MAX_MODEL_LEN", "8192"),
@@ -438,6 +492,8 @@ if [[ "$DRY_RUN" == 1 ]]; then
       "${RUNPOD_NETWORK_VOLUME_ID:-}" "${RUNPOD_DATA_CENTER_IDS:-}")"
     write_payload vllm_endpoint "$VLLM_ENDPOINT_JSON"
     print_payload "vLLM endpoint" "$VLLM_ENDPOINT_JSON"
+    write_payload vllm_gpu_patch "$(vllm_gpu_patch_json)"
+    print_payload "vLLM GPU pin (POST-create PATCH /v2/serverless/{id})" "$(vllm_gpu_patch_json)"
   fi
   if [[ "$CREATE_WHISPER" == 1 ]]; then
     WHISPER_ENDPOINT_JSON="$(endpoint_payload \
@@ -479,6 +535,7 @@ if [[ "$CREATE_VLLM" == 1 ]]; then
   [[ -n "$VLLM_ENDPOINT_ID" ]] || die "vLLM endpoint create returned no id"
   log "vLLM endpoint id: $VLLM_ENDPOINT_ID"
   log "OpenAI base: https://api.runpod.ai/v2/${VLLM_ENDPOINT_ID}/openai/v1"
+  pin_vllm_endpoint_gpus "$VLLM_ENDPOINT_ID"
 fi
 
 if [[ "$CREATE_WHISPER" == 1 ]]; then
