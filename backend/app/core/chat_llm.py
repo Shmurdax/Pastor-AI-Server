@@ -130,9 +130,16 @@ def get_chat_llm(
     max_retries = int(_env_get(env, "VLLM_MAX_RETRIES", default=default_retries))
     headers = {"ngrok-skip-browser-warning": "true"}
     headers.update(kwargs.pop("default_headers", None) or {})
+    api_key = resolve_vllm_api_key(env)
+    # This CPU image can zero libc environ; keep the in-memory key on the
+    # OpenAI client even if os.environ is empty by the time httpx runs.
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ["RUNPOD_API_KEY"] = api_key
+        os.environ["VLLM_API_KEY"] = api_key
     return ChatOpenAI(
         base_url=resolve_vllm_url(env),
-        api_key=resolve_vllm_api_key(env),
+        api_key=api_key,
         model=resolve_vllm_model(env),
         temperature=temperature,
         max_tokens=max_tokens,
