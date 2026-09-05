@@ -19,7 +19,6 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
 
 # RAG & Memory Imports
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
@@ -28,6 +27,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
+from .chat_llm import get_chat_llm
 from .chat_sse import iter_chat_tokens, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
@@ -36,7 +36,6 @@ from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdr
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
 from .storage_paths import ingested_media_path
 
-VLLM_URL = os.getenv("VLLM_URL", "http://vllm:8000/v1")
 logger = logging.getLogger(__name__)
 PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
@@ -494,16 +493,10 @@ class ChatAPIView(APIView):
         if user_query_stored != str(raw_query).strip():
             logger.debug("PII redaction applied before chat retrieval and persistence.")
 
-        llm = ChatOpenAI(
-            base_url=VLLM_URL,
-            api_key="not-needed",
-            model=os.getenv("VLLM_MODEL", "christianai"),
+        llm = get_chat_llm(
             temperature=0.7,
             max_tokens=CHAT_MAX_TOKENS,
             timeout=CHAT_TIMEOUT_S,
-            default_headers={
-                "ngrok-skip-browser-warning": "true"
-            },
         )
 
         try:

@@ -35,6 +35,7 @@ PERSIST_BOOT_SCRIPTS=(
   start.sh
   persist_runtime.sh
   gpu_runtime.sh
+  vllm_runtime.sh
   apply-tokens.sh
   install.sh
 )

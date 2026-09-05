@@ -3,7 +3,8 @@
 This stack runs:
 - `web` (Django via Gunicorn)
 - `nginx` (public reverse proxy on 80/443)
-- `db`, `qdrant`, `vllm`
+- `db`, `qdrant`
+- `vllm` locally, **or** a remote RunPod Serverless OpenAI URL (`VLLM_URL` + `RUNPOD_API_KEY`)
 
 ## 1) Server prerequisites
 

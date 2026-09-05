@@ -80,6 +80,12 @@ upsert VIMEO_FOLDER_ID "${VIMEO_FOLDER_ID:-}"
 upsert VIMEO_USER_ID "${VIMEO_USER_ID:-}"
 upsert VIMEO_SHOWCASE_ID "${VIMEO_SHOWCASE_ID:-}"
 upsert VIMEO_FREE_PREVIEW_ID "${VIMEO_FREE_PREVIEW_ID:-}"
+upsert RUNPOD_API_KEY "${RUNPOD_API_KEY:-}"
+upsert VLLM_API_KEY "${VLLM_API_KEY:-}"
+upsert RUNPOD_VLLM_ENDPOINT_ID "${RUNPOD_VLLM_ENDPOINT_ID:-}"
+upsert VLLM_URL "${VLLM_URL:-}"
+upsert VLLM_MODE "${VLLM_MODE:-}"
+upsert CPU_ONLY "${CPU_ONLY:-}"
 
 # Persist GitHub push helper (not required by runtime services)
 if [[ -n "${GITHUB_TOKEN:-}" && "${GITHUB_TOKEN}" != *paste_here* ]]; then
@@ -110,6 +116,12 @@ if [[ -f "$WS/persist_runtime.sh" ]]; then
 fi
 
 echo "Done."
+
+if [[ -f "$WS/vllm_runtime.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$WS/vllm_runtime.sh"
+  vllm_apply_config "$CONFIG"
+fi
 
 if [[ "${1:-}" == "--restart" ]]; then
   echo "Restarting services..."

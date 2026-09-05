@@ -1,7 +1,8 @@
 """
 Shared embedding helpers.
 
-vLLM owns most GPU VRAM on the RunPod host (including 24GB MIG slices).
+vLLM owns most GPU VRAM on a combined GPU host (including 24GB MIG slices).
+On a CPU web pod, vLLM is remote (RunPod Serverless) and there is no local GPU.
 Sentence-Transformers / MiniLM stay on CPU for chat retrieval and Django
 admin ingestion so they cannot CUDA-OOM against the chat model. Whisper
 transcription runs in a separate worker that may use leftover CUDA.

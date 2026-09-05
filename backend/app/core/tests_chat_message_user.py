@@ -81,7 +81,7 @@ class ChatAPIUserLinkTests(TestCase):
 
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
-    @patch("core.views.ChatOpenAI", return_value=MagicMock())
+    @patch("core.views.get_chat_llm", return_value=MagicMock())
     def test_authenticated_chat_links_sender_email(self, _mock_llm, _mock_oos, _mock_scope):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
         res = self.client.post(
@@ -100,7 +100,7 @@ class ChatAPIUserLinkTests(TestCase):
 
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
-    @patch("core.views.ChatOpenAI", return_value=MagicMock())
+    @patch("core.views.get_chat_llm", return_value=MagicMock())
     def test_anonymous_chat_leaves_user_null(self, _mock_llm, _mock_oos, _mock_scope):
         res = self.client.post(
             self.url,
@@ -116,7 +116,7 @@ class ChatAPIUserLinkTests(TestCase):
 
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
-    @patch("core.views.ChatOpenAI", return_value=MagicMock())
+    @patch("core.views.get_chat_llm", return_value=MagicMock())
     def test_stream_out_of_scope_sends_sse_deltas(self, _mock_llm, _mock_oos, _mock_scope):
         res = self.client.post(
             self.url,
@@ -129,7 +129,7 @@ class ChatAPIUserLinkTests(TestCase):
         )
         self.assertEqual(res.status_code, 200)
         self.assertIn("text/event-stream", res["Content-Type"])
-        body = res.content.decode()
+        body = b"".join(res.streaming_content).decode()
         self.assertIn('"type": "delta"', body)
         self.assertIn(OUT_OF_SCOPE_REPLY, body)
         self.assertIn('"type": "done"', body)

@@ -48,11 +48,15 @@ ensure_persistent_boot_bundle || true
 ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vllm_runtime.sh"
 gpu_detect
+VLLM_URL="$(vllm_resolved_url)"
+VLLM_API_KEY="$(vllm_resolved_api_key)"
 if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
   log "GPU: ${GPU_NAME:-unknown} compute_cap=${GPU_COMPUTE_CAP:-?} MIG=${GPU_MIG_UUID:-none} ${GPU_MIG_GB:+${GPU_MIG_GB}GB}"
 fi
-if [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
+if [[ "${CPU_ONLY:-0}" == "1" ]] || [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
   WHISPER_DEVICE=cpu
 elif [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
   case "${WHISPER_DEVICE:-auto}" in
@@ -134,8 +138,17 @@ else
   log "Qdrant already running"
 fi
 
-# vLLM
-if ! vllm_healthy; then
+# vLLM — local GPU process, or skip when Django calls RunPod Serverless.
+if ! vllm_use_local_server; then
+  stop_screen vllm
+  log "Skipping local vLLM — using ${VLLM_URL}"
+  if [[ -z "${VLLM_API_KEY}" ]]; then
+    warn "VLLM_API_KEY / RUNPOD_API_KEY missing — serverless chat will 401 until you set it in tokens.env"
+  fi
+  if vllm_url_is_local "$VLLM_URL"; then
+    warn "Serverless/CPU mode but VLLM_URL is still local (${VLLM_URL}). Set RUNPOD_VLLM_ENDPOINT_ID or VLLM_URL in tokens.env"
+  fi
+elif ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
   gpu_ensure_vllm_stack
   FREE_MIB="$(gpu_free_mib || true)"
@@ -243,6 +256,12 @@ screen -dmS django bash -c "
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}' &&
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&
+  export VLLM_MODEL='${VLLM_MODEL:-christianai}' &&
+  export VLLM_API_KEY='${VLLM_API_KEY:-}' &&
+  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}' &&
+  export RUNPOD_VLLM_ENDPOINT_ID='${RUNPOD_VLLM_ENDPOINT_ID:-}' &&
+  export VLLM_MODE='${VLLM_MODE:-}' &&
+  export CPU_ONLY='${CPU_ONLY:-}' &&
   export DJANGO_DEBUG='${DJANGO_DEBUG:-true}' &&
   export DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' &&
   export DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS:-*}' &&
@@ -410,7 +429,11 @@ echo "Local: http://127.0.0.1:${DJANGO_PORT}"
 echo "RunPod proxy: https://${RUNPOD_POD_ID:-PODID}-${DJANGO_PORT}.proxy.runpod.net"
 echo "Logs: $LOG_DIR/"
 echo ""
-warn "First chat may take several minutes while the LLM loads into GPU memory."
+if vllm_use_local_server; then
+  warn "First chat may take several minutes while the LLM loads into GPU memory."
+else
+  warn "vLLM is remote (${VLLM_URL}). First chat after idle can take 1–3 minutes (serverless cold start)."
+fi
 
 # When onboot.sh is the RunPod start command it sets PASTOR_KEEP_ALIVE=1.
 # Sleep here if we were exec'd as that command so the container does not exit.
