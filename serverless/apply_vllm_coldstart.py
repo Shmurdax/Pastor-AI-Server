@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 REST = os.environ.get("RUNPOD_REST_URL", "https://rest.runpod.io/v1").rstrip("/")
-GRAPHQL = os.environ.get("RUNPOD_GRAPHQL_URL", "https://api.runpod.io/graphql")
+REST_V2 = os.environ.get("RUNPOD_REST_V2_URL", "https://v2-rest.runpod.io/v2").rstrip("/")
 ENDPOINT_ID_DEFAULT = "4kjnsgh3pek3vu"
 TEMPLATE_ID_DEFAULT = "oynmb132ae"
 VOLUME_NAME = "pastor-ai-vllm-cache"
@@ -118,15 +118,14 @@ def api_key() -> str:
     return key
 
 
-def request(method: str, url: str, body: Optional[dict] = None, user_agent: bool = False) -> Any:
+def request(method: str, url: str, body: Optional[dict] = None) -> Any:
     data = None if body is None else json.dumps(body).encode("utf-8")
     headers = {
         "Authorization": f"Bearer {api_key()}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0",
     }
-    if user_agent:
-        headers["User-Agent"] = "Mozilla/5.0"
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -144,15 +143,6 @@ def request(method: str, url: str, body: Optional[dict] = None, user_agent: bool
 
 def rest(method: str, path: str, body: Optional[dict] = None) -> Any:
     return request(method, f"{REST}{path}", body)
-
-
-def graphql(query: str, variables: Optional[dict] = None) -> Any:
-    return request(
-        "POST",
-        GRAPHQL,
-        {"query": query, "variables": variables or {}},
-        user_agent=True,
-    )
 
 
 def pick_volume(volumes: list[dict], requested_id: str, requested_dc: str) -> Optional[dict]:
@@ -194,28 +184,14 @@ def create_volume(data_center: str, dry_run: bool) -> dict:
 
 
 def try_set_cached_model(endpoint_id: str, dry_run: bool) -> bool:
-    query = """
-    mutation SetModel($id: String!, $model: String!) {
-      saveEndpoint(input: { id: $id, model: $model }) {
-        id
-        name
-      }
-    }
+    """Official vLLM workers honor MODEL_NAME for RunPod's host-side cache.
+
+    REST v2 has no Model field; GraphQL EndpointInput also rejects `model`.
     """
-    log(f"Setting GraphQL Model field to {MODEL_NAME}")
+    log(f"Cached weights use MODEL_NAME={MODEL_NAME} (host cache + {HF_CACHE})")
     if dry_run:
         return True
-    try:
-        result = graphql(query, {"id": endpoint_id, "model": MODEL_NAME})
-        errors = result.get("errors") if isinstance(result, dict) else None
-        if errors:
-            warn(f"GraphQL model field not accepted: {json.dumps(redact(errors))[:500]}")
-            return False
-        log("Cached model field saved")
-        return True
-    except Exception as exc:
-        warn(f"GraphQL cached-model update skipped: {exc}")
-        return False
+    return True
 
 
 def main() -> int:
@@ -285,7 +261,13 @@ def main() -> int:
     rest("PATCH", f"/templates/{template_id}", {"env": new_env})
     log("Patched vLLM template env (full merge, secrets preserved)")
     rest("PATCH", f"/endpoints/{endpoint_id}", endpoint_patch)
-    log("Patched vLLM endpoint idleTimeout/scaler/volume/dataCenter")
+    log("Patched vLLM endpoint idleTimeout/scaler/volume")
+    if data_center:
+        try:
+            request("PATCH", f"{REST_V2}/serverless/{endpoint_id}", {"dataCenterIds": [data_center]})
+            log(f"Pinned v2 dataCenterIds to {data_center}")
+        except Exception as exc:
+            warn(f"v2 data-center pin skipped: {exc}")
     try_set_cached_model(endpoint_id, dry_run=False)
 
     updated = rest("GET", f"/endpoints/{endpoint_id}")
