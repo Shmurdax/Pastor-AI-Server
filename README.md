@@ -92,7 +92,13 @@ Admin UI: **Website Scraping** under the Django admin Content tools section.
 | UI | Flutter web build in `frontend/` |
 | Tunnel | Cloudflare quick tunnel (default) |
 
-See [RUNPOD.md](RUNPOD.md) for troubleshooting (ghost VRAM, ports, tokens) and for splitting chat vLLM **and** Whisper onto RunPod Serverless GPUs while Django/Postgres/Qdrant stay on a cheaper CPU pod.
+See [RUNPOD.md](RUNPOD.md) to create the two serverless GPU endpoints (chat vLLM + Faster-Whisper) and keep Django/Postgres/Qdrant on a cheaper CPU pod:
+
+```bash
+export RUNPOD_API_KEY=rpa_... HF_TOKEN=hf_...
+bash serverless/create_runpod_endpoints.sh --write-tokens
+bash apply-tokens.sh --restart
+```
 
 
 ## Frontend (Flutter)

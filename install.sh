@@ -272,6 +272,8 @@ fi
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 mkdir -p "$WS/scripts" "$WS/serverless"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
+[[ -f "$REPO_ROOT/scripts/check_whisper.sh" ]] && cp -a "$REPO_ROOT/scripts/check_whisper.sh" "$WS/scripts/check_whisper.sh"
+[[ -f "$REPO_ROOT/serverless/create_runpod_endpoints.sh" ]] && cp -a "$REPO_ROOT/serverless/create_runpod_endpoints.sh" "$WS/serverless/create_runpod_endpoints.sh"
 [[ -f "$REPO_ROOT/serverless/vllm.env.example" ]] && cp -a "$REPO_ROOT/serverless/vllm.env.example" "$WS/serverless/vllm.env.example"
 [[ -f "$REPO_ROOT/serverless/whisper.env.example" ]] && cp -a "$REPO_ROOT/serverless/whisper.env.example" "$WS/serverless/whisper.env.example"
 [[ -f "$REPO_ROOT/RUNPOD.md" ]] && cp -a "$REPO_ROOT/RUNPOD.md" "$WS/RUNPOD.md"
