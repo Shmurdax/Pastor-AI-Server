@@ -4,6 +4,9 @@ RunPod CPU containers often zero /proc/pid/environ. Gunicorn then re-execs
 workers with an empty environment, so RUNPOD_API_KEY never reaches Django and
 chat 401s against Serverless. Reading the files from the network volume is the
 reliable source of those keys.
+
+The kernel can also zero the libc environ *after* import, so this loader
+re-applies file values on every call instead of caching a one-shot `_LOADED`.
 """
 
 from __future__ import annotations
@@ -11,7 +14,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_LOADED = False
+_SECRET_KEYS = {
+    "DJANGO_SECRET_KEY",
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "POSTGRES_PASSWORD",
+    "RUNPOD_API_KEY",
+    "VLLM_API_KEY",
+    "WHISPER_API_KEY",
+}
+
+
+def _placeholder(value: str) -> bool:
+    lowered = value.replace("\x00", "").strip().lower()
+    if not lowered:
+        return True
+    return lowered in {"not-needed", "empty", "paste_here"} or "paste_here" in lowered
 
 
 def _candidate_files() -> list[Path]:
@@ -27,7 +45,6 @@ def _candidate_files() -> list[Path]:
         files.extend([repo_root / "config.env", repo_root / "tokens.env"])
     except IndexError:
         pass
-    # de-dupe while preserving order
     seen: set[Path] = set()
     out: list[Path] = []
     for path in files:
@@ -60,15 +77,18 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def load_workspace_env(*, force: bool = False) -> None:
-    """Fill empty os.environ keys from config.env then tokens.env."""
-    global _LOADED
-    if _LOADED and not force:
-        return
+    """Fill os.environ from config.env then tokens.env.
+
+    Secrets are always overwritten from the files so a zeroed gunicorn
+    environ cannot keep serving `not-needed` / empty RunPod keys.
+    """
     merged: dict[str, str] = {}
     for path in _candidate_files():
         if path.is_file():
             merged.update(_parse_env_file(path))
     for key, value in merged.items():
-        if value and not (os.environ.get(key) or "").strip():
+        if not value:
+            continue
+        current = (os.environ.get(key) or "").replace("\x00", "").strip()
+        if force or not current or _placeholder(current) or key in _SECRET_KEYS:
             os.environ[key] = value
-    _LOADED = True
