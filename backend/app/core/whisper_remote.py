@@ -41,7 +41,11 @@ def _placeholder_key(value: str) -> bool:
 
 
 def resolve_whisper_runsync_url(env: Optional[Mapping[str, str]] = None) -> str:
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
     endpoint_id = _env_get(env, "RUNPOD_WHISPER_ENDPOINT_ID")
     if endpoint_id:
         return f"{_RUNPOD_V2_PREFIX}{endpoint_id}/runsync"
@@ -56,7 +60,11 @@ def resolve_whisper_runsync_url(env: Optional[Mapping[str, str]] = None) -> str:
 
 
 def resolve_whisper_api_key(env: Optional[Mapping[str, str]] = None) -> str:
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
     key = _env_get(env, "WHISPER_API_KEY", "RUNPOD_API_KEY", "VLLM_API_KEY")
     if _placeholder_key(key):
         return ""

@@ -7,7 +7,9 @@ import sys
 def main():
     """Run administrative tasks."""
     from pastor_ai.gpu_env import apply_hide_gpu
+    from pastor_ai.workspace_env import load_workspace_env
 
+    load_workspace_env()
     # Gunicorn/migrate stay off the GPU. Video ingest worker keeps CUDA for Whisper.
     apply_hide_gpu(argv=sys.argv)
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pastor_ai.settings")

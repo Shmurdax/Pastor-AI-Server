@@ -48,7 +48,11 @@ def normalize_vllm_base_url(url: str) -> str:
 
 
 def resolve_vllm_url(env: Optional[Mapping[str, str]] = None) -> str:
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
     endpoint_id = _env_get(env, "RUNPOD_VLLM_ENDPOINT_ID")
     if endpoint_id:
         return f"https://api.runpod.ai/v2/{endpoint_id}/openai/v1"
@@ -56,11 +60,22 @@ def resolve_vllm_url(env: Optional[Mapping[str, str]] = None) -> str:
 
 
 def resolve_vllm_api_key(env: Optional[Mapping[str, str]] = None) -> str:
-    env = os.environ if env is None else env
-    key = _env_get(env, "VLLM_API_KEY", "RUNPOD_API_KEY")
-    if _placeholder_key(key):
-        return "not-needed"
-    return key
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
+    for candidate in (
+        _env_get(env, "VLLM_API_KEY"),
+        _env_get(env, "RUNPOD_API_KEY"),
+    ):
+        if candidate and not _placeholder_key(candidate):
+            return candidate
+    # RunPod Serverless rejects the local-vLLM placeholder ("not-needed")
+    # with 401 invalid api key.
+    if vllm_is_remote(env):
+        return ""
+    return "not-needed"
 
 
 def vllm_url_is_local(url: str) -> bool:
@@ -69,7 +84,11 @@ def vllm_url_is_local(url: str) -> bool:
 
 
 def vllm_is_remote(env: Optional[Mapping[str, str]] = None) -> bool:
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
     mode = _env_get(env, "VLLM_MODE").lower()
     if mode in {"serverless", "remote", "cpu"}:
         return True

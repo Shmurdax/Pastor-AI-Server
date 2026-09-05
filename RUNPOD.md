@@ -80,7 +80,22 @@ Some RunPod images cannot run a Docker daemon (iptables/netfilter). `install.sh`
 Usually empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
 
 ### Private LoRA 404
-`HF_TOKEN` must belong to an account with access to `apophaticai/qwen2.5-14b-christianai-v1`.
+`HF_TOKEN` must belong to an account that can open
+[apophaticai/qwen2.5-14b-christianai-v1](https://huggingface.co/apophaticai/qwen2.5-14b-christianai-v1)
+without a 404. The token currently on the worker (`gjonesar`) cannot; the
+vLLM endpoint stays unhealthy and chat hangs after auth.
+
+**How to get a working token**
+
+1. Log into Hugging Face as an `apophaticai` org member (or the user who
+   owns that private repo).
+2. Confirm the model page loads (not 404).
+3. Create a **Read** token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+4. Put it in `tokens.env` as `HF_TOKEN=hf_...` and also on the **vLLM
+   Serverless template** (`HF_TOKEN`). Django on the CPU pod does not need it.
+5. Or: model page → Settings → Collaborators → add `gjonesar`, then the
+   existing token can download the LoRA.
+
 On a CPU web pod the token is only required on the **serverless worker**, not on Django.
 
 ### Chat 401 / empty model list after moving vLLM to Serverless

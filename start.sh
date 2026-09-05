@@ -253,6 +253,9 @@ sleep 1
 fuser -k "${DJANGO_PORT}/tcp" 2>/dev/null || true
 sleep 1
 screen -dmS django bash -c "
+  set -a &&
+  source '${CONFIG_ENV}' &&
+  set +a &&
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
   export FRONTEND_BUILD_DIR='$(resolve_frontend_build_dir "$FRONTEND_DIR")' &&

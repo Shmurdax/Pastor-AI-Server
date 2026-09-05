@@ -50,6 +50,21 @@ class VllmUrlResolutionTests(unittest.TestCase):
             "direct",
         )
         self.assertEqual(resolve_vllm_api_key({"RUNPOD_API_KEY": "paste_here"}), "not-needed")
+        self.assertEqual(
+            resolve_vllm_api_key({
+                "VLLM_MODE": "serverless",
+                "RUNPOD_VLLM_ENDPOINT_ID": "ep1",
+            }),
+            "",
+        )
+        self.assertEqual(
+            resolve_vllm_api_key({
+                "VLLM_API_KEY": "not-needed",
+                "RUNPOD_API_KEY": "rp_live",
+                "VLLM_MODE": "serverless",
+            }),
+            "rp_live",
+        )
 
     def test_model_name(self):
         self.assertEqual(resolve_vllm_model({}), "christianai")
