@@ -50,6 +50,9 @@ _ALWAYS_IN_SCOPE_PATTERNS = tuple(
         r"\bsalvation\b",
         r"\btheology\b",
         r"\bgospel\b",
+        r"\bmeaning of life\b",
+        r"\bpurpose of (?:life|my life)\b",
+        r"\bpurpose in life\b",
     )
 )
 

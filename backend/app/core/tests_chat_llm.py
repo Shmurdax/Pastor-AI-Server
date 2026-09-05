@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.chat_llm import (
+    estimate_chat_tokens,
+    fit_chat_budget,
     get_chat_llm,
     normalize_vllm_base_url,
     resolve_vllm_api_key,
@@ -82,12 +84,36 @@ class VllmUrlResolutionTests(unittest.TestCase):
             4096,
         )
 
+    def test_fit_chat_budget_stays_inside_4096_with_huge_prompt(self):
+        env = {"CHAT_CONTEXT_WINDOW": "8192", "VLLM_MAX_MODEL_LEN": "4096"}
+        system = (
+            "<priority>" + ("pastoral teaching " * 400) + "</priority>\n"
+            "REFERENCE NOTES:\n" + ("sermon chunk " * 800)
+        )
+        history = [
+            type("Msg", (), {"content": "previous question about faith"})(),
+            type("Msg", (), {"content": "a long previous pastoral answer " * 40})(),
+        ]
+        fitted, hist, completion, used = fit_chat_budget(
+            system,
+            history,
+            "What is the meaning of life?",
+            2400,
+            env=env,
+        )
+        self.assertLessEqual(used + completion + 96, 4096)
+        self.assertGreaterEqual(completion, 128)
+        self.assertLessEqual(estimate_chat_tokens(fitted), 4096)
+
     def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
         from pathlib import Path
 
         source = Path(__file__).with_name("views.py").read_text(encoding="utf-8")
-        self.assertIn("from .chat_llm import get_chat_llm", source)
+        self.assertIn("from .chat_llm import", source)
+        self.assertIn("get_chat_llm", source)
+        self.assertIn("fit_chat_budget", source)
         self.assertIn("llm = get_chat_llm(", source)
+        self.assertIn("sse_keepalive()", source)
         self.assertNotIn("from langchain_openai import ChatOpenAI", source)
         self.assertNotIn('api_key="not-needed"', source)
         self.assertNotIn("api_key='not-needed'", source)

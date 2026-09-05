@@ -31,4 +31,16 @@ void main() {
     expect(events, hasLength(1));
     expect(events.first.text, 'Hi');
   });
+
+  test('consumeSseChunk skips keepalives and status events', () {
+    final carry = StringBuffer();
+    final events = consumeSseChunk(
+      carry,
+      ': keepalive\n\ndata: {"type":"status","phase":"started"}\n\ndata: {"type":"delta","text":"When"}\n\n',
+    );
+    expect(events, hasLength(2));
+    expect(events[0].type, 'status');
+    expect(events[1].isDelta, isTrue);
+    expect(events[1].text, 'When');
+  });
 }

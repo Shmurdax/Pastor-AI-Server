@@ -13,6 +13,11 @@ def sse_pack(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def sse_keepalive() -> str:
+    """Comment ping so proxies flush headers before retrieval/generation."""
+    return ": keepalive\n\n"
+
+
 def chunk_text(chunk) -> str:
     content = getattr(chunk, "content", None)
     if content is None:

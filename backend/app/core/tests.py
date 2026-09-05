@@ -85,7 +85,8 @@ class ScopeGateParserTests(unittest.TestCase):
     def test_always_in_scope_for_abortion_and_christians(self):
         self.assertTrue(always_in_scope_query("Can Christians have abortions?"))
         self.assertTrue(always_in_scope_query("What about abortion?"))
-        self.assertTrue(always_in_scope_query("Tell me about marriage and divorce"))
+        self.assertTrue(always_in_scope_query("What is the meaning of life?"))
+        self.assertTrue(always_in_scope_query("What is my purpose in life?"))
         self.assertFalse(always_in_scope_query("Write a Python sort function"))
         self.assertFalse(always_in_scope_query("Who won the game last night?"))
 

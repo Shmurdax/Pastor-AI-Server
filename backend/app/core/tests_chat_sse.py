@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from core.chat_sse import chunk_text, iter_chat_tokens, sse_pack, wants_chat_stream
+from core.chat_sse import chunk_text, iter_chat_tokens, sse_keepalive, sse_pack, wants_chat_stream
 
 
 class ChatSseTests(unittest.TestCase):
@@ -20,6 +20,7 @@ class ChatSseTests(unittest.TestCase):
         self.assertTrue(wants_chat_stream(True, ""))
         self.assertTrue(wants_chat_stream(False, "text/event-stream"))
         self.assertFalse(wants_chat_stream(False, "application/json"))
+        self.assertEqual(sse_keepalive(), ": keepalive\n\n")
 
     def test_iter_chat_tokens_skips_empty_chunks(self):
         bound = SimpleNamespace(

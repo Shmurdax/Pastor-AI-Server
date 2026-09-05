@@ -27,8 +27,8 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_llm import get_chat_llm, resolve_chat_context_window
-from .chat_sse import iter_chat_tokens, sse_pack, wants_chat_stream
+from .chat_llm import fit_chat_budget, get_chat_llm
+from .chat_sse import iter_chat_tokens, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
 from .pii_redaction import query_text_for_llm, redact_user_query
@@ -45,8 +45,6 @@ RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.7"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "3000"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "8000"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2400"))
-CHAT_CONTEXT_WINDOW = resolve_chat_context_window()
-CHAT_TOKEN_SAFETY = int(os.getenv("CHAT_TOKEN_SAFETY", "96"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
@@ -104,67 +102,6 @@ def _file_response_for_document(document: IngestedDocument):
 
 # Keep retrieval embeddings on CPU via shared helper (vLLM owns GPU VRAM).
 _get_embeddings = get_embeddings
-
-
-def _estimate_tokens(text: str) -> int:
-    """Conservative token estimate for English + markup (safer than chars/4)."""
-    return max(1, (len(text or "") + 2) // 3)
-
-
-def _fit_chat_budget(system_filled: str, history_messages, question: str, max_completion: int):
-    """
-    Trim history/context so prompt + completion stays inside the model window.
-    Returns (system_filled, history_messages, max_completion).
-    """
-    window = max(512, CHAT_CONTEXT_WINDOW)
-    safety = max(16, CHAT_TOKEN_SAFETY)
-    completion = max(128, min(max_completion, window - 256))
-
-    def prompt_tokens(sys_text, history, q):
-        hist_text = "\n".join(getattr(m, "content", "") or "" for m in history)
-        return (
-            _estimate_tokens(sys_text)
-            + _estimate_tokens(hist_text)
-            + _estimate_tokens(q)
-            + 24  # role/format overhead
-        )
-
-    history = list(history_messages)
-    sys_text = system_filled
-
-    # Drop oldest history pairs until we fit, then shrink REFERENCE NOTES, then completion.
-    while history and prompt_tokens(sys_text, history, question) + completion + safety > window:
-        # Remove oldest human+ai pair when possible
-        if len(history) >= 2:
-            history = history[2:]
-        else:
-            history = history[1:]
-
-    marker = "REFERENCE NOTES:\n"
-    while prompt_tokens(sys_text, history, question) + completion + safety > window:
-        idx = sys_text.find(marker)
-        if idx < 0:
-            break
-        notes = sys_text[idx + len(marker) :]
-        if len(notes) <= 200:
-            sys_text = sys_text[: idx + len(marker)] + "No relevant sermon notes found."
-            break
-        # Keep the most recent/truncated notes tail-cut for simplicity
-        keep = max(200, int(len(notes) * 0.7))
-        sys_text = sys_text[: idx + len(marker)] + notes[:keep]
-
-    while prompt_tokens(sys_text, history, question) + completion + safety > window and completion > 256:
-        completion = max(256, completion - 128)
-
-    used = prompt_tokens(sys_text, history, question)
-    logger.debug(
-        "Chat token budget: prompt≈%s completion=%s window=%s history_msgs=%s",
-        used,
-        completion,
-        window,
-        len(history),
-    )
-    return sys_text, history, completion
 
 
 def _is_bible_source(source_name: str) -> bool:
@@ -277,8 +214,9 @@ def _sse(payload: dict) -> str:
 
 def _sse_response(iterator):
     response = StreamingHttpResponse(iterator, content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
+    response["Cache-Control"] = "no-cache, no-transform"
     response["X-Accel-Buffering"] = "no"
+    response["Connection"] = "keep-alive"
     return response
 
 
@@ -493,13 +431,12 @@ class ChatAPIView(APIView):
         if user_query_stored != str(raw_query).strip():
             logger.debug("PII redaction applied before chat retrieval and persistence.")
 
-        llm = get_chat_llm(
-            temperature=0.7,
-            max_tokens=CHAT_MAX_TOKENS,
-            timeout=CHAT_TIMEOUT_S,
-        )
-
-        try:
+        def prepare_chat():
+            llm = get_chat_llm(
+                temperature=0.7,
+                max_tokens=CHAT_MAX_TOKENS,
+                timeout=CHAT_TIMEOUT_S,
+            )
             target_message = None
             if regenerate:
                 target_message = (
@@ -526,10 +463,8 @@ class ChatAPIView(APIView):
                     out_of_scope_reply,
                     message_id=None if saved_message is None else saved_message.id,
                 )
-                if want_stream:
-                    return _sse_response(_immediate_sse(payload))
-                return Response(payload, status=status.HTTP_200_OK)
-            # 1. SETUP: Vector store (skipped when scope gate refuses — saves Qdrant + embedding work)
+                return {"kind": "final", "payload": payload}
+
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
             client = QdrantClient(url=get_qdrant_url())
@@ -542,10 +477,8 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            # --- LOGGING: Start Search ---
             logger.debug("Searching Qdrant for incoming chat request.")
 
-            # 2. RETRIEVAL: Find relevant sermon chunks
             candidate_k = max(RETRIEVAL_K * 3, 15)
             retriever = vectorstore.as_retriever(
                 search_type="similarity_score_threshold",
@@ -555,7 +488,6 @@ class ChatAPIView(APIView):
             docs = _weighted_docs(candidates, RETRIEVAL_K)
             context = "\n\n".join([doc.page_content for doc in docs])[:MAX_CONTEXT_CHARS]
 
-            # --- LOGGING: Search Results ---
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             logger.debug(
                 "Selected retrieval chunks: total=%s default=%s bible=%s",
@@ -564,7 +496,6 @@ class ChatAPIView(APIView):
                 bible_count,
             )
 
-            # 3. DYNAMIC HISTORY: The "Infinite" Sliding Window
             db_messages = ChatMessage.objects.filter(session_id=session_id).order_by('-timestamp')
             if regenerate and target_message:
                 db_messages = db_messages.exclude(id=target_message.id)
@@ -576,13 +507,10 @@ class ChatAPIView(APIView):
                 exchange = f"{msg.user_query} {msg.ai_response}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
-
-                # Insert at index 0 because we are iterating backwards from newest
                 history_messages.insert(0, AIMessage(content=msg.ai_response))
                 history_messages.insert(0, HumanMessage(content=query_text_for_llm(msg.user_query)))
                 current_chars += len(exchange)
 
-            # 4. PROMPT: sermon-grounded resource for pastors/Christians — depth over speed
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
@@ -591,89 +519,138 @@ class ChatAPIView(APIView):
                 + language_reply_instruction(chat_language)
                 + "\nREFERENCE NOTES:\n{context}"
             )
-
-            # Fill context first, then shrink history/notes so prompt+completion fit the model window.
             system_filled = system_content.replace(
                 "{context}",
                 context if context else "No relevant sermon notes found.",
             )
-            system_filled, history_messages, completion_tokens = _fit_chat_budget(
+            system_filled, history_messages, completion_tokens, used_tokens = fit_chat_budget(
                 system_filled,
                 history_messages,
                 user_query_llm,
                 CHAT_MAX_TOKENS,
+                safety=int(os.getenv("CHAT_TOKEN_SAFETY", "96")),
+            )
+            logger.debug(
+                "Chat token budget: prompt≈%s completion=%s history_msgs=%s",
+                used_tokens,
+                completion_tokens,
+                len(history_messages),
             )
 
-            # --- LOGGING: Generation Start ---
-            logger.debug("Generating chat response from retrieved context.")
-
-            # 5. GENERATION (direct messages avoid template-brace issues in the system prompt)
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
                 + [HumanMessage(content=user_query_llm)]
             )
             bound = llm.bind(max_tokens=completion_tokens)
+            return {
+                "kind": "generate",
+                "llm": llm,
+                "bound": bound,
+                "messages": messages,
+                "docs": docs,
+                "completion_tokens": completion_tokens,
+                "target_message": target_message,
+            }
 
-            if want_stream:
-                def token_events():
+        def _unique_sources(docs):
+            return sorted(
+                {
+                    name
+                    for name in (_doc_source_label(doc) for doc in docs)
+                    if name and name != "Unknown"
+                }
+            )
+
+        def _generate_tokens(prepared):
+            bound = prepared["bound"]
+            messages = prepared["messages"]
+            yielded = False
+            try:
+                for text in _iter_chat_tokens(bound, messages):
+                    yielded = True
+                    yield text
+                return
+            except Exception:
+                if yielded:
+                    raise
+                logger.exception("Error while streaming chat tokens; retrying with a smaller budget")
+            smaller = max(128, min(512, int(prepared["completion_tokens"]) // 2))
+            trimmed = []
+            for msg in messages:
+                content = getattr(msg, "content", "") or ""
+                if isinstance(msg, SystemMessage) and len(content) > 2400:
+                    marker = "REFERENCE NOTES:\n"
+                    idx = content.find(marker)
+                    if idx >= 0:
+                        content = content[: idx + len(marker)] + "No relevant sermon notes found."
+                    else:
+                        content = content[:2400]
+                    trimmed.append(SystemMessage(content=content))
+                else:
+                    trimmed.append(msg)
+            yield from _iter_chat_tokens(prepared["llm"].bind(max_tokens=smaller), trimmed)
+
+        if want_stream:
+            def token_events():
+                yield sse_keepalive()
+                yield _sse({"type": "status", "phase": "started"})
+                try:
+                    prepared = prepare_chat()
+                    if prepared["kind"] == "final":
+                        yield from _immediate_sse(prepared["payload"])
+                        return
                     assembled = []
-                    try:
-                        for text in _iter_chat_tokens(bound, messages):
-                            assembled.append(text)
-                            yield _sse({"type": "delta", "text": text})
-                        answer = "".join(assembled)
-                        saved_message = _save_ai_response(
-                            regenerate=regenerate,
-                            target_message=target_message,
-                            session_id=session_id,
-                            chat_user=chat_user,
-                            user_query_stored=user_query_stored,
-                            answer=answer,
-                        )
-                        unique_sources = sorted(
-                            {
-                                name
-                                for name in (_doc_source_label(doc) for doc in docs)
-                                if name and name != "Unknown"
-                            }
-                        )
-                        done = {
-                            "type": "done",
-                            "answer": answer,
-                            "sources": unique_sources if docs else [],
-                        }
-                        if saved_message is not None:
-                            done["message_id"] = saved_message.id
-                        logger.debug("Chat response generated successfully.")
-                        yield _sse(done)
-                    except Exception:
-                        logger.exception("Error while streaming chat tokens")
-                        yield _sse({
-                            "type": "error",
-                            "error": "I encountered a processing error while generating this answer. Please retry.",
-                        })
+                    for text in _generate_tokens(prepared):
+                        assembled.append(text)
+                        yield _sse({"type": "delta", "text": text})
+                    answer = "".join(assembled)
+                    if not answer.strip():
+                        raise ValueError("No generation chunks were returned")
+                    saved_message = _save_ai_response(
+                        regenerate=regenerate,
+                        target_message=prepared["target_message"],
+                        session_id=session_id,
+                        chat_user=chat_user,
+                        user_query_stored=user_query_stored,
+                        answer=answer,
+                    )
+                    done = {
+                        "type": "done",
+                        "answer": answer,
+                        "sources": _unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                    }
+                    if saved_message is not None:
+                        done["message_id"] = saved_message.id
+                    logger.debug("Chat response generated successfully.")
+                    yield _sse(done)
+                except Exception:
+                    logger.exception("Error while streaming chat tokens")
+                    yield _sse({
+                        "type": "error",
+                        "error": "I encountered a processing error while generating this answer. Please retry.",
+                    })
 
-                return _sse_response(token_events())
+            return _sse_response(token_events())
 
-            response = bound.invoke(messages)
+        try:
+            prepared = prepare_chat()
+            if prepared["kind"] == "final":
+                return Response(prepared["payload"], status=status.HTTP_200_OK)
+            response = prepared["bound"].invoke(prepared["messages"])
             saved_message = _save_ai_response(
                 regenerate=regenerate,
-                target_message=target_message,
+                target_message=prepared["target_message"],
                 session_id=session_id,
                 chat_user=chat_user,
                 user_query_stored=user_query_stored,
                 answer=response.content,
             )
-
-            # --- LOGGING: Success ---
             logger.debug("Chat response generated successfully.")
-
-            unique_sources = sorted({name for name in (_doc_source_label(doc) for doc in docs) if name and name != "Unknown"})
             return Response(
                 _chat_payload(
                     response.content,
-                    sources=unique_sources if docs else [],
+                    sources=_unique_sources(prepared["docs"]) if prepared["docs"] else [],
                     message_id=None if saved_message is None else saved_message.id,
                 ),
                 status=status.HTTP_200_OK,
