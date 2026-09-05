@@ -49,10 +49,10 @@ def normalize_vllm_base_url(url: str) -> str:
 
 def resolve_vllm_url(env: Optional[Mapping[str, str]] = None) -> str:
     if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
 
         load_workspace_env()
-        env = os.environ
+        env = env_with_workspace()
     endpoint_id = _env_get(env, "RUNPOD_VLLM_ENDPOINT_ID")
     if endpoint_id:
         return f"https://api.runpod.ai/v2/{endpoint_id}/openai/v1"
@@ -61,10 +61,10 @@ def resolve_vllm_url(env: Optional[Mapping[str, str]] = None) -> str:
 
 def resolve_vllm_api_key(env: Optional[Mapping[str, str]] = None) -> str:
     if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
 
         load_workspace_env()
-        env = os.environ
+        env = env_with_workspace()
     for candidate in (
         _env_get(env, "VLLM_API_KEY"),
         _env_get(env, "RUNPOD_API_KEY"),
@@ -85,10 +85,10 @@ def vllm_url_is_local(url: str) -> bool:
 
 def vllm_is_remote(env: Optional[Mapping[str, str]] = None) -> bool:
     if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
 
         load_workspace_env()
-        env = os.environ
+        env = env_with_workspace()
     mode = _env_get(env, "VLLM_MODE").lower()
     if mode in {"serverless", "remote", "cpu"}:
         return True
@@ -116,10 +116,10 @@ def get_chat_llm(
     from langchain_openai import ChatOpenAI
 
     if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
 
         load_workspace_env()
-        env = os.environ
+        env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
         max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="2400"))

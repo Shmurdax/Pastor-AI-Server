@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Mapping
 
 _SECRET_KEYS = {
     "DJANGO_SECRET_KEY",
@@ -76,19 +77,48 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return parsed
 
 
+def workspace_env_values() -> dict[str, str]:
+    """Parse config.env then tokens.env. Does not touch os.environ."""
+    merged: dict[str, str] = {}
+    for path in _candidate_files():
+        if path.is_file():
+            merged.update(_parse_env_file(path))
+    return merged
+
+
 def load_workspace_env(*, force: bool = False) -> None:
     """Fill os.environ from config.env then tokens.env.
 
     Secrets are always overwritten from the files so a zeroed gunicorn
     environ cannot keep serving `not-needed` / empty RunPod keys.
     """
-    merged: dict[str, str] = {}
-    for path in _candidate_files():
-        if path.is_file():
-            merged.update(_parse_env_file(path))
+    merged = workspace_env_values()
     for key, value in merged.items():
         if not value:
             continue
         current = (os.environ.get(key) or "").replace("\x00", "").strip()
         if force or not current or _placeholder(current) or key in _SECRET_KEYS:
             os.environ[key] = value
+
+
+def env_with_workspace(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """os.environ overlay with file secrets winning.
+
+    RunPod CPU images can zero libc environ after gunicorn starts, so callers
+    that need RUNPOD_API_KEY must not trust os.environ alone.
+    """
+    files = workspace_env_values()
+    merged: dict[str, str] = dict(files)
+    source = os.environ if env is None else env
+    for key, raw in source.items():
+        value = str(raw).replace("\x00", "").strip()
+        if not value or _placeholder(value):
+            continue
+        if key in _SECRET_KEYS and files.get(key) and not _placeholder(files[key]):
+            continue
+        merged[key] = value
+    for key in _SECRET_KEYS:
+        file_val = files.get(key, "")
+        if file_val and not _placeholder(file_val):
+            merged[key] = file_val
+    return merged

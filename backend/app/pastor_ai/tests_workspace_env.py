@@ -25,6 +25,9 @@ class LoadWorkspaceEnvTests(unittest.TestCase):
                 os.environ["RUNPOD_API_KEY"] = ""
                 workspace_env.load_workspace_env()
                 self.assertEqual(os.environ["RUNPOD_API_KEY"], "rpa_live_key")
+                overlay = workspace_env.env_with_workspace({"RUNPOD_API_KEY": "", "CPU_ONLY": "1"})
+                self.assertEqual(overlay["RUNPOD_API_KEY"], "rpa_live_key")
+                self.assertEqual(overlay["CPU_ONLY"], "1")
 
     def tearDown(self):
         for key in ("RUNPOD_API_KEY", "VLLM_API_KEY", "CPU_ONLY"):
