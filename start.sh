@@ -263,8 +263,8 @@ screen -dmS django bash -c "
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&
   export VLLM_MODEL='${VLLM_MODEL:-christianai}' &&
-  export VLLM_API_KEY='${VLLM_API_KEY:-}' &&
-  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}' &&
+  export VLLM_API_KEY=\"\${VLLM_API_KEY:-${VLLM_API_KEY:-}}\" &&
+  export RUNPOD_API_KEY=\"\${RUNPOD_API_KEY:-${RUNPOD_API_KEY:-}}\" &&
   export RUNPOD_VLLM_ENDPOINT_ID='${RUNPOD_VLLM_ENDPOINT_ID:-}' &&
   export VLLM_MODE='${VLLM_MODE:-}' &&
   export CPU_ONLY='${CPU_ONLY:-}' &&

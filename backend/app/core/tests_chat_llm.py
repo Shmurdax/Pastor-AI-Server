@@ -85,7 +85,11 @@ class GetChatLlmTests(unittest.TestCase):
         get_chat_llm(env=env, temperature=0.7)
         kwargs = mock_cls.call_args.kwargs
         self.assertEqual(kwargs["base_url"], "https://api.runpod.ai/v2/ep1/openai/v1")
-        self.assertEqual(kwargs["api_key"], "rp_secret")
+        api_key = kwargs["api_key"]
+        self.assertTrue(callable(api_key))
+        with patch("core.chat_llm.resolve_vllm_api_key", return_value=""):
+            self.assertEqual(api_key(), "rp_secret")
+        self.assertEqual(kwargs["default_headers"]["Authorization"], "Bearer rp_secret")
         self.assertEqual(kwargs["model"], "christianai")
         self.assertEqual(kwargs["timeout"], 600.0)
         self.assertEqual(kwargs["max_retries"], 6)
@@ -98,4 +102,5 @@ class GetChatLlmTests(unittest.TestCase):
         kwargs = mock_cls.call_args.kwargs
         self.assertEqual(kwargs["base_url"], "http://127.0.0.1:8010/v1")
         self.assertEqual(kwargs["api_key"], "not-needed")
+        self.assertNotIn("Authorization", kwargs["default_headers"])
         self.assertEqual(kwargs["max_retries"], 2)

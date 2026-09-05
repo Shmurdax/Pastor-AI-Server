@@ -100,8 +100,35 @@ def vllm_is_remote(env: Optional[Mapping[str, str]] = None) -> bool:
 
 
 def resolve_vllm_model(env: Optional[Mapping[str, str]] = None) -> str:
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
+
+        load_workspace_env()
+        env = env_with_workspace()
     return _env_get(env, "VLLM_MODEL", "CHRISTIANAI_SERVED_NAME", default=_DEFAULT_MODEL)
+
+
+def _live_vllm_api_key(fallback: str):
+    """Re-read config.env at request time.
+
+    RunPod CPU images can zero libc environ after ChatOpenAI is constructed.
+    The OpenAI SDK refreshes callable keys on each request; a captured string
+    can become useless if a later getenv() sees an empty environ.
+    """
+
+    def _read() -> str:
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
+
+        try:
+            load_workspace_env()
+            live = resolve_vllm_api_key(env_with_workspace())
+        except Exception:
+            return fallback
+        if live and not _placeholder_key(live):
+            return live
+        return fallback
+
+    return _read
 
 
 def get_chat_llm(
@@ -128,18 +155,20 @@ def get_chat_llm(
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
     default_retries = "6" if remote else "2"
     max_retries = int(_env_get(env, "VLLM_MAX_RETRIES", default=default_retries))
-    headers = {"ngrok-skip-browser-warning": "true"}
-    headers.update(kwargs.pop("default_headers", None) or {})
     api_key = resolve_vllm_api_key(env)
-    # This CPU image can zero libc environ; keep the in-memory key on the
-    # OpenAI client even if os.environ is empty by the time httpx runs.
-    if api_key:
+    headers = {"ngrok-skip-browser-warning": "true"}
+    if api_key and not _placeholder_key(api_key):
+        headers["Authorization"] = f"Bearer {api_key}"
         os.environ["OPENAI_API_KEY"] = api_key
         os.environ["RUNPOD_API_KEY"] = api_key
         os.environ["VLLM_API_KEY"] = api_key
+    headers.update(kwargs.pop("default_headers", None) or {})
+    client_api_key: object = api_key
+    if remote and api_key:
+        client_api_key = _live_vllm_api_key(api_key)
     return ChatOpenAI(
         base_url=resolve_vllm_url(env),
-        api_key=api_key,
+        api_key=client_api_key,
         model=resolve_vllm_model(env),
         temperature=temperature,
         max_tokens=max_tokens,
