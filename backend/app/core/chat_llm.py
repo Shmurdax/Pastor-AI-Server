@@ -115,7 +115,11 @@ def get_chat_llm(
     """LangChain ChatOpenAI pointed at local vLLM or a RunPod Serverless worker."""
     from langchain_openai import ChatOpenAI
 
-    env = os.environ if env is None else env
+    if env is None:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+        env = os.environ
     remote = vllm_is_remote(env)
     if max_tokens is None:
         max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="2400"))
