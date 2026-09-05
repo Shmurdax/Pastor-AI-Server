@@ -166,6 +166,28 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 Paste both IDs plus `RUNPOD_API_KEY` into `tokens.env` on the CPU pod, then
 `bash apply-tokens.sh --restart`.
 
+## Production CPU pod
+
+The always-on GPU pod (`6pf27d8080515x`, `christian-ai-prd`) was **terminated**.
+Production is a CPU-only Secure Cloud pod on the same network volume
+(`int0elzo4l` at `/workspace`):
+
+| | |
+|--|--|
+| Pod id | `rv1ttmvj5xy02k` |
+| Name | `christian-ai-prd-cpu` |
+| Flavor | `cpu3g` (2 vCPU / 8 GB, **no GPU**) |
+| Cost | **$0.08/hr** (the old GPU pod was $0.59/hr) |
+| SSH | `ssh rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+
+The SSH username is `{podHostId}@ssh.runpod.io`, not `{podId}-644122c4`.
+If proxy SSH says `container not found`, read `machine.podHostId` from the
+RunPod GraphQL `myself { pods { machine { podHostId } } }` query and use that.
+
+Serverless GPU endpoints (`pastor-ai-chat-vllm`, `pastor-ai-whisper`) keep
+`workersMin = 0`, so they bill only while a request is running (plus idle
+timeout), not 24/7.
+
 ## CPU web pod + serverless vLLM
 
 Keep Postgres, Qdrant, Django, Cloudflare, and ffmpeg on a **CPU pod**.
