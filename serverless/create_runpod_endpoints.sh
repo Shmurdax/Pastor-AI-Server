@@ -34,7 +34,7 @@ VLLM_ENDPOINT_NAME="${VLLM_ENDPOINT_NAME:-pastor-ai-chat-vllm}"
 WHISPER_ENDPOINT_NAME="${WHISPER_ENDPOINT_NAME:-pastor-ai-whisper}"
 
 VLLM_GPU_TYPE_IDS="${VLLM_GPU_TYPE_IDS:-NVIDIA RTX A5000,NVIDIA L4,NVIDIA GeForce RTX 4090,NVIDIA RTX A6000,NVIDIA L40,NVIDIA RTX 6000 Ada Generation}"
-WHISPER_GPU_TYPE_IDS="${WHISPER_GPU_TYPE_IDS:-NVIDIA RTX A4000,NVIDIA L4,NVIDIA RTX A2000,NVIDIA GeForce RTX 3080,Tesla T4,NVIDIA GeForce RTX 3090}"
+WHISPER_GPU_TYPE_IDS="${WHISPER_GPU_TYPE_IDS:-NVIDIA RTX A4000,NVIDIA L4,NVIDIA RTX A2000,NVIDIA GeForce RTX 3080,NVIDIA GeForce RTX 3090,NVIDIA RTX A5000}"
 
 VLLM_WORKERS_MIN="${VLLM_WORKERS_MIN:-0}"
 VLLM_WORKERS_MAX="${VLLM_WORKERS_MAX:-1}"
@@ -153,8 +153,8 @@ rp_request() {
   http="$(curl "${args[@]}" "$url" || true)"
   if [[ ! "$http" =~ ^2 ]]; then
     warn "RunPod ${method} ${path} → HTTP ${http}"
-    python3 -m json.tool <"$tmp" 2>/dev/null || cat "$tmp"
-    echo
+    python3 -m json.tool <"$tmp" >&2 2>/dev/null || cat "$tmp" >&2
+    echo >&2
     rm -f "$tmp"
     die "RunPod API request failed"
   fi
@@ -205,8 +205,8 @@ env = {
     ),
     "RAW_OPENAI_OUTPUT": "1",
     "HF_TOKEN": hf_token,
-    "DOWNLOAD_DIR": "/runpod-volume/huggingface-cache",
-    "HF_HOME": "/runpod-volume/huggingface-cache",
+    "DOWNLOAD_DIR": os.environ.get("VLLM_DOWNLOAD_DIR", "/models"),
+    "HF_HOME": os.environ.get("VLLM_HF_HOME", "/models"),
 }
 print(json.dumps(env))
 PY
@@ -239,10 +239,12 @@ PY
 endpoint_payload() {
   local name="$1" template_id="$2" gpu_csv="$3" workers_min="$4" workers_max="$5"
   local idle="$6" exec_ms="$7"
+  local volume_id="${8:-}"
+  local data_centers="${9:-}"
   python3 - "$name" "$template_id" "$gpu_csv" "$workers_min" "$workers_max" "$idle" "$exec_ms" \
-    "${RUNPOD_NETWORK_VOLUME_ID:-}" <<'PY'
-import json, os, sys
-name, template_id, gpu_csv, workers_min, workers_max, idle, exec_ms, volume_id = sys.argv[1:9]
+    "$volume_id" "$data_centers" <<'PY'
+import json, sys
+name, template_id, gpu_csv, workers_min, workers_max, idle, exec_ms, volume_id, data_centers = sys.argv[1:10]
 gpus = [part.strip() for part in gpu_csv.split(",") if part.strip()]
 body = {
     "name": name,
@@ -260,6 +262,9 @@ body = {
 }
 if volume_id.strip():
     body["networkVolumeId"] = volume_id.strip()
+dcs = [part.strip() for part in data_centers.split(",") if part.strip()]
+if dcs:
+    body["dataCenterIds"] = dcs
 print(json.dumps(body))
 PY
 }
@@ -308,13 +313,17 @@ PY
 
 tokens_snippet() {
   local vllm_id="${1:-}" whisper_id="${2:-}"
+  local key_display="rpa_your_runpod_api_key"
+  if [[ -n "${RUNPOD_API_KEY:-}" ]] && ! is_placeholder "$RUNPOD_API_KEY"; then
+    key_display="${RUNPOD_API_KEY:0:4}***redacted***"
+  fi
   cat <<EOF
 CPU_ONLY=1
 VLLM_MODE=serverless
 RUNPOD_VLLM_ENDPOINT_ID=${vllm_id:-your_vllm_endpoint_id}
 WHISPER_MODE=serverless
 RUNPOD_WHISPER_ENDPOINT_ID=${whisper_id:-your_whisper_endpoint_id}
-RUNPOD_API_KEY=${RUNPOD_API_KEY:-rpa_your_runpod_api_key}
+RUNPOD_API_KEY=${key_display}
 EOF
 }
 
@@ -377,9 +386,18 @@ if [[ "$DRY_RUN" != 1 ]]; then
 fi
 
 if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" ]]; then
-  log "Will attach network volume ${RUNPOD_NETWORK_VOLUME_ID} at /runpod-volume"
+  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
+  export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
+  log "Will attach network volume ${RUNPOD_NETWORK_VOLUME_ID} to the vLLM worker at /runpod-volume"
+  if [[ -n "${RUNPOD_DATA_CENTER_IDS:-}" ]]; then
+    log "vLLM data centers: ${RUNPOD_DATA_CENTER_IDS}"
+  else
+    warn "Set RUNPOD_DATA_CENTER_IDS to the volume's region (must be a serverless DC; US-NE-1 is not)."
+  fi
 else
-  warn "No RUNPOD_NETWORK_VOLUME_ID — vLLM will re-download ~14B weights on every cold start. Attach a volume if you already have one."
+  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/models}"
+  export VLLM_HF_HOME="${VLLM_HF_HOME:-/models}"
+  warn "No RUNPOD_NETWORK_VOLUME_ID — vLLM will download weights onto the worker disk. Attach a serverless-region volume to keep them across scale-to-zero."
 fi
 
 VLLM_TEMPLATE_JSON=""
@@ -416,7 +434,8 @@ if [[ "$DRY_RUN" == 1 ]]; then
     VLLM_ENDPOINT_JSON="$(endpoint_payload \
       "$VLLM_ENDPOINT_NAME" "$VLLM_TEMPLATE_ID" "$VLLM_GPU_TYPE_IDS" \
       "$VLLM_WORKERS_MIN" "$VLLM_WORKERS_MAX" \
-      "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS")"
+      "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS" \
+      "${RUNPOD_NETWORK_VOLUME_ID:-}" "${RUNPOD_DATA_CENTER_IDS:-}")"
     write_payload vllm_endpoint "$VLLM_ENDPOINT_JSON"
     print_payload "vLLM endpoint" "$VLLM_ENDPOINT_JSON"
   fi
@@ -424,7 +443,8 @@ if [[ "$DRY_RUN" == 1 ]]; then
     WHISPER_ENDPOINT_JSON="$(endpoint_payload \
       "$WHISPER_ENDPOINT_NAME" "$WHISPER_TEMPLATE_ID" "$WHISPER_GPU_TYPE_IDS" \
       "$WHISPER_WORKERS_MIN" "$WHISPER_WORKERS_MAX" \
-      "$WHISPER_IDLE_TIMEOUT" "$WHISPER_EXECUTION_TIMEOUT_MS")"
+      "$WHISPER_IDLE_TIMEOUT" "$WHISPER_EXECUTION_TIMEOUT_MS" \
+      "${RUNPOD_WHISPER_NETWORK_VOLUME_ID:-}" "${RUNPOD_WHISPER_DATA_CENTER_IDS:-}")"
     write_payload whisper_endpoint "$WHISPER_ENDPOINT_JSON"
     print_payload "Whisper endpoint" "$WHISPER_ENDPOINT_JSON"
   fi
@@ -450,7 +470,8 @@ if [[ "$CREATE_VLLM" == 1 ]]; then
   VLLM_ENDPOINT_JSON="$(endpoint_payload \
     "$VLLM_ENDPOINT_NAME" "$VLLM_TEMPLATE_ID" "$VLLM_GPU_TYPE_IDS" \
     "$VLLM_WORKERS_MIN" "$VLLM_WORKERS_MAX" \
-    "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS")"
+    "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS" \
+    "${RUNPOD_NETWORK_VOLUME_ID:-}" "${RUNPOD_DATA_CENTER_IDS:-}")"
   write_payload vllm_endpoint "$VLLM_ENDPOINT_JSON"
   print_payload "vLLM endpoint request" "$VLLM_ENDPOINT_JSON"
   log "Creating vLLM serverless endpoint"
@@ -468,7 +489,8 @@ if [[ "$CREATE_WHISPER" == 1 ]]; then
   WHISPER_ENDPOINT_JSON="$(endpoint_payload \
     "$WHISPER_ENDPOINT_NAME" "$WHISPER_TEMPLATE_ID" "$WHISPER_GPU_TYPE_IDS" \
     "$WHISPER_WORKERS_MIN" "$WHISPER_WORKERS_MAX" \
-    "$WHISPER_IDLE_TIMEOUT" "$WHISPER_EXECUTION_TIMEOUT_MS")"
+    "$WHISPER_IDLE_TIMEOUT" "$WHISPER_EXECUTION_TIMEOUT_MS" \
+    "${RUNPOD_WHISPER_NETWORK_VOLUME_ID:-}" "${RUNPOD_WHISPER_DATA_CENTER_IDS:-}")"
   write_payload whisper_endpoint "$WHISPER_ENDPOINT_JSON"
   print_payload "Whisper endpoint request" "$WHISPER_ENDPOINT_JSON"
   log "Creating Faster-Whisper serverless endpoint"

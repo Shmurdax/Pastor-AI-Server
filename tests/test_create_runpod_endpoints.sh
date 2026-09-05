@@ -10,7 +10,9 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 chmod +x "$SCRIPT" "$ROOT/scripts/check_whisper.sh" 2>/dev/null || true
 
 DIR="$(mktemp -d)"
-trap 'rm -rf "$DIR"' EXIT
+EMPTY_TOKENS="$(mktemp)"
+export TOKENS_FILE="$EMPTY_TOKENS"
+trap 'rm -rf "$DIR" "$EMPTY_TOKENS"' EXIT
 
 # Dry-run must work without RUNPOD_API_KEY / HF_TOKEN.
 unset RUNPOD_API_KEY HF_TOKEN HUGGING_FACE_HUB_TOKEN RUNPOD_NETWORK_VOLUME_ID || true
@@ -43,8 +45,8 @@ assert env["OPENAI_SERVED_MODEL_NAME_OVERRIDE"] == "christianai"
 assert "christianai" in env["LORA_MODULES"]
 assert "apophaticai/qwen2.5-14b-christianai-v1" in env["LORA_MODULES"]
 assert env["RAW_OPENAI_OUTPUT"] == "1"
-assert "HF_TOKEN" in env
-assert "faster-whisper" not in vllm_t["imageName"]
+assert env["DOWNLOAD_DIR"] == "/models"
+assert env["HF_HOME"] == "/models"
 
 assert vllm_e["computeType"] == "GPU"
 assert vllm_e["workersMin"] == 0
@@ -64,7 +66,8 @@ assert wh_t["env"]["MODEL_NAME"] == "base"
 
 assert wh_e["workersMin"] == 0
 assert wh_e["workersMax"] == 1
-assert "Tesla T4" in wh_e["gpuTypeIds"] or "NVIDIA RTX A4000" in wh_e["gpuTypeIds"]
+assert "NVIDIA RTX A4000" in wh_e["gpuTypeIds"] or "NVIDIA L4" in wh_e["gpuTypeIds"]
+assert "Tesla T4" not in wh_e["gpuTypeIds"]
 assert "NVIDIA H100 80GB HBM3" not in wh_e["gpuTypeIds"]
 
 snippet = (d / "tokens.env.snippet").read_text()
@@ -87,20 +90,27 @@ bash "$SCRIPT" --dry-run --whisper-only --payload-dir "$DIR3" >/dev/null
 [[ -f "$DIR3/whisper_template.json" ]] || fail "whisper-only missing whisper template"
 [[ ! -f "$DIR3/vllm_template.json" ]] || fail "whisper-only must not write vllm template"
 
-# Network volume is attached when requested.
+# Network volume is attached to vLLM only (Whisper does not need the 14B cache).
 DIR4="$(mktemp -d)"
-RUNPOD_NETWORK_VOLUME_ID=volabc bash "$SCRIPT" --dry-run --payload-dir "$DIR4" >/dev/null
-python3 - "$DIR4" <<'PY' || fail "network volume not attached"
+RUNPOD_NETWORK_VOLUME_ID=volabc RUNPOD_DATA_CENTER_IDS=US-NE-1 \
+  bash "$SCRIPT" --dry-run --payload-dir "$DIR4" >/dev/null
+python3 - "$DIR4" <<'PY' || fail "network volume not attached to vLLM only"
 import json, pathlib, sys
 d = pathlib.Path(sys.argv[1])
-for name in ("vllm_endpoint.json", "whisper_endpoint.json"):
-    body = json.loads((d / name).read_text())
-    assert body.get("networkVolumeId") == "volabc", name
+vllm = json.loads((d / "vllm_endpoint.json").read_text())
+wh = json.loads((d / "whisper_endpoint.json").read_text())
+assert vllm.get("networkVolumeId") == "volabc", vllm
+assert vllm.get("dataCenterIds") == ["US-NE-1"], vllm
+vllm_t = json.loads((d / "vllm_template.json").read_text())
+assert vllm_t["env"]["DOWNLOAD_DIR"] == "/runpod-volume/huggingface-cache"
+assert "networkVolumeId" not in wh, wh
+assert "dataCenterIds" not in wh, wh
 print("volume attach ok")
 PY
 
-# Real create without a key must fail.
-if HF_TOKEN=hf_test_token bash "$SCRIPT" --vllm-only >/dev/null 2>"$DIR/err"; then
+# Real create without a key must fail (do not load workspace tokens.env).
+if HF_TOKEN=hf_test_token \
+  bash "$SCRIPT" --vllm-only >/dev/null 2>"$DIR/err"; then
   fail "create without RUNPOD_API_KEY should fail"
 fi
 grep -q "RUNPOD_API_KEY" "$DIR/err" || fail "missing API key error"
