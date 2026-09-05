@@ -4,6 +4,29 @@ import 'package:flutter_application_1/services/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+class _FailingClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return Future.error(Exception('offline'));
+  }
+}
+
+class _CaptureClient extends http.BaseClient {
+  static String? lastPath;
+  static String? lastMethod;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    lastPath = request.url.path;
+    lastMethod = request.method;
+    return http.StreamedResponse(
+      Stream<List<int>>.fromIterable([utf8.encode('{"ok":true}')]),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
 class _ScriptedStreamClient extends http.BaseClient {
   _ScriptedStreamClient(this.body, {this.contentType = 'text/event-stream'});
 
@@ -56,5 +79,15 @@ void main() {
     );
     expect(deltas, ['Grace first']);
     expect(result['answer'], 'Grace first');
+  });
+
+  test('warmupChat posts to /api/chat/warmup/ and swallows errors', () async {
+    final api = ApiClient(client: _CaptureClient());
+    await api.warmupChat();
+    expect(_CaptureClient.lastPath, '/api/chat/warmup/');
+    expect(_CaptureClient.lastMethod, 'POST');
+
+    final failing = ApiClient(client: _FailingClient());
+    await failing.warmupChat();
   });
 }

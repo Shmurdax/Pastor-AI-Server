@@ -45,7 +45,11 @@ REST_V2="${RUNPOD_REST_V2_URL:-https://api.runpod.io/v2}"
 
 VLLM_WORKERS_MIN="${VLLM_WORKERS_MIN:-0}"
 VLLM_WORKERS_MAX="${VLLM_WORKERS_MAX:-1}"
-VLLM_IDLE_TIMEOUT="${VLLM_IDLE_TIMEOUT:-180}"
+# Keep workersMin=0 unless you explicitly want a 24/7 billed GPU. Cold starts
+# are shortened by: 15-minute idle timeout, scalerValue=1, a serverless
+# network volume, RunPod cached MODEL_NAME, and Django /api/chat/warmup/.
+VLLM_IDLE_TIMEOUT="${VLLM_IDLE_TIMEOUT:-900}"
+VLLM_SCALER_VALUE="${VLLM_SCALER_VALUE:-1}"
 VLLM_EXECUTION_TIMEOUT_MS="${VLLM_EXECUTION_TIMEOUT_MS:-600000}"
 VLLM_CONTAINER_DISK_GB="${VLLM_CONTAINER_DISK_GB:-80}"
 
@@ -86,7 +90,13 @@ Required for a real create:
 
 Optional:
   RUNPOD_NETWORK_VOLUME_ID   Attach a network volume at /runpod-volume (recommended
-                             for vLLM so 14B weights survive scale-to-zero)
+                             for vLLM so 14B weights survive scale-to-zero).
+                             Must live in a serverless DC (US-KS-2, US-GA-1,
+                             US-NC-1, EU-RO-1 — not the CPU pod's US-NE-1).
+  RUNPOD_DATA_CENTER_IDS     Pin the vLLM endpoint to that volume's region
+  VLLM_IDLE_TIMEOUT          Seconds a worker stays up after the last request
+                             (default 900)
+  VLLM_SCALER_VALUE          QUEUE_DELAY seconds before scale-up (default 1)
   VLLM_IMAGE / WHISPER_IMAGE
   VLLM_GPU_TYPE_IDS / WHISPER_GPU_TYPE_IDS   comma-separated RunPod GPU names
   VLLM_EXCLUDED_GPU_TYPE_IDS  subtracted from ADA_48_PRO / AMPERE_48 (Blackwell MIG)
@@ -261,6 +271,7 @@ env = {
     "HF_TOKEN": hf_token,
     "DOWNLOAD_DIR": os.environ.get("VLLM_DOWNLOAD_DIR", "/models"),
     "HF_HOME": os.environ.get("VLLM_HF_HOME", "/models"),
+    "VLLM_CACHE_ROOT": os.environ.get("VLLM_CACHE_ROOT", "/models/vllm_cache"),
 }
 print(json.dumps(env))
 PY
@@ -295,10 +306,11 @@ endpoint_payload() {
   local idle="$6" exec_ms="$7"
   local volume_id="${8:-}"
   local data_centers="${9:-}"
+  local scaler="${10:-${VLLM_SCALER_VALUE:-1}}"
   python3 - "$name" "$template_id" "$gpu_csv" "$workers_min" "$workers_max" "$idle" "$exec_ms" \
-    "$volume_id" "$data_centers" <<'PY'
+    "$volume_id" "$data_centers" "$scaler" <<'PY'
 import json, sys
-name, template_id, gpu_csv, workers_min, workers_max, idle, exec_ms, volume_id, data_centers = sys.argv[1:10]
+name, template_id, gpu_csv, workers_min, workers_max, idle, exec_ms, volume_id, data_centers, scaler = sys.argv[1:11]
 gpus = [part.strip() for part in gpu_csv.split(",") if part.strip()]
 body = {
     "name": name,
@@ -312,7 +324,7 @@ body = {
     "executionTimeoutMs": int(exec_ms),
     "flashboot": True,
     "scalerType": "QUEUE_DELAY",
-    "scalerValue": 4,
+    "scalerValue": int(scaler),
 }
 if volume_id.strip():
     body["networkVolumeId"] = volume_id.strip()
@@ -442,6 +454,7 @@ fi
 if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" ]]; then
   export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
   export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
+  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/runpod-volume/vllm_cache}"
   log "Will attach network volume ${RUNPOD_NETWORK_VOLUME_ID} to the vLLM worker at /runpod-volume"
   if [[ -n "${RUNPOD_DATA_CENTER_IDS:-}" ]]; then
     log "vLLM data centers: ${RUNPOD_DATA_CENTER_IDS}"

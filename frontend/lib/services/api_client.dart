@@ -124,6 +124,20 @@ class ApiClient {
     throw Exception('Chat stream ended without a response');
   }
 
+  /// Kick the serverless GPU while the user is still browsing. Failures are
+  /// ignored: a short timeout still queues the worker on RunPod.
+  Future<void> warmupChat() async {
+    try {
+      await _client.post(
+        Uri.parse(_resolveUrl('/api/chat/warmup/')),
+        headers: _headers(json: true),
+        body: '{}',
+      );
+    } catch (_) {
+      // Fire-and-forget.
+    }
+  }
+
   Future<List<String>> translateTexts({
     required List<String> texts,
     required String language,

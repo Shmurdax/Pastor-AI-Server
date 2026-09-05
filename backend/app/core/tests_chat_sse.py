@@ -1,7 +1,14 @@
 import unittest
 from types import SimpleNamespace
 
-from core.chat_sse import chunk_text, iter_chat_tokens, sse_keepalive, sse_pack, wants_chat_stream
+from core.chat_sse import (
+    chunk_text,
+    iter_chat_tokens,
+    iter_with_sse_heartbeats,
+    sse_keepalive,
+    sse_pack,
+    wants_chat_stream,
+)
 
 
 class ChatSseTests(unittest.TestCase):
@@ -31,6 +38,17 @@ class ChatSseTests(unittest.TestCase):
             ]
         )
         self.assertEqual(list(iter_chat_tokens(bound, [])), ["Faith ", "grows"])
+
+    def test_heartbeats_while_producer_blocks(self):
+        import time
+
+        def producer():
+            time.sleep(0.22)
+            yield sse_pack({"type": "delta", "text": "Hi"})
+
+        chunks = list(iter_with_sse_heartbeats(producer, interval_s=0.05))
+        self.assertTrue(any(item == sse_keepalive() for item in chunks))
+        self.assertEqual(chunks[-1], sse_pack({"type": "delta", "text": "Hi"}))
 
 
 if __name__ == "__main__":

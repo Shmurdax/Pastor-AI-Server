@@ -114,6 +114,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("fit_chat_budget", source)
         self.assertIn("llm = get_chat_llm(", source)
         self.assertIn("sse_keepalive()", source)
+        self.assertIn("iter_with_sse_heartbeats", source)
+        self.assertIn("ChatWarmupAPIView", source)
         self.assertNotIn("from langchain_openai import ChatOpenAI", source)
         self.assertNotIn('api_key="not-needed"', source)
         self.assertNotIn("api_key='not-needed'", source)

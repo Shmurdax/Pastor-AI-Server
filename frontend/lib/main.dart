@@ -233,6 +233,7 @@ final bibleRefRegex = RegExp(
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      unawaited(_apiService.warmupChat());
       await _syncAuthState();
       await _handleBillingReturn();
       if (!mounted) return;

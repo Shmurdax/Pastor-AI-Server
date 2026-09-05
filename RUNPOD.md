@@ -134,10 +134,17 @@ IDs for `tokens.env`:
 ```bash
 export RUNPOD_API_KEY=rpa_...
 export HF_TOKEN=hf_...
-# Optional: reuse a network volume so 14B weights are not re-downloaded
+# Dedicated serverless-region volume (not the CPU pod's US-NE-1 volume)
 # export RUNPOD_NETWORK_VOLUME_ID=your_volume_id
+# export RUNPOD_DATA_CENTER_IDS=US-KS-2
 
 bash serverless/create_runpod_endpoints.sh --write-tokens
+```
+
+To tune an **existing** chat endpoint (idle 15 min, cache dirs, volume):
+
+```bash
+bash serverless/apply_vllm_coldstart.sh
 ```
 
 `--write-tokens` upserts into `tokens.env`:
@@ -169,10 +176,11 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 **Chat (endpoint A)**
 
 1. Open [worker-vllm Hub](https://console.runpod.io/hub/runpod-workers/worker-vllm) → **Deploy**.
-2. GPU: **48GB Ampere/Ada** (A40 / A6000 / L40S / 6000 Ada). Active workers `0`, max workers `1`, idle timeout `180` seconds, execution timeout `600` seconds, **FlashBoot** on. Exclude Blackwell MIG 2g.48gb from `ADA_48_PRO`.
+2. GPU: **48GB Ampere/Ada** (A40 / A6000 / L40S / 6000 Ada). Active workers `0`, max workers `1`, idle timeout `900` seconds, execution timeout `600` seconds, **FlashBoot** on, scaler delay `1` second. Exclude Blackwell MIG 2g.48gb from `ADA_48_PRO`.
 3. Paste env from [`serverless/vllm.env.example`](serverless/vllm.env.example).
    Set `HF_TOKEN` to a token that can read the private Christian LoRA.
-4. Attach a network volume at `/runpod-volume` if you have one.
+   Set the endpoint **Model** field to `Qwen/Qwen2.5-14B-Instruct-AWQ` so RunPod can cache the base weights.
+4. Attach a **serverless-region** network volume at `/runpod-volume` (US-KS-2 / US-GA-1 / US-NC-1 / EU-RO-1 — **not US-NE-1**, which is CPU-pod-only). Point `DOWNLOAD_DIR` and `HF_HOME` at `/runpod-volume/huggingface-cache`.
 5. Copy the **endpoint ID** (the serverless id, not a GPU pod id).
 
 **Whisper (endpoint B)**
@@ -206,7 +214,10 @@ RunPod GraphQL `myself { pods { machine { podHostId } } }` query and use that.
 
 Serverless GPU endpoints (`pastor-ai-chat-vllm`, `pastor-ai-whisper`) keep
 `workersMin = 0`, so they bill only while a request is running (plus idle
-timeout), not 24/7.
+timeout), not 24/7. Chat cold starts are shortened by a 15-minute idle
+timeout, `scalerValue=1`, a dedicated serverless network volume, RunPod
+cached `MODEL_NAME`, homepage `/api/chat/warmup/`, and SSE keepalives.
+Whisper stays `workersMin = 0`.
 
 ## CPU web pod + serverless vLLM
 
@@ -274,13 +285,28 @@ chunks and stitches timestamps.
 
 A always-on GPU pod bills even at 3am. Serverless with `active workers = 0`
 only bills while a worker is up, including model load. First chat after the
-idle timeout can take **1–3 minutes** (cold start). Consecutive messages
-inside the idle window are fast. If overnight silence is fine but daytime
-chat must be instant, set **active workers = 1** (that is close to GPU-pod
-pricing) or a longer idle timeout.
+idle timeout can still take **1–3 minutes** if weights are not cached.
+
+Keep `workersMin = 0` unless you explicitly want a 24/7 GPU bill. Speed the
+first request instead:
+
+1. **Warmup** — opening the homepage POSTs `/api/chat/warmup/`, which GETs
+   `{vLLM}/models` so RunPod starts a worker while the user types.
+2. **Idle timeout 15 minutes** (`idleTimeout=900`) so a second visit after a
+   short gap reuses the same worker.
+3. **`scalerValue=1`** so scale-up waits 1 second, not 4.
+4. **RunPod cached model** `Qwen/Qwen2.5-14B-Instruct-AWQ` plus a dedicated
+   serverless network volume for HF weights, LoRA, and `VLLM_CACHE_ROOT`.
+   Do not attach CPU volume `int0elzo4l` (US-NE-1 is not a serverless DC).
+5. **SSE keepalives** every 8 seconds so Cloudflare does not drop the stream
+   during MiniLM + GPU boot.
+
+Whisper can remain at 0. Setting `workersMin = 1` is the instant-chat option
+and costs roughly a dedicated 48GB GPU around the clock.
 
 Streaming still works: LangChain `ChatOpenAI.stream` hits the worker's
-OpenAI SSE path (`RAW_OPENAI_OUTPUT=1`).
+OpenAI SSE path (`RAW_OPENAI_OUTPUT=1`). Django also sends SSE keepalives
+every few seconds while waiting so Cloudflare does not drop the stream.
 
 ## Skip ingest (faster install)
 

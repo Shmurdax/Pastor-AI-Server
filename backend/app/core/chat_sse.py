@@ -1,6 +1,8 @@
 """Server-sent event helpers for streaming chat tokens."""
 
 import json
+import queue
+import threading
 
 
 def wants_chat_stream(stream_flag, accept_header: str = "") -> bool:
@@ -16,6 +18,56 @@ def sse_pack(payload: dict) -> str:
 def sse_keepalive() -> str:
     """Comment ping so proxies flush headers before retrieval/generation."""
     return ": keepalive\n\n"
+
+
+def iter_with_sse_heartbeats(producer, interval_s: float = 8.0):
+    """Yield producer chunks, inserting SSE comments while it is blocked.
+
+    Cloudflare and browsers drop chat if Django goes silent during a GPU cold
+    start or MiniLM load. Keepalives keep the stream alive until tokens arrive.
+    """
+    items = queue.Queue()
+    done = object()
+
+    def run():
+        try:
+            try:
+                from django.db import close_old_connections
+
+                close_old_connections()
+            except Exception:
+                pass
+            try:
+                for item in producer():
+                    items.put(("ok", item))
+            except Exception as exc:
+                items.put(("err", exc))
+            else:
+                items.put(("ok", done))
+        finally:
+            try:
+                from django.db import close_old_connections
+
+                close_old_connections()
+            except Exception:
+                pass
+
+    thread = threading.Thread(target=run, name="chat-sse-work", daemon=True)
+    thread.start()
+    timeout = max(0.05, float(interval_s))
+    while True:
+        try:
+            kind, payload = items.get(timeout=timeout)
+        except queue.Empty:
+            yield sse_keepalive()
+            continue
+        if kind == "err":
+            thread.join(timeout=5)
+            raise payload
+        if payload is done:
+            thread.join(timeout=5)
+            return
+        yield payload
 
 
 def chunk_text(chunk) -> str:

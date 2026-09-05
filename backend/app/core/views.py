@@ -28,7 +28,7 @@ from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import fit_chat_budget, get_chat_llm
-from .chat_sse import iter_chat_tokens, sse_keepalive, sse_pack, wants_chat_stream
+from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
 from .pii_redaction import query_text_for_llm, redact_user_query
@@ -592,38 +592,41 @@ class ChatAPIView(APIView):
             yield from _iter_chat_tokens(prepared["llm"].bind(max_tokens=smaller), trimmed)
 
         if want_stream:
+            def produce_events():
+                yield _sse({"type": "status", "phase": "started"})
+                prepared = prepare_chat()
+                if prepared["kind"] == "final":
+                    yield from _immediate_sse(prepared["payload"])
+                    return
+                assembled = []
+                for text in _generate_tokens(prepared):
+                    assembled.append(text)
+                    yield _sse({"type": "delta", "text": text})
+                answer = "".join(assembled)
+                if not answer.strip():
+                    raise ValueError("No generation chunks were returned")
+                saved_message = _save_ai_response(
+                    regenerate=regenerate,
+                    target_message=prepared["target_message"],
+                    session_id=session_id,
+                    chat_user=chat_user,
+                    user_query_stored=user_query_stored,
+                    answer=answer,
+                )
+                done = {
+                    "type": "done",
+                    "answer": answer,
+                    "sources": _unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                }
+                if saved_message is not None:
+                    done["message_id"] = saved_message.id
+                logger.debug("Chat response generated successfully.")
+                yield _sse(done)
+
             def token_events():
                 yield sse_keepalive()
-                yield _sse({"type": "status", "phase": "started"})
                 try:
-                    prepared = prepare_chat()
-                    if prepared["kind"] == "final":
-                        yield from _immediate_sse(prepared["payload"])
-                        return
-                    assembled = []
-                    for text in _generate_tokens(prepared):
-                        assembled.append(text)
-                        yield _sse({"type": "delta", "text": text})
-                    answer = "".join(assembled)
-                    if not answer.strip():
-                        raise ValueError("No generation chunks were returned")
-                    saved_message = _save_ai_response(
-                        regenerate=regenerate,
-                        target_message=prepared["target_message"],
-                        session_id=session_id,
-                        chat_user=chat_user,
-                        user_query_stored=user_query_stored,
-                        answer=answer,
-                    )
-                    done = {
-                        "type": "done",
-                        "answer": answer,
-                        "sources": _unique_sources(prepared["docs"]) if prepared["docs"] else [],
-                    }
-                    if saved_message is not None:
-                        done["message_id"] = saved_message.id
-                    logger.debug("Chat response generated successfully.")
-                    yield _sse(done)
+                    yield from iter_with_sse_heartbeats(produce_events, interval_s=8.0)
                 except Exception:
                     logger.exception("Error while streaming chat tokens")
                     yield _sse({
@@ -659,6 +662,26 @@ class ChatAPIView(APIView):
             logger.exception("Error in Memory-RAG loop: %s", str(e))
             return Response({"error": "I encountered a processing error while generating this answer. Please retry."},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ChatWarmupAPIView(APIView):
+    """POST/GET /api/chat/warmup/ — start the serverless GPU while the user is still typing."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [AllowAny]
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        return self.post(request)
+
+    def post(self, request):
+        auth_error = _require_api_key(request)
+        if auth_error:
+            return auth_error
+        from .vllm_warmup import warmup_vllm_worker
+
+        payload = warmup_vllm_worker()
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class TranslateAPIView(APIView):

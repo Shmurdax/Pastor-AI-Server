@@ -47,6 +47,23 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         response = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
+    def test_warmup_route_starts_worker_without_running_chat(self):
+        from unittest.mock import patch
+
+        with patch("core.vllm_warmup.warmup_vllm_worker", return_value={
+            "ok": True,
+            "warming": True,
+            "skipped": False,
+        }) as mock_warmup:
+            response = self.client.post(
+                "/api/chat/warmup/",
+                data={},
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["warming"])
+        mock_warmup.assert_called_once()
+
     def test_home_does_not_have_noindex_header(self):
         response = self.client.get("/")
         self.assertNotIn("X-Robots-Tag", response)

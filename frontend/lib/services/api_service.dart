@@ -12,6 +12,8 @@ class ApiService {
 
   void setAccessToken(String? token) => _apiClient.setAccessToken(token);
 
+  Future<void> warmupChat() => _apiClient.warmupChat();
+
   Future<Map<String, dynamic>> sendMessage(
     String query,
     String sessionId, {
