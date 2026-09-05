@@ -169,8 +169,7 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 **Chat (endpoint A)**
 
 1. Open [worker-vllm Hub](https://console.runpod.io/hub/runpod-workers/worker-vllm) → **Deploy**.
-2. GPU: **48GB Ampere/Ada** (A40 / A6000 / L40S / 6000 Ada). Active workers `0`, max workers `1`, idle timeout `180` seconds. Exclude Blackwell MIG 2g.48gb from `ADA_48_PRO`.
-   execution timeout `600` seconds, **FlashBoot** on.
+2. GPU: **48GB Ampere/Ada** (A40 / A6000 / L40S / 6000 Ada). Active workers `0`, max workers `1`, idle timeout `180` seconds, execution timeout `600` seconds, **FlashBoot** on. Exclude Blackwell MIG 2g.48gb from `ADA_48_PRO`.
 3. Paste env from [`serverless/vllm.env.example`](serverless/vllm.env.example).
    Set `HF_TOKEN` to a token that can read the private Christian LoRA.
 4. Attach a network volume at `/runpod-volume` if you have one.
