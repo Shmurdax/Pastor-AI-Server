@@ -108,6 +108,20 @@ def resolve_vllm_model(env: Optional[Mapping[str, str]] = None) -> str:
     return _env_get(env, "VLLM_MODEL", "CHRISTIANAI_SERVED_NAME", default=_DEFAULT_MODEL)
 
 
+def resolve_chat_context_window(env: Optional[Mapping[str, str]] = None) -> int:
+    """Prompt+completion budget. Never larger than the vLLM worker's max length."""
+    if env is None:
+        from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
+
+        load_workspace_env()
+        env = env_with_workspace()
+    window = int(_env_get(env, "CHAT_CONTEXT_WINDOW", default="8192") or "8192")
+    vllm_len = _env_get(env, "VLLM_MAX_MODEL_LEN")
+    if vllm_len.isdigit():
+        window = min(window, int(vllm_len))
+    return max(512, window)
+
+
 def _live_vllm_api_key(fallback: str):
     """Re-read config.env at request time.
 

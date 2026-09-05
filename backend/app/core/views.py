@@ -27,7 +27,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_llm import get_chat_llm
+from .chat_llm import get_chat_llm, resolve_chat_context_window
 from .chat_sse import iter_chat_tokens, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
@@ -45,7 +45,7 @@ RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.7"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "3000"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "8000"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2400"))
-CHAT_CONTEXT_WINDOW = int(os.getenv("CHAT_CONTEXT_WINDOW", "8192"))
+CHAT_CONTEXT_WINDOW = resolve_chat_context_window()
 CHAT_TOKEN_SAFETY = int(os.getenv("CHAT_TOKEN_SAFETY", "96"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(

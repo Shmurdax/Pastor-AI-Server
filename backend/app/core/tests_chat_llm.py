@@ -70,6 +70,28 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertEqual(resolve_vllm_model({}), "christianai")
         self.assertEqual(resolve_vllm_model({"VLLM_MODEL": "christianai"}), "christianai")
 
+    def test_context_window_caps_to_vllm_max_model_len(self):
+        from core.chat_llm import resolve_chat_context_window
+
+        self.assertEqual(resolve_chat_context_window({"CHAT_CONTEXT_WINDOW": "8192"}), 8192)
+        self.assertEqual(
+            resolve_chat_context_window({
+                "CHAT_CONTEXT_WINDOW": "8192",
+                "VLLM_MAX_MODEL_LEN": "4096",
+            }),
+            4096,
+        )
+
+    def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
+        from pathlib import Path
+
+        source = Path(__file__).with_name("views.py").read_text(encoding="utf-8")
+        self.assertIn("from .chat_llm import get_chat_llm", source)
+        self.assertIn("llm = get_chat_llm(", source)
+        self.assertNotIn("from langchain_openai import ChatOpenAI", source)
+        self.assertNotIn('api_key="not-needed"', source)
+        self.assertNotIn("api_key='not-needed'", source)
+
 
 class GetChatLlmTests(unittest.TestCase):
     @patch("langchain_openai.ChatOpenAI")
