@@ -37,6 +37,8 @@ void main() {
       expect(AppStrings(lang.code).serverStartingUp, isNot('serverStartingUp'));
     }
   });
+
+  test('all supported languages have full English key coverage', () {
     final enKeys = AppStrings('en');
     for (final lang in kSupportedAppLanguages) {
       final s = AppStrings(lang.code);
