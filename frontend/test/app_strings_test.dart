@@ -29,7 +29,7 @@ void main() {
   });
 
   test('serverStartingUp is translated for every language', () {
-    expect(AppStrings('en').serverStartingUp, 'The server is starting up…');
+    expect(AppStrings('en').serverStartingUp, 'It may take a few minutes');
     expect(AppStrings('es').serverStartingUp, isNot('serverStartingUp'));
     expect(AppStrings('es').serverStartingUp, isNot(AppStrings('en').serverStartingUp));
     for (final lang in kSupportedAppLanguages) {
