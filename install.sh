@@ -269,6 +269,7 @@ if [[ -f "$REPO_ROOT/seed/ingested_catalog.dump" ]]; then
   cp -a "$REPO_ROOT/seed/ingested_catalog.dump" "$WS/seed/ingested_catalog.dump"
 fi
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
+[[ -f "$REPO_ROOT/clear_qdrant.sh" ]] && cp -a "$REPO_ROOT/clear_qdrant.sh" "$WS/clear_qdrant.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 mkdir -p "$WS/scripts" "$WS/serverless"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
@@ -363,6 +364,9 @@ QDRANT_URL=http://127.0.0.1:${QDRANT_PORT}
 QDRANT_BIN=${QDRANT_BIN}
 QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
+QDRANT_VECTOR_SIZE=768
+EMBEDDING_MODEL_NAME=BAAI/bge-base-en-v1.5
+EMBEDDING_DEVICE=cpu
 INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
 VIDEO_INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_video_ingestion
 WHISPER_MODEL=base

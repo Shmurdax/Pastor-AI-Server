@@ -303,9 +303,11 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
   export DJANGO_ADMIN_URL='${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}' &&
-  # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
+  # BGE embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
+  export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}' &&
+  export QDRANT_VECTOR_SIZE='${QDRANT_VECTOR_SIZE:-768}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
   export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
   export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
@@ -334,7 +336,7 @@ curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJ
 
 # Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
 # On GPU pods Whisper uses leftover MIG VRAM unless a serverless Whisper endpoint
-# is configured. MiniLM embeddings stay on CPU.
+# is configured. BGE embeddings stay on CPU.
 stop_screen video-ingest
 VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES=''"
 if whisper_is_remote; then
@@ -358,6 +360,8 @@ screen -dmS video-ingest bash -c "
   ${VIDEO_ALLOW_GPU}
   ${VIDEO_CUDA_EXPORT}
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
+  export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}'
+  export QDRANT_VECTOR_SIZE='${QDRANT_VECTOR_SIZE:-768}'
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}'
