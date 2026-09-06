@@ -54,4 +54,5 @@ else
   echo "Deleted collection '${QDRANT_COLLECTION}' (HTTP ${code}). It will be recreated empty on next ingest."
 fi
 
-echo "Done. Re-ingest with: bash $WS/ingest_sermons.sh"
+echo "Done. Re-populate via Django admin Document Ingestion (and Video Ingestion if needed)."
+echo "The empty collection is recreated automatically on the next ingest/chat ensure."
