@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -152,10 +153,11 @@ class EmbeddedVideosAdminTests(TestCase):
         self.client.force_login(self.user)
 
     def test_embedded_video_urls_resolve(self):
-        self.assertEqual(reverse("admin:core_embedded_videos"), "/admin/core/embedded-videos/")
+        prefix = f"/{settings.ADMIN_URL_PATH}"
+        self.assertEqual(reverse("admin:core_embedded_videos"), f"{prefix}/core/embedded-videos/")
         self.assertEqual(
             reverse("admin:core_embedded_video_detail", args=["1217796650"]),
-            "/admin/core/embedded-videos/1217796650/",
+            f"{prefix}/core/embedded-videos/1217796650/",
         )
 
     def test_anonymous_user_is_redirected(self):
@@ -264,7 +266,7 @@ class EmbeddedVideosAdminTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_admin_home_card_links_to_embedded_videos(self):
-        response = self.client.get("/admin/")
+        response = self.client.get(f"/{settings.ADMIN_URL_PATH}/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Embedded Videos")
         self.assertContains(response, reverse("admin:core_embedded_videos"))

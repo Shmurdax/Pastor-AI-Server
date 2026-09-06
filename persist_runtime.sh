@@ -40,6 +40,42 @@ PERSIST_BOOT_SCRIPTS=(
   install.sh
 )
 
+# Must match backend/app/pastor_ai/admin_url.py DEFAULT_ADMIN_URL_PATH
+DJANGO_ADMIN_URL_DEFAULT="${DJANGO_ADMIN_URL_DEFAULT:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}"
+
+_clean_django_admin_url() {
+  local v="${1:-}"
+  v="${v#/}"
+  v="${v%/}"
+  printf '%s' "$v" | tr -cd 'A-Za-z0-9'
+}
+
+ensure_django_admin_url() {
+  # Persist a private staff URL (not /admin/) into config.env so it survives restarts.
+  local config="${1:-${CONFIG_ENV:-}}"
+  local current
+  current="$(_clean_django_admin_url "${DJANGO_ADMIN_URL:-}")"
+  if [[ -z "$current" && -n "$config" && -f "$config" ]]; then
+    current="$(_clean_django_admin_url "$(grep '^DJANGO_ADMIN_URL=' "$config" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")")"
+  fi
+  if [[ -z "$current" || "${current,,}" == "admin" ]]; then
+    current="$DJANGO_ADMIN_URL_DEFAULT"
+  fi
+  DJANGO_ADMIN_URL="$current"
+  export DJANGO_ADMIN_URL
+  if [[ -n "$config" && -f "$config" ]]; then
+    if grep -q '^DJANGO_ADMIN_URL=' "$config" 2>/dev/null; then
+      local existing
+      existing="$(_clean_django_admin_url "$(grep '^DJANGO_ADMIN_URL=' "$config" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")")"
+      if [[ -z "$existing" || "${existing,,}" == "admin" ]]; then
+        sed -i "s|^DJANGO_ADMIN_URL=.*|DJANGO_ADMIN_URL=${current}|" "$config"
+      fi
+    else
+      echo "DJANGO_ADMIN_URL=${current}" >> "$config"
+    fi
+  fi
+}
+
 detect_pg_version() {
   ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1
 }

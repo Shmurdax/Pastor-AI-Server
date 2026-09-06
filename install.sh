@@ -332,6 +332,7 @@ DJANGO_CORS_ALLOW_ALL_ORIGINS=true
 DJANGO_SECURE_SSL_REDIRECT=false
 DJANGO_SESSION_COOKIE_SECURE=false
 DJANGO_CSRF_COOKIE_SECURE=false
+DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}
 DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
 DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
 DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@localhost}
@@ -376,6 +377,7 @@ EOF
 else
   log "Keeping existing $CONFIG_ENV"
 fi
+ensure_django_admin_url "$CONFIG_ENV"
 
 # Ensure DB role exists
 set -a
@@ -466,7 +468,7 @@ python manage.py migrate --noinput
 restore_seed_ingested_catalog || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
-log "Django ready (admin login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
+log "Django ready (private admin path: /${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}/  login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
 
 # ---------------------------------------------------------------------------
 # Start services

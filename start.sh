@@ -45,6 +45,11 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 source "$SCRIPT_DIR/persist_runtime.sh"
 restore_workspace_from_persist || true
 ensure_persistent_boot_bundle || true
+ensure_django_admin_url "$CONFIG_ENV"
+# shellcheck disable=SC1090
+set -a
+source "$CONFIG_ENV"
+set +a
 ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
@@ -297,6 +302,7 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
+  export DJANGO_ADMIN_URL='${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}' &&
   # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
@@ -445,6 +451,10 @@ if [[ -f "$WS/public_url.txt" ]]; then
 fi
 echo "Local: http://127.0.0.1:${DJANGO_PORT}"
 echo "RunPod proxy: https://${RUNPOD_POD_ID:-PODID}-${DJANGO_PORT}.proxy.runpod.net"
+if [[ -f "$WS/public_url.txt" ]]; then
+  echo "Admin (private — share only with staff): $(cat "$WS/public_url.txt")/${DJANGO_ADMIN_URL}/"
+fi
+echo "Admin (local, private): http://127.0.0.1:${DJANGO_PORT}/${DJANGO_ADMIN_URL}/"
 echo "Logs: $LOG_DIR/"
 echo ""
 if vllm_use_local_server; then

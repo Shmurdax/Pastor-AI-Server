@@ -17,6 +17,7 @@ from typing import Mapping
 
 _SECRET_KEYS = {
     "DJANGO_SECRET_KEY",
+    "DJANGO_ADMIN_URL",
     "HF_TOKEN",
     "HUGGING_FACE_HUB_TOKEN",
     "POSTGRES_PASSWORD",

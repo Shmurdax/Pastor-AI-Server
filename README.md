@@ -38,12 +38,14 @@ bash /workspace/pastor-ai/start.sh
 
 ## Django admin
 
-Open `/admin/` on the Django host. Default credentials (created automatically by `install.sh` / `start.sh`):
+The staff control panel is **not** at `/admin/` (that path returns 404 so visitors cannot find it). Use the private path stored as `DJANGO_ADMIN_URL` in `config.env`. `start.sh` prints `Admin (private — share only with staff): https://…/<path>/`. Share that URL only with people who should have access.
+
+Default credentials (created automatically by `install.sh` / `start.sh`):
 
 - **Username:** `admin`
 - **Password:** `admin123`
 
-Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed.
+Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed. Change `DJANGO_ADMIN_URL` there if you want a new private path (letters and numerals only, 12+ characters).
 
 **Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
