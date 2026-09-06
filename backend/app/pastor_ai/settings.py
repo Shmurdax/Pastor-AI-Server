@@ -75,7 +75,8 @@ ROOT_URLCONF = 'pastor_ai.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # DIRS wins over django.contrib.admin so we can restyle the staff panel for phones.
+        'DIRS': [BASE_DIR / 'core' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

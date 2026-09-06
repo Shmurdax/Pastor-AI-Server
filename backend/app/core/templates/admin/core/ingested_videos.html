@@ -1,20 +1,20 @@
 {% extends "admin/base_site.html" %}
 
 {% block content %}
-<div style="max-width: 900px;">
+<div style="max-width: 900px; overflow-x: auto;">
   <h1>Ingested Videos</h1>
   <p>Browse original video and audio files stored for Whisper transcription. On RunPod these files live on the persistent volume so they survive pod restarts and remigrations. Timestamped transcripts are saved as <code>.transcript.json</code> sidecars next to each file.</p>
   <p>
     <a href="{% url 'admin:core_video_ingestion' %}">Back to video ingestion panel</a>
   </p>
 
-  <form method="get" style="margin-top: 14px; margin-bottom: 14px;">
+  <form method="get" class="pastor-admin-search" style="margin-top: 14px; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
     <input
       type="text"
       name="q"
       value="{{ search_term }}"
       placeholder="Search by filename..."
-      style="min-width: 280px;"
+      style="flex: 1 1 12rem; min-width: 0; width: 100%; max-width: 100%; font-size: 16px; box-sizing: border-box;"
     />
     <label for="page-size-select" style="margin-left: 8px;">Page size:</label>
     <select id="page-size-select" name="page_size" onchange="this.form.submit()">

@@ -1,0 +1,160 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style id="pastor-admin-mobile">
+  html, body {
+    overflow-x: hidden;
+  }
+  #container {
+    max-width: 100%;
+  }
+  input, select, textarea, button {
+    font-size: 16px;
+    max-width: 100%;
+  }
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="url"],
+  input[type="number"],
+  input[type="search"],
+  select,
+  textarea {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  button,
+  input[type="submit"],
+  .button,
+  a.button,
+  .submit-row input {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+  .results,
+  #changelist-form,
+  .change-list .results,
+  table {
+    max-width: 100%;
+  }
+  .results {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.login #container,
+  body.login #content,
+  body.login #content-main,
+  body.login #login-form {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  body.login #header {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  body.login .form-row input {
+    width: 100%;
+  }
+
+  @media (max-width: 767px) {
+    #header {
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 12px;
+      padding-top: max(10px, env(safe-area-inset-top));
+    }
+    #branding,
+    #user-tools {
+      float: none;
+      width: 100%;
+      text-align: left;
+      white-space: normal;
+    }
+    #user-tools {
+      padding: 4px 0 0;
+      font-size: 13px;
+    }
+    .main {
+      flex-direction: column;
+    }
+    #nav-sidebar {
+      position: static;
+      width: 100%;
+      max-height: none;
+    }
+    #content,
+    .colMS,
+    .colM {
+      width: 100% !important;
+      max-width: 100%;
+      margin: 0;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    .object-tools {
+      float: none;
+      margin: 0 0 12px;
+    }
+    .object-tools li {
+      height: auto;
+    }
+    .object-tools a {
+      display: inline-block;
+      padding: 10px 14px;
+    }
+    .submit-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .aligned label {
+      display: block;
+      width: 100%;
+      padding: 0 0 6px;
+    }
+    .form-row {
+      overflow: visible;
+    }
+    .ingestion-page,
+    .embedded-videos-wrap,
+    .embedded-detail-wrap {
+      max-width: 100%;
+    }
+    .ingestion-dropzone {
+      padding: 16px 12px;
+    }
+    .ingestion-dropzone button {
+      width: 100%;
+      margin: 6px 0;
+    }
+    .embedded-player-frame {
+      height: calc((100vw - 24px) * 9 / 16);
+      min-height: 180px;
+    }
+    .embedded-transcript {
+      max-height: 45vh;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block responsive %}
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <link rel="stylesheet" href="{% static "admin/css/responsive.css" %}">
+    {% if LANGUAGE_BIDI %}<link rel="stylesheet" href="{% static "admin/css/responsive_rtl.css" %}">{% endif %}
+{% endblock %}

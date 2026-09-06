@@ -26,6 +26,20 @@
     font-size: 12px;
     opacity: 0.8;
   }
+  .embedded-video-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (max-width: 767px) {
+    .embedded-videos-wrap {
+      max-width: 100%;
+    }
+    .embedded-video-table th,
+    .embedded-video-table td {
+      white-space: nowrap;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -37,6 +51,7 @@
     the matching ingested audio file. Click a row to open the video and transcript together.
   </p>
 
+  <div class="embedded-video-table-wrap">
   <table class="embedded-video-table">
     <thead>
       <tr>
@@ -86,5 +101,6 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endblock %}

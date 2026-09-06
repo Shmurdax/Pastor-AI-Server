@@ -220,6 +220,32 @@
   .pastor-advanced {
     max-width: 100%;
   }
+
+  @media (max-width: 767px) {
+    .pastor-home {
+      max-width: 100%;
+    }
+    .pastor-tools-grid {
+      grid-template-columns: 1fr;
+      padding: 0 12px 12px;
+      gap: 10px;
+    }
+    .pastor-tool-card {
+      min-height: 0;
+    }
+    .pastor-link-row {
+      flex-direction: column;
+      gap: 10px;
+    }
+    .pastor-link-row a {
+      display: block;
+      padding: 10px 0;
+    }
+    .pastor-advanced-list li {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
 </style>
 {% endblock %}
 

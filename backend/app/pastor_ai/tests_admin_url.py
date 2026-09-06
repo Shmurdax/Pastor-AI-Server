@@ -55,10 +55,16 @@ class AdminUrlRoutingTests(TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 404)
 
-    def test_secret_admin_login_is_reachable(self):
-        response = self.client.get(f"/{settings.ADMIN_URL_PATH}/login/", follow=False)
-        self.assertIn(response.status_code, (200, 302))
-        self.assertNotEqual(response.status_code, 404)
+    def test_secret_admin_login_is_mobile_friendly(self):
+        response = self.client.get(f"/{settings.ADMIN_URL_PATH}/login/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="viewport"')
+        self.assertContains(response, "viewport-fit=cover")
+        self.assertContains(response, "pastor-admin-mobile")
+        self.assertContains(response, "font-size: 16px")
+        self.assertContains(response, "min-height: 44px")
+        self.assertNotContains(response, "user-scalable=no")
+        self.assertNotContains(response, "flutter_application_1")
 
     def test_secret_admin_home_requires_staff(self):
         response = self.client.get(f"/{settings.ADMIN_URL_PATH}/")
