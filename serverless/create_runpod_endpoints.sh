@@ -23,6 +23,7 @@ WRITE_TOKENS=0
 LIST_ONLY=0
 CREATE_VLLM=1
 CREATE_WHISPER=1
+ATTACH_VOLUME=0
 PAYLOAD_DIR=""
 TOKENS_FILE="${TOKENS_FILE:-$ROOT/tokens.env}"
 
@@ -46,8 +47,8 @@ REST_V2="${RUNPOD_REST_V2_URL:-https://api.runpod.io/v2}"
 VLLM_WORKERS_MIN="${VLLM_WORKERS_MIN:-0}"
 VLLM_WORKERS_MAX="${VLLM_WORKERS_MAX:-1}"
 # Keep workersMin=0 unless you explicitly want a 24/7 billed GPU. Cold starts
-# are shortened by: 15-minute idle timeout, scalerValue=1, a serverless
-# network volume, RunPod cached MODEL_NAME, and Django /api/chat/warmup/.
+# are shortened by: 15-minute idle timeout, scalerValue=1, RunPod host-cached
+# MODEL_NAME (no user network volume), ENFORCE_EAGER, and Django /api/chat/warmup/.
 VLLM_IDLE_TIMEOUT="${VLLM_IDLE_TIMEOUT:-900}"
 VLLM_SCALER_VALUE="${VLLM_SCALER_VALUE:-1}"
 VLLM_EXECUTION_TIMEOUT_MS="${VLLM_EXECUTION_TIMEOUT_MS:-600000}"
@@ -81,6 +82,7 @@ Options:
   --vllm-only         Create only the chat vLLM endpoint
   --whisper-only      Create only the Faster-Whisper endpoint
   --payload-dir DIR   Write JSON payloads (and result snippet) to DIR
+  --attach-volume     Pin a user network volume (slower: one DC + THROTTLED 48GB GPUs)
   -h, --help          Show this help
 
 Required for a real create:
@@ -89,11 +91,13 @@ Required for a real create:
                       (vLLM worker only; not needed for Whisper)
 
 Optional:
-  RUNPOD_NETWORK_VOLUME_ID   Attach a network volume at /runpod-volume (recommended
-                             for vLLM so 14B weights survive scale-to-zero).
+  RUNPOD_NETWORK_VOLUME_ID   Only used with --attach-volume. A user volume pins
+                             the worker to one DC and often leaves 48GB GPUs
+                             THROTTLED. Default is host-cached MODEL_NAME.
                              Must live in a serverless DC (US-KS-2, US-GA-1,
                              US-NC-1, EU-RO-1 — not the CPU pod's US-NE-1).
   RUNPOD_DATA_CENTER_IDS     Pin the vLLM endpoint to that volume's region
+                             (only with --attach-volume)
   VLLM_IDLE_TIMEOUT          Seconds a worker stays up after the last request
                              (default 900)
   VLLM_SCALER_VALUE          QUEUE_DELAY seconds before scale-up (default 1)
@@ -413,6 +417,7 @@ while [[ $# -gt 0 ]]; do
     --list) LIST_ONLY=1; shift ;;
     --vllm-only) CREATE_WHISPER=0; shift ;;
     --whisper-only) CREATE_VLLM=0; shift ;;
+    --attach-volume) ATTACH_VOLUME=1; shift ;;
     --payload-dir)
       PAYLOAD_DIR="${2:-}"
       [[ -n "$PAYLOAD_DIR" ]] || die "--payload-dir needs a directory"
@@ -454,21 +459,30 @@ if [[ "$DRY_RUN" != 1 ]]; then
     || die "RUNPOD_API_KEY is required (https://www.runpod.io/console/user/settings)"
 fi
 
-if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" ]]; then
-  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
-  export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
-  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/runpod-volume/vllm_cache}"
-  log "Will attach network volume ${RUNPOD_NETWORK_VOLUME_ID} to the vLLM worker at /runpod-volume"
-  if [[ -n "${RUNPOD_DATA_CENTER_IDS:-}" ]]; then
-    log "vLLM data centers: ${RUNPOD_DATA_CENTER_IDS}"
+export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
+export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
+export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/runpod-volume/vllm_cache}"
+
+VLLM_VOLUME_ID=""
+VLLM_DATA_CENTER_IDS=""
+if [[ "$ATTACH_VOLUME" == 1 ]]; then
+  VLLM_VOLUME_ID="${RUNPOD_NETWORK_VOLUME_ID:-}"
+  VLLM_DATA_CENTER_IDS="${RUNPOD_DATA_CENTER_IDS:-}"
+  [[ -n "$VLLM_VOLUME_ID" ]] || die "--attach-volume requires RUNPOD_NETWORK_VOLUME_ID"
+  if [[ ",${VLLM_DATA_CENTER_IDS}," == *",US-NE-1,"* ]]; then
+    die "US-NE-1 is the CPU-pod data center and cannot host serverless vLLM"
+  fi
+  log "Will attach network volume ${VLLM_VOLUME_ID} to the vLLM worker (opt-in; pins one DC)"
+  if [[ -n "$VLLM_DATA_CENTER_IDS" ]]; then
+    log "vLLM data centers: ${VLLM_DATA_CENTER_IDS}"
   else
     warn "Set RUNPOD_DATA_CENTER_IDS to the volume's region (must be a serverless DC; US-NE-1 is not)."
   fi
 else
-  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
-  export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
-  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/runpod-volume/vllm_cache}"
-  warn "No user network volume — vLLM uses RunPod host-cached MODEL_NAME. A user volume pins one DC and often throttles 48GB GPUs."
+  if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" ]]; then
+    warn "Ignoring RUNPOD_NETWORK_VOLUME_ID unless you pass --attach-volume (that pin throttles 48GB GPUs)."
+  fi
+  log "Leaving user network volumes detached so workers can use host-cached MODEL_NAME in any DC"
 fi
 
 VLLM_TEMPLATE_JSON=""
@@ -506,7 +520,7 @@ if [[ "$DRY_RUN" == 1 ]]; then
       "$VLLM_ENDPOINT_NAME" "$VLLM_TEMPLATE_ID" "$VLLM_GPU_TYPE_IDS" \
       "$VLLM_WORKERS_MIN" "$VLLM_WORKERS_MAX" \
       "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS" \
-      "${RUNPOD_NETWORK_VOLUME_ID:-}" "${RUNPOD_DATA_CENTER_IDS:-}")"
+      "${VLLM_VOLUME_ID}" "${VLLM_DATA_CENTER_IDS}")"
     write_payload vllm_endpoint "$VLLM_ENDPOINT_JSON"
     print_payload "vLLM endpoint" "$VLLM_ENDPOINT_JSON"
     write_payload vllm_gpu_patch "$(vllm_gpu_patch_json)"
@@ -544,7 +558,7 @@ if [[ "$CREATE_VLLM" == 1 ]]; then
     "$VLLM_ENDPOINT_NAME" "$VLLM_TEMPLATE_ID" "$VLLM_GPU_TYPE_IDS" \
     "$VLLM_WORKERS_MIN" "$VLLM_WORKERS_MAX" \
     "$VLLM_IDLE_TIMEOUT" "$VLLM_EXECUTION_TIMEOUT_MS" \
-    "${RUNPOD_NETWORK_VOLUME_ID:-}" "${RUNPOD_DATA_CENTER_IDS:-}")"
+    "${VLLM_VOLUME_ID}" "${VLLM_DATA_CENTER_IDS}")"
   write_payload vllm_endpoint "$VLLM_ENDPOINT_JSON"
   print_payload "vLLM endpoint request" "$VLLM_ENDPOINT_JSON"
   log "Creating vLLM serverless endpoint"

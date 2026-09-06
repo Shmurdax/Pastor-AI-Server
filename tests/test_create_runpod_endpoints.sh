@@ -48,8 +48,11 @@ lora = json.loads(env["LORA_MODULES"])
 assert isinstance(lora, dict), env["LORA_MODULES"]
 assert lora["name"] == "christianai"
 assert env["RAW_OPENAI_OUTPUT"] == "1"
-assert env["DOWNLOAD_DIR"] == "/models"
-assert env["HF_HOME"] == "/models"
+assert env["DOWNLOAD_DIR"] == "/runpod-volume/huggingface-cache"
+assert env["HF_HOME"] == "/runpod-volume/huggingface-cache"
+assert env["ENFORCE_EAGER"] == "true"
+assert "networkVolumeId" not in vllm_e
+assert "dataCenterIds" not in vllm_e
 
 assert vllm_e["computeType"] == "GPU"
 assert vllm_e["workersMin"] == 0
@@ -100,23 +103,42 @@ bash "$SCRIPT" --dry-run --whisper-only --payload-dir "$DIR3" >/dev/null
 [[ -f "$DIR3/whisper_template.json" ]] || fail "whisper-only missing whisper template"
 [[ ! -f "$DIR3/vllm_template.json" ]] || fail "whisper-only must not write vllm template"
 
-# Network volume is attached to vLLM only (Whisper does not need the 14B cache).
+# Env volume IDs are ignored unless --attach-volume is passed (that pin throttles).
 DIR4="$(mktemp -d)"
-RUNPOD_NETWORK_VOLUME_ID=volabc RUNPOD_DATA_CENTER_IDS=US-NE-1 \
+RUNPOD_NETWORK_VOLUME_ID=volabc RUNPOD_DATA_CENTER_IDS=US-KS-2 \
   bash "$SCRIPT" --dry-run --payload-dir "$DIR4" >/dev/null
-python3 - "$DIR4" <<'PY' || fail "network volume not attached to vLLM only"
+python3 - "$DIR4" <<'PY' || fail "volume env without --attach-volume still attached"
+import json, pathlib, sys
+d = pathlib.Path(sys.argv[1])
+vllm = json.loads((d / "vllm_endpoint.json").read_text())
+assert "networkVolumeId" not in vllm, vllm
+assert "dataCenterIds" not in vllm, vllm
+print("volume ignored without flag ok")
+PY
+
+# Opt-in attach pins vLLM only (Whisper does not need the 14B cache).
+DIR5="$(mktemp -d)"
+RUNPOD_NETWORK_VOLUME_ID=volabc RUNPOD_DATA_CENTER_IDS=US-KS-2 \
+  bash "$SCRIPT" --dry-run --attach-volume --payload-dir "$DIR5" >/dev/null
+python3 - "$DIR5" <<'PY' || fail "network volume not attached to vLLM only"
 import json, pathlib, sys
 d = pathlib.Path(sys.argv[1])
 vllm = json.loads((d / "vllm_endpoint.json").read_text())
 wh = json.loads((d / "whisper_endpoint.json").read_text())
 assert vllm.get("networkVolumeId") == "volabc", vllm
-assert vllm.get("dataCenterIds") == ["US-NE-1"], vllm
+assert vllm.get("dataCenterIds") == ["US-KS-2"], vllm
 vllm_t = json.loads((d / "vllm_template.json").read_text())
 assert vllm_t["env"]["DOWNLOAD_DIR"] == "/runpod-volume/huggingface-cache"
 assert "networkVolumeId" not in wh, wh
 assert "dataCenterIds" not in wh, wh
 print("volume attach ok")
 PY
+
+if RUNPOD_NETWORK_VOLUME_ID=volabc RUNPOD_DATA_CENTER_IDS=US-NE-1 \
+  bash "$SCRIPT" --dry-run --attach-volume --payload-dir "$DIR" >/dev/null 2>"$DIR/ne1.err"; then
+  fail "attaching a US-NE-1 volume should fail"
+fi
+grep -q "US-NE-1" "$DIR/ne1.err" || fail "missing US-NE-1 refusal"
 
 # Real create without a key must fail (do not load workspace tokens.env).
 if HF_TOKEN=hf_test_token \
