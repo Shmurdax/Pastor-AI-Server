@@ -76,6 +76,7 @@ class AppStrings {
   String signedInAs(String name) => _t('signedInAs').replaceAll('{name}', name);
   String get signedOut => _t('signedOut');
   String get translatingReplies => _t('translatingReplies');
+  String get serverStartingUp => _t('serverStartingUp');
 
   String _t(String key) {
     final table = _tables[languageCode] ?? _tables['en']!;
@@ -156,6 +157,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Signed in as {name}',
     'signedOut': 'Signed out',
     'translatingReplies': 'Updating replies to the selected language…',
+    'serverStartingUp': 'The server is starting up…',
   },
   'es': {
     'home': 'Inicio',
@@ -231,6 +233,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Sesión iniciada como {name}',
     'signedOut': 'Sesión cerrada',
     'translatingReplies': 'Actualizando respuestas al idioma seleccionado…',
+    'serverStartingUp': 'El servidor se está iniciando…',
   },
   'fr': {
     'home': 'Accueil',
@@ -306,6 +309,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Connecté en tant que {name}',
     'signedOut': 'Déconnecté',
     'translatingReplies': 'Mise à jour des réponses vers la langue choisie…',
+    'serverStartingUp': 'Le serveur est en cours de démarrage…',
   },
   'pt': {
     'home': 'Início',
@@ -381,6 +385,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Conectado como {name}',
     'signedOut': 'Sessão encerrada',
     'translatingReplies': 'Atualizando respostas para o idioma selecionado…',
+    'serverStartingUp': 'O servidor está iniciando…',
   },
   'de': {
     'home': 'Startseite',
@@ -456,6 +461,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Angemeldet als {name}',
     'signedOut': 'Abgemeldet',
     'translatingReplies': 'Antworten werden in die gewählte Sprache aktualisiert…',
+    'serverStartingUp': 'Der Server wird gestartet…',
   },
   'ko': {
     'home': '홈',
@@ -522,6 +528,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': '{name}(으)로 로그인됨',
     'signedOut': '로그아웃됨',
     'translatingReplies': '선택한 언어로 답변을 업데이트하는 중…',
+    'serverStartingUp': '서버를 시작하는 중…',
   },
   'zh': {
     'home': '首页',
@@ -588,5 +595,6 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': '已以 {name} 登录',
     'signedOut': '已退出登录',
     'translatingReplies': '正在将回复更新为所选语言…',
+    'serverStartingUp': '服务器正在启动…',
   },
 };

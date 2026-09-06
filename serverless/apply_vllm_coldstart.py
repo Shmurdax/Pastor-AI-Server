@@ -5,13 +5,16 @@ Does not set workersMin=1 (that bills a 48GB GPU 24/7). Instead:
 
   * idleTimeout=900 (15 minutes)
   * scalerValue=1
-  * dedicated serverless network volume + DOWNLOAD_DIR/HF_HOME/VLLM_CACHE_ROOT
-  * dataCenterIds pinned to that volume (never the CPU pod's US-NE-1)
-  * GraphQL Model field for RunPod cached Qwen 14B AWQ, when the API allows it
+  * MODEL_NAME for RunPod host-side cached Qwen 14B AWQ
+  * DOWNLOAD_DIR/HF_HOME on the host cache mount (/runpod-volume/huggingface-cache)
+  * ENFORCE_EAGER so vLLM skips CUDA-graph capture on boot
+  * No user network volume by default — attaching one pins the endpoint to a
+    single DC, shadows the host cache, and workers sit THROTTLED for minutes
 
 Usage:
   python3 serverless/apply_vllm_coldstart.py --dry-run
   python3 serverless/apply_vllm_coldstart.py
+  python3 serverless/apply_vllm_coldstart.py --attach-volume   # opt-in, slower
 
 Reads RUNPOD_API_KEY and endpoint/template IDs from the environment or tokens.env.
 Never prints secret values.
@@ -105,9 +108,14 @@ def env_as_dict(raw: Any) -> dict[str, str]:
 def merge_vllm_env(existing: dict[str, str]) -> dict[str, str]:
     merged = dict(existing)
     merged["MODEL_NAME"] = merged.get("MODEL_NAME") or MODEL_NAME
+    # Host-side RunPod cached models mount here when no user volume is attached.
     merged["DOWNLOAD_DIR"] = HF_CACHE
     merged["HF_HOME"] = HF_CACHE
     merged["VLLM_CACHE_ROOT"] = VLLM_CACHE
+    # Skip CUDA-graph capture on cold start (large share of vLLM boot time).
+    merged["ENFORCE_EAGER"] = merged.get("ENFORCE_EAGER") or "true"
+    merged["DISABLE_LOG_STATS"] = merged.get("DISABLE_LOG_STATS") or "1"
+    merged["DISABLE_LOG_REQUESTS"] = merged.get("DISABLE_LOG_REQUESTS") or "1"
     return merged
 
 
@@ -201,6 +209,11 @@ def main() -> int:
     parser.add_argument("--template-id", default=os.environ.get("RUNPOD_VLLM_TEMPLATE_ID", TEMPLATE_ID_DEFAULT))
     parser.add_argument("--volume-id", default=os.environ.get("RUNPOD_NETWORK_VOLUME_ID", ""))
     parser.add_argument("--data-center", default=os.environ.get("RUNPOD_DATA_CENTER_IDS", "").split(",")[0].strip())
+    parser.add_argument(
+        "--attach-volume",
+        action="store_true",
+        help="Pin a user network volume (slower: one DC + shadows host model cache)",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent.parent
@@ -225,30 +238,40 @@ def main() -> int:
     if cpu_volume:
         log("CPU volume int0elzo4l is present and will not be attached to serverless")
 
-    volume = pick_volume(volumes, args.volume_id.strip(), requested_dc)
-    if volume and str(volume.get("dataCenterId") or "") in FORBIDDEN_DCS:
-        die("Refusing to attach a US-NE-1 / CPU-pod volume to serverless vLLM")
-    if volume is None:
-        volume = create_volume(requested_dc or CANDIDATE_DCS[0], args.dry_run)
-    volume_id = str(volume.get("id") or "")
-    data_center = str(volume.get("dataCenterId") or requested_dc or "")
-    log(f"Using volume {volume_id} in {data_center} ({volume.get('name')}, {volume.get('size')}GB)")
+    volume_id = ""
+    data_center = ""
+    if args.attach_volume:
+        volume = pick_volume(volumes, args.volume_id.strip(), requested_dc)
+        if volume and str(volume.get("dataCenterId") or "") in FORBIDDEN_DCS:
+            die("Refusing to attach a US-NE-1 / CPU-pod volume to serverless vLLM")
+        if volume is None:
+            volume = create_volume(requested_dc or CANDIDATE_DCS[0], args.dry_run)
+        volume_id = str(volume.get("id") or "")
+        data_center = str(volume.get("dataCenterId") or requested_dc or "")
+        log(f"Using volume {volume_id} in {data_center} ({volume.get('name')}, {volume.get('size')}GB)")
+    else:
+        log("Leaving user network volumes detached so workers can use host-cached MODEL_NAME in any DC")
 
     existing_env = env_as_dict(template.get("env"))
     new_env = merge_vllm_env(existing_env)
     log("Template env keys after merge: " + ", ".join(sorted(new_env)))
-    print(json.dumps(redact({"DOWNLOAD_DIR": new_env.get("DOWNLOAD_DIR"), "HF_HOME": new_env.get("HF_HOME"), "VLLM_CACHE_ROOT": new_env.get("VLLM_CACHE_ROOT"), "MODEL_NAME": new_env.get("MODEL_NAME")}), indent=2))
+    print(json.dumps(redact({"DOWNLOAD_DIR": new_env.get("DOWNLOAD_DIR"), "HF_HOME": new_env.get("HF_HOME"), "VLLM_CACHE_ROOT": new_env.get("VLLM_CACHE_ROOT"), "MODEL_NAME": new_env.get("MODEL_NAME"), "ENFORCE_EAGER": new_env.get("ENFORCE_EAGER")}), indent=2))
 
     endpoint_patch = {
         "idleTimeout": IDLE_TIMEOUT,
         "scalerType": "QUEUE_DELAY",
         "scalerValue": SCALER_VALUE,
         "flashboot": True,
-        "networkVolumeId": volume_id,
-        "dataCenterIds": [data_center] if data_center else [],
         "workersMin": int(endpoint.get("workersMin") or 0),
         "workersMax": int(endpoint.get("workersMax") or 1),
     }
+    if volume_id:
+        endpoint_patch["networkVolumeId"] = volume_id
+        if data_center:
+            endpoint_patch["dataCenterIds"] = [data_center]
+    else:
+        endpoint_patch["networkVolumeId"] = ""
+        endpoint_patch["dataCenterIds"] = []
     if endpoint_patch["workersMin"] != 0:
         warn(f"Leaving workersMin={endpoint_patch['workersMin']} unchanged (not forcing 1)")
     log("Endpoint patch (redacted):")
@@ -261,13 +284,17 @@ def main() -> int:
     rest("PATCH", f"/templates/{template_id}", {"env": new_env})
     log("Patched vLLM template env (full merge, secrets preserved)")
     rest("PATCH", f"/endpoints/{endpoint_id}", endpoint_patch)
-    log("Patched vLLM endpoint idleTimeout/scaler/volume")
-    if data_center:
-        try:
-            request("PATCH", f"{REST_V2}/serverless/{endpoint_id}", {"dataCenterIds": [data_center]})
-            log(f"Pinned v2 dataCenterIds to {data_center}")
-        except Exception as exc:
-            warn(f"v2 data-center pin skipped: {exc}")
+    log("Patched vLLM endpoint idleTimeout/scaler")
+    v2_body = {
+        "networkVolumes": [volume_id] if volume_id else [],
+        "dataCenterIds": [data_center] if data_center else [],
+        "env": new_env,
+    }
+    try:
+        request("PATCH", f"{REST_V2}/serverless/{endpoint_id}", v2_body)
+        log(f"v2 networkVolumes={v2_body['networkVolumes']} dataCenterIds={v2_body['dataCenterIds']}")
+    except Exception as exc:
+        warn(f"v2 volume/DC patch skipped: {exc}")
     try_set_cached_model(endpoint_id, dry_run=False)
 
     updated = rest("GET", f"/endpoints/{endpoint_id}")
@@ -279,8 +306,12 @@ def main() -> int:
         f"networkVolumeId={updated.get('networkVolumeId')} "
         f"dataCenterIds={updated.get('dataCenterIds')}"
     )
-    print(f"RUNPOD_NETWORK_VOLUME_ID={volume_id}")
-    print(f"RUNPOD_DATA_CENTER_IDS={data_center}")
+    if volume_id:
+        print(f"RUNPOD_NETWORK_VOLUME_ID={volume_id}")
+        print(f"RUNPOD_DATA_CENTER_IDS={data_center}")
+    else:
+        print("RUNPOD_NETWORK_VOLUME_ID=")
+        print("RUNPOD_DATA_CENTER_IDS=")
     return 0
 
 

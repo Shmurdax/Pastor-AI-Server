@@ -28,13 +28,22 @@ void main() {
     expect(appLanguageByCode('unknown').code, 'en');
   });
 
-  test('all supported languages have full English key coverage', () {
+  test('serverStartingUp is translated for every language', () {
+    expect(AppStrings('en').serverStartingUp, 'The server is starting up…');
+    expect(AppStrings('es').serverStartingUp, isNot('serverStartingUp'));
+    expect(AppStrings('es').serverStartingUp, isNot(AppStrings('en').serverStartingUp));
+    for (final lang in kSupportedAppLanguages) {
+      expect(AppStrings(lang.code).serverStartingUp.isNotEmpty, isTrue, reason: lang.code);
+      expect(AppStrings(lang.code).serverStartingUp, isNot('serverStartingUp'));
+    }
+  });
     final enKeys = AppStrings('en');
     for (final lang in kSupportedAppLanguages) {
       final s = AppStrings(lang.code);
       expect(s.home.isNotEmpty, isTrue, reason: lang.code);
       expect(s.sermonLibrary.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeTitle.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.serverStartingUp.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name
       expect(s.home, isNot('home'));

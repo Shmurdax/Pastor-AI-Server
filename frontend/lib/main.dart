@@ -2044,16 +2044,35 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         ),
         if (_showThinkingLogo)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (_, __) => Opacity(
-                opacity: _fadeAnimation.value,
-                child: Transform.scale(
-                  scale: _wobbleAnimation.value,
-                  child: Image.asset('assets/images/nordins_transparent_logo.png', height: 48),
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (_, __) => Opacity(
+                    opacity: _fadeAnimation.value,
+                    child: Transform.scale(
+                      scale: _wobbleAnimation.value,
+                      child: Image.asset(
+                        'assets/images/nordins_transparent_logo.png',
+                        height: 48,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    _s.serverStartingUp,
+                    style: GoogleFonts.figtree(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black.withOpacity(0.32),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         if (_translatingThread)

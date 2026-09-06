@@ -134,14 +134,11 @@ IDs for `tokens.env`:
 ```bash
 export RUNPOD_API_KEY=rpa_...
 export HF_TOKEN=hf_...
-# Dedicated serverless-region volume (not the CPU pod's US-NE-1 volume)
-# export RUNPOD_NETWORK_VOLUME_ID=your_volume_id
-# export RUNPOD_DATA_CENTER_IDS=US-KS-2
 
 bash serverless/create_runpod_endpoints.sh --write-tokens
 ```
 
-To tune an **existing** chat endpoint (idle 15 min, cache dirs, volume):
+To tune an **existing** chat endpoint (idle 15 min, host cache, eager boot):
 
 ```bash
 bash serverless/apply_vllm_coldstart.sh
@@ -180,7 +177,10 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 3. Paste env from [`serverless/vllm.env.example`](serverless/vllm.env.example).
    Set `HF_TOKEN` to a token that can read the private Christian LoRA.
    Set the endpoint **Model** field to `Qwen/Qwen2.5-14B-Instruct-AWQ` so RunPod can cache the base weights.
-4. Attach a **serverless-region** network volume at `/runpod-volume` (US-KS-2 / US-GA-1 / US-NC-1 / EU-RO-1 — **not US-NE-1**, which is CPU-pod-only). Point `DOWNLOAD_DIR` and `HF_HOME` at `/runpod-volume/huggingface-cache`.
+4. Do **not** attach a user network volume for chat. Set `DOWNLOAD_DIR` and
+   `HF_HOME` to `/runpod-volume/huggingface-cache` so the worker uses RunPod's
+   host-side cached `MODEL_NAME`. A user volume pins one DC and workers
+   sit `THROTTLED` waiting for that region's 48GB cards.
 5. Copy the **endpoint ID** (the serverless id, not a GPU pod id).
 
 **Whisper (endpoint B)**
@@ -215,8 +215,8 @@ RunPod GraphQL `myself { pods { machine { podHostId } } }` query and use that.
 Serverless GPU endpoints (`pastor-ai-chat-vllm`, `pastor-ai-whisper`) keep
 `workersMin = 0`, so they bill only while a request is running (plus idle
 timeout), not 24/7. Chat cold starts are shortened by a 15-minute idle
-timeout, `scalerValue=1`, a dedicated serverless network volume, RunPod
-cached `MODEL_NAME`, homepage `/api/chat/warmup/`, and SSE keepalives.
+timeout, `scalerValue=1`, RunPod host-cached `MODEL_NAME`, homepage
+`/api/chat/warmup/`, `ENFORCE_EAGER`, and SSE keepalives.
 Whisper stays `workersMin = 0`.
 
 ## CPU web pod + serverless vLLM
@@ -295,9 +295,12 @@ first request instead:
 2. **Idle timeout 15 minutes** (`idleTimeout=900`) so a second visit after a
    short gap reuses the same worker.
 3. **`scalerValue=1`** so scale-up waits 1 second, not 4.
-4. **RunPod cached model** `Qwen/Qwen2.5-14B-Instruct-AWQ` plus a dedicated
-   serverless network volume for HF weights, LoRA, and `VLLM_CACHE_ROOT`.
-   Do not attach CPU volume `int0elzo4l` (US-NE-1 is not a serverless DC).
+4. **RunPod cached model** `Qwen/Qwen2.5-14B-Instruct-AWQ` on the **host
+   cache** (`DOWNLOAD_DIR=/runpod-volume/huggingface-cache`) plus
+   `ENFORCE_EAGER=true` so vLLM skips CUDA-graph capture. Do **not** attach
+   a user network volume for chat: it pins the endpoint to one DC (workers
+   sit `THROTTLED` waiting for that region's 48GB GPUs) and shadows the
+   faster host cache. Leave CPU volume `int0elzo4l` (US-NE-1) off serverless.
 5. **SSE keepalives** every 8 seconds so Cloudflare does not drop the stream
    during MiniLM + GPU boot.
 

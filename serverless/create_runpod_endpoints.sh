@@ -269,9 +269,12 @@ env = {
     ),
     "RAW_OPENAI_OUTPUT": "1",
     "HF_TOKEN": hf_token,
-    "DOWNLOAD_DIR": os.environ.get("VLLM_DOWNLOAD_DIR", "/models"),
-    "HF_HOME": os.environ.get("VLLM_HF_HOME", "/models"),
-    "VLLM_CACHE_ROOT": os.environ.get("VLLM_CACHE_ROOT", "/models/vllm_cache"),
+    "DOWNLOAD_DIR": os.environ.get("VLLM_DOWNLOAD_DIR", "/runpod-volume/huggingface-cache"),
+    "HF_HOME": os.environ.get("VLLM_HF_HOME", "/runpod-volume/huggingface-cache"),
+    "VLLM_CACHE_ROOT": os.environ.get("VLLM_CACHE_ROOT", "/runpod-volume/vllm_cache"),
+    "ENFORCE_EAGER": os.environ.get("VLLM_ENFORCE_EAGER", "true"),
+    "DISABLE_LOG_STATS": "1",
+    "DISABLE_LOG_REQUESTS": "1",
 }
 print(json.dumps(env))
 PY
@@ -462,9 +465,10 @@ if [[ -n "${RUNPOD_NETWORK_VOLUME_ID:-}" ]]; then
     warn "Set RUNPOD_DATA_CENTER_IDS to the volume's region (must be a serverless DC; US-NE-1 is not)."
   fi
 else
-  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/models}"
-  export VLLM_HF_HOME="${VLLM_HF_HOME:-/models}"
-  warn "No RUNPOD_NETWORK_VOLUME_ID — vLLM will download weights onto the worker disk. Attach a serverless-region volume to keep them across scale-to-zero."
+  export VLLM_DOWNLOAD_DIR="${VLLM_DOWNLOAD_DIR:-/runpod-volume/huggingface-cache}"
+  export VLLM_HF_HOME="${VLLM_HF_HOME:-/runpod-volume/huggingface-cache}"
+  export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/runpod-volume/vllm_cache}"
+  warn "No user network volume — vLLM uses RunPod host-cached MODEL_NAME. A user volume pins one DC and often throttles 48GB GPUs."
 fi
 
 VLLM_TEMPLATE_JSON=""
