@@ -3,7 +3,7 @@ Shared embedding helpers.
 
 vLLM owns most GPU VRAM on a combined GPU host (including 24GB MIG slices).
 On a CPU web pod, vLLM is remote (RunPod Serverless) and there is no local GPU.
-Sentence-Transformers / MiniLM stay on CPU for chat retrieval and Django
+Sentence-Transformers embeddings stay on CPU for chat retrieval and Django
 admin ingestion so they cannot CUDA-OOM against the chat model. Whisper
 transcription runs in a separate worker that may use leftover CUDA.
 """
@@ -15,7 +15,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
+DEFAULT_EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5")
 
 _EMBEDDINGS = None
 
@@ -31,7 +31,7 @@ def _resolve_device() -> str:
 
 def get_embeddings(*, force_new: bool = False):
     """
-    Return a process-wide MiniLM embedding client pinned to CPU by default.
+    Return a process-wide embedding client pinned to CPU by default.
     """
     global _EMBEDDINGS
     if _EMBEDDINGS is not None and not force_new:
@@ -49,7 +49,8 @@ def get_embeddings(*, force_new: bool = False):
         model_name=DEFAULT_EMBEDDING_MODEL,
         model_kwargs={"device": device},
         encode_kwargs={
-            "normalize_embeddings": False,
+            # BGE + Qdrant cosine similarity expect unit-length vectors.
+            "normalize_embeddings": True,
             "batch_size": int(os.getenv("EMBEDDING_BATCH_SIZE", "32")),
         },
     )

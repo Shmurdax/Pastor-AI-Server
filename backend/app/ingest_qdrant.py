@@ -78,8 +78,9 @@ def run_ingestion():
     else:
         from langchain_huggingface import HuggingFaceEmbeddings
         embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
+            model_name=os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5"),
             model_kwargs={"device": os.environ.get("EMBEDDING_DEVICE", "cpu")},
+            encode_kwargs={"normalize_embeddings": True},
         )
 
     QdrantVectorStore.from_documents(

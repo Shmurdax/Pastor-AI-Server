@@ -18,7 +18,7 @@ Ingestion pipeline (admin uploads):
    markdown string is what gets split into chunks (not stored as a single DB blob).
 
 5. **Chunk + embed + Qdrant** — ``RecursiveCharacterTextSplitter`` produces chunks; each new chunk
-   is embedded (``all-MiniLM-L6-v2``) and upserted into Qdrant with payload ``source`` (PDF filename),
+   is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant with payload ``source`` (PDF filename),
    ``file_hash``, ``chunk_hash``, ``text``, etc. Duplicate chunk hashes are skipped across the corpus.
    Near-duplicates are also skipped by normalized title and cleaned-content hash.
 """
@@ -428,7 +428,7 @@ def ingest_uploaded_files(
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
     bible_splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
-    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
@@ -629,7 +629,7 @@ def ingest_markdown_documents(
     result = IngestionResult(files_received=len(documents))
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")

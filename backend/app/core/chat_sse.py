@@ -24,7 +24,7 @@ def iter_with_sse_heartbeats(producer, interval_s: float = 8.0):
     """Yield producer chunks, inserting SSE comments while it is blocked.
 
     Cloudflare and browsers drop chat if Django goes silent during a GPU cold
-    start or MiniLM load. Keepalives keep the stream alive until tokens arrive.
+    start or embedding model load. Keepalives keep the stream alive until tokens arrive.
     """
     items = queue.Queue()
     done = object()
