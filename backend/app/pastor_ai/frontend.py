@@ -5,6 +5,8 @@ from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 
+from .admin_url import is_admin_request_path
+
 # Existing Flutter web builds do not call warmup; inject a fire-and-forget ping
 # so opening the homepage starts the serverless GPU while the user types.
 _WARMUP_MARKER = "__pastorVllmWarmup"
@@ -45,6 +47,11 @@ def _index_html_with_warmup(file_path: Path) -> str:
 
 
 def serve_frontend(request, path: str = ""):
+    admin_path = getattr(settings, "ADMIN_URL_PATH", "") or ""
+    if admin_path and is_admin_request_path(request.path, admin_path):
+        # Never fall back to the public chat UI for the private admin URL.
+        raise Http404("Admin is not a frontend route.")
+
     configured_dir = Path(getattr(settings, "FRONTEND_BUILD_DIR", "/frontend"))
     if not configured_dir.exists():
         raise Http404("Frontend build directory not found.")

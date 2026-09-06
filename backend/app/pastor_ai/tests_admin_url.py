@@ -1,3 +1,6 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -89,3 +92,60 @@ class AdminUrlRoutingTests(TestCase):
         self.assertTrue(path_requires_noindex(f"/{settings.ADMIN_URL_PATH}/login/"))
         self.assertTrue(is_admin_request_path("/admin/", settings.ADMIN_URL_PATH))
         self.assertFalse(is_admin_request_path("/", settings.ADMIN_URL_PATH))
+
+    def test_secret_admin_without_trailing_slash_redirects_to_admin(self):
+        response = self.client.get(f"/{settings.ADMIN_URL_PATH}", follow=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/{settings.ADMIN_URL_PATH}/")
+
+
+_STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
+
+class ChatHomeVsDjangoAdminTests(TestCase):
+    """Public `/` is the Flutter chat app; the private slug is Django admin."""
+
+    def test_root_serves_chat_and_secret_path_serves_django_admin(self):
+        with TemporaryDirectory() as raw:
+            web = Path(raw) / "build" / "web"
+            web.mkdir(parents=True)
+            (web / "index.html").write_text(
+                "<html><head><title>flutter_application_1</title></head>"
+                "<body>CHAT_APP_MARKER</body></html>",
+                encoding="utf-8",
+            )
+            with override_settings(
+                ROOT_URLCONF="pastor_ai.urls",
+                FRONTEND_BUILD_DIR=raw,
+                STORAGES=_STORAGES,
+            ):
+                home = self.client.get("/")
+                self.assertEqual(home.status_code, 200)
+                self.assertContains(home, "CHAT_APP_MARKER")
+                self.assertContains(home, "flutter_application_1")
+
+                admin_login = self.client.get(
+                    f"/{settings.ADMIN_URL_PATH}/login/",
+                    follow=False,
+                )
+                self.assertEqual(admin_login.status_code, 200)
+                self.assertContains(admin_login, "Django")
+                self.assertNotContains(admin_login, "CHAT_APP_MARKER")
+                self.assertNotContains(admin_login, "flutter_application_1")
+
+                admin_home = self.client.get(
+                    f"/{settings.ADMIN_URL_PATH}/",
+                    follow=False,
+                )
+                self.assertEqual(admin_home.status_code, 302)
+                self.assertIn(
+                    f"/{settings.ADMIN_URL_PATH}/login/",
+                    admin_home["Location"],
+                )
+
+                decoy = self.client.get("/admin/", follow=False)
+                self.assertEqual(decoy.status_code, 404)
+                self.assertNotContains(decoy, "CHAT_APP_MARKER", status_code=404)

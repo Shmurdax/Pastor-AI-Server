@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.http import Http404
 from django.urls import path, re_path
+from django.views.generic import RedirectView
 
 from .admin_url import frontend_catch_all_pattern
 from api.auth_views import (
@@ -48,11 +49,19 @@ def _public_admin_decoy(_request, rest=""):
     raise Http404()
 
 
+_admin_slug = settings.ADMIN_URL_PATH.strip("/")
+
 urlpatterns = [
     path("robots.txt", robots_txt_view, name="robots_txt"),
     path("admin/", _public_admin_decoy),
     re_path(r"^admin/(?P<rest>.*)$", _public_admin_decoy),
-    path(f"{settings.ADMIN_URL_PATH}/", admin.site.urls),
+    # Private staff panel. Slashless URL must redirect — otherwise the Flutter
+    # catch-all would serve the public chat app at this path.
+    path(
+        _admin_slug,
+        RedirectView.as_view(url=f"/{_admin_slug}/", permanent=False),
+    ),
+    path(f"{_admin_slug}/", admin.site.urls),
 
     # Auth — Flutter AuthService paths
     path('api/auth/register/', RegisterView.as_view()),
