@@ -50,6 +50,16 @@ printf 'start-newer\n' > "$WS/start.sh"
 restore_workspace_from_persist
 [[ "$(cat "$WS/start.sh")" == "start-newer" ]] || fail "restore overwrote live start.sh"
 
+# 5) Blank DJANGO_ADMIN_URL mints a random path, not the documented example.
+unset DJANGO_ADMIN_URL || true
+BLANK_CONFIG="$TMP/blank-admin.env"
+printf 'DJANGO_DEBUG=false\n' > "$BLANK_CONFIG"
+ensure_django_admin_url "$BLANK_CONFIG"
+[[ -n "${DJANGO_ADMIN_URL:-}" ]] || fail "admin url not generated"
+[[ "$DJANGO_ADMIN_URL" != "rB4zKwO2wTBCD3pAxRIdTWsvw0w8" ]] || fail "must not mint documented admin path"
+[[ "${#DJANGO_ADMIN_URL}" -ge 12 ]] || fail "generated admin url too short"
+grep -q "^DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}$" "$BLANK_CONFIG" || fail "generated admin url not persisted"
+
 # 4) Seed restore is a no-op when the live catalog already has rows.
 _pg_ready() { return 0; }
 _pg_doc_count() { echo 930; }

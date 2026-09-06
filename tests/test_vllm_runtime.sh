@@ -80,8 +80,9 @@ grep -q 'vllm_use_local_server' "$ROOT/start.sh" || fail "start.sh must skip loc
 grep -q 'RUNPOD_WHISPER_ENDPOINT_ID' "$ROOT/start.sh" || fail "start.sh must export whisper endpoint"
 grep -A8 'dmS django' "$ROOT/start.sh" | grep -q 'CONFIG_ENV' \
   || fail "django screen must source config.env so RUNPOD_API_KEY reaches gunicorn"
-grep -A40 'dmS django' "$ROOT/start.sh" | grep -Fq 'RUNPOD_API_KEY=\"\${RUNPOD_API_KEY' \
-  || fail "django screen must keep sourced RUNPOD_API_KEY (not wipe it with an empty outer expansion)"
+if grep -A80 'dmS django' "$ROOT/start.sh" | grep -qE "RUNPOD_API_KEY=.*\\\$\{RUNPOD_API_KEY"; then
+  fail "django screen must not parent-expand RUNPOD_API_KEY into the command line (ps leak / wipe)"
+fi
 grep -q 'vllm_runtime.sh' "$ROOT/install.sh" || fail "install.sh must ship vllm_runtime.sh"
 grep -q 'CPU_ONLY' "$ROOT/install.sh" || fail "install.sh must support CPU_ONLY"
 

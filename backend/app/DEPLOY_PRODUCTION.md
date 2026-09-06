@@ -30,6 +30,9 @@ Edit `.env`:
 - `DJANGO_CSRF_TRUSTED_ORIGINS` = `https://<domain>`
 - `DJANGO_CORS_ALLOWED_ORIGINS` = frontend URL(s), comma-separated
 - `POSTGRES_PASSWORD` = strong DB password
+- `DJANGO_SUPERUSER_PASSWORD` = 12+ character staff password (never `admin123`)
+- `DJANGO_ADMIN_URL` = random 16+ letter/numeral path (`openssl rand -hex 16`)
+- `BILLING_MOCK_CHECKOUT=false`
 - `HUGGING_FACE_HUB_TOKEN` = your private HF token
 - `ADMIN_INGESTION_MOUNT_PATH` = host path where ingestion PDFs should persist
 

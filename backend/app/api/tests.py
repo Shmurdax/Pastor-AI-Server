@@ -270,3 +270,50 @@ class CancelSubscriptionTests(TestCase):
         self.assertFalse(res.data["user"]["is_premium"])
         self.assertEqual(res.data["user"]["subscription_status"], "canceled")
         self.assertFalse(res.data["user"]["cancel_at_period_end"])
+
+
+class BillingMockCheckoutGateTests(TestCase):
+    def test_production_does_not_auto_enable_mock_without_stripe(self):
+        from api.billing_views import _mock_checkout_enabled
+
+        with override_settings(
+            DEBUG=False,
+            BILLING_MOCK_CHECKOUT="",
+            STRIPE_SECRET_KEY="",
+            STRIPE_PUBLISHABLE_KEY="",
+        ):
+            self.assertFalse(_mock_checkout_enabled())
+
+    def test_debug_auto_enables_mock_without_stripe(self):
+        from api.billing_views import _mock_checkout_enabled
+
+        with override_settings(
+            DEBUG=True,
+            BILLING_MOCK_CHECKOUT="",
+            STRIPE_SECRET_KEY="",
+            STRIPE_PUBLISHABLE_KEY="",
+        ):
+            self.assertTrue(_mock_checkout_enabled())
+
+    def test_explicit_true_enables_mock_even_in_production(self):
+        from api.billing_views import _mock_checkout_enabled
+
+        with override_settings(DEBUG=False, BILLING_MOCK_CHECKOUT="true"):
+            self.assertTrue(_mock_checkout_enabled())
+
+    def test_mock_activate_forbidden_when_disabled(self):
+        user = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+        )
+        token = Token.objects.create(user=user).key
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        with override_settings(DEBUG=False, BILLING_MOCK_CHECKOUT=""):
+            res = client.post(
+                "/api/billing/mock-activate/",
+                {"billing_period": "monthly"},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 403)

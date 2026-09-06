@@ -83,7 +83,7 @@ The Flutter UI maps **any** `/api/chat/` exception to `Error: Could not connect 
    - RunPod’s `ADA_48_PRO` pool includes `NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb`. `runpod/worker-v1-vllm` CUDA 12 cannot start on those slices. Pin the endpoint to `AMPERE_48` + `ADA_48_PRO` minus that MIG type (`create_runpod_endpoints.sh` does this after create). Use 48GB Ampere/Ada cards only — 24GB A5000/L4/4090 OOM with 14B AWQ + LoRA.
    - `LORA_MODULES` must be a **single JSON object** (`{"name":"christianai","path":"apophaticai/qwen2.5-14b-christianai-v1"}`), not a JSON array. worker-v1-vllm v2.26 forwards the env as one `--lora-modules` argument, and current vLLM rejects a list with `LoRAModulePath() argument after ** must be a mapping, not list`.
 2. **Gunicorn missing `RUNPOD_API_KEY`.** RunPod Serverless then returns `401 invalid api key`. `get_chat_llm` loads `config.env` / `tokens.env` so this does not depend on the worker process environment.
-3. Empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
+3. Empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI (chat is then callable without a shared secret — use Cloudflare + the 8/minute chat throttle). Ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
 
 ### Private LoRA 404
 `HF_TOKEN` must belong to an account that can open

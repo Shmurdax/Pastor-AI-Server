@@ -40,7 +40,8 @@ PERSIST_BOOT_SCRIPTS=(
   install.sh
 )
 
-# Must match backend/app/pastor_ai/admin_url.py DEFAULT_ADMIN_URL_PATH
+# Published example path from older docs. Keep if already stored so staff
+# bookmarks do not break, but never mint it for a blank install.
 DJANGO_ADMIN_URL_DEFAULT="${DJANGO_ADMIN_URL_DEFAULT:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}"
 
 _clean_django_admin_url() {
@@ -48,6 +49,10 @@ _clean_django_admin_url() {
   v="${v#/}"
   v="${v%/}"
   printf '%s' "$v" | tr -cd 'A-Za-z0-9'
+}
+
+_generate_django_admin_url() {
+  openssl rand -hex 16
 }
 
 ensure_django_admin_url() {
@@ -59,7 +64,7 @@ ensure_django_admin_url() {
     current="$(_clean_django_admin_url "$(grep '^DJANGO_ADMIN_URL=' "$config" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")")"
   fi
   if [[ -z "$current" || "${current,,}" == "admin" ]]; then
-    current="$DJANGO_ADMIN_URL_DEFAULT"
+    current="$(_generate_django_admin_url)"
   fi
   DJANGO_ADMIN_URL="$current"
   export DJANGO_ADMIN_URL
@@ -72,6 +77,38 @@ ensure_django_admin_url() {
       fi
     else
       echo "DJANGO_ADMIN_URL=${current}" >> "$config"
+    fi
+  fi
+}
+
+warn_insecure_runtime_config() {
+  local debug="${DJANGO_DEBUG:-false}"
+  local cors="${DJANGO_CORS_ALLOW_ALL_ORIGINS:-false}"
+  local session_secure="${DJANGO_SESSION_COOKIE_SECURE:-}"
+  local csrf_secure="${DJANGO_CSRF_COOKIE_SECURE:-}"
+  local mock="${BILLING_MOCK_CHECKOUT:-}"
+  local pw="${DJANGO_SUPERUSER_PASSWORD:-}"
+  if [[ "${debug,,}" == "true" ]]; then
+    warn "DJANGO_DEBUG=true — Django will serve debug pages. Set DJANGO_DEBUG=false before production."
+  fi
+  if [[ "${cors,,}" == "true" ]]; then
+    warn "DJANGO_CORS_ALLOW_ALL_ORIGINS=true — disable this for production (same-origin Flutter does not need it)."
+  fi
+  if [[ "${session_secure,,}" == "false" || "${csrf_secure,,}" == "false" ]]; then
+    warn "Secure cookies are disabled. Set DJANGO_SESSION_COOKIE_SECURE=true and DJANGO_CSRF_COOKIE_SECURE=true behind HTTPS."
+  fi
+  if [[ -z "$pw" || "${pw,,}" == "admin123" ]]; then
+    warn "Staff password is missing or is the published default. Set DJANGO_SUPERUSER_PASSWORD (12+) and DJANGO_SUPERUSER_RESET_PASSWORD=1."
+  fi
+  if [[ "${DJANGO_ADMIN_URL:-}" == "$DJANGO_ADMIN_URL_DEFAULT" ]]; then
+    warn "DJANGO_ADMIN_URL is the documented example path. Generate a new one with: openssl rand -hex 16"
+  fi
+  if [[ -z "${PUBLIC_API_KEY:-}" ]]; then
+    warn "PUBLIC_API_KEY is empty — chat/warmup are publicly callable (GPU spend). Optional: set a key if you want a shared-secret gate."
+  fi
+  if [[ -z "$mock" || "${mock,,}" == "true" || "${mock,,}" == "1" ]]; then
+    if [[ "${debug,,}" == "true" || "${mock,,}" == "true" || "${mock,,}" == "1" ]]; then
+      warn "Mock checkout may gift Premium without Stripe. Set BILLING_MOCK_CHECKOUT=false for production."
     fi
   fi
 }

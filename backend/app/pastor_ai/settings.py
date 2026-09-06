@@ -207,6 +207,9 @@ SECURE_HSTS_PRELOAD = os.getenv("DJANGO_SECURE_HSTS_PRELOAD", "false").lower() =
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 REFERRER_POLICY = os.getenv("DJANGO_REFERRER_POLICY", "strict-origin-when-cross-origin")
+SESSION_COOKIE_SAMESITE = os.getenv("DJANGO_SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.getenv("DJANGO_CSRF_COOKIE_SAMESITE", "Lax")
+SESSION_COOKIE_HTTPONLY = True
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -222,6 +225,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": os.getenv("DRF_THROTTLE_ANON", "30/minute"),
         "user": os.getenv("DRF_THROTTLE_USER", "120/minute"),
+        "chat": os.getenv("DRF_THROTTLE_CHAT", "8/minute"),
     },
 }
 
@@ -270,8 +274,20 @@ STRIPE_PRICE_YEARLY = (
 # Used for Checkout return_url. Example: https://your-tunnel-or-domain
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "") or _load_dotenv_value("PUBLIC_APP_URL")
 
+if PUBLIC_APP_URL:
+    from urllib.parse import urlparse
+
+    _public = urlparse(PUBLIC_APP_URL if "://" in PUBLIC_APP_URL else f"https://{PUBLIC_APP_URL}")
+    if _public.scheme and _public.netloc:
+        _origin = f"{_public.scheme}://{_public.netloc}"
+        if _origin not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_origin)
+        if "*" not in ALLOWED_HOSTS and _public.hostname and _public.hostname not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_public.hostname)
+
 # TEMPORARY: gift Premium via fake checkout UI until Stripe keys are available.
-# Auto-enables when Stripe is not configured. Set to false once Stripe is live.
+# Explicit BILLING_MOCK_CHECKOUT=true enables it. Unset + DEBUG still allows
+# mock only while Stripe is missing. Production (DEBUG=false) stays off.
 _billing_mock_raw = os.environ.get("BILLING_MOCK_CHECKOUT", "") or _load_dotenv_value(
     "BILLING_MOCK_CHECKOUT"
 )

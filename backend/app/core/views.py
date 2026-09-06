@@ -17,6 +17,7 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle, UserRateThrottle
 
 # RAG & Memory Imports
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -401,6 +402,8 @@ class ChatAPIView(APIView):
     # on POST and Flutter fetch does not send one → 403. Anonymous chat remains allowed.
     authentication_classes = [TokenAuthentication]
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle, UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = "chat"
     # No browsable API HTML — JSON only (clients must POST with Accept: application/json).
     renderer_classes = [JSONRenderer]
 
@@ -689,6 +692,8 @@ class TranslateAPIView(APIView):
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle, UserRateThrottle, ScopedRateThrottle]
+    throttle_scope = "chat"
     renderer_classes = [JSONRenderer]
 
     def get(self, request):

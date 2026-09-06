@@ -51,6 +51,7 @@ set -a
 source "$CONFIG_ENV"
 set +a
 ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
+warn_insecure_runtime_config
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
 # shellcheck disable=SC1091
@@ -133,9 +134,10 @@ if ! curl -sf "http://127.0.0.1:${QDRANT_PORT}/readyz" >/dev/null 2>&1 \
   screen -dmS qdrant bash -c "
     cd '${QDRANT_STORAGE}/..' &&
     mkdir -p storage &&
+    export QDRANT__SERVICE__HOST=127.0.0.1 &&
     export QDRANT__SERVICE__HTTP_PORT=${QDRANT_PORT} &&
     '${QDRANT_BIN}' --storage-path '${QDRANT_STORAGE}' >> '${LOG_DIR}/qdrant.log' 2>&1 ||
-    (cd '${QDRANT_STORAGE}' && '${QDRANT_BIN}' >> '${LOG_DIR}/qdrant.log' 2>&1)
+    (cd '${QDRANT_STORAGE}' && QDRANT__SERVICE__HOST=127.0.0.1 '${QDRANT_BIN}' >> '${LOG_DIR}/qdrant.log' 2>&1)
   "
   sleep 4
   curl -sf "http://127.0.0.1:${QDRANT_PORT}/" >/dev/null \
@@ -213,13 +215,14 @@ elif ! vllm_healthy; then
     warn "LoRA missing at $LORA_DIR — starting base/model id only: $BASE_MODEL"
   fi
   screen -dmS vllm bash -c "
+    set -a &&
+    source '${CONFIG_ENV}' &&
+    set +a &&
     source '${VENV_DIR}/bin/activate' &&
     ${CUDA_DEV_EXPORT}
     ${CUDA_LD_EXPORT}
     ${ATTN_EXPORT}
-    export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
-    export HUGGING_FACE_HUB_TOKEN='${HF_TOK}' &&
-    export HF_TOKEN='${HF_TOK}' &&
+    export HF_HOME=\"\${HF_HOME:-$WS/hf_cache}\" &&
     export HF_HUB_ENABLE_HF_TRANSFER=0 &&
     export FLASHINFER_DISABLE_VERSION_CHECK=1 &&
     python -m vllm.entrypoints.openai.api_server \
@@ -264,65 +267,26 @@ screen -dmS django bash -c "
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
   export FRONTEND_BUILD_DIR='$(resolve_frontend_build_dir "$FRONTEND_DIR")' &&
-  export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}' &&
-  export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
+  export QDRANT_URL=\"\${QDRANT_URL:-http://127.0.0.1:${QDRANT_PORT}}\" &&
+  export QDRANT_COLLECTION=\"\${QDRANT_COLLECTION:-sermon_brain}\" &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&
-  export VLLM_MODEL='${VLLM_MODEL:-christianai}' &&
-  export VLLM_API_KEY=\"\${VLLM_API_KEY:-${VLLM_API_KEY:-}}\" &&
-  export RUNPOD_API_KEY=\"\${RUNPOD_API_KEY:-${RUNPOD_API_KEY:-}}\" &&
-  export RUNPOD_VLLM_ENDPOINT_ID='${RUNPOD_VLLM_ENDPOINT_ID:-}' &&
+  export VLLM_MODEL=\"\${VLLM_MODEL:-christianai}\" &&
   export VLLM_MODE='${VLLM_MODE:-}' &&
   export CPU_ONLY='${CPU_ONLY:-}' &&
-  export DJANGO_DEBUG='${DJANGO_DEBUG:-true}' &&
-  export DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' &&
-  export DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS:-*}' &&
-  export DJANGO_CSRF_TRUSTED_ORIGINS='${DJANGO_CSRF_TRUSTED_ORIGINS:-}' &&
-  export DJANGO_CORS_ALLOW_ALL_ORIGINS='${DJANGO_CORS_ALLOW_ALL_ORIGINS:-true}' &&
+  export RUNPOD_VLLM_ENDPOINT_ID='${RUNPOD_VLLM_ENDPOINT_ID:-}' &&
   export DJANGO_SECURE_SSL_REDIRECT=false &&
-  export DJANGO_SESSION_COOKIE_SECURE=false &&
-  export DJANGO_CSRF_COOKIE_SECURE=false &&
-  export DJANGO_SECURE_HSTS_SECONDS=0 &&
-  export POSTGRES_DB='${POSTGRES_DB}' &&
-  export POSTGRES_USER='${POSTGRES_USER}' &&
-  export POSTGRES_PASSWORD='${POSTGRES_PASSWORD}' &&
-  export POSTGRES_HOST='${POSTGRES_HOST:-127.0.0.1}' &&
-  export POSTGRES_PORT='${POSTGRES_PORT:-5432}' &&
-  export PUBLIC_API_KEY='${PUBLIC_API_KEY:-}' &&
-  export GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' &&
-  export STRIPE_SECRET_KEY='${STRIPE_SECRET_KEY:-}' &&
-  export STRIPE_PUBLISHABLE_KEY='${STRIPE_PUBLISHABLE_KEY:-}' &&
-  export STRIPE_WEBHOOK_SECRET='${STRIPE_WEBHOOK_SECRET:-}' &&
-  export STRIPE_PRICE_MONTHLY='${STRIPE_PRICE_MONTHLY:-}' &&
-  export STRIPE_PRICE_YEARLY='${STRIPE_PRICE_YEARLY:-}' &&
-  export PUBLIC_APP_URL='${PUBLIC_APP_URL:-}' &&
-  export BILLING_MOCK_CHECKOUT='${BILLING_MOCK_CHECKOUT:-}' &&
-  export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
-  export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
-  export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
-  export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
-  export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
-  export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
-  export DJANGO_ADMIN_URL='${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}' &&
-  # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
+  export POSTGRES_HOST=\"\${POSTGRES_HOST:-127.0.0.1}\" &&
+  export POSTGRES_PORT=\"\${POSTGRES_PORT:-5432}\" &&
+  export HF_HOME=\"\${HF_HOME:-$WS/hf_cache}\" &&
   export CUDA_VISIBLE_DEVICES='' &&
-  export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
-  export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
-  export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
-  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
-  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}' &&
-  export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
-  export WHISPER_DEVICE='cpu' &&
-  export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
-  export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
-  export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
-  export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-8000}' &&
-  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-2400}' &&
-  export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-8192}' &&
-  export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
-  export RETRIEVAL_K='${RETRIEVAL_K:-16}' &&
-  export RETRIEVAL_THRESHOLD='${RETRIEVAL_THRESHOLD:-0.7}' &&
-  export INGEST_CHUNK_SIZE='${INGEST_CHUNK_SIZE:-1800}' &&
-  export INGEST_CHUNK_OVERLAP='${INGEST_CHUNK_OVERLAP:-250}' &&
+  export EMBEDDING_DEVICE=\"\${EMBEDDING_DEVICE:-cpu}\" &&
+  export INGESTION_UPLOAD_DIR=\"\${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}\" &&
+  export VIDEO_INGESTION_UPLOAD_DIR=\"\${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}\" &&
+  export VIDEO_INGESTION_JOBS_DIR=\"\${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}\" &&
+  export VIDEO_INGESTION_CHUNKS_DIR=\"\${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}\" &&
+  export WHISPER_MODEL=\"\${WHISPER_MODEL:-base}\" &&
+  export WHISPER_DEVICE=cpu &&
+  export WHISPER_CACHE_DIR=\"\${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}\" &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
@@ -357,22 +321,19 @@ screen -dmS video-ingest bash -c "
   cd '${APP_DIR}'
   ${VIDEO_ALLOW_GPU}
   ${VIDEO_CUDA_EXPORT}
-  export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
-  export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
-  export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
-  export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}'
-  export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}'
-  export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}'
-  export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
-  export WHISPER_MODEL='${WHISPER_MODEL:-base}'
+  export EMBEDDING_DEVICE=\"\${EMBEDDING_DEVICE:-cpu}\"
+  export QDRANT_URL=\"\${QDRANT_URL:-http://127.0.0.1:${QDRANT_PORT}}\"
+  export QDRANT_COLLECTION=\"\${QDRANT_COLLECTION:-sermon_brain}\"
+  export INGESTION_UPLOAD_DIR=\"\${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}\"
+  export VIDEO_INGESTION_UPLOAD_DIR=\"\${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}\"
+  export VIDEO_INGESTION_JOBS_DIR=\"\${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}\"
+  export VIDEO_INGESTION_CHUNKS_DIR=\"\${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}\"
+  export WHISPER_MODEL=\"\${WHISPER_MODEL:-base}\"
   export WHISPER_DEVICE='${WHISPER_DEVICE}'
   export WHISPER_MODE='${WHISPER_MODE:-}'
   export WHISPER_URL='${WHISPER_URL:-}'
   export RUNPOD_WHISPER_ENDPOINT_ID='${RUNPOD_WHISPER_ENDPOINT_ID:-}'
-  export WHISPER_API_KEY='${WHISPER_API_KEY:-}'
-  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}'
-  export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
-  export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
+  export WHISPER_CACHE_DIR=\"\${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}\"
   export PYTHONUNBUFFERED=1
   exec python -u manage.py run_video_ingestion_worker >> '${LOG_DIR}/video_ingest_worker.log' 2>&1
 "

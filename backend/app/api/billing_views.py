@@ -35,16 +35,16 @@ def _stripe_configured() -> bool:
 def _mock_checkout_enabled() -> bool:
     """TEMPORARY: fake checkout that gifts Premium until Stripe keys are live.
 
-    Enabled when BILLING_MOCK_CHECKOUT=true/1/yes, OR when unset and Stripe
-    is not configured. Set BILLING_MOCK_CHECKOUT=false once Stripe is ready.
+    Enabled when BILLING_MOCK_CHECKOUT=true/1/yes. When unset, mock checkout
+    is allowed only in DEBUG and only while Stripe is not configured.
+    Production (DEBUG=false) never auto-enables free Premium.
     """
     raw = (getattr(settings, "BILLING_MOCK_CHECKOUT", "") or "").strip().lower()
     if raw in {"0", "false", "no", "off"}:
         return False
     if raw in {"1", "true", "yes", "on"}:
         return True
-    # Default: mock only while Stripe credentials are missing.
-    return not _stripe_configured()
+    return bool(getattr(settings, "DEBUG", False)) and not _stripe_configured()
 
 
 def _ensure_stripe() -> None:

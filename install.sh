@@ -273,6 +273,7 @@ fi
 mkdir -p "$WS/scripts" "$WS/serverless"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
 [[ -f "$REPO_ROOT/scripts/check_whisper.sh" ]] && cp -a "$REPO_ROOT/scripts/check_whisper.sh" "$WS/scripts/check_whisper.sh"
+[[ -f "$REPO_ROOT/scripts/check_production_security.sh" ]] && cp -a "$REPO_ROOT/scripts/check_production_security.sh" "$WS/scripts/check_production_security.sh"
 [[ -f "$REPO_ROOT/serverless/create_runpod_endpoints.sh" ]] && cp -a "$REPO_ROOT/serverless/create_runpod_endpoints.sh" "$WS/serverless/create_runpod_endpoints.sh"
 [[ -f "$REPO_ROOT/serverless/vllm.env.example" ]] && cp -a "$REPO_ROOT/serverless/vllm.env.example" "$WS/serverless/vllm.env.example"
 [[ -f "$REPO_ROOT/serverless/whisper.env.example" ]] && cp -a "$REPO_ROOT/serverless/whisper.env.example" "$WS/serverless/whisper.env.example"
@@ -324,17 +325,23 @@ fi
 if [[ ! -f "$CONFIG_ENV" ]]; then
   DJANGO_SECRET_KEY="$(openssl rand -hex 32)"
   POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 12)}"
+  if [[ -z "${DJANGO_SUPERUSER_PASSWORD:-}" || "${DJANGO_SUPERUSER_PASSWORD}" == "admin123" ]]; then
+    DJANGO_SUPERUSER_PASSWORD="$(openssl rand -base64 32 | tr -d '/+=\n' | head -c 24)"
+  fi
+  if [[ -z "${DJANGO_ADMIN_URL:-}" || "${DJANGO_ADMIN_URL}" == "rB4zKwO2wTBCD3pAxRIdTWsvw0w8" || "${DJANGO_ADMIN_URL}" == "admin" ]]; then
+    DJANGO_ADMIN_URL="$(openssl rand -hex 16)"
+  fi
   cat > "$CONFIG_ENV" <<EOF
 DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-DJANGO_DEBUG=true
+DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=*
-DJANGO_CORS_ALLOW_ALL_ORIGINS=true
+DJANGO_CORS_ALLOW_ALL_ORIGINS=false
 DJANGO_SECURE_SSL_REDIRECT=false
-DJANGO_SESSION_COOKIE_SECURE=false
-DJANGO_CSRF_COOKIE_SECURE=false
-DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}
+DJANGO_SESSION_COOKIE_SECURE=true
+DJANGO_CSRF_COOKIE_SECURE=true
+DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL}
 DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
-DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
+DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
 DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@localhost}
 POSTGRES_DB=${POSTGRES_DB:-ai_db}
 POSTGRES_USER=${POSTGRES_USER:-pastor}
@@ -371,9 +378,11 @@ WHISPER_CACHE_DIR=/workspace/persistent/whisper
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
+BILLING_MOCK_CHECKOUT=false
 CHAT_TIMEOUT_S=${CHAT_TIMEOUT_VALUE}
 EOF
-  log "Wrote $CONFIG_ENV"
+  chmod 600 "$CONFIG_ENV" 2>/dev/null || true
+  log "Wrote $CONFIG_ENV (mode 600). Staff password is in DJANGO_SUPERUSER_PASSWORD — it is not printed here."
 else
   log "Keeping existing $CONFIG_ENV"
 fi
@@ -460,15 +469,11 @@ export VLLM_URL="$(vllm_resolved_url)"
 export VLLM_API_KEY="$(vllm_resolved_api_key)"
 export VLLM_MODEL
 export POSTGRES_HOST=127.0.0.1
-export DJANGO_DEBUG=true
-export DJANGO_SECURE_SSL_REDIRECT=false
-export DJANGO_SESSION_COOKIE_SECURE=false
-export DJANGO_CSRF_COOKIE_SECURE=false
 python manage.py migrate --noinput
 restore_seed_ingested_catalog || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
-log "Django ready (private admin path: /${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}/  login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
+log "Django ready (private admin path: /${DJANGO_ADMIN_URL}/  user: ${DJANGO_SUPERUSER_USERNAME:-admin}; password is in $CONFIG_ENV)"
 
 # ---------------------------------------------------------------------------
 # Start services

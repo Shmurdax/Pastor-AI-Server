@@ -40,12 +40,14 @@ bash /workspace/pastor-ai/start.sh
 
 The staff control panel is **not** at `/admin/` (that path returns 404 so visitors cannot find it). Use the private path stored as `DJANGO_ADMIN_URL` in `config.env`. `start.sh` prints `Admin (private — share only with staff): https://…/<path>/`. Share that URL only with people who should have access.
 
-Default credentials (created automatically by `install.sh` / `start.sh`):
+`install.sh` generates a random `DJANGO_ADMIN_URL` and a random `DJANGO_SUPERUSER_PASSWORD` on first install and writes them to `config.env` (mode 600). There is no published default password. To rotate later:
 
-- **Username:** `admin`
-- **Password:** `admin123`
-
-Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed. Change `DJANGO_ADMIN_URL` there if you want a new private path (letters and numerals only, 12+ characters).
+```bash
+# on the pod
+nano /workspace/pastor-ai/config.env   # set DJANGO_SUPERUSER_PASSWORD and optionally DJANGO_ADMIN_URL
+# add: DJANGO_SUPERUSER_RESET_PASSWORD=1
+bash /workspace/pastor-ai/start.sh
+```
 
 **Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
@@ -114,6 +116,16 @@ cd frontend && flutter build web --release --dart-define=API_BASE_URL=
 
 `start.sh` / `install.sh` automatically prefer `frontend/build/web` when present.
 Same-origin API calls (`API_BASE_URL` empty) talk to Django on the ngrok/public URL.
+
+## Before production
+
+On the CPU web pod:
+
+```bash
+bash /workspace/pastor-ai/scripts/check_production_security.sh
+```
+
+Set `DJANGO_DEBUG=false`, `DJANGO_CORS_ALLOW_ALL_ORIGINS=false`, secure cookies, a unique `DJANGO_ADMIN_URL`, a 12+ character staff password with `DJANGO_SUPERUSER_RESET_PASSWORD=1`, `BILLING_MOCK_CHECKOUT=false`, and real Stripe keys. Restart with `bash /workspace/pastor-ai/start.sh`. Rotate the RunPod API key if it has ever appeared in `ps` output.
 
 ## Vimeo Daily Devotionals
 
