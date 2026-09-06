@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from pastor_ai.admin_url import (
     DEFAULT_ADMIN_URL_PATH,
@@ -37,6 +37,14 @@ class NormalizeAdminUrlPathTests(SimpleTestCase):
         self.assertIn("api/", pattern)
 
 
+@override_settings(
+    ROOT_URLCONF="pastor_ai.urls",
+    FRONTEND_BUILD_DIR="/nonexistent-frontend-for-admin-url-tests",
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    },
+)
 class AdminUrlRoutingTests(TestCase):
     def test_public_admin_paths_are_404(self):
         for path in ("/admin/", "/admin/login/", "/admin/core/ingestion/"):
