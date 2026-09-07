@@ -306,6 +306,13 @@ Find it in Ingested documents. Either delete it, or re-upload with **Replace exi
 **Someone wants an account disabled**  
 Uncheck **Active** on the User. Do not delete if you still need their prayer or chat history.
 
+That keeps the email reserved: login fails, and create-account used to say the email was taken. The app now lets that person **create a new account with the same email**, which reactivates the User and sets the new password. Google Sign-In also reactivates a deactivated User.
+
+To remove the account entirely (and free the email the hard way), delete the **User** under Authentication and Authorization → Users — not just the Profile row under Api → Profiles.
+
+**Someone cannot re-register after you “deleted” them**  
+Check Users: if Active is unchecked, either check Active again or tell them to create the account again with that email. If the User row is gone and register still fails, escalate — that is unexpected.
+
 **Pod / server was restarted**  
 Someone with server access should run the start script (see [RUNPOD.md](../RUNPOD.md)). Staff do not need to re-ingest unless the persistent sermon storage or database dump was missing.
 

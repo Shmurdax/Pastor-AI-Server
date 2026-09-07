@@ -47,6 +47,23 @@ class LoginView(APIView):
         # username == email in our setup (see RegisterSerializer.create)
         user = authenticate(request, username=email, password=password)
         if user is None:
+            existing = User.objects.filter(username=email).first()
+            if (
+                existing is not None
+                and not existing.is_active
+                and existing.has_usable_password()
+                and existing.check_password(password)
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "This account was deactivated. Create a new account "
+                            "with this email to reactivate it, or ask staff to "
+                            "check Active on the User in admin."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             return Response(
                 {"detail": "Invalid email or password."},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -145,6 +162,7 @@ class GoogleAuthView(APIView):
 
         user = User.objects.filter(username=email).first()
         created = False
+        reactivated = False
         if user is None:
             first_name, _, last_name = name.partition(" ")
             user = User(username=email, email=email, first_name=first_name, last_name=last_name)
@@ -152,20 +170,30 @@ class GoogleAuthView(APIView):
             user.save()
             created = True
         else:
+            update_fields: list[str] = []
+            # Staff may have unchecked Active; Google sign-in should restore access.
+            if not user.is_active:
+                user.is_active = True
+                reactivated = True
+                update_fields.append("is_active")
             # Keep profile fresh without overwriting a deliberately set password account.
             if not user.get_full_name() and name:
                 first_name, _, last_name = name.partition(" ")
                 user.first_name = first_name
                 user.last_name = last_name
-                user.save(update_fields=["first_name", "last_name"])
+                update_fields.extend(["first_name", "last_name"])
+            if update_fields:
+                user.save(update_fields=update_fields)
 
         profile = getattr(user, "profile", None)
         if profile is not None and picture and profile.avatar_url != picture:
             profile.avatar_url = picture
             profile.save(update_fields=["avatar_url"])
 
+        if reactivated:
+            Token.objects.filter(user=user).delete()
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
             {"token": token.key, "user": UserSerializer(user).data},
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED if created or reactivated else status.HTTP_200_OK,
         )

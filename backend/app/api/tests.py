@@ -28,6 +28,99 @@ class AuthConfigViewTests(TestCase):
         self.assertEqual(res.data["google_client_id"], "")
 
 
+class InactiveAccountReclaimTests(TestCase):
+    """Staff often uncheck Active instead of deleting; email must be reusable."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.email = "reuse@example.com"
+        self.user = User.objects.create_user(
+            username=self.email,
+            email=self.email,
+            password="OldPass123!",
+            first_name="Old",
+        )
+        self.old_token = Token.objects.create(user=self.user).key
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+
+    def test_register_reactivates_inactive_email(self):
+        res = self.client.post(
+            "/api/auth/register/",
+            {
+                "name": "New Name",
+                "email": self.email,
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIn("token", res.data)
+        self.assertEqual(res.data["user"]["email"], self.email)
+        self.assertEqual(res.data["user"]["name"], "New Name")
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+        self.assertTrue(self.user.check_password("BrandNewPass123!"))
+        self.assertFalse(Token.objects.filter(key=self.old_token).exists())
+        self.assertEqual(User.objects.filter(username=self.email).count(), 1)
+
+        login = self.client.post(
+            "/api/auth/login/",
+            {"email": self.email, "password": "BrandNewPass123!"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 200, login.data)
+
+    def test_active_email_still_blocked(self):
+        self.user.is_active = True
+        self.user.save(update_fields=["is_active"])
+        res = self.client.post(
+            "/api/auth/register/",
+            {
+                "name": "Other",
+                "email": self.email,
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("email", res.data)
+
+    def test_login_explains_deactivated_account(self):
+        res = self.client.post(
+            "/api/auth/login/",
+            {"email": self.email, "password": "OldPass123!"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+        self.assertIn("deactivated", res.data["detail"].lower())
+
+    @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
+    @patch("api.auth_views.google_id_token.verify_oauth2_token")
+    def test_google_sign_in_reactivates_inactive_user(self, mock_verify):
+        mock_verify.return_value = {
+            "email": self.email,
+            "email_verified": True,
+            "name": "Google Name",
+            "picture": "",
+        }
+        res = self.client.post(
+            "/api/auth/google/",
+            {"id_token": "fake-id-token"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+        self.assertFalse(Token.objects.filter(key=self.old_token).exists())
+        me = self.client.get(
+            "/api/auth/me/",
+            HTTP_AUTHORIZATION=f"Token {res.data['token']}",
+        )
+        self.assertEqual(me.status_code, 200)
+
+
 class AuthCsrfSessionTests(TestCase):
     """Flutter web sends the Django session cookie but not X-CSRFToken."""
 

@@ -1,6 +1,7 @@
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework.authtoken.models import Token
 
 from core.models import PrayerRequest, ChurchEvent, ResponseReport
 
@@ -82,7 +83,10 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         value = value.lower().strip()
-        if User.objects.filter(username=value).exists():
+        # Staff often disable accounts with Active=False (see staff guide). That
+        # keeps the username/email reserved; allow create-account to reclaim it.
+        existing = User.objects.filter(username=value).first()
+        if existing is not None and existing.is_active:
             raise serializers.ValidationError("An account with this email already exists.")
         return value
 
@@ -97,6 +101,18 @@ class RegisterSerializer(serializers.Serializer):
         password = validated_data["password"]
 
         first_name, _, last_name = name.partition(" ")
+        existing = User.objects.filter(username=email).first()
+        if existing is not None and not existing.is_active:
+            existing.is_active = True
+            existing.email = email
+            existing.first_name = first_name
+            existing.last_name = last_name
+            existing.set_password(password)
+            existing.save()
+            # Old sessions must not keep working after a reclaim.
+            Token.objects.filter(user=existing).delete()
+            return existing
+
         user = User.objects.create_user(
             username=email,
             email=email,
