@@ -63,6 +63,90 @@ nano /workspace/pastor-ai/tokens.env
 bash /workspace/pastor-ai/apply-tokens.sh --restart
 ```
 
+## Stripe Premium (Embedded Checkout)
+
+Premium subscriptions use **Stripe Embedded Checkout**. Keys live in `tokens.env` (gitignored) and are copied into `config.env` by `apply-tokens.sh`.
+
+### First-time setup
+
+1. Create (or open) a Stripe account and switch to **Test mode**.
+2. Copy keys from [API keys](https://dashboard.stripe.com/test/apikeys):
+   - `STRIPE_SECRET_KEY` → `sk_test_…`
+   - `STRIPE_PUBLISHABLE_KEY` → `pk_test_…`
+3. Put them in `tokens.env` (create from the example if needed):
+
+```bash
+cp tokens.env.example tokens.env
+nano tokens.env
+```
+
+```bash
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+BILLING_MOCK_CHECKOUT=false
+# Optional until webhooks / public return URLs are needed:
+# STRIPE_WEBHOOK_SECRET=whsec_...
+# PUBLIC_APP_URL=https://your-public-domain
+# STRIPE_PRICE_MONTHLY=price_...
+# STRIPE_PRICE_YEARLY=price_...
+```
+
+4. Apply and validate:
+
+```bash
+bash apply-tokens.sh --validate-stripe
+```
+
+`apply-tokens.sh` writes the keys into `config.env`, turns off mock checkout when real keys are present, and `--validate-stripe` checks the secret key against the Stripe API.
+
+5. Start the app:
+
+```bash
+# Full stack (RunPod / production)
+bash start.sh
+
+# Local auth + billing only (no vLLM / Qdrant)
+bash scripts/start-minimal.sh
+# or: bash scripts/start-minimal.sh --validate-stripe
+```
+
+6. Smoke-test checkout:
+   - Open the app → sign in → **Subscribe** → complete Embedded Checkout
+   - Test card: `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP
+   - After payment, Premium should unlock on the account. If it does not, use **Subscribe → Already subscribed? Restore access** (syncs an active Stripe subscription without webhooks).
+
+**Optional webhook (recommended for production):**
+
+```bash
+# Local forwarding
+stripe listen --forward-to localhost:8000/api/billing/webhook/
+# Paste the printed whsec_… into tokens.env as STRIPE_WEBHOOK_SECRET, then:
+bash apply-tokens.sh --restart
+```
+
+Dashboard endpoint (production): `POST https://your-domain/api/billing/webhook/` for `checkout.session.completed` and subscription created/updated/deleted.
+
+Without a webhook, the app still activates Premium via checkout session confirmation and `/api/billing/sync-subscription/` (Restore access).
+
+### Subsequent times (keys already set)
+
+When keys are already in `tokens.env` / `config.env`:
+
+```bash
+# After editing tokens.env (rotate keys, add webhook secret, set PUBLIC_APP_URL, …)
+bash apply-tokens.sh
+# Optional: bash apply-tokens.sh --validate-stripe
+# Optional: bash apply-tokens.sh --restart   # full stack restart
+
+bash start.sh
+# or local billing-only:
+bash scripts/start-minimal.sh
+```
+
+`start-minimal.sh` re-runs `apply-tokens.sh` when `tokens.env` exists, so a normal restart is usually enough after keys are saved.
+
+If Premium does not appear after a successful Stripe payment, open **Subscribe → Already subscribed? Restore access** while signed in with the same email used at checkout.
+
 ## Manual RAG re-ingest
 
 ```bash
