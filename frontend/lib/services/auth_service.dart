@@ -338,19 +338,18 @@ class AuthService {
   }
 
   AuthResult _parseAuthResponse(http.Response res) {
-    if (res.statusCode == 401 || res.statusCode == 400 || res.statusCode == 503) {
+    if (res.statusCode == 401 || res.statusCode == 400 || res.statusCode == 403 || res.statusCode == 503) {
       final body = _tryDecode(res.body);
-      throw AuthException(
-        body?['detail'] as String? ??
-            (res.statusCode == 503
-                ? 'Google Sign-In is not configured on the server.'
-                : 'Invalid email or password.'),
-      );
+      final message = _authErrorMessage(body) ??
+          (res.statusCode == 503
+              ? 'Google Sign-In is not configured on the server.'
+              : 'Invalid email or password.');
+      throw AuthException(message);
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       final body = _tryDecode(res.body);
-      final detail = body?['detail'];
-      if (detail is String && detail.isNotEmpty) {
+      final detail = _authErrorMessage(body);
+      if (detail != null) {
         throw AuthException(detail);
       }
       throw AuthException('Authentication failed (${res.statusCode}).');
@@ -370,5 +369,25 @@ class AuthService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Prefer DRF `detail`, otherwise first field error (e.g. register email taken).
+  static String? _authErrorMessage(Map<String, dynamic>? body) {
+    if (body == null) return null;
+    final detail = body['detail'];
+    if (detail is String && detail.isNotEmpty) return detail;
+    if (detail is List && detail.isNotEmpty) {
+      final first = detail.first;
+      if (first is String && first.isNotEmpty) return first;
+    }
+    for (final entry in body.entries) {
+      if (entry.key == 'detail') continue;
+      final value = entry.value;
+      if (value is List && value.isNotEmpty && value.first is String) {
+        return value.first as String;
+      }
+      if (value is String && value.isNotEmpty) return value;
+    }
+    return null;
   }
 }

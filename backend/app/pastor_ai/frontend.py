@@ -24,6 +24,8 @@ _WARMUP_SCRIPT = (
     "</script>"
 )
 
+_GOOGLE_META_MARKER = 'name="google-signin-client_id"'
+
 
 def _resolve_frontend_dir(configured_dir: Path) -> Path:
     """Accept either a Flutter project root (build/web) or a prebuilt web dir."""
@@ -36,11 +38,41 @@ def _resolve_frontend_dir(configured_dir: Path) -> Path:
     raise Http404("Frontend entrypoint not found.")
 
 
-def _index_html_with_warmup(file_path: Path) -> str:
+def _google_client_id_meta() -> str:
+    client_id = (getattr(settings, "GOOGLE_CLIENT_ID", "") or "").strip()
+    if not client_id:
+        return ""
+    # GIS / google_sign_in_web can read this even before Flutter dart-defines load.
+    escaped = (
+        client_id.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+    )
+    return f'<meta name="google-signin-client_id" content="{escaped}">\n'
+
+
+def _index_html_with_runtime_injections(file_path: Path) -> str:
     text = file_path.read_text(encoding="utf-8")
+    google_meta = _google_client_id_meta()
+    if google_meta and _GOOGLE_META_MARKER not in text:
+        updated, count = re.subn(
+            r"</head>",
+            google_meta + "</head>",
+            text,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        text = updated if count else (google_meta + text)
+
     if _WARMUP_MARKER in text:
         return text
-    updated, count = re.subn(r"</body>", _WARMUP_SCRIPT + "</body>", text, count=1, flags=re.IGNORECASE)
+    updated, count = re.subn(
+        r"</body>",
+        _WARMUP_SCRIPT + "</body>",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    )
     if count:
         return updated
     return text + _WARMUP_SCRIPT
@@ -85,7 +117,7 @@ def serve_frontend(request, path: str = ""):
     }
     if file_path.name.lower() == "index.html":
         response = HttpResponse(
-            _index_html_with_warmup(file_path),
+            _index_html_with_runtime_injections(file_path),
             content_type="text/html; charset=utf-8",
         )
         for key, value in cache_headers.items():
