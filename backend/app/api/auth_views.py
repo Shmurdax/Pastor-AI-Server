@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from rest_framework import permissions, status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,6 +18,9 @@ from .serializers import (
 
 
 class RegisterView(APIView):
+    # Flutter web POSTs JSON without an X-CSRFToken. Default SessionAuthentication
+    # would 403 whenever a Django session cookie is present (e.g. staff admin login).
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -31,6 +35,7 @@ class RegisterView(APIView):
 
 
 class LoginView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -51,7 +56,24 @@ class LoginView(APIView):
         return Response({"token": token.key, "user": UserSerializer(user).data})
 
 
+class AuthConfigView(APIView):
+    """Public auth config for the Flutter client (Google client ID is not secret)."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        client_id = getattr(settings, "GOOGLE_CLIENT_ID", "") or ""
+        return Response(
+            {
+                "google_configured": bool(client_id),
+                "google_client_id": client_id,
+            }
+        )
+
+
 class MeView(APIView):
+    authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -59,6 +81,7 @@ class MeView(APIView):
 
 
 class LogoutView(APIView):
+    authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -75,6 +98,7 @@ class GoogleAuthView(APIView):
     -> { "token": "...", "user": { id, email, name, avatar_url } }
     """
 
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):

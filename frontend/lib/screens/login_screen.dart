@@ -41,13 +41,21 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   StreamSubscription<GoogleSignInAccount?>? _googleSub;
   bool _handlingGoogle = false;
+  bool _googleReady = false;
 
   @override
   void initState() {
     super.initState();
+    _initGoogle();
+  }
+
+  Future<void> _initGoogle() async {
+    await AuthService.ensureGoogleSignInReady();
+    if (!mounted) return;
     if (kIsWeb && AuthService.isGoogleConfigured) {
       _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
     }
+    setState(() => _googleReady = true);
   }
 
   @override
@@ -199,12 +207,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                   const SizedBox(height: 12),
-                  GoogleAuthButton(
-                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    label: 'Sign in with Google',
-                  ),
-                  if (!AuthService.isGoogleConfigured) ...[
+                  if (!_googleReady && kIsWeb)
+                    const Center(
+                      child: SizedBox(
+                        height: 44,
+                        width: 44,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: _navy),
+                      ),
+                    )
+                  else
+                    GoogleAuthButton(
+                      enabled: !auth.isLoading && AuthService.isGoogleConfigured,
+                      onPressed: auth.isLoading ? null : _googleSignIn,
+                      label: 'Sign in with Google',
+                    ),
+                  if (_googleReady && !AuthService.isGoogleConfigured) ...[
                     const SizedBox(height: 8),
                     Text(
                       'Google Sign-In is not configured (missing GOOGLE_CLIENT_ID).',
@@ -262,13 +279,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirm = true;
   StreamSubscription<GoogleSignInAccount?>? _googleSub;
   bool _handlingGoogle = false;
+  bool _googleReady = false;
 
   @override
   void initState() {
     super.initState();
+    _initGoogle();
+  }
+
+  Future<void> _initGoogle() async {
+    await AuthService.ensureGoogleSignInReady();
+    if (!mounted) return;
     if (kIsWeb && AuthService.isGoogleConfigured) {
       _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
     }
+    setState(() => _googleReady = true);
   }
 
   @override
@@ -451,11 +476,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                   ),
                   const SizedBox(height: 12),
-                  GoogleAuthButton(
-                    enabled: !auth.isLoading && AuthService.isGoogleConfigured,
-                    onPressed: auth.isLoading ? null : _googleSignIn,
-                    label: 'Sign up with Google',
-                  ),
+                  if (!_googleReady && kIsWeb)
+                    const Center(
+                      child: SizedBox(
+                        height: 44,
+                        width: 44,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: _navy),
+                      ),
+                    )
+                  else
+                    GoogleAuthButton(
+                      enabled: !auth.isLoading && AuthService.isGoogleConfigured,
+                      onPressed: auth.isLoading ? null : _googleSignIn,
+                      label: 'Sign up with Google',
+                    ),
+                  if (_googleReady && !AuthService.isGoogleConfigured) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Google Sign-In is not configured (missing GOOGLE_CLIENT_ID).',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

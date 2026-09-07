@@ -85,6 +85,11 @@ The Flutter UI maps **any** `/api/chat/` exception to `Error: Could not connect 
 2. **Gunicorn missing `RUNPOD_API_KEY`.** RunPod Serverless then returns `401 invalid api key`. `get_chat_llm` loads `config.env` / `tokens.env` so this does not depend on the worker process environment.
 3. Empty `PUBLIC_API_KEY` gate or Postgres down. Keep `PUBLIC_API_KEY=` empty for the public Flutter UI, and ensure Postgres is running (`start.sh` reinstalls/starts it if needed).
 
+### Account create / Google Sign-In fails (403 or disabled button)
+1. **403 on Create account / Google.** Auth APIs must not use Django session CSRF. After pulling a fix that sets `authentication_classes = []` on register/login/google, restart Django (`bash start.sh` or `deploy_update.sh`).
+2. **Google button disabled / “not configured”.** Set `GOOGLE_CLIENT_ID` in `tokens.env`, run `bash apply-tokens.sh`, then rebuild Flutter (`bash deploy_update.sh` or `flutter build web --release --dart-define=API_BASE_URL=`). The web UI also loads the client ID from `GET /api/auth/config/` at runtime once rebuilt.
+3. **Google popup / origin errors.** In Google Cloud Console → Credentials → your OAuth **Web** client, add the public site origin (Cloudflare tunnel or custom domain) under **Authorized JavaScript origins** (scheme + host only, no path). COOP is already `same-origin-allow-popups` for GIS.
+
 ### Private LoRA 404
 `HF_TOKEN` must belong to an account that can open
 [apophaticai/qwen2.5-14b-christianai-v1](https://huggingface.co/apophaticai/qwen2.5-14b-christianai-v1)
