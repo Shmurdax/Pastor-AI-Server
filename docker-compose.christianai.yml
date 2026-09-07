@@ -1,5 +1,7 @@
 # Optional Compose overlay reflecting production model settings.
 # On many RunPod images Docker cannot run — use install.sh native path instead.
+# For a CPU web pod, skip this file and point VLLM_URL at RunPod Serverless
+# (see RUNPOD.md and serverless/vllm.env.example).
 services:
   vllm:
     image: vllm/vllm-openai:v0.8.5
@@ -9,7 +11,7 @@ services:
       --enable-lora
       --lora-modules christianai=/lora
       --max-lora-rank 16
-      --max-model-len 4096
+      --max-model-len 8192
       --gpu-memory-utilization 0.90
       --trust-remote-code
       --host 0.0.0.0

@@ -39,8 +39,8 @@ def run_ingestion():
 
     # Mode B: General Text (for sermons and long Bible chapters)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=150,
+        chunk_size=int(os.environ.get("INGEST_CHUNK_SIZE", "1800")),
+        chunk_overlap=int(os.environ.get("INGEST_CHUNK_OVERLAP", "250")),
         separators=["\n\n", "\n", " ", ""]
     )
 
@@ -78,8 +78,9 @@ def run_ingestion():
     else:
         from langchain_huggingface import HuggingFaceEmbeddings
         embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
+            model_name=os.environ.get("EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5"),
             model_kwargs={"device": os.environ.get("EMBEDDING_DEVICE", "cpu")},
+            encode_kwargs={"normalize_embeddings": True},
         )
 
     QdrantVectorStore.from_documents(

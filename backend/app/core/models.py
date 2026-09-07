@@ -38,7 +38,21 @@ class IngestedDocument(models.Model):
         max_length=300,
         help_text="Display name for links and APIs (defaults from filename; edit to match sermon titles in your app).",
     )
+    normalized_title = models.CharField(
+        max_length=300,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Lowercase alphanumeric key from prettified title for near-duplicate detection.",
+    )
     file_hash = models.CharField(max_length=64, unique=True)
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="SHA-256 of cleaned extracted text (or transcript) for near-duplicate detection.",
+    )
     original_extension = models.CharField(max_length=16)
     source_kind = models.CharField(
         max_length=20,
@@ -106,6 +120,12 @@ class IngestionJob(models.Model):
     files_failed = models.PositiveIntegerField(default=0)
     chunks_created = models.PositiveIntegerField(default=0)
     chunks_skipped_as_duplicates = models.PositiveIntegerField(default=0)
+    current_file = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Filename currently being processed (for live progress UI).",
+    )
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

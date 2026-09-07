@@ -1,12 +1,17 @@
 import unittest
 
+from .chat_system_prompt import (
+    biblical_characters_instruction,
+    build_chat_system_prompt,
+    find_biblical_character_names,
+)
 from .document_cleanup import (
     clean_extracted_document,
     clean_markdown_document,
     format_cleanup_log,
 )
 from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
-from .scope_gate import parse_scope_gate_response
+from .scope_gate import always_in_scope_query, parse_scope_gate_response
 from .website_crawl.crawler import normalize_url, path_is_excluded
 from .website_crawl.extract import (
     classify_content_type,
@@ -14,6 +19,38 @@ from .website_crawl.extract import (
     html_to_markdown,
     source_name_for_url,
 )
+
+
+class ChatSystemPromptTests(unittest.TestCase):
+    def test_finds_biblical_character_names(self):
+        names = find_biblical_character_names("What did Moses and Timothy teach about faith?")
+        lowered = {n.lower() for n in names}
+        self.assertIn("moses", lowered)
+        self.assertIn("timothy", lowered)
+
+    def test_skips_christian_demonym(self):
+        names = find_biblical_character_names("Can Christians drink alcohol like Moses?")
+        lowered = {n.lower() for n in names}
+        self.assertNotIn("christians", lowered)
+        self.assertIn("moses", lowered)
+
+    def test_no_biblical_names_when_absent(self):
+        self.assertEqual(find_biblical_character_names("How should pastors prepare a sermon?"), [])
+
+    def test_prompt_requires_sermon_notes_and_long_paragraphs(self):
+        prompt = build_chat_system_prompt(biblical_names=["Moses"])
+        self.assertIn("Susan Nordin", prompt)
+        self.assertIn("multiple long paragraphs", prompt)
+        self.assertIn("sermon notes", prompt)
+        self.assertIn("Quality and pastoral depth", prompt)
+        self.assertIn("REQUIRED QUOTES", prompt)
+        self.assertIn("word-for-word quotations", prompt)
+        self.assertIn("Never invent, polish, or reconstruct quotes", prompt)
+        self.assertIn("Social issues are in scope", prompt)
+        self.assertIn("abortion", prompt.lower())
+        self.assertIn("Do not say you must redirect", prompt)
+        self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
+        self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
 
 class ScopeGateParserTests(unittest.TestCase):
@@ -36,6 +73,23 @@ class ScopeGateParserTests(unittest.TestCase):
     def test_garbage_returns_none(self):
         self.assertIsNone(parse_scope_gate_response("maybe"))
 
+    def test_scope_gate_prompt_lists_abortion_and_broad_social_issues(self):
+        from .scope_gate import _SCOPE_GATE_SYSTEM
+
+        lowered = _SCOPE_GATE_SYSTEM.lower()
+        self.assertIn("abortion", lowered)
+        self.assertIn("prefer yes", lowered)
+        self.assertIn("do not answer no just because a topic is sensitive", lowered)
+        self.assertIn("can christians have abortions?", lowered)
+
+    def test_always_in_scope_for_abortion_and_christians(self):
+        self.assertTrue(always_in_scope_query("Can Christians have abortions?"))
+        self.assertTrue(always_in_scope_query("What about abortion?"))
+        self.assertTrue(always_in_scope_query("What is the meaning of life?"))
+        self.assertTrue(always_in_scope_query("What is my purpose in life?"))
+        self.assertFalse(always_in_scope_query("Write a Python sort function"))
+        self.assertFalse(always_in_scope_query("Who won the game last night?"))
+
 
 class PiiRedactionTests(unittest.TestCase):
     def test_email_redacted(self):
@@ -53,34 +107,33 @@ class PiiRedactionTests(unittest.TestCase):
         self.assertNotIn("Evergreen", out)
         self.assertIn(REDACTED, out)
 
+    def test_names_not_redacted(self):
+        out = redact_user_query("Please pray for Jennifer Wilkins during surgery")
+        self.assertIn("Jennifer", out)
+        self.assertIn("Wilkins", out)
+        self.assertNotIn(REDACTED, out)
+
+    def test_can_christians_question_kept(self):
+        raw = "Can Christians drink alcohol?"
+        stored = redact_user_query(raw)
+        self.assertEqual(stored, raw)
+        self.assertEqual(query_text_for_llm(stored), raw)
+
     def test_biblical_names_kept(self):
         out = redact_user_query("Paul and Timothy wrote about Mary Magdalene")
         self.assertNotIn(REDACTED, out)
         self.assertIn("Mary", out)
-
-    def test_non_biblical_name_redacted(self):
-        out = redact_user_query("Please pray for Jennifer Wilkins during surgery")
-        self.assertNotIn("Jennifer", out)
-        self.assertNotIn("Wilkins", out)
-        self.assertIn(REDACTED, out)
-
-    def test_single_capitalized_name_not_redacted(self):
-        """Single Title Case tokens are not treated as names (too many false positives)."""
-        out = redact_user_query("Pray for Jennifer during surgery")
-        self.assertIn("Jennifer", out)
-        self.assertNotIn(REDACTED, out)
-
-    def test_theological_two_word_phrase_kept(self):
-        out = redact_user_query("Mercy Grace abound")
-        self.assertNotIn(REDACTED, out)
 
     def test_theology_phrase_kept(self):
         out = redact_user_query("Explain the New Testament view of the Holy Spirit")
         self.assertNotIn(REDACTED, out)
 
     def test_query_text_for_llm_strips_redacted_markers(self):
-        stored = redact_user_query("What do Mary and Joseph do? I am Jennifer Wilkins.")
+        stored = redact_user_query(
+            "What do Mary and Joseph do? Email me at user@example.com"
+        )
         self.assertIn(REDACTED, stored)
+        self.assertIn("Mary", stored)
         llm = query_text_for_llm(stored)
         self.assertNotIn(REDACTED, llm)
         self.assertNotIn("[REDACTED]", llm)

@@ -1,8 +1,13 @@
 """
 URL configuration for pastor_ai project.
 """
+from django.conf import settings
 from django.contrib import admin
+from django.http import Http404
 from django.urls import path, re_path
+from django.views.generic import RedirectView
+
+from .admin_url import frontend_catch_all_pattern
 from api.auth_views import (
     AuthConfigView,
     GoogleAuthView,
@@ -29,6 +34,7 @@ from api.views import (
 )
 from core.views import (
     ChatAPIView,
+    ChatWarmupAPIView,
     IngestedDocumentsAPIView,
     IngestedDocumentFileAPIView,
     SermonPdfByNameAPIView,
@@ -39,9 +45,25 @@ from core.views import (
 from .frontend import serve_frontend
 from .robots import robots_txt_view
 
+
+def _public_admin_decoy(_request, rest=""):
+    """``/admin/`` is a well-known path — return 404 instead of the real panel."""
+    raise Http404()
+
+
+_admin_slug = settings.ADMIN_URL_PATH.strip("/")
+
 urlpatterns = [
     path("robots.txt", robots_txt_view, name="robots_txt"),
-    path('admin/', admin.site.urls),
+    path("admin/", _public_admin_decoy),
+    re_path(r"^admin/(?P<rest>.*)$", _public_admin_decoy),
+    # Private staff panel. Slashless URL must redirect — otherwise the Flutter
+    # catch-all would serve the public chat app at this path.
+    path(
+        _admin_slug,
+        RedirectView.as_view(url=f"/{_admin_slug}/", permanent=False),
+    ),
+    path(f"{_admin_slug}/", admin.site.urls),
 
     # Auth — Flutter AuthService paths
     path('api/auth/register/', RegisterView.as_view()),
@@ -61,6 +83,7 @@ urlpatterns = [
     path('api/billing/webhook/', StripeWebhookView.as_view()),
 
     # Chat + prayer + ingested docs
+    path('api/chat/warmup/', ChatWarmupAPIView.as_view(), name='chat_warmup_api'),
     path('api/chat/', ChatAPIView.as_view(), name='chat_api'),
     path('api/translate/', TranslateAPIView.as_view(), name='translate_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
@@ -79,5 +102,9 @@ urlpatterns = [
 
     # Serve Flutter web build and client-side routes from /
     path("", serve_frontend, name="home"),
-    re_path(r"^(?!admin/|api/|static/|chat/|sermons/|admin/core/ingested-documents/)(?P<path>.*)$", serve_frontend, name="frontend"),
+    re_path(
+        frontend_catch_all_pattern(settings.ADMIN_URL_PATH),
+        serve_frontend,
+        name="frontend",
+    ),
 ]

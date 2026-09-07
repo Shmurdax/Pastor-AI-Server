@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vimeo embed</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .err {
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      padding: 24px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var id = (params.get('id') || '').trim();
+      var hash = (params.get('h') || '').trim();
+      var title = params.get('title') || 'Vimeo video';
+      if (!id) {
+        document.body.innerHTML = '<p class="err">Missing Vimeo video id.</p>';
+        return;
+      }
+      // Match official Vimeo Share → Embed query order (h first when present).
+      var q = [];
+      if (hash) q.push('h=' + encodeURIComponent(hash));
+      q.push('badge=0');
+      q.push('autopause=0');
+      q.push('player_id=0');
+      q.push('app_id=58479');
+      var iframe = document.createElement('iframe');
+      iframe.src = 'https://player.vimeo.com/video/' + encodeURIComponent(id) + '?' + q.join('&');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute(
+        'allow',
+        'autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share'
+      );
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.title = title;
+      document.body.appendChild(iframe);
+    })();
+  </script>
+</body>
+</html>

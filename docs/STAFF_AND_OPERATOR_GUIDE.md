@@ -18,7 +18,7 @@ Visitors ask questions about Scripture, Pastor Don's teaching, church life, and 
 
 Staff also use the same site to take prayer requests, publish church events, and (from the Django admin) manage accounts, Premium memberships, and the sermon library.
 
-The public site is the Flutter web app. The control panel is Django admin at `/admin/`.
+The public site is the Flutter web app. The control panel is Django admin at a **private URL** (not `/admin/` — that path is a dead end). The operator keeps the private link in `config.env` as `DJANGO_ADMIN_URL` and shares it only with chosen staff.
 
 ---
 
@@ -55,7 +55,7 @@ There are four kinds of people. The same email account can be both a member and 
 | **Guest** | Opens the site, no sign-in | Chat, browse published events, submit a prayer request, view free media preview |
 | **Member** | Registers with email/password or Google | Same as guest, plus a saved account, profile, and checkout for Premium |
 | **Premium member** | Pays (or staff grants Premium) | Extra chat history and the Premium perks listed on the plans page |
-| **Staff** | A superuser checks **Staff status** on their User | Prayer inbox, create/edit church events, and (if they can reach `/admin/`) the Django control panel |
+| **Staff** | A superuser checks **Staff status** on their User | Prayer inbox, create/edit church events, and (if they have the private admin URL) the Django control panel |
 
 **Staff status** is the switch that unlocks ministry tools in the app. **Superuser** is the extra switch for full Django admin (users, documents, subscriptions). Typical client staff who manage the library and memberships should be **staff + superuser**, or staff with the specific admin permissions you want them to have.
 
@@ -146,7 +146,7 @@ Staff get an **Add event** control on the Events panel. Each event has title, de
 
 ## Django admin — the control panel
 
-Go to `https://<your-public-url>/admin/` and sign in with a staff/superuser account.
+Go to `https://<your-public-url>/<DJANGO_ADMIN_URL>/` (the private path from `config.env`, printed by `start.sh`) and sign in with a staff/superuser account. Do not use `/admin/` — that address is intentionally a 404.
 
 The home page has **Core Admin Tools** cards for ingestion and PDF browsing, plus the usual Django app lists.
 
@@ -169,7 +169,7 @@ Each row is one login. Useful fields:
 | **Email** | Same address, used for contact and Google accounts |
 | **First / last name** | Display name in the app |
 | **Active** | Uncheck to disable login without deleting the account |
-| **Staff status** | Unlocks prayer inbox, event editing, and `/admin/` (if they have permissions) |
+| **Staff status** | Unlocks prayer inbox, event editing, and the private admin URL (if they have permissions) |
 | **Superuser** | Full admin, including other users |
 | **Password** | Set or reset from this page |
 
@@ -181,7 +181,7 @@ Each row is one login. Useful fields:
 4. Check **Superuser** if they should manage users, documents, and subscriptions.
 5. Save.
 
-Do not delete the last superuser. If someone cannot reach `/admin/`, they are usually missing Staff status, or they are signing in on the public app with a different email than the admin user.
+Do not delete the last superuser. If someone cannot reach the private admin URL, they are usually missing Staff status, or they are signing in on the public app with a different email than the admin user.
 
 Google users are created on first Google sign-in. They look like normal Users; username is the Google email.
 
@@ -289,7 +289,7 @@ Audit trail for uploads and crawls. If a batch "did nothing," look here for skip
 ## Common tasks
 
 **A new staff member needs access**  
-They register on the site → you set Staff (and Superuser if they need `/admin/`) on their User.
+They register on the site → you set Staff (and Superuser if they need the private admin URL) on their User.
 
 **A member paid but the app still says Free**  
 Check **Profiles** for that user. If status is not Active, set it. Ask them to refresh. If Stripe is live and still wrong, check that webhooks are configured (engineering).
@@ -329,7 +329,7 @@ If chat is down for everyone, ingestion jobs never leave "running," PDFs vanish 
 | Where | What |
 | --- | --- |
 | `/` | Public app (chat, login, plans, events, media) |
-| `/admin/` | Staff control panel |
-| `/admin/core/ingestion/` | Upload sermons |
-| `/admin/core/ingested-documents/` | Browse stored PDFs |
-| `/admin/core/website-crawl/` | Crawl ministry websites into the library |
+| `/<DJANGO_ADMIN_URL>/` | Staff control panel (private; not `/admin/`) |
+| `/<DJANGO_ADMIN_URL>/core/ingestion/` | Upload sermons |
+| `/<DJANGO_ADMIN_URL>/core/ingested-documents/` | Browse stored PDFs |
+| `/<DJANGO_ADMIN_URL>/core/website-crawl/` | Crawl ministry websites into the library |

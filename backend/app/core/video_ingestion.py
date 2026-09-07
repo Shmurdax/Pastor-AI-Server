@@ -18,15 +18,19 @@ from typing import Callable, List, Optional, Sequence
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 
+from .document_titles import normalize_title_key, prettify_title
 from .embeddings_utils import get_embeddings
 from .ingestion_service import (
     DEFAULT_SPLITTER_KWARGS,
     IngestionResult,
     _clean_text,
     _delete_source_from_qdrant,
+    _find_near_duplicate,
+    _near_duplicate_reason,
     _persist_job_progress,
     _safe_upload_stem,
     _sha256_bytes,
+    _sha256_text,
     _to_markdown,
     _upsert_chunks,
 )
@@ -249,6 +253,7 @@ def ingest_video_files(
             if log_fn:
                 kind = "audio" if extension in AUDIO_EXTENSIONS else "video"
                 log_fn(f"Processing {kind}: {upload.name}")
+            _persist_job_progress(job, result, current_file=upload.name)
 
             if replace_existing_sources:
                 _replace_existing_video(upload.name)
@@ -260,21 +265,35 @@ def ingest_video_files(
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
                     log_fn(f"Empty media file skipped (0 bytes): {upload.name}")
-                _persist_job_progress(job, result)
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             file_hash = _sha256_bytes(raw_content)
-            if IngestedDocument.objects.filter(file_hash=file_hash).exists():
+            title = prettify_title(upload.name)
+            normalized_title = normalize_title_key(upload.name)
+            existing = _find_near_duplicate(
+                file_hash=file_hash,
+                normalized_title=normalized_title,
+            )
+            if existing is not None:
+                reason = _near_duplicate_reason(
+                    existing,
+                    file_hash=file_hash,
+                    content_hash="",
+                    normalized_title=normalized_title,
+                )
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
-                    log_fn(f"Duplicate video skipped by hash: {upload.name}")
-                _persist_job_progress(job, result)
+                    log_fn(
+                        f"Near-duplicate media skipped ({reason}): {upload.name} "
+                        f"matches existing “{existing.title}” ({existing.source_name})."
+                    )
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             source_name = _canonical_video_name(upload.name)
             video_path = upload_dir / source_name
             video_path.write_bytes(raw_content)
-            title = _safe_upload_stem(upload.name)
 
             if log_fn:
                 log_fn(f"Stored original video as {source_name}. Starting Whisper transcription.")
@@ -293,7 +312,31 @@ def ingest_video_files(
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
                     log_fn(f"Video had no usable transcript after normalize and was skipped: {upload.name}")
-                _persist_job_progress(job, result)
+                _persist_job_progress(job, result, current_file=upload.name)
+                continue
+
+            content_hash = _sha256_text(normalized.text)
+            existing_content = _find_near_duplicate(
+                file_hash=file_hash,
+                normalized_title=normalized_title,
+                content_hash=content_hash,
+            )
+            if existing_content is not None:
+                reason = _near_duplicate_reason(
+                    existing_content,
+                    file_hash=file_hash,
+                    content_hash=content_hash,
+                    normalized_title=normalized_title,
+                )
+                video_path.unlink(missing_ok=True)
+                _transcript_sidecar_path(video_path).unlink(missing_ok=True)
+                result.files_skipped_as_duplicates += 1
+                if log_fn:
+                    log_fn(
+                        f"Near-duplicate media skipped ({reason}): {upload.name} "
+                        f"matches existing “{existing_content.title}” ({existing_content.source_name})."
+                    )
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             _write_transcript_sidecar(
@@ -340,7 +383,9 @@ def ingest_video_files(
             doc = IngestedDocument.objects.create(
                 source_name=source_name,
                 title=title,
+                normalized_title=normalized_title,
                 file_hash=file_hash,
+                content_hash=content_hash,
                 original_extension=extension,
                 source_kind="video",
             )
@@ -370,10 +415,11 @@ def ingest_video_files(
             result.chunks_skipped_as_duplicates += skipped
             if log_fn:
                 log_fn(
-                    f"Ingested video {upload.name} as {source_name}: "
-                    f"created {created} timestamped chunks, skipped {skipped} duplicates."
+                    f"Ingested video {upload.name} as {source_name} "
+                    f"(title “{title}”): created {created} timestamped chunks, "
+                    f"skipped {skipped} duplicates."
                 )
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=upload.name)
         except Exception as exc:
             if video_path is not None:
                 try:
@@ -391,8 +437,9 @@ def ingest_video_files(
             if log_fn:
                 log_fn(f"Video ingestion failed for {upload.name}: {exc}")
             logger.exception("Video ingestion failed for %s", upload.name)
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=upload.name)
             continue
 
-    _persist_job_progress(job, result)
+    if job is not None:
+        _persist_job_progress(job, result, current_file="")
     return result

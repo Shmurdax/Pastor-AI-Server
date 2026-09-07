@@ -46,6 +46,8 @@ class AppStrings {
   String get backToBottom => _t('backToBottom');
   String get copyToClipboard => _t('copyToClipboard');
   String get regenerateResponse => _t('regenerateResponse');
+  String sermonSourcesCount(int count) =>
+      _t('sermonSourcesCount').replaceAll('{n}', '$count');
   String get copiedToClipboard => _t('copiedToClipboard');
   String get responseCancelled => _t('responseCancelled');
   String get serverError => _t('serverError');
@@ -74,6 +76,7 @@ class AppStrings {
   String signedInAs(String name) => _t('signedInAs').replaceAll('{name}', name);
   String get signedOut => _t('signedOut');
   String get translatingReplies => _t('translatingReplies');
+  String get serverStartingUp => _t('serverStartingUp');
 
   String _t(String key) {
     final table = _tables[languageCode] ?? _tables['en']!;
@@ -124,6 +127,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Ask with voice',
     'stopVoiceInput': 'Stop voice input',
     'backToBottom': 'Back to bottom',
+    'sermonSourcesCount': 'Sermon sources ({n})',
     'copyToClipboard': 'Copy to clipboard',
     'regenerateResponse': 'Regenerate response',
     'copiedToClipboard': 'Copied to clipboard!',
@@ -153,6 +157,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Signed in as {name}',
     'signedOut': 'Signed out',
     'translatingReplies': 'Updating replies to the selected language…',
+    'serverStartingUp': 'It may take a few minutes',
   },
   'es': {
     'home': 'Inicio',
@@ -197,6 +202,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Preguntar con la voz',
     'stopVoiceInput': 'Detener entrada de voz',
     'backToBottom': 'Volver abajo',
+    'sermonSourcesCount': 'Fuentes del sermón ({n})',
     'copyToClipboard': 'Copiar al portapapeles',
     'regenerateResponse': 'Regenerar respuesta',
     'copiedToClipboard': '¡Copiado al portapapeles!',
@@ -227,6 +233,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Sesión iniciada como {name}',
     'signedOut': 'Sesión cerrada',
     'translatingReplies': 'Actualizando respuestas al idioma seleccionado…',
+    'serverStartingUp': 'Puede tardar unos minutos',
   },
   'fr': {
     'home': 'Accueil',
@@ -271,6 +278,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Demander à la voix',
     'stopVoiceInput': "Arrêter l'entrée vocale",
     'backToBottom': 'Retour en bas',
+    'sermonSourcesCount': 'Sources du sermon ({n})',
     'copyToClipboard': 'Copier dans le presse-papiers',
     'regenerateResponse': 'Régénérer la réponse',
     'copiedToClipboard': 'Copié dans le presse-papiers !',
@@ -301,6 +309,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Connecté en tant que {name}',
     'signedOut': 'Déconnecté',
     'translatingReplies': 'Mise à jour des réponses vers la langue choisie…',
+    'serverStartingUp': 'Cela peut prendre quelques minutes',
   },
   'pt': {
     'home': 'Início',
@@ -345,6 +354,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Perguntar com a voz',
     'stopVoiceInput': 'Parar entrada de voz',
     'backToBottom': 'Voltar ao final',
+    'sermonSourcesCount': 'Fontes do sermão ({n})',
     'copyToClipboard': 'Copiar para a área de transferência',
     'regenerateResponse': 'Regenerar resposta',
     'copiedToClipboard': 'Copiado para a área de transferência!',
@@ -375,6 +385,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Conectado como {name}',
     'signedOut': 'Sessão encerrada',
     'translatingReplies': 'Atualizando respostas para o idioma selecionado…',
+    'serverStartingUp': 'Pode levar alguns minutos',
   },
   'de': {
     'home': 'Startseite',
@@ -419,6 +430,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': 'Mit Stimme fragen',
     'stopVoiceInput': 'Spracheingabe stoppen',
     'backToBottom': 'Nach unten',
+    'sermonSourcesCount': 'Predigtquellen ({n})',
     'copyToClipboard': 'In Zwischenablage kopieren',
     'regenerateResponse': 'Antwort neu erzeugen',
     'copiedToClipboard': 'In Zwischenablage kopiert!',
@@ -449,6 +461,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': 'Angemeldet als {name}',
     'signedOut': 'Abgemeldet',
     'translatingReplies': 'Antworten werden in die gewählte Sprache aktualisiert…',
+    'serverStartingUp': 'Das kann ein paar Minuten dauern',
   },
   'ko': {
     'home': '홈',
@@ -487,6 +500,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': '음성으로 질문',
     'stopVoiceInput': '음성 입력 중지',
     'backToBottom': '맨 아래로',
+    'sermonSourcesCount': '설교 출처 ({n})',
     'copyToClipboard': '클립보드에 복사',
     'regenerateResponse': '응답 다시 생성',
     'copiedToClipboard': '클립보드에 복사되었습니다!',
@@ -514,6 +528,7 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': '{name}(으)로 로그인됨',
     'signedOut': '로그아웃됨',
     'translatingReplies': '선택한 언어로 답변을 업데이트하는 중…',
+    'serverStartingUp': '몇 분 정도 걸릴 수 있습니다',
   },
   'zh': {
     'home': '首页',
@@ -552,6 +567,7 @@ const Map<String, Map<String, String>> _tables = {
     'askWithVoice': '语音提问',
     'stopVoiceInput': '停止语音输入',
     'backToBottom': '回到底部',
+    'sermonSourcesCount': '讲道来源 ({n})',
     'copyToClipboard': '复制到剪贴板',
     'regenerateResponse': '重新生成回复',
     'copiedToClipboard': '已复制到剪贴板！',
@@ -579,5 +595,6 @@ const Map<String, Map<String, String>> _tables = {
     'signedInAs': '已以 {name} 登录',
     'signedOut': '已退出登录',
     'translatingReplies': '正在将回复更新为所选语言…',
+    'serverStartingUp': '可能需要几分钟',
   },
 };

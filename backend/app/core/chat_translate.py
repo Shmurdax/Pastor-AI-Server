@@ -23,19 +23,9 @@ _TRANSLATE_SYSTEM = (
 
 
 def _chat_llm():
-    import os
+    from .chat_llm import get_chat_llm
 
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(
-        base_url=os.getenv("VLLM_URL", "http://vllm:8000/v1"),
-        api_key="not-needed",
-        model=os.getenv("VLLM_MODEL", "christianai"),
-        temperature=0.2,
-        max_tokens=int(os.getenv("CHAT_MAX_TOKENS", "1200")),
-        timeout=float(os.getenv("CHAT_TIMEOUT_S", "120")),
-        default_headers={"ngrok-skip-browser-warning": "true"},
-    )
+    return get_chat_llm(temperature=0.2)
 
 
 def translate_texts(texts, language: str) -> list[str]:

@@ -136,6 +136,7 @@ upsert TUNNEL "${TUNNEL:-}"
 upsert PUBLIC_DOMAIN "${PUBLIC_DOMAIN:-}"
 upsert CLOUDFLARE_TUNNEL_TOKEN "${CLOUDFLARE_TUNNEL_TOKEN:-}"
 upsert DJANGO_SECRET_KEY "${DJANGO_SECRET_KEY:-}"
+upsert DJANGO_ADMIN_URL "${DJANGO_ADMIN_URL:-}"
 upsert POSTGRES_PASSWORD "${POSTGRES_PASSWORD:-}"
 upsert PUBLIC_API_KEY "${PUBLIC_API_KEY:-}"
 upsert GOOGLE_CLIENT_ID "${GOOGLE_CLIENT_ID:-}"
@@ -151,6 +152,16 @@ upsert VIMEO_FOLDER_ID "${VIMEO_FOLDER_ID:-}"
 upsert VIMEO_USER_ID "${VIMEO_USER_ID:-}"
 upsert VIMEO_SHOWCASE_ID "${VIMEO_SHOWCASE_ID:-}"
 upsert VIMEO_FREE_PREVIEW_ID "${VIMEO_FREE_PREVIEW_ID:-}"
+upsert RUNPOD_API_KEY "${RUNPOD_API_KEY:-}"
+upsert VLLM_API_KEY "${VLLM_API_KEY:-}"
+upsert RUNPOD_VLLM_ENDPOINT_ID "${RUNPOD_VLLM_ENDPOINT_ID:-}"
+upsert VLLM_URL "${VLLM_URL:-}"
+upsert VLLM_MODE "${VLLM_MODE:-}"
+upsert CPU_ONLY "${CPU_ONLY:-}"
+upsert RUNPOD_WHISPER_ENDPOINT_ID "${RUNPOD_WHISPER_ENDPOINT_ID:-}"
+upsert WHISPER_URL "${WHISPER_URL:-}"
+upsert WHISPER_MODE "${WHISPER_MODE:-}"
+upsert WHISPER_API_KEY "${WHISPER_API_KEY:-}"
 
 # Auto-disable mock checkout when real Stripe test/live keys are configured.
 if [[ -n "${STRIPE_SECRET_KEY:-}" && -n "${STRIPE_PUBLISHABLE_KEY:-}" ]]; then
@@ -258,6 +269,12 @@ echo "Done."
 
 if [[ "$VALIDATE_STRIPE" -eq 1 ]]; then
   _validate_stripe_keys
+fi
+
+if [[ -f "$WS/vllm_runtime.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$WS/vllm_runtime.sh"
+  vllm_apply_config "$CONFIG"
 fi
 
 if [[ "$RESTART" -eq 1 ]]; then

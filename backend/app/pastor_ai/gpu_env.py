@@ -1,6 +1,6 @@
 """GPU process flags shared by manage.py and Whisper.
 
-vLLM owns most of the GPU. Django/gunicorn stay on CPU so MiniLM embeddings
+vLLM owns most of the GPU. Django/gunicorn stay on CPU so chat embeddings
 cannot CUDA-OOM against the chat model. The video-ingest worker is the
 exception: Whisper should use leftover VRAM on the same MIG device.
 """

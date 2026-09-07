@@ -2,9 +2,9 @@
 
 {% block content %}
 <div style="max-width: 760px;">
-  <h1>Website Crawl → RAG</h1>
+  <h1>Website Scraping</h1>
   <p>
-    Crawls <strong>thenordins.org</strong> and allowlisted sister ministry sites
+    Scrapes <strong>thenordins.org</strong> and allowlisted sister ministry sites
     (CT Church, CT Houston, GMN, Empowerment Conference, and related ministries).
     Public pages, teaching media, and book/resource descriptions are extracted to markdown
     and ingested into Qdrant. Cart/checkout/login/admin and social networks are excluded.
@@ -19,10 +19,10 @@
     <div style="margin-bottom: 12px;">
       <label>
         <input type="checkbox" name="replace_existing_sources" checked />
-        Replace existing website sources with the same source name on re-crawl
+        Replace existing website sources with the same source name on re-scrape
       </label>
     </div>
-    <button type="submit" class="default">Start Website Crawl</button>
+    <button type="submit" class="default">Start Website Scraping</button>
   </form>
 
   <h2 style="margin-top: 24px;">Allowlisted domains</h2>

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# RunPod container start command — reconnects Django, vLLM, Qdrant, Whisper
+# RunPod container start command — reconnects Django, Qdrant, optional local
+# vLLM (skipped on a CPU web pod that calls RunPod Serverless), Whisper
 # ingest, and the named Cloudflare tunnel after a stop/start or remigration:
 #   bash /workspace/pastor-ai/onboot.sh
 # Fallback if pastor-ai/onboot.sh is missing:

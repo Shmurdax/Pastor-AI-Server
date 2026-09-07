@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from pastor_ai.robots import NOINDEX_HEADER_VALUE, path_requires_noindex
@@ -8,6 +9,8 @@ class PathRequiresNoindexTests(SimpleTestCase):
         self.assertTrue(path_requires_noindex("/admin/"))
         self.assertTrue(path_requires_noindex("/admin/login/"))
         self.assertTrue(path_requires_noindex("/admin/core/ingestion/"))
+        self.assertTrue(path_requires_noindex(f"/{settings.ADMIN_URL_PATH}/"))
+        self.assertTrue(path_requires_noindex(f"/{settings.ADMIN_URL_PATH}/login/"))
 
     def test_api_paths(self):
         self.assertTrue(path_requires_noindex("/api/"))
@@ -40,12 +43,34 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         self.assertIn("Disallow: /api/", body)
 
     def test_admin_login_has_noindex_header(self):
+        response = self.client.get(f"/{settings.ADMIN_URL_PATH}/login/")
+        self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
+
+    def test_public_admin_decoy_has_noindex_header(self):
         response = self.client.get("/admin/login/")
+        self.assertEqual(response.status_code, 404)
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
     def test_api_chat_has_noindex_header(self):
         response = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
+
+    def test_warmup_route_starts_worker_without_running_chat(self):
+        from unittest.mock import patch
+
+        with patch("core.vllm_warmup.warmup_vllm_worker", return_value={
+            "ok": True,
+            "warming": True,
+            "skipped": False,
+        }) as mock_warmup:
+            response = self.client.post(
+                "/api/chat/warmup/",
+                data={},
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["warming"])
+        mock_warmup.assert_called_once()
 
     def test_home_does_not_have_noindex_header(self):
         response = self.client.get("/")

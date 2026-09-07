@@ -242,13 +242,14 @@ class VideoIngestPipelineTests(TestCase):
 
 class VideoIngestionAdminTests(TestCase):
     def test_video_admin_urls_resolve(self):
-        self.assertEqual(reverse("admin:core_video_ingestion"), "/admin/core/video-ingestion/")
-        self.assertEqual(reverse("admin:core_video_ingestion_chunk"), "/admin/core/video-ingestion/chunk/")
-        self.assertEqual(reverse("admin:core_ingested_videos"), "/admin/core/ingested-videos/")
-        self.assertEqual(reverse("admin:core_embedded_videos"), "/admin/core/embedded-videos/")
+        prefix = f"/{settings.ADMIN_URL_PATH}"
+        self.assertEqual(reverse("admin:core_video_ingestion"), f"{prefix}/core/video-ingestion/")
+        self.assertEqual(reverse("admin:core_video_ingestion_chunk"), f"{prefix}/core/video-ingestion/chunk/")
+        self.assertEqual(reverse("admin:core_ingested_videos"), f"{prefix}/core/ingested-videos/")
+        self.assertEqual(reverse("admin:core_embedded_videos"), f"{prefix}/core/embedded-videos/")
         self.assertEqual(
             reverse("admin:core_embedded_video_detail", args=["1217796650"]),
-            "/admin/core/embedded-videos/1217796650/",
+            f"{prefix}/core/embedded-videos/1217796650/",
         )
         self.assertTrue(
             reverse("admin:core_ingested_video_file", args=["sermon.mp4"]).endswith(

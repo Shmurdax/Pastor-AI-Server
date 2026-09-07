@@ -11,8 +11,8 @@ from qdrant_client.http import models as qdrant_models
 
 logger = logging.getLogger(__name__)
 
-# HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-DEFAULT_VECTOR_SIZE = 384
+# HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
+DEFAULT_VECTOR_SIZE = 768
 
 
 def get_qdrant_url() -> str:
@@ -57,3 +57,21 @@ def ensure_sermon_collection(client: QdrantClient, collection_name: Optional[str
             return
         logger.error("Failed to create Qdrant collection %r: %s", name, exc)
         raise
+
+
+def delete_sermon_collection(client: QdrantClient, collection_name: Optional[str] = None) -> bool:
+    """Delete the sermon collection if it exists. Returns True when a delete was issued."""
+    name = collection_name or get_collection_name()
+    if not collection_exists(client, name):
+        logger.info("Qdrant collection %r already absent.", name)
+        return False
+    client.delete_collection(collection_name=name)
+    logger.warning("Deleted Qdrant collection %r.", name)
+    return True
+
+
+def reset_sermon_collection(client: QdrantClient, collection_name: Optional[str] = None) -> None:
+    """Drop and recreate the sermon collection at the configured vector size."""
+    name = collection_name or get_collection_name()
+    delete_sermon_collection(client, name)
+    ensure_sermon_collection(client, name)

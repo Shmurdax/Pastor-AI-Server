@@ -17,10 +17,25 @@ void main() {
     expect(s.sermonLibrary, 'Sermon Library');
   });
 
+  test('sermonSourcesCount interpolates the source count', () {
+    expect(AppStrings('en').sermonSourcesCount(3), 'Sermon sources (3)');
+    expect(AppStrings('es').sermonSourcesCount(2), 'Fuentes del sermón (2)');
+  });
+
   test('appLanguageByCode accepts locale prefixes', () {
     expect(appLanguageByCode('es-MX').code, 'es');
     expect(appLanguageByCode('zh_CN').code, 'zh');
     expect(appLanguageByCode('unknown').code, 'en');
+  });
+
+  test('serverStartingUp is translated for every language', () {
+    expect(AppStrings('en').serverStartingUp, 'It may take a few minutes');
+    expect(AppStrings('es').serverStartingUp, isNot('serverStartingUp'));
+    expect(AppStrings('es').serverStartingUp, isNot(AppStrings('en').serverStartingUp));
+    for (final lang in kSupportedAppLanguages) {
+      expect(AppStrings(lang.code).serverStartingUp.isNotEmpty, isTrue, reason: lang.code);
+      expect(AppStrings(lang.code).serverStartingUp, isNot('serverStartingUp'));
+    }
   });
 
   test('all supported languages have full English key coverage', () {
@@ -30,6 +45,7 @@ void main() {
       expect(s.home.isNotEmpty, isTrue, reason: lang.code);
       expect(s.sermonLibrary.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeTitle.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.serverStartingUp.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name
       expect(s.home, isNot('home'));

@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from pastor_ai.admin_url import admin_url_path_from_env
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -73,7 +75,8 @@ ROOT_URLCONF = 'pastor_ai.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # DIRS wins over django.contrib.admin so we can restyle the staff panel for phones.
+        'DIRS': [BASE_DIR / 'core' / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -161,6 +164,8 @@ STORAGES = {
 }
 
 FRONTEND_BUILD_DIR = os.getenv("FRONTEND_BUILD_DIR", "/frontend")
+# Private staff control-panel path. ``/admin/`` is a 404 decoy. Override with DJANGO_ADMIN_URL.
+ADMIN_URL_PATH = admin_url_path_from_env()
 
 # Admin ingestion can POST many files at once; Django's default caps raise TooManyFilesSent /
 # TooManyFieldsSent on large multi-file batches.

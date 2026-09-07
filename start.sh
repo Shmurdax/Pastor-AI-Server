@@ -45,14 +45,26 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 source "$SCRIPT_DIR/persist_runtime.sh"
 restore_workspace_from_persist || true
 ensure_persistent_boot_bundle || true
+ensure_django_admin_url "$CONFIG_ENV"
+# shellcheck disable=SC1090
+set -a
+source "$CONFIG_ENV"
+set +a
 ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/vllm_runtime.sh"
 gpu_detect
+VLLM_URL="$(vllm_resolved_url)"
+VLLM_API_KEY="$(vllm_resolved_api_key)"
+if whisper_is_remote; then
+  WHISPER_URL="$(whisper_runsync_url)"
+fi
 if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
   log "GPU: ${GPU_NAME:-unknown} compute_cap=${GPU_COMPUTE_CAP:-?} MIG=${GPU_MIG_UUID:-none} ${GPU_MIG_GB:+${GPU_MIG_GB}GB}"
 fi
-if [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
+if [[ "${CPU_ONLY:-0}" == "1" ]] || [[ "${WHISPER_FORCE_CPU:-0}" == "1" ]]; then
   WHISPER_DEVICE=cpu
 elif [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
   case "${WHISPER_DEVICE:-auto}" in
@@ -134,8 +146,17 @@ else
   log "Qdrant already running"
 fi
 
-# vLLM
-if ! vllm_healthy; then
+# vLLM — local GPU process, or skip when Django calls RunPod Serverless.
+if ! vllm_use_local_server; then
+  stop_screen vllm
+  log "Skipping local vLLM — using ${VLLM_URL}"
+  if [[ -z "${VLLM_API_KEY}" ]]; then
+    warn "VLLM_API_KEY / RUNPOD_API_KEY missing — serverless chat will 401 until you set it in tokens.env"
+  fi
+  if vllm_url_is_local "$VLLM_URL"; then
+    warn "Serverless/CPU mode but VLLM_URL is still local (${VLLM_URL}). Set RUNPOD_VLLM_ENDPOINT_ID or VLLM_URL in tokens.env"
+  fi
+elif ! vllm_healthy; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
   gpu_ensure_vllm_stack
   FREE_MIB="$(gpu_free_mib || true)"
@@ -153,7 +174,7 @@ if ! vllm_healthy; then
   LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
-  MAX_LEN="${VLLM_MAX_MODEL_LEN:-4096}"
+  MAX_LEN="${VLLM_MAX_MODEL_LEN:-8192}"
   GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
   DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
   if [[ -z "$GPU_UTIL" ]]; then
@@ -237,12 +258,21 @@ sleep 1
 fuser -k "${DJANGO_PORT}/tcp" 2>/dev/null || true
 sleep 1
 screen -dmS django bash -c "
+  set -a &&
+  source '${CONFIG_ENV}' &&
+  set +a &&
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
   export FRONTEND_BUILD_DIR='$(resolve_frontend_build_dir "$FRONTEND_DIR")' &&
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}' &&
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}' &&
   export VLLM_URL='${VLLM_URL:-http://127.0.0.1:$VLLM_PORT/v1}' &&
+  export VLLM_MODEL='${VLLM_MODEL:-christianai}' &&
+  export VLLM_API_KEY=\"\${VLLM_API_KEY:-${VLLM_API_KEY:-}}\" &&
+  export RUNPOD_API_KEY=\"\${RUNPOD_API_KEY:-${RUNPOD_API_KEY:-}}\" &&
+  export RUNPOD_VLLM_ENDPOINT_ID='${RUNPOD_VLLM_ENDPOINT_ID:-}' &&
+  export VLLM_MODE='${VLLM_MODE:-}' &&
+  export CPU_ONLY='${CPU_ONLY:-}' &&
   export DJANGO_DEBUG='${DJANGO_DEBUG:-true}' &&
   export DJANGO_SECRET_KEY='${DJANGO_SECRET_KEY}' &&
   export DJANGO_ALLOWED_HOSTS='${DJANGO_ALLOWED_HOSTS:-*}' &&
@@ -272,9 +302,12 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_USERNAME='${DJANGO_SUPERUSER_USERNAME:-admin}' &&
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
-  # MiniLM embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
+  export DJANGO_ADMIN_URL='${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}' &&
+  # BGE embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
+  export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}' &&
+  export QDRANT_VECTOR_SIZE='${QDRANT_VECTOR_SIZE:-768}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&
   export VIDEO_INGESTION_UPLOAD_DIR='${VIDEO_INGESTION_UPLOAD_DIR:-$PERSIST_VIDEO_UPLOADS}' &&
   export VIDEO_INGESTION_JOBS_DIR='${VIDEO_INGESTION_JOBS_DIR:-$PERSIST_VIDEO_JOBS}' &&
@@ -283,6 +316,15 @@ screen -dmS django bash -c "
   export WHISPER_DEVICE='cpu' &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
+  export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
+  export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-8000}' &&
+  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-2400}' &&
+  export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-8192}' &&
+  export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
+  export RETRIEVAL_K='${RETRIEVAL_K:-16}' &&
+  export RETRIEVAL_THRESHOLD='${RETRIEVAL_THRESHOLD:-0.7}' &&
+  export INGEST_CHUNK_SIZE='${INGEST_CHUNK_SIZE:-1800}' &&
+  export INGEST_CHUNK_OVERLAP='${INGEST_CHUNK_OVERLAP:-250}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
@@ -293,14 +335,21 @@ curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJ
   || warn "Django not responding yet — see ${LOG_DIR}/django.log"
 
 # Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
-# On GPU pods Whisper uses leftover MIG VRAM; MiniLM embeddings stay on CPU.
+# On GPU pods Whisper uses leftover MIG VRAM unless a serverless Whisper endpoint
+# is configured. BGE embeddings stay on CPU.
 stop_screen video-ingest
 VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES=''"
-if [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
+if whisper_is_remote; then
+  VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+  log "Video ingest will call serverless GPU Whisper at $(whisper_runsync_url)"
+elif [[ -n "${GPU_CUDA_VISIBLE:-}" && "${WHISPER_DEVICE}" == "cuda" ]]; then
   VIDEO_CUDA_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}'"
   VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=1"
 else
   VIDEO_ALLOW_GPU="export PASTOR_AI_ALLOW_GPU=0"
+  if vllm_cpu_only_pod; then
+    warn "CPU pod has no RUNPOD_WHISPER_ENDPOINT_ID — video ingest will use local CPU Whisper (slow)"
+  fi
 fi
 screen -dmS video-ingest bash -c "
   set -a
@@ -311,6 +360,8 @@ screen -dmS video-ingest bash -c "
   ${VIDEO_ALLOW_GPU}
   ${VIDEO_CUDA_EXPORT}
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}'
+  export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}'
+  export QDRANT_VECTOR_SIZE='${QDRANT_VECTOR_SIZE:-768}'
   export QDRANT_URL='${QDRANT_URL:-http://127.0.0.1:$QDRANT_PORT}'
   export QDRANT_COLLECTION='${QDRANT_COLLECTION:-sermon_brain}'
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}'
@@ -319,6 +370,11 @@ screen -dmS video-ingest bash -c "
   export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}'
   export WHISPER_MODEL='${WHISPER_MODEL:-base}'
   export WHISPER_DEVICE='${WHISPER_DEVICE}'
+  export WHISPER_MODE='${WHISPER_MODE:-}'
+  export WHISPER_URL='${WHISPER_URL:-}'
+  export RUNPOD_WHISPER_ENDPOINT_ID='${RUNPOD_WHISPER_ENDPOINT_ID:-}'
+  export WHISPER_API_KEY='${WHISPER_API_KEY:-}'
+  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}'
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
   export PYTHONUNBUFFERED=1
@@ -399,9 +455,17 @@ if [[ -f "$WS/public_url.txt" ]]; then
 fi
 echo "Local: http://127.0.0.1:${DJANGO_PORT}"
 echo "RunPod proxy: https://${RUNPOD_POD_ID:-PODID}-${DJANGO_PORT}.proxy.runpod.net"
+if [[ -f "$WS/public_url.txt" ]]; then
+  echo "Admin (private — share only with staff): $(cat "$WS/public_url.txt")/${DJANGO_ADMIN_URL}/"
+fi
+echo "Admin (local, private): http://127.0.0.1:${DJANGO_PORT}/${DJANGO_ADMIN_URL}/"
 echo "Logs: $LOG_DIR/"
 echo ""
-warn "First chat may take several minutes while the LLM loads into GPU memory."
+if vllm_use_local_server; then
+  warn "First chat may take several minutes while the LLM loads into GPU memory."
+else
+  warn "vLLM is remote (${VLLM_URL}). First chat after idle can take 1–3 minutes (serverless cold start)."
+fi
 
 # When onboot.sh is the RunPod start command it sets PASTOR_KEEP_ALIVE=1.
 # Sleep here if we were exec'd as that command so the container does not exit.

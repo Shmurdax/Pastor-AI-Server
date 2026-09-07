@@ -15,6 +15,8 @@
 #
 # Optional (tokens.env or env vars):
 #   NGROK_AUTH_TOKEN, NGROK_DOMAIN, GITHUB_TOKEN, PUBLIC_API_KEY
+#   CPU_ONLY=1 RUNPOD_VLLM_ENDPOINT_ID=... RUNPOD_API_KEY=...  — CPU web/db pod
+#   with vLLM on RunPod Serverless (no local GPU)
 #
 # What this installs (native path — default, works on RunPod):
 #   apt packages, Docker + NVIDIA Container Toolkit (best-effort),
@@ -22,6 +24,7 @@
 #   vLLM 0.8.5 on Ada/Hopper or vLLM >=0.11 on Blackwell sm_120,
 #   Qwen2.5-14B-Instruct-AWQ + Christian LoRA, Django, Cloudflare tunnel,
 #   sermon RAG ingest into Qdrant collection sermon_brain
+#   CPU_ONLY=1 skips NVIDIA/vLLM/LoRA and points Django at serverless vLLM.
 #
 # After pod restart (set this as the RunPod container start command):
 #   bash /workspace/pastor-ai/onboot.sh || bash /workspace/persistent/onboot.sh
@@ -129,10 +132,19 @@ if [[ -f "$CONFIG_ENV" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG_ENV"
   set +a
+  log "Loaded $CONFIG_ENV"
 fi
+# shellcheck disable=SC1091
+source "$REPO_ROOT/vllm_runtime.sh"
 
-[[ -n "${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" ]] \
-  || die "HF_TOKEN required (private LoRA). Create tokens.env from tokens.env.example or export HF_TOKEN=..."
+if vllm_use_local_server; then
+  [[ -n "${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" ]] \
+    || die "HF_TOKEN required (private LoRA). Create tokens.env from tokens.env.example or export HF_TOKEN=..."
+else
+  if [[ -z "${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}" ]]; then
+    warn "HF_TOKEN empty — ok on a CPU web pod; set it on the RunPod Serverless endpoint for the private LoRA"
+  fi
+fi
 
 export HF_TOKEN="${HF_TOKEN:-$HUGGING_FACE_HUB_TOKEN}"
 export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
@@ -149,8 +161,10 @@ apt-get install -y -qq \
   libpq-dev postgresql postgresql-contrib \
   pciutils libreoffice-writer >/dev/null
 
-# NVIDIA driver / toolkit — usually preinstalled on RunPod; install toolkit if missing
-if ! command -v nvidia-smi >/dev/null 2>&1; then
+# NVIDIA driver / toolkit — skip on CPU web pods (vLLM runs on RunPod Serverless).
+if vllm_cpu_only_pod; then
+  log "CPU web pod — skipping NVIDIA driver / container toolkit (vLLM is remote)"
+elif ! command -v nvidia-smi >/dev/null 2>&1; then
   warn "nvidia-smi missing — attempting ubuntu nvidia-driver install (may require reboot)"
   apt-get install -y -qq nvidia-driver-570 || apt-get install -y -qq nvidia-driver-535 || warn "NVIDIA driver install failed"
 else
@@ -190,7 +204,11 @@ install_nvidia_container_toolkit() {
 }
 
 install_docker || warn "Docker install skipped/failed"
-install_nvidia_container_toolkit || true
+if vllm_cpu_only_pod; then
+  log "CPU web pod — skipping NVIDIA Container Toolkit"
+else
+  install_nvidia_container_toolkit || true
+fi
 
 DOCKER_OK=0
 if docker info >/dev/null 2>&1; then
@@ -241,6 +259,7 @@ rsync -a --delete --exclude='.git' \
 cp -a "$REPO_ROOT/start.sh" "$WS/start.sh"
 cp -a "$REPO_ROOT/persist_runtime.sh" "$WS/persist_runtime.sh"
 cp -a "$REPO_ROOT/gpu_runtime.sh" "$WS/gpu_runtime.sh"
+cp -a "$REPO_ROOT/vllm_runtime.sh" "$WS/vllm_runtime.sh"
 cp -a "$REPO_ROOT/apply-tokens.sh" "$WS/apply-tokens.sh"
 cp -a "$REPO_ROOT/tokens.env.example" "$WS/tokens.env.example"
 cp -a "$REPO_ROOT/install.sh" "$WS/install.sh"
@@ -250,8 +269,16 @@ if [[ -f "$REPO_ROOT/seed/ingested_catalog.dump" ]]; then
   cp -a "$REPO_ROOT/seed/ingested_catalog.dump" "$WS/seed/ingested_catalog.dump"
 fi
 [[ -f "$REPO_ROOT/ingest_sermons.sh" ]] && cp -a "$REPO_ROOT/ingest_sermons.sh" "$WS/ingest_sermons.sh"
+[[ -f "$REPO_ROOT/clear_qdrant.sh" ]] && cp -a "$REPO_ROOT/clear_qdrant.sh" "$WS/clear_qdrant.sh"
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
-chmod +x "$WS"/*.sh
+mkdir -p "$WS/scripts" "$WS/serverless"
+[[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
+[[ -f "$REPO_ROOT/scripts/check_whisper.sh" ]] && cp -a "$REPO_ROOT/scripts/check_whisper.sh" "$WS/scripts/check_whisper.sh"
+[[ -f "$REPO_ROOT/serverless/create_runpod_endpoints.sh" ]] && cp -a "$REPO_ROOT/serverless/create_runpod_endpoints.sh" "$WS/serverless/create_runpod_endpoints.sh"
+[[ -f "$REPO_ROOT/serverless/vllm.env.example" ]] && cp -a "$REPO_ROOT/serverless/vllm.env.example" "$WS/serverless/vllm.env.example"
+[[ -f "$REPO_ROOT/serverless/whisper.env.example" ]] && cp -a "$REPO_ROOT/serverless/whisper.env.example" "$WS/serverless/whisper.env.example"
+[[ -f "$REPO_ROOT/RUNPOD.md" ]] && cp -a "$REPO_ROOT/RUNPOD.md" "$WS/RUNPOD.md"
+chmod +x "$WS"/*.sh "$WS/scripts/"*.sh 2>/dev/null || chmod +x "$WS"/*.sh
 [[ -f "$APP_DIR/manage.py" ]] || die "manage.py missing after sync"
 log "Code synced (backend + frontend + scripts)"
 
@@ -285,6 +312,16 @@ sleep 2
 # Config
 # ---------------------------------------------------------------------------
 section "Config"
+RESOLVED_VLLM_URL="$(vllm_resolved_url)"
+if vllm_use_local_server; then
+  VLLM_MODE_VALUE="${VLLM_MODE:-local}"
+  WHISPER_DEVICE_VALUE="${WHISPER_DEVICE:-auto}"
+  CHAT_TIMEOUT_VALUE="${CHAT_TIMEOUT_S:-360}"
+else
+  VLLM_MODE_VALUE="${VLLM_MODE:-serverless}"
+  WHISPER_DEVICE_VALUE="${WHISPER_DEVICE:-cpu}"
+  CHAT_TIMEOUT_VALUE="${CHAT_TIMEOUT_S:-600}"
+fi
 if [[ ! -f "$CONFIG_ENV" ]]; then
   DJANGO_SECRET_KEY="$(openssl rand -hex 32)"
   POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 12)}"
@@ -296,6 +333,7 @@ DJANGO_CORS_ALLOW_ALL_ORIGINS=true
 DJANGO_SECURE_SSL_REDIRECT=false
 DJANGO_SESSION_COOKIE_SECURE=false
 DJANGO_CSRF_COOKIE_SECURE=false
+DJANGO_ADMIN_URL=${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}
 DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin}
 DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD:-admin123}
 DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@localhost}
@@ -308,11 +346,16 @@ HF_TOKEN=${HF_TOKEN}
 HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
 HF_HOME=${HF_CACHE}
 HF_HUB_ENABLE_HF_TRANSFER=0
-VLLM_URL=http://127.0.0.1:${VLLM_PORT}/v1
+VLLM_MODE=${VLLM_MODE_VALUE}
+CPU_ONLY=${CPU_ONLY:-0}
+VLLM_URL=${RESOLVED_VLLM_URL}
 VLLM_MODEL=${VLLM_MODEL}
 VLLM_PORT=${VLLM_PORT}
-VLLM_MAX_MODEL_LEN=4096
+VLLM_MAX_MODEL_LEN=8192
 VLLM_GPU_MEM_UTIL=0.90
+RUNPOD_VLLM_ENDPOINT_ID=${RUNPOD_VLLM_ENDPOINT_ID:-}
+RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+VLLM_API_KEY=${VLLM_API_KEY:-}
 CHRISTIANAI_HF_REPO=${CHRISTIANAI_HF_REPO}
 CHRISTIANAI_LORA_DIR=${LORA_DIR}
 CHRISTIANAI_BASE_VLLM=${CHRISTIANAI_BASE_VLLM}
@@ -321,19 +364,24 @@ QDRANT_URL=http://127.0.0.1:${QDRANT_PORT}
 QDRANT_BIN=${QDRANT_BIN}
 QDRANT_STORAGE=${QDRANT_STORAGE}
 QDRANT_COLLECTION=sermon_brain
+QDRANT_VECTOR_SIZE=768
+EMBEDDING_MODEL_NAME=BAAI/bge-base-en-v1.5
+EMBEDDING_DEVICE=cpu
 INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_ingestion
 VIDEO_INGESTION_UPLOAD_DIR=/workspace/persistent/uploads/admin_video_ingestion
 WHISPER_MODEL=base
-WHISPER_DEVICE=auto
+WHISPER_DEVICE=${WHISPER_DEVICE_VALUE}
 WHISPER_CACHE_DIR=/workspace/persistent/whisper
 FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 TUNNEL=${TUNNEL}
 PUBLIC_API_KEY=
+CHAT_TIMEOUT_S=${CHAT_TIMEOUT_VALUE}
 EOF
   log "Wrote $CONFIG_ENV"
 else
   log "Keeping existing $CONFIG_ENV"
 fi
+ensure_django_admin_url "$CONFIG_ENV"
 
 # Ensure DB role exists
 set -a
@@ -349,6 +397,11 @@ su -s /bin/bash postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${POSTGR
 if [[ -f "$TOKENS_ENV" ]]; then
   bash "$WS/apply-tokens.sh" || true
 fi
+vllm_apply_config "$CONFIG_ENV"
+set -a
+# shellcheck disable=SC1090
+source "$CONFIG_ENV"
+set +a
 
 # ---------------------------------------------------------------------------
 # Python venv + deps
@@ -366,19 +419,25 @@ fi
 # shellcheck disable=SC1091
 source "$REPO_ROOT/gpu_runtime.sh"
 gpu_detect
-gpu_ensure_vllm_stack
-pip install -q --cache-dir "$PIP_CACHE_DIR" "huggingface_hub>=0.30.0,<1.0"
-pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
-pip install -q --cache-dir "$PIP_CACHE_DIR" hf_transfer 2>/dev/null || true
-log "Python env ready: torch $(python -c 'import torch; print(torch.__version__)') vllm $(python -c 'import vllm; print(vllm.__version__)')"
+if vllm_use_local_server; then
+  gpu_ensure_vllm_stack
+  pip install -q --cache-dir "$PIP_CACHE_DIR" "huggingface_hub>=0.30.0,<1.0"
+  pip uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
+  pip install -q --cache-dir "$PIP_CACHE_DIR" hf_transfer 2>/dev/null || true
+  log "Python env ready: torch $(python -c 'import torch; print(torch.__version__)') vllm $(python -c 'import vllm; print(vllm.__version__)')"
+else
+  pip install -q --cache-dir "$PIP_CACHE_DIR" "huggingface_hub>=0.30.0,<1.0" || true
+  log "Python env ready (CPU web pod; vLLM is remote at $(vllm_resolved_url))"
+fi
 
 # ---------------------------------------------------------------------------
-# Download Christian LoRA
+# Download Christian LoRA (local GPU only — serverless worker loads it itself)
 # ---------------------------------------------------------------------------
-section "Download Christian LoRA ($CHRISTIANAI_HF_REPO)"
-mkdir -p "$LORA_DIR"
-export CHRISTIANAI_HF_REPO LORA_DIR HF_TOKEN
-python - <<'PY'
+if vllm_use_local_server; then
+  section "Download Christian LoRA ($CHRISTIANAI_HF_REPO)"
+  mkdir -p "$LORA_DIR"
+  export CHRISTIANAI_HF_REPO LORA_DIR HF_TOKEN
+  python - <<'PY'
 import os
 from huggingface_hub import snapshot_download
 repo = os.environ["CHRISTIANAI_HF_REPO"]
@@ -387,7 +446,11 @@ token = os.environ.get("HF_TOKEN")
 snapshot_download(repo_id=repo, local_dir=dest, token=token)
 print("lora_ok", dest)
 PY
-[[ -f "$LORA_DIR/adapter_model.safetensors" ]] || die "LoRA download missing adapter_model.safetensors"
+  [[ -f "$LORA_DIR/adapter_model.safetensors" ]] || die "LoRA download missing adapter_model.safetensors"
+else
+  section "Christian LoRA"
+  log "Skipping LoRA download on this host — configure it on the RunPod Serverless worker"
+fi
 
 # ---------------------------------------------------------------------------
 # Django migrate
@@ -397,7 +460,8 @@ cd "$APP_DIR"
 export FRONTEND_BUILD_DIR="$(resolve_frontend_build_dir "$FRONTEND_DIR")"
 log "Serving Flutter from $FRONTEND_BUILD_DIR"
 export QDRANT_URL="http://127.0.0.1:${QDRANT_PORT}"
-export VLLM_URL="http://127.0.0.1:${VLLM_PORT}/v1"
+export VLLM_URL="$(vllm_resolved_url)"
+export VLLM_API_KEY="$(vllm_resolved_api_key)"
 export VLLM_MODEL
 export POSTGRES_HOST=127.0.0.1
 export DJANGO_DEBUG=true
@@ -408,7 +472,7 @@ python manage.py migrate --noinput
 restore_seed_ingested_catalog || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
-log "Django ready (admin login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
+log "Django ready (private admin path: /${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}/  login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"
 
 # ---------------------------------------------------------------------------
 # Start services

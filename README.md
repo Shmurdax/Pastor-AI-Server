@@ -38,12 +38,14 @@ bash /workspace/pastor-ai/start.sh
 
 ## Django admin
 
-Open `/admin/` on the Django host. Default credentials (created automatically by `install.sh` / `start.sh`):
+The staff control panel is **not** at `/admin/` (that path returns 404 so visitors cannot find it). Use the private path stored as `DJANGO_ADMIN_URL` in `config.env`. `start.sh` prints `Admin (private — share only with staff): https://…/<path>/`. Share that URL only with people who should have access.
+
+Default credentials (created automatically by `install.sh` / `start.sh`):
 
 - **Username:** `admin`
 - **Password:** `admin123`
 
-Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed.
+Override with `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_PASSWORD` in `config.env` if needed. Change `DJANGO_ADMIN_URL` there if you want a new private path (letters and numerals only, 12+ characters).
 
 **Document Ingestion** stores original PDFs on the persistent volume (`/workspace/persistent/uploads/admin_ingestion` on RunPod; local default `uploads/admin_ingestion`) so sermon library links survive pod restarts. Extracted text is run through structured cleanup before chunking into Qdrant so page numbers, repeating headers/footers, and boilerplate do not confuse retrieval.
 
@@ -120,7 +122,7 @@ After editing Stripe keys (rotate, add webhook secret, change `PUBLIC_APP_URL`),
 bash /workspace/pastor-ai/ingest_sermons.sh
 ```
 
-## Website crawl → RAG (thenordins.org + sister ministries)
+## Website scraping → RAG (thenordins.org + sister ministries)
 
 Allowlisted crawl of public ministry pages, teaching media, and book/resource descriptions into Qdrant `sermon_brain` (excludes cart/checkout/login/admin and socials):
 
@@ -129,19 +131,27 @@ bash /workspace/pastor-ai/crawl_websites.sh
 # or: cd /workspace/pastor-ai/backend/app && python manage.py crawl_websites
 ```
 
-Admin UI: **Website Crawl → RAG** under the Django admin Core section.
+Admin UI: **Website Scraping** under the Django admin Content tools section.
 
 ## Stack (current production)
 
 | Component | Detail |
 |-----------|--------|
-| LLM | `Qwen/Qwen2.5-14B-Instruct-AWQ` + LoRA `apophaticai/qwen2.5-14b-christianai-v1` (served as `christianai`) |
-| API | Django/gunicorn `:8000` |
+| LLM | `Qwen/Qwen2.5-14B-Instruct-AWQ` + LoRA `apophaticai/qwen2.5-14b-christianai-v1` (served as `christianai`) — local GPU **or** [RunPod Serverless](RUNPOD.md#cpu-web-pod--serverless-vllm) |
+| Whisper | Local CUDA leftover, local CPU, **or** a separate [serverless Faster-Whisper](RUNPOD.md#2b-serverless-whisper-for-video-ingest) GPU endpoint |
+| API | Django/gunicorn `:8000` (CPU) |
 | Vectors | Qdrant `:6333` collection `sermon_brain` |
+| DB | Postgres `ai_db` |
 | UI | Flutter web build in `frontend/` |
 | Tunnel | Cloudflare quick tunnel (default) |
 
-See [RUNPOD.md](RUNPOD.md) for troubleshooting (ghost VRAM, ports, tokens).
+See [RUNPOD.md](RUNPOD.md) to create the two serverless GPU endpoints (chat vLLM + Faster-Whisper) and keep Django/Postgres/Qdrant on a cheaper CPU pod:
+
+```bash
+export RUNPOD_API_KEY=rpa_... HF_TOKEN=hf_...
+bash serverless/create_runpod_endpoints.sh --write-tokens
+bash apply-tokens.sh --restart
+```
 
 
 ## Frontend (Flutter)

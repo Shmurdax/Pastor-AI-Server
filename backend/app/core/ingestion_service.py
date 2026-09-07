@@ -13,13 +13,14 @@ Ingestion pipeline (admin uploads):
    Cleanup applies only to extracted text destined for embeddings — not to the on-disk PDF.
 
 4. **Markdown for chunking** — body text is wrapped as ``# {title}\\n\\n{body}`` via ``_to_markdown``
-   (title = filename stem, also stored on ``IngestedDocument.title``). The DB stores ``IngestedDocument`` /
+   (title = prettified filename stem, also stored on ``IngestedDocument.title``). The DB stores ``IngestedDocument`` /
    ``IngestedChunk`` metadata; the
    markdown string is what gets split into chunks (not stored as a single DB blob).
 
 5. **Chunk + embed + Qdrant** — ``RecursiveCharacterTextSplitter`` produces chunks; each new chunk
-   is embedded (``all-MiniLM-L6-v2``) and upserted into Qdrant with payload ``source`` (PDF filename),
+   is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant with payload ``source`` (PDF filename),
    ``file_hash``, ``chunk_hash``, ``text``, etc. Duplicate chunk hashes are skipped across the corpus.
+   Near-duplicates are also skipped by normalized title and cleaned-content hash.
 """
 import hashlib
 import logging
@@ -45,6 +46,7 @@ from .document_cleanup import (
     clean_markdown_document,
     format_cleanup_log,
 )
+from .document_titles import normalize_title_key, prettify_title
 from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_sermon_collection
@@ -77,8 +79,8 @@ class DeletionResult:
 # Larger chunking for Bible documents keeps the corpus lighter-weight
 # (fewer embeddings/points) than sermon-sized uploads.
 DEFAULT_SPLITTER_KWARGS = {
-    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "1000")),
-    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "150")),
+    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "1800")),
+    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "250")),
     "separators": ["\n\n", "\n", " ", ""],
 }
 BIBLE_SPLITTER_KWARGS = {
@@ -351,7 +353,12 @@ def delete_ingested_documents(documents) -> DeletionResult:
     return result
 
 
-def _persist_job_progress(job: Optional[IngestionJob], result: IngestionResult) -> None:
+def _persist_job_progress(
+    job: Optional[IngestionJob],
+    result: IngestionResult,
+    *,
+    current_file: Optional[str] = None,
+) -> None:
     if job is None:
         return
     job.files_received = result.files_received
@@ -360,17 +367,50 @@ def _persist_job_progress(job: Optional[IngestionJob], result: IngestionResult) 
     job.files_failed = result.files_failed
     job.chunks_created = result.chunks_created
     job.chunks_skipped_as_duplicates = result.chunks_skipped_as_duplicates
-    job.save(
-        update_fields=[
-            "files_received",
-            "files_processed",
-            "files_skipped_as_duplicates",
-            "files_failed",
-            "chunks_created",
-            "chunks_skipped_as_duplicates",
-            "updated_at",
-        ]
-    )
+    update_fields = [
+        "files_received",
+        "files_processed",
+        "files_skipped_as_duplicates",
+        "files_failed",
+        "chunks_created",
+        "chunks_skipped_as_duplicates",
+        "updated_at",
+    ]
+    if current_file is not None:
+        job.current_file = current_file
+        update_fields.append("current_file")
+    job.save(update_fields=update_fields)
+
+
+def _find_near_duplicate(
+    *,
+    file_hash: str,
+    normalized_title: str,
+    content_hash: str = "",
+) -> Optional[IngestedDocument]:
+    """Return an existing document that matches hash, title key, or content fingerprint."""
+    by_file = IngestedDocument.objects.filter(file_hash=file_hash).first()
+    if by_file:
+        return by_file
+    if content_hash:
+        by_content = IngestedDocument.objects.filter(content_hash=content_hash).first()
+        if by_content:
+            return by_content
+    if normalized_title:
+        by_title = IngestedDocument.objects.filter(normalized_title=normalized_title).first()
+        if by_title:
+            return by_title
+    return None
+
+
+def _near_duplicate_reason(existing: IngestedDocument, *, file_hash: str, content_hash: str, normalized_title: str) -> str:
+    if existing.file_hash == file_hash:
+        return "exact file hash"
+    if content_hash and existing.content_hash == content_hash:
+        return "same cleaned content"
+    if normalized_title and existing.normalized_title == normalized_title:
+        return "same normalized title"
+    return "near-duplicate"
 
 
 def ingest_uploaded_files(
@@ -388,7 +428,7 @@ def ingest_uploaded_files(
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
     bible_splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
-    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
@@ -404,6 +444,7 @@ def ingest_uploaded_files(
 
             if log_fn:
                 log_fn(f"Processing file: {upload.name}")
+            _persist_job_progress(job, result, current_file=upload.name)
 
             if replace_existing_sources:
                 _replace_existing_for_upload(upload.name)
@@ -412,12 +453,27 @@ def ingest_uploaded_files(
 
             raw_content = upload.read()
             file_hash = _sha256_bytes(raw_content)
+            title = prettify_title(upload.name)
+            normalized_title = normalize_title_key(upload.name)
 
-            if IngestedDocument.objects.filter(file_hash=file_hash).exists():
+            existing = _find_near_duplicate(
+                file_hash=file_hash,
+                normalized_title=normalized_title,
+            )
+            if existing is not None:
+                reason = _near_duplicate_reason(
+                    existing,
+                    file_hash=file_hash,
+                    content_hash="",
+                    normalized_title=normalized_title,
+                )
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
-                    log_fn(f"Duplicate file skipped by hash: {upload.name}")
-                _persist_job_progress(job, result)
+                    log_fn(
+                        f"Near-duplicate skipped ({reason}): {upload.name} "
+                        f"matches existing “{existing.title}” ({existing.source_name})."
+                    )
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             pdf_name = _canonical_pdf_name(upload.name)
@@ -439,7 +495,6 @@ def ingest_uploaded_files(
             # have a file even if later text cleanup or chunking fails mid-way.
             # Cleanup below only mutates extracted text for Qdrant — never this PDF.
             extracted_text = _extract_pdf_text(pdf_path)
-            title = _safe_upload_stem(upload.name)
             cleaned_text = _prepare_extracted_text_for_qdrant(
                 extracted_text,
                 title=title,
@@ -451,7 +506,30 @@ def ingest_uploaded_files(
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
                     log_fn(f"File had no extractable text and was skipped: {upload.name}")
-                _persist_job_progress(job, result)
+                _persist_job_progress(job, result, current_file=upload.name)
+                continue
+
+            content_hash = _sha256_text(cleaned_text)
+            existing_content = _find_near_duplicate(
+                file_hash=file_hash,
+                normalized_title=normalized_title,
+                content_hash=content_hash,
+            )
+            if existing_content is not None:
+                reason = _near_duplicate_reason(
+                    existing_content,
+                    file_hash=file_hash,
+                    content_hash=content_hash,
+                    normalized_title=normalized_title,
+                )
+                pdf_path.unlink(missing_ok=True)
+                result.files_skipped_as_duplicates += 1
+                if log_fn:
+                    log_fn(
+                        f"Near-duplicate skipped ({reason}): {upload.name} "
+                        f"matches existing “{existing_content.title}” ({existing_content.source_name})."
+                    )
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             markdown_text = _to_markdown(title, cleaned_text)
@@ -468,7 +546,9 @@ def ingest_uploaded_files(
             doc = IngestedDocument.objects.create(
                 source_name=pdf_name,
                 title=title,
+                normalized_title=normalized_title,
                 file_hash=file_hash,
+                content_hash=content_hash,
                 original_extension=extension,
                 source_kind="document",
             )
@@ -499,9 +579,10 @@ def ingest_uploaded_files(
             result.chunks_skipped_as_duplicates += skipped
             if log_fn:
                 log_fn(
-                    f"Ingested {upload.name} as {pdf_name}: created {created} chunks, skipped {skipped} duplicates."
+                    f"Ingested {upload.name} as {pdf_name} "
+                    f"(title “{title}”): created {created} chunks, skipped {skipped} duplicates."
                 )
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=upload.name)
         except Exception as exc:
             # Cleanup any partial artifacts and continue with the rest of the batch.
             try:
@@ -521,10 +602,11 @@ def ingest_uploaded_files(
             if log_fn:
                 log_fn(f"Ingestion failed for {upload.name}: {exc}")
             logger.exception("Ingestion failed for %s", upload.name)
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=upload.name)
             continue
 
-    _persist_job_progress(job, result)
+    if job is not None:
+        _persist_job_progress(job, result, current_file="")
 
     return result
 
@@ -547,7 +629,7 @@ def ingest_markdown_documents(
     result = IngestionResult(files_received=len(documents))
 
     default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-    # CPU embeddings — vLLM already owns GPU VRAM; CUDA MiniLM causes OOM mid-ingest.
+    # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
@@ -555,13 +637,19 @@ def ingest_markdown_documents(
 
     for item in documents:
         source_name = str(item.get("source_name") or "").strip()
-        title = str(item.get("title") or Path(source_name).stem or "document").strip()
+        raw_title = str(item.get("title") or Path(source_name).stem or "document").strip()
+        title = prettify_title(raw_title) if raw_title else "Untitled"
+        # Prefer crawler-provided titles when they already look human (not ALL CAPS filenames).
+        if raw_title and not raw_title.isupper() and " " in raw_title:
+            title = raw_title.strip()
         text = str(item.get("text") or "")
+        normalized_title = normalize_title_key(title)
         try:
             if not source_name:
                 raise ValueError("markdown document missing source_name")
             if log_fn:
                 log_fn(f"Processing markdown: {source_name}")
+            _persist_job_progress(job, result, current_file=source_name)
 
             if replace_existing_sources:
                 if IngestedDocument.objects.filter(source_name=source_name).exists():
@@ -579,22 +667,39 @@ def ingest_markdown_documents(
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
                     log_fn(f"Markdown had no text and was skipped: {source_name}")
-                _persist_job_progress(job, result)
+                _persist_job_progress(job, result, current_file=source_name)
                 continue
 
             file_hash = _sha256_text(cleaned_text)
-            if IngestedDocument.objects.filter(file_hash=file_hash).exists():
+            content_hash = file_hash
+            existing = _find_near_duplicate(
+                file_hash=file_hash,
+                normalized_title=normalized_title,
+                content_hash=content_hash,
+            )
+            if existing is not None:
+                reason = _near_duplicate_reason(
+                    existing,
+                    file_hash=file_hash,
+                    content_hash=content_hash,
+                    normalized_title=normalized_title,
+                )
                 result.files_skipped_as_duplicates += 1
                 if log_fn:
-                    log_fn(f"Duplicate markdown skipped by hash: {source_name}")
-                _persist_job_progress(job, result)
+                    log_fn(
+                        f"Near-duplicate markdown skipped ({reason}): {source_name} "
+                        f"matches existing “{existing.title}” ({existing.source_name})."
+                    )
+                _persist_job_progress(job, result, current_file=source_name)
                 continue
 
             chunks = [_clean_text(c) for c in default_splitter.split_text(cleaned_text) if _clean_text(c)]
             doc = IngestedDocument.objects.create(
                 source_name=source_name,
                 title=title,
+                normalized_title=normalized_title,
                 file_hash=file_hash,
+                content_hash=content_hash,
                 original_extension=".md",
                 source_kind="website",
             )
@@ -633,7 +738,7 @@ def ingest_markdown_documents(
                 log_fn(
                     f"Ingested markdown {source_name}: created {created} chunks, skipped {skipped} duplicates."
                 )
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=source_name)
         except Exception as exc:
             result.files_failed += 1
             if job is not None:
@@ -645,8 +750,9 @@ def ingest_markdown_documents(
             if log_fn:
                 log_fn(f"Ingestion failed for markdown {source_name or title}: {exc}")
             logger.exception("Markdown ingestion failed for %s", source_name or title)
-            _persist_job_progress(job, result)
+            _persist_job_progress(job, result, current_file=source_name or title)
             continue
 
-    _persist_job_progress(job, result)
+    if job is not None:
+        _persist_job_progress(job, result, current_file="")
     return result
