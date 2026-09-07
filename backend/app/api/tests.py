@@ -7,6 +7,86 @@ from rest_framework.test import APIClient
 
 
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
+class AuthConfigViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_returns_public_google_client_id(self):
+        res = self.client.get("/api/auth/config/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["google_configured"])
+        self.assertEqual(
+            res.data["google_client_id"],
+            "test-google-client.apps.googleusercontent.com",
+        )
+
+    @override_settings(GOOGLE_CLIENT_ID="")
+    def test_returns_empty_when_not_configured(self):
+        res = self.client.get("/api/auth/config/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["google_configured"])
+        self.assertEqual(res.data["google_client_id"], "")
+
+
+class AuthCsrfSessionTests(TestCase):
+    """Flutter web sends the Django session cookie but not X-CSRFToken."""
+
+    def setUp(self):
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+            first_name="Member",
+        )
+
+    def test_register_with_session_cookie_without_csrf(self):
+        client = APIClient(enforce_csrf_checks=True)
+        self.assertTrue(client.login(username="member@church.org", password="MemberPass123!"))
+        res = client.post(
+            "/api/auth/register/",
+            {
+                "name": "New User",
+                "email": "new.user@example.com",
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIn("token", res.data)
+        self.assertEqual(res.data["user"]["email"], "new.user@example.com")
+
+    def test_login_with_session_cookie_without_csrf(self):
+        client = APIClient(enforce_csrf_checks=True)
+        self.assertTrue(client.login(username="member@church.org", password="MemberPass123!"))
+        res = client.post(
+            "/api/auth/login/",
+            {"email": "member@church.org", "password": "MemberPass123!"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertIn("token", res.data)
+
+    @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
+    @patch("api.auth_views.google_id_token.verify_oauth2_token")
+    def test_google_auth_with_session_cookie_without_csrf(self, mock_verify):
+        mock_verify.return_value = {
+            "email": "google.csrf@example.com",
+            "email_verified": True,
+            "name": "Google CSRF",
+            "picture": "",
+        }
+        client = APIClient(enforce_csrf_checks=True)
+        self.assertTrue(client.login(username="member@church.org", password="MemberPass123!"))
+        res = client.post(
+            "/api/auth/google/",
+            {"id_token": "fake-id-token"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIn("token", res.data)
+
+
+@override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class GoogleAuthViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
