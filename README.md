@@ -76,22 +76,27 @@ Premium subscriptions use **Stripe Embedded Checkout**. Keys live in `tokens.env
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 BILLING_MOCK_CHECKOUT=false
-# Optional:
+PUBLIC_APP_URL=https://your-public-tunnel-or-domain
+# Optional (recommended for production):
 # STRIPE_WEBHOOK_SECRET=whsec_...
-# PUBLIC_APP_URL=https://your-public-domain
 # STRIPE_PRICE_MONTHLY=price_...
 # STRIPE_PRICE_YEARLY=price_...
 ```
 
-3. Start the stack:
+3. Rebuild the Flutter web UI and restart (needed so `stripe_checkout_embed.html` is served from `frontend/build/web`):
 
 ```bash
-bash /workspace/pastor-ai/start.sh
+bash /workspace/pastor-ai/deploy_update.sh
+# or, if Flutter is already on PATH:
+# cd /workspace/pastor-ai/frontend && flutter build web --release --dart-define=API_BASE_URL=
+# bash /workspace/pastor-ai/start.sh
 ```
+
+`start.sh` alone restarts Django with Stripe env from `config.env`; it does **not** rebuild Flutter. After pulling Stripe checkout changes, run `deploy_update.sh` (or a manual Flutter web build) before expecting Embedded Checkout to load.
 
 4. Smoke-test: sign in → **Subscribe** → Embedded Checkout. Test card `4242 4242 4242 4242` (any future expiry / CVC / ZIP).
 
-Optional local webhook forwarding:
+Optional webhook (local):
 
 ```bash
 stripe listen --forward-to localhost:8000/api/billing/webhook/
@@ -101,13 +106,13 @@ bash /workspace/pastor-ai/apply-tokens.sh --restart
 
 Production webhook endpoint: `POST https://your-domain/api/billing/webhook/`. Without a webhook, Premium still unlocks via checkout session confirmation, or **Subscribe → Already subscribed? Restore access**.
 
-**Subsequent times** (keys already in `tokens.env`):
+**Subsequent times** (keys already in `tokens.env` / `config.env`):
 
 ```bash
-bash /workspace/pastor-ai/apply-tokens.sh --restart
+bash /workspace/pastor-ai/start.sh
 ```
 
-After editing keys (rotate, add webhook secret, set `PUBLIC_APP_URL`), run `apply-tokens.sh` again before restarting. If a Stripe payment succeeded but Premium did not unlock, use **Subscribe → Already subscribed? Restore access** while signed in with the same email used at checkout.
+After editing Stripe keys (rotate, add webhook secret, change `PUBLIC_APP_URL`), run `bash /workspace/pastor-ai/apply-tokens.sh --restart` first. After pulling frontend/billing code changes, run `deploy_update.sh` (or rebuild Flutter web) so the checkout embed page stays in sync. If a Stripe payment succeeded but Premium did not unlock, use **Subscribe → Already subscribed? Restore access** while signed in with the same email used at checkout.
 
 ## Manual RAG re-ingest
 
