@@ -48,6 +48,5 @@ echo "  4. Use Environment secrets (scoped to this env), not empty placeholder v
 echo ""
 echo "Reliable workaround (RunPod + Cloud Agent):"
 echo "  nano $WS/tokens.env"
-echo "  bash apply-tokens.sh --validate-stripe"
-echo "  bash scripts/start-minimal.sh"
+echo "  bash apply-tokens.sh --validate-stripe --restart"
 exit 1
