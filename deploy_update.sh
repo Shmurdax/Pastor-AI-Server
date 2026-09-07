@@ -82,6 +82,8 @@ log "Restarting services"
 bash "$WS/start.sh"
 
 log "Health checks (localhost)"
+curl -sf -o /dev/null -w "  GET /api/auth/config/ → %{http_code}\n" \
+  "http://127.0.0.1:${DJANGO_PORT:-8000}/api/auth/config/" || true
 curl -sf -o /dev/null -w "  GET /api/church-events/ → %{http_code}\n" \
   "http://127.0.0.1:${DJANGO_PORT:-8000}/api/church-events/" || true
 curl -sf -o /dev/null -w "  GET /api/media/ → %{http_code}\n" \
