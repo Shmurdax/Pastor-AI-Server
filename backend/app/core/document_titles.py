@@ -70,6 +70,44 @@ _SMALL_WORDS = {
     "with",
 }
 
+# Known acronyms forced to ALL CAPS after title cleanup (case-insensitive match).
+# Do not put ordinary short words here (a, an, is, man, …).
+_ACRONYM_ALLOWLIST = {
+    # Geographic / org
+    "USA",
+    "US",
+    "UK",
+    "UN",
+    "EU",
+    # Bible versions / translations
+    "NKJV",
+    "KJV",
+    "NIV",
+    "ESV",
+    "NASB",
+    "CSB",
+    "HCSB",
+    "RSV",
+    "NRSV",
+    "ASV",
+    "NET",
+    "AMP",
+    "NLT",
+    "BSB",
+    "LSB",
+    "MEV",
+    # Scripture / era shorthand
+    "NT",
+    "OT",
+    "BC",
+    "AD",
+    # Common short tokens in filenames
+    "AI",
+    "FAQ",
+    "PDF",
+}
+_ACRONYMS_BY_LOWER = {token.lower(): token for token in _ACRONYM_ALLOWLIST}
+
 
 def filename_stem(name: str) -> str:
     return Path(name or "").stem.strip() or "document"
@@ -98,18 +136,19 @@ def _strip_copy_suffixes(text: str) -> str:
 def _title_case_word(word: str, *, first: bool, last: bool) -> str:
     if not word:
         return word
+    lower = word.lower()
+    # Allowlisted acronyms win over small-word / shouting-filename heuristics.
+    acronym = _ACRONYMS_BY_LOWER.get(lower)
+    if acronym is not None:
+        return acronym
     if "'" in word and len(word) > 2:
         # Preserve simple possessives / contractions: God's, Don't
         parts = word.split("'")
         return "'".join(
             p[:1].upper() + p[1:].lower() if p else p for p in parts
         )
-    lower = word.lower()
     if not first and not last and lower in _SMALL_WORDS:
         return lower
-    if word.isupper() and len(word) <= 3 and word.isalpha():
-        # Keep short acronyms like NKJV, USA when already all-caps input tokens.
-        return word.upper()
     return lower[:1].upper() + lower[1:]
 
 
@@ -130,7 +169,9 @@ def prettify_title(name: str) -> str:
 
     Examples:
       ``PREGNANT WITH A PROMISE 1 - TEACHING NOTES.pdf``
-        → ``Pregnant With a Promise``
+        → ``Pregnant with a Promise``
+      ``A GOOD MAN.pdf`` → ``A Good Man``
+      ``USA MISSIONS NKJV.pdf`` → ``USA Missions NKJV``
       ``Faith_That_Moves_Mountains_Sermon_Notes.docx``
         → ``Faith That Moves Mountains``
     """

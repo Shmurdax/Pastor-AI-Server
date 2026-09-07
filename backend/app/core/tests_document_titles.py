@@ -25,3 +25,24 @@ class DocumentTitlesTests(SimpleTestCase):
     def test_prettify_copy_suffix_variants(self):
         self.assertEqual(prettify_title("Hope Rising (1).pdf"), "Hope Rising")
         self.assertEqual(prettify_title("Hope Rising - Copy.pdf"), "Hope Rising")
+
+    def test_prettify_full_caps_does_not_fake_acronyms(self):
+        self.assertEqual(prettify_title("A GOOD MAN.pdf"), "A Good Man")
+        self.assertEqual(
+            prettify_title("AN UPDATE IS AVAILABLE.pdf"),
+            "An Update Is Available",
+        )
+
+    def test_prettify_allowlisted_acronyms_stay_all_caps(self):
+        self.assertEqual(
+            prettify_title("USA MISSIONS UPDATE.pdf"),
+            "USA Missions Update",
+        )
+        self.assertEqual(
+            prettify_title("FAITH AND THE NKJV.pdf"),
+            "Faith and the NKJV",
+        )
+        self.assertEqual(
+            prettify_title("reading the nkjv.pdf"),
+            "Reading the NKJV",
+        )
