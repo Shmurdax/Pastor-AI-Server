@@ -87,8 +87,6 @@ BILLING_MOCK_CHECKOUT=false
 
 ```bash
 bash /workspace/pastor-ai/start.sh
-# Local auth + billing only (no vLLM / Qdrant):
-# bash /workspace/pastor-ai/scripts/start-minimal.sh
 ```
 
 4. Smoke-test: sign in → **Subscribe** → Embedded Checkout. Test card `4242 4242 4242 4242` (any future expiry / CVC / ZIP).
@@ -107,11 +105,9 @@ Production webhook endpoint: `POST https://your-domain/api/billing/webhook/`. Wi
 
 ```bash
 bash /workspace/pastor-ai/apply-tokens.sh --restart
-# or local billing-only:
-# bash /workspace/pastor-ai/scripts/start-minimal.sh
 ```
 
-`start-minimal.sh` re-applies `tokens.env` when present. After editing keys (rotate, add webhook secret, set `PUBLIC_APP_URL`), run `apply-tokens.sh` again before restarting. If a Stripe payment succeeded but Premium did not unlock, use **Subscribe → Already subscribed? Restore access** while signed in with the same email used at checkout.
+After editing keys (rotate, add webhook secret, set `PUBLIC_APP_URL`), run `apply-tokens.sh` again before restarting. If a Stripe payment succeeded but Premium did not unlock, use **Subscribe → Already subscribed? Restore access** while signed in with the same email used at checkout.
 
 ## Manual RAG re-ingest
 
