@@ -95,4 +95,9 @@ def serve_frontend(request, path: str = ""):
     response = FileResponse(open(file_path, "rb"), content_type=content_type or "application/octet-stream")
     for key, value in cache_headers.items():
         response[key] = value
+    # Flutter plays Vimeo through a same-origin iframe of /vimeo_embed.html so
+    # player.vimeo.com sees this site as the referrer. Global X_FRAME_OPTIONS=DENY
+    # makes Chrome report "<this domain> refused to connect."
+    if file_path.name == "vimeo_embed.html":
+        response["X-Frame-Options"] = "SAMEORIGIN"
     return response
