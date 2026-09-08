@@ -82,6 +82,10 @@ grep -A8 'dmS django' "$ROOT/start.sh" | grep -q 'CONFIG_ENV' \
   || fail "django screen must source config.env so RUNPOD_API_KEY reaches gunicorn"
 grep -A40 'dmS django' "$ROOT/start.sh" | grep -Fq 'RUNPOD_API_KEY=\"\${RUNPOD_API_KEY' \
   || fail "django screen must keep sourced RUNPOD_API_KEY (not wipe it with an empty outer expansion)"
+grep -A80 'dmS django' "$ROOT/start.sh" | grep -q 'RUNPOD_WHISPER_ENDPOINT_ID' \
+  || fail "django screen must export RUNPOD_WHISPER_ENDPOINT_ID"
+grep -A40 'dmS video-ingest' "$ROOT/start.sh" | grep -Fq 'RUNPOD_API_KEY=\"\${RUNPOD_API_KEY' \
+  || fail "video-ingest screen must keep sourced RUNPOD_API_KEY"
 grep -q 'vllm_runtime.sh' "$ROOT/install.sh" || fail "install.sh must ship vllm_runtime.sh"
 grep -q 'CPU_ONLY' "$ROOT/install.sh" || fail "install.sh must support CPU_ONLY"
 
