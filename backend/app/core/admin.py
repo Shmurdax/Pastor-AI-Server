@@ -33,6 +33,7 @@ from .models import (
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
 from .embedded_videos import get_embedded_video, list_embedded_videos
 from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_filename
+from .video_job_queue import video_job_has_staging
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 
@@ -65,6 +66,9 @@ def _mark_stale_running_jobs_failed() -> int:
             else STALE_INGESTION_JOB_MINUTES
         )
         if last_activity >= now - timezone.timedelta(minutes=idle_minutes):
+            continue
+        if job.job_kind == "video" and video_job_has_staging(job.id):
+            # Dedicated worker resumes Whisper from disk staging after restarts.
             continue
         if not job.error_message:
             job.error_message = (

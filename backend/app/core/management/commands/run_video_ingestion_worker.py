@@ -60,6 +60,7 @@ class Command(BaseCommand):
             uploads, replace_existing = load_video_job_uploads(job.id)
             if uploads:
                 self.stdout.write(f"Processing video job #{job.id} ({len(uploads)} file(s)).")
+                # The dedicated worker already serializes one job at a time.
                 _run_video_ingestion_job(
                     job.id,
                     uploads,

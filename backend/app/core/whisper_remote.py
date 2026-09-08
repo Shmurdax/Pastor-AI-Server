@@ -40,12 +40,22 @@ def _placeholder_key(value: str) -> bool:
     return lowered in {"not-needed", "empty", "paste_here"} or "paste_here" in lowered
 
 
-def resolve_whisper_runsync_url(env: Optional[Mapping[str, str]] = None) -> str:
-    if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
+def _resolved_env(env: Optional[Mapping[str, str]] = None) -> Mapping[str, str]:
+    """Use caller env when provided; otherwise overlay config.env / tokens.env.
 
-        load_workspace_env()
-        env = os.environ
+    Passing raw ``os.environ`` is treated as unset so a zeroed gunicorn
+    environ cannot skip the file overlay and 401 against Serverless Whisper.
+    """
+    if env is not None and env is not os.environ:
+        return env
+    from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
+
+    load_workspace_env()
+    return env_with_workspace()
+
+
+def resolve_whisper_runsync_url(env: Optional[Mapping[str, str]] = None) -> str:
+    env = _resolved_env(env)
     endpoint_id = _env_get(env, "RUNPOD_WHISPER_ENDPOINT_ID")
     if endpoint_id:
         return f"{_RUNPOD_V2_PREFIX}{endpoint_id}/runsync"
@@ -60,11 +70,7 @@ def resolve_whisper_runsync_url(env: Optional[Mapping[str, str]] = None) -> str:
 
 
 def resolve_whisper_api_key(env: Optional[Mapping[str, str]] = None) -> str:
-    if env is None:
-        from pastor_ai.workspace_env import load_workspace_env
-
-        load_workspace_env()
-        env = os.environ
+    env = _resolved_env(env)
     key = _env_get(env, "WHISPER_API_KEY", "RUNPOD_API_KEY", "VLLM_API_KEY")
     if _placeholder_key(key):
         return ""
@@ -72,7 +78,7 @@ def resolve_whisper_api_key(env: Optional[Mapping[str, str]] = None) -> str:
 
 
 def whisper_is_remote(env: Optional[Mapping[str, str]] = None) -> bool:
-    env = os.environ if env is None else env
+    env = _resolved_env(env)
     mode = _env_get(env, "WHISPER_MODE").lower()
     if mode in {"serverless", "remote", "gpu"}:
         return True
@@ -236,7 +242,7 @@ def post_whisper_runsync(
     env: Optional[Mapping[str, str]] = None,
     log_fn: Optional[Callable[[str], None]] = None,
 ) -> List[TranscriptSegment]:
-    env = os.environ if env is None else env
+    env = _resolved_env(env)
     url = resolve_whisper_runsync_url(env)
     key = resolve_whisper_api_key(env)
     if not url:
@@ -293,7 +299,7 @@ def transcribe_audio_remote(
     log_fn: Optional[Callable[[str], None]] = None,
 ) -> List[TranscriptSegment]:
     """Compress a local WAV and transcribe it on the RunPod Whisper GPU worker."""
-    env = os.environ if env is None else env
+    env = _resolved_env(env)
     wav_path = Path(wav_path)
     bitrate = _env_get(env, "WHISPER_REMOTE_BITRATE", default="48k")
     max_b64 = _max_base64_chars(env)

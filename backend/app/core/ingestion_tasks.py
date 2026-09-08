@@ -40,7 +40,14 @@ def enqueue_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], repla
 
 
 def enqueue_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
-    _executor.submit(_run_video_ingestion_job, job_id, staged_uploads, replace_existing_sources)
+    """Persist a disk manifest; the dedicated video-ingest worker runs Whisper.
+
+    Gunicorn's ThreadPoolExecutor dies on ``start.sh`` / worker recycle, so
+    video jobs must not transcribe inside the web process.
+    """
+    from .video_job_queue import persist_video_job_manifest
+
+    persist_video_job_manifest(job_id, staged_uploads, replace_existing_sources)
 
 
 def _touch_job(job: IngestionJob) -> None:
@@ -88,7 +95,13 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         close_old_connections()
 
 
-def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_existing_sources: bool) -> None:
+def _run_video_ingestion_job(
+    job_id: int,
+    staged_uploads: List[StagedUpload],
+    replace_existing_sources: bool,
+    *,
+    wait_for_turn: bool = True,
+) -> None:
     close_old_connections()
     try:
         job = IngestionJob.objects.get(id=job_id)
@@ -101,7 +114,8 @@ def _run_video_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], re
         IngestionJobLog.objects.create(job=job, message=message_text)
         _touch_job(job)
 
-    _wait_for_turn(job_id, log_job)
+    if wait_for_turn:
+        _wait_for_turn(job_id, log_job)
 
     uploads = [_DiskUpload(item.original_name, item.staged_path) for item in staged_uploads]
     try:

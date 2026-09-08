@@ -314,6 +314,10 @@ screen -dmS django bash -c "
   export VIDEO_INGESTION_CHUNKS_DIR='${VIDEO_INGESTION_CHUNKS_DIR:-$PERSIST_VIDEO_CHUNKS}' &&
   export WHISPER_MODEL='${WHISPER_MODEL:-base}' &&
   export WHISPER_DEVICE='cpu' &&
+  export WHISPER_MODE='${WHISPER_MODE:-}' &&
+  export WHISPER_URL='${WHISPER_URL:-}' &&
+  export RUNPOD_WHISPER_ENDPOINT_ID='${RUNPOD_WHISPER_ENDPOINT_ID:-}' &&
+  export WHISPER_API_KEY=\"\${WHISPER_API_KEY:-${WHISPER_API_KEY:-}}\" &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
@@ -373,8 +377,8 @@ screen -dmS video-ingest bash -c "
   export WHISPER_MODE='${WHISPER_MODE:-}'
   export WHISPER_URL='${WHISPER_URL:-}'
   export RUNPOD_WHISPER_ENDPOINT_ID='${RUNPOD_WHISPER_ENDPOINT_ID:-}'
-  export WHISPER_API_KEY='${WHISPER_API_KEY:-}'
-  export RUNPOD_API_KEY='${RUNPOD_API_KEY:-}'
+  export WHISPER_API_KEY=\"\${WHISPER_API_KEY:-${WHISPER_API_KEY:-}}\"
+  export RUNPOD_API_KEY=\"\${RUNPOD_API_KEY:-${RUNPOD_API_KEY:-}}\"
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}'
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}'
   export PYTHONUNBUFFERED=1

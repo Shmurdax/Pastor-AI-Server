@@ -1,5 +1,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import os
+import tempfile
 
 from django.test import SimpleTestCase
 
@@ -105,3 +107,35 @@ class WhisperTranscribeRoutingTests(SimpleTestCase):
         self.assertEqual(sent["audio_base64"], "YQ==")
         self.assertEqual(sent["model"], "base")
         self.assertIn("Authorization", mock_post.call_args.kwargs["headers"])
+
+
+class WhisperWorkspaceOverlayTests(SimpleTestCase):
+    def test_os_environ_still_reads_workspace_secrets(self):
+        from pastor_ai import workspace_env
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.env"
+            cfg.write_text(
+                "RUNPOD_API_KEY=rpa_from_file\n"
+                "WHISPER_MODE=serverless\n"
+                "RUNPOD_WHISPER_ENDPOINT_ID=whfile\n",
+                encoding="utf-8",
+            )
+            overlay = {
+                "WORKSPACE_ROOT": tmp,
+                "CONFIG_ENV": str(cfg),
+                "RUNPOD_API_KEY": "",
+                "WHISPER_API_KEY": "",
+                "WHISPER_MODE": "",
+                "RUNPOD_WHISPER_ENDPOINT_ID": "",
+                "WHISPER_URL": "",
+            }
+            with patch.object(workspace_env, "_candidate_files", return_value=[cfg]):
+                with patch.dict(os.environ, overlay, clear=False):
+                    self.assertEqual(resolve_whisper_api_key(), "rpa_from_file")
+                    self.assertEqual(
+                        resolve_whisper_runsync_url(),
+                        "https://api.runpod.ai/v2/whfile/runsync",
+                    )
+                    self.assertTrue(whisper_is_remote())
+                    self.assertEqual(resolve_whisper_api_key(os.environ), "rpa_from_file")
