@@ -62,10 +62,16 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("<length_close>", prompt)
         self.assertIn("400 words", prompt)
         self.assertIn("400 words", LENGTH_STEER)
+        self.assertIn("summarize", LENGTH_STEER)
+        self.assertIn("summarize", prompt.lower())
+        self.assertIn("Follow-up questions stay at full teaching length", prompt)
         self.assertEqual(MIN_TEACHING_WORDS, 400)
         self.assertEqual(MAX_EXPANSION_PASSES, 2)
         self.assertTrue(query_expects_long_answer(
             "According to Pastor Don's sermons, what is the main purpose of the church?"
+        ))
+        self.assertTrue(query_expects_long_answer(
+            "Summarize his view of the Holy Spirit's work in conversion."
         ))
         self.assertFalse(query_expects_long_answer("Thanks!"))
         short = (
@@ -78,6 +84,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
         self.assertFalse(answer_needs_expansion(long_enough, query=query))
+        self.assertTrue(answer_needs_expansion(
+            short,
+            query="Summarize his view of the Holy Spirit's work in conversion.",
+        ))
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
