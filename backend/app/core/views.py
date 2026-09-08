@@ -29,7 +29,14 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
-from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
+from .chat_system_prompt import (
+    CONTINUE_STEER,
+    LENGTH_STEER,
+    answer_needs_expansion,
+    build_chat_system_prompt,
+    find_biblical_character_names,
+    query_expects_long_answer,
+)
 from .chat_translate import translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
@@ -221,6 +228,13 @@ def _sse_response(iterator):
 
 def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
+
+
+def _continuation_messages(messages, first_answer: str):
+    return list(messages) + [
+        AIMessage(content=first_answer),
+        HumanMessage(content=CONTINUE_STEER),
+    ]
 
 
 def _save_ai_response(
@@ -534,10 +548,13 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
+            human_content = user_query_llm
+            if query_expects_long_answer(user_query_llm):
+                human_content = f"{user_query_llm.rstrip()}{LENGTH_STEER}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
-                + [HumanMessage(content=user_query_llm)]
+                + [HumanMessage(content=human_content)]
             )
             bound = llm.bind(max_tokens=completion_tokens)
             return {
@@ -572,7 +589,7 @@ class ChatAPIView(APIView):
                 if yielded:
                     raise
                 logger.exception("Error while streaming chat tokens; retrying with a smaller budget")
-            smaller = max(128, min(512, int(prepared["completion_tokens"]) // 2))
+            smaller = max(800, int(prepared["completion_tokens"]) // 2)
             trimmed = []
             for msg in messages:
                 content = getattr(msg, "content", "") or ""
@@ -608,6 +625,18 @@ class ChatAPIView(APIView):
                 answer = "".join(assembled)
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
+                if answer_needs_expansion(answer, query=user_query_llm):
+                    logger.info("Chat answer was short (%s words); requesting a continuation", len(answer.split()))
+                    extra_parts = []
+                    for text in _iter_chat_tokens(
+                        prepared["bound"],
+                        _continuation_messages(prepared["messages"], answer),
+                    ):
+                        extra_parts.append(text)
+                        yield _sse({"type": "delta", "text": text})
+                    extra = "".join(extra_parts).strip()
+                    if extra:
+                        answer = answer.rstrip() + "\n\n" + extra
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -644,18 +673,27 @@ class ChatAPIView(APIView):
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
+            answer = response.content or ""
+            if answer_needs_expansion(answer, query=user_query_llm):
+                logger.info("Chat answer was short (%s words); requesting a continuation", len(answer.split()))
+                extra = prepared["bound"].invoke(
+                    _continuation_messages(prepared["messages"], answer)
+                )
+                extra_text = (getattr(extra, "content", "") or "").strip()
+                if extra_text:
+                    answer = answer.rstrip() + "\n\n" + extra_text
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
                 session_id=session_id,
                 chat_user=chat_user,
                 user_query_stored=user_query_stored,
-                answer=response.content,
+                answer=answer,
             )
             logger.debug("Chat response generated successfully.")
             return Response(
                 _chat_payload(
-                    response.content,
+                    answer,
                     sources=_unique_sources(prepared["docs"]) if prepared["docs"] else [],
                     message_id=None if saved_message is None else saved_message.id,
                 ),

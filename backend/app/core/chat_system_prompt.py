@@ -182,6 +182,37 @@ def biblical_characters_instruction(names: list[str]) -> str:
     )
 
 
+LENGTH_STEER = (
+    "\n\nAnswer with at least four long paragraphs. Quote Pastor Don and/or "
+    "Susan Nordin word-for-word from the notes, and include NKJV Scripture. "
+    "Do not give a short reply."
+)
+
+CONTINUE_STEER = (
+    "Continue the same teaching answer. Do not restart or apologize. Add more "
+    "long paragraphs, more word-for-word quotations from Pastor Don and/or Susan "
+    "Nordin that appear in the notes, more NKJV verses, and pastoral application."
+)
+
+_BRIEF_QUERY_RE = re.compile(
+    r"^\s*(hi|hello|hey|thanks|thank you|good morning|good afternoon|"
+    r"good evening|ok|okay|bye|amen)[\s!.?]*$",
+    re.IGNORECASE,
+)
+
+
+def query_expects_long_answer(query: str) -> bool:
+    return not bool(_BRIEF_QUERY_RE.match((query or "").strip()))
+
+
+def answer_needs_expansion(answer: str, *, query: str) -> bool:
+    """True when a teaching question got a short brush-off instead of a full reply."""
+    if not query_expects_long_answer(query):
+        return False
+    words = len((answer or "").split())
+    return words < 280
+
+
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
     """
     Full chat SYSTEM prompt (without language block or REFERENCE NOTES).
@@ -272,8 +303,11 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</source_material>\n\n"
 
         "<response_policy>\n"
+        "LENGTH: A teaching answer must be at least four long paragraphs (typically 400 words or more). "
+        "Do not stop after the opening claim, one short paragraph, or two scripture citations. Keep writing "
+        "until you have unfolded the notes, quoted Pastor Don and/or Susan, quoted NKJV, and applied it.\n"
         "Default to multiple long paragraphs. Teaching, counseling, Bible, theology, and social-issue answers "
-        "should usually be several full paragraphs (often three or more) with substance, Scripture, "
+        "should usually be several full paragraphs (often four or more) with substance, Scripture, "
         "direct quotes from Pastor Don and/or Susan Nordin, and application drawn from their notes—do not "
         "default to a single short paragraph, one-liners, bullet lists, or outline-style replies unless the "
         "user clearly asks for a list or steps.\n"
@@ -286,8 +320,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Do not use hedging phrases like \"from what I've gathered,\" \"it appears,\" or \"it seems.\"\n"
         "Do not mention or refer to \"sermon context,\" \"reference notes,\" or retrieval internals.\n"
         "For simple greetings or thanks, one warm paragraph is enough—welcome them as an AI assistant for "
-        "Pastor Don and Susan Nordin without giving yourself a name; for every substantive spiritual question, "
-        "prefer depth, multiple long paragraphs, and Nordin quotations over brevity.\n"
+        "Pastor Don and Susan Nordin without giving yourself a name. For every other spiritual, biblical, "
+        "church, or social-issue question, a short reply is a failed answer. Keep going until the teaching "
+        "is complete: notes, quotations, NKJV, and application in at least four long paragraphs.\n"
         "</response_policy>\n\n"
 
         f"{biblical_characters_instruction(names)}\n"

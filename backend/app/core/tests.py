@@ -1,9 +1,12 @@
 import unittest
 
 from .chat_system_prompt import (
+    LENGTH_STEER,
+    answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
     find_biblical_character_names,
+    query_expects_long_answer,
 )
 from .document_cleanup import (
     clean_extracted_document,
@@ -51,6 +54,23 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("USE WHATEVER NOTES YOU HAVE", prompt)
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
+        self.assertIn("LENGTH:", prompt)
+        self.assertIn("four long paragraphs", prompt)
+        self.assertIn("a short reply is a failed answer", prompt)
+        self.assertIn("four long paragraphs", LENGTH_STEER)
+        self.assertTrue(query_expects_long_answer(
+            "According to Pastor Don's sermons, what is the main purpose of the church?"
+        ))
+        self.assertFalse(query_expects_long_answer("Thanks!"))
+        short = (
+            "According to Pastor Don's sermon, the main purpose of the church is to "
+            "feed the flock spiritually, as emphasized in John 21:15-17."
+        )
+        self.assertTrue(answer_needs_expansion(
+            short,
+            query="According to Pastor Don's sermons, what is the main purpose of the church?",
+        ))
+        self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 

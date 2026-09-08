@@ -139,7 +139,8 @@ EMPTY_REFERENCE_NOTES = (
 )
 
 # Prefer keeping retrieved notes over a long completion on short-context workers.
-_MIN_COMPLETION_TOKENS = 400
+# 400 was enough to emit EOS after one short paragraph; keep room for 3–4 long ones.
+_MIN_COMPLETION_TOKENS = 1600
 _MIN_NOTES_CHARS = 1600
 _OPTIONAL_PROMPT_BLOCKS = (
     re.compile(r"<scope_policy>.*?</scope_policy>\n*", re.DOTALL | re.IGNORECASE),
@@ -335,7 +336,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="2400"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="4096"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
