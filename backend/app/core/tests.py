@@ -2,6 +2,8 @@ import unittest
 
 from .chat_system_prompt import (
     LENGTH_STEER,
+    MAX_EXPANSION_PASSES,
+    MIN_TEACHING_WORDS,
     answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
@@ -57,7 +59,11 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("LENGTH:", prompt)
         self.assertIn("four long paragraphs", prompt)
         self.assertIn("a short reply is a failed answer", prompt)
-        self.assertIn("four long paragraphs", LENGTH_STEER)
+        self.assertIn("<length_close>", prompt)
+        self.assertIn("400 words", prompt)
+        self.assertIn("400 words", LENGTH_STEER)
+        self.assertEqual(MIN_TEACHING_WORDS, 400)
+        self.assertEqual(MAX_EXPANSION_PASSES, 2)
         self.assertTrue(query_expects_long_answer(
             "According to Pastor Don's sermons, what is the main purpose of the church?"
         ))
@@ -66,10 +72,12 @@ class ChatSystemPromptTests(unittest.TestCase):
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."
         )
-        self.assertTrue(answer_needs_expansion(
-            short,
-            query="According to Pastor Don's sermons, what is the main purpose of the church?",
-        ))
+        mid = " ".join(["teaching"] * 300)
+        long_enough = " ".join(["teaching"] * 400)
+        query = "According to Pastor Don's sermons, what is the main purpose of the church?"
+        self.assertTrue(answer_needs_expansion(short, query=query))
+        self.assertTrue(answer_needs_expansion(mid, query=query))
+        self.assertFalse(answer_needs_expansion(long_enough, query=query))
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))

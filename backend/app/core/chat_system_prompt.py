@@ -183,16 +183,22 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 
 LENGTH_STEER = (
-    "\n\nAnswer with at least four long paragraphs. Quote Pastor Don and/or "
-    "Susan Nordin word-for-word from the notes, and include NKJV Scripture. "
-    "Do not give a short reply."
+    "\n\nWrite a complete teaching answer of at least 400 words in four or more "
+    "long paragraphs. Quote Pastor Don and/or Susan Nordin word-for-word from "
+    "the notes, quote NKJV Scripture, and apply it pastorally. Do not stop "
+    "after one short paragraph."
 )
 
 CONTINUE_STEER = (
-    "Continue the same teaching answer. Do not restart or apologize. Add more "
-    "long paragraphs, more word-for-word quotations from Pastor Don and/or Susan "
-    "Nordin that appear in the notes, more NKJV verses, and pastoral application."
+    "Your previous reply was too short. Continue the same teaching without "
+    "restarting or apologizing. Add at least two more long paragraphs, more "
+    "word-for-word quotations from Pastor Don and/or Susan Nordin that appear "
+    "in the notes, more NKJV verses, and pastoral application until the answer "
+    "is at least 400 words."
 )
+
+MIN_TEACHING_WORDS = 400
+MAX_EXPANSION_PASSES = 2
 
 _BRIEF_QUERY_RE = re.compile(
     r"^\s*(hi|hello|hey|thanks|thank you|good morning|good afternoon|"
@@ -205,12 +211,15 @@ def query_expects_long_answer(query: str) -> bool:
     return not bool(_BRIEF_QUERY_RE.match((query or "").strip()))
 
 
+def answer_word_count(answer: str) -> int:
+    return len((answer or "").split())
+
+
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
     """True when a teaching question got a short brush-off instead of a full reply."""
     if not query_expects_long_answer(query):
         return False
-    words = len((answer or "").split())
-    return words < 280
+    return answer_word_count(answer) < MIN_TEACHING_WORDS
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
@@ -322,7 +331,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "For simple greetings or thanks, one warm paragraph is enough—welcome them as an AI assistant for "
         "Pastor Don and Susan Nordin without giving yourself a name. For every other spiritual, biblical, "
         "church, or social-issue question, a short reply is a failed answer. Keep going until the teaching "
-        "is complete: notes, quotations, NKJV, and application in at least four long paragraphs.\n"
+        "is complete: notes, quotations, NKJV, and application in at least four long paragraphs and about "
+        "400 words or more.\n"
         "</response_policy>\n\n"
 
         f"{biblical_characters_instruction(names)}\n"
@@ -337,4 +347,10 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "pastoral counseling, and share the Nordins' contact information when that would help them take the "
         "next step.\n"
         "</safety_protocol>\n\n"
+
+        "<length_close>\n"
+        "Do not end this turn until a teaching answer has at least four long paragraphs "
+        "(about 400 words or more), word-for-word quotes from Pastor Don and/or Susan when the notes "
+        "allow, NKJV Scripture, and pastoral application. A one-paragraph finish is incomplete.\n"
+        "</length_close>\n"
     )

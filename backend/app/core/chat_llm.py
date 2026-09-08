@@ -139,8 +139,8 @@ EMPTY_REFERENCE_NOTES = (
 )
 
 # Prefer keeping retrieved notes over a long completion on short-context workers.
-# 400 was enough to emit EOS after one short paragraph; keep room for 3–4 long ones.
-_MIN_COMPLETION_TOKENS = 1600
+# 400 was enough to emit EOS after one short paragraph; keep room for 4+ long ones.
+_MIN_COMPLETION_TOKENS = 2048
 _MIN_NOTES_CHARS = 1600
 _OPTIONAL_PROMPT_BLOCKS = (
     re.compile(r"<scope_policy>.*?</scope_policy>\n*", re.DOTALL | re.IGNORECASE),
@@ -159,6 +159,18 @@ def split_reference_notes(system_filled: str) -> tuple[str, str | None]:
 def notes_are_usable(notes: str | None) -> bool:
     text = (notes or "").strip()
     return bool(text) and text != REFUSAL_NOTES_SENTINEL
+
+
+def _clip_prefix(prefix: str, keep: int) -> str:
+    """Shorten instruction text from the end, but keep the notes marker."""
+    keep = max(1, int(keep))
+    if len(prefix) <= keep:
+        return prefix
+    if prefix.endswith(NOTES_MARKER):
+        body = prefix[: -len(NOTES_MARKER)]
+        keep_body = max(200, keep - len(NOTES_MARKER))
+        return body[:keep_body] + NOTES_MARKER
+    return prefix[:keep]
 
 
 def _clip_notes(notes: str, keep: int) -> str:
@@ -256,7 +268,7 @@ def fit_chat_budget(
                 prompt_tokens(sys_text, history_msgs, question) + completion + safety - window
             )
             cut_chars = max(300, overflow * 3)
-            prefix = prefix[: max(900, len(prefix) - cut_chars)]
+            prefix = _clip_prefix(prefix, max(900, len(prefix) - cut_chars))
             sys_text = prefix + notes
     else:
         while over_budget(sys_text) and completion > 128:
@@ -285,7 +297,7 @@ def fit_chat_budget(
                 notes = _clip_notes(notes, max(240, int(len(notes) * 0.7)))
                 sys_text = prefix + notes
             while over_budget(sys_text) and len(prefix) > 600:
-                prefix = prefix[: max(600, int(len(prefix) * 0.85))]
+                prefix = _clip_prefix(prefix, max(600, int(len(prefix) * 0.85)))
                 sys_text = prefix + notes
         else:
             while over_budget(sys_text) and len(sys_text) > 600:
@@ -336,7 +348,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="4096"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="6144"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
