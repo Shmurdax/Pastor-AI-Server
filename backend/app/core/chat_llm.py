@@ -115,7 +115,7 @@ def resolve_chat_context_window(env: Optional[Mapping[str, str]] = None) -> int:
 
         load_workspace_env()
         env = env_with_workspace()
-    window = int(_env_get(env, "CHAT_CONTEXT_WINDOW", default="8192") or "8192")
+    window = int(_env_get(env, "CHAT_CONTEXT_WINDOW", default="32768") or "32768")
     vllm_len = _env_get(env, "VLLM_MAX_MODEL_LEN")
     if vllm_len.isdigit():
         window = min(window, int(vllm_len))
@@ -125,7 +125,7 @@ def resolve_chat_context_window(env: Optional[Mapping[str, str]] = None) -> int:
 def estimate_chat_tokens(text: str) -> int:
     """Pessimistic token estimate for English plus XML-style prompt markup.
 
-    chars/3 under-counted Qwen prompts and overflowed 4096 serverless workers.
+    chars/3 under-counted Qwen prompts and overflowed short serverless windows.
     """
     return max(1, (len(text or "") * 2 + 4) // 5)
 
@@ -138,7 +138,7 @@ EMPTY_REFERENCE_NOTES = (
     "in several long paragraphs. Do not claim that sermon notes were missing or irrelevant."
 )
 
-# Prefer keeping retrieved notes over a long completion on 4096-token workers.
+# Prefer keeping retrieved notes over a long completion on short-context workers.
 _MIN_COMPLETION_TOKENS = 400
 _MIN_NOTES_CHARS = 1600
 _OPTIONAL_PROMPT_BLOCKS = (

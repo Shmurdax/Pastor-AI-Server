@@ -75,13 +75,21 @@ class VllmUrlResolutionTests(unittest.TestCase):
     def test_context_window_caps_to_vllm_max_model_len(self):
         from core.chat_llm import resolve_chat_context_window
 
+        self.assertEqual(resolve_chat_context_window({}), 32768)
         self.assertEqual(resolve_chat_context_window({"CHAT_CONTEXT_WINDOW": "8192"}), 8192)
         self.assertEqual(
             resolve_chat_context_window({
-                "CHAT_CONTEXT_WINDOW": "8192",
+                "CHAT_CONTEXT_WINDOW": "32768",
                 "VLLM_MAX_MODEL_LEN": "4096",
             }),
             4096,
+        )
+        self.assertEqual(
+            resolve_chat_context_window({
+                "CHAT_CONTEXT_WINDOW": "32768",
+                "VLLM_MAX_MODEL_LEN": "32768",
+            }),
+            32768,
         )
 
     def test_fit_chat_budget_stays_inside_4096_with_huge_prompt(self):

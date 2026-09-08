@@ -105,6 +105,12 @@ def env_as_dict(raw: Any) -> dict[str, str]:
     return {}
 
 
+# Qwen2.5-14B native context. 48GB AWQ+LoRA has VRAM for 32k if concurrency stays low.
+# Default MAX_NUM_SEQS=256 would OOM at 32k; cap it for single-worker chat.
+SERVERLESS_MAX_MODEL_LEN = "32768"
+SERVERLESS_MAX_NUM_SEQS = "4"
+
+
 def merge_vllm_env(existing: dict[str, str]) -> dict[str, str]:
     merged = dict(existing)
     merged["MODEL_NAME"] = merged.get("MODEL_NAME") or MODEL_NAME
@@ -116,6 +122,9 @@ def merge_vllm_env(existing: dict[str, str]) -> dict[str, str]:
     merged["ENFORCE_EAGER"] = merged.get("ENFORCE_EAGER") or "true"
     merged["DISABLE_LOG_STATS"] = merged.get("DISABLE_LOG_STATS") or "1"
     merged["DISABLE_LOG_REQUESTS"] = merged.get("DISABLE_LOG_REQUESTS") or "1"
+    merged["MAX_MODEL_LEN"] = SERVERLESS_MAX_MODEL_LEN
+    merged["MAX_NUM_SEQS"] = SERVERLESS_MAX_NUM_SEQS
+    merged["MAX_NUM_BATCHED_TOKENS"] = SERVERLESS_MAX_MODEL_LEN
     return merged
 
 

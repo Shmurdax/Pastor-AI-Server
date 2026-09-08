@@ -174,7 +174,7 @@ elif ! vllm_healthy; then
   LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
-  MAX_LEN="${VLLM_MAX_MODEL_LEN:-8192}"
+  MAX_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
   GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
   DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
   if [[ -z "$GPU_UTIL" ]]; then
@@ -321,9 +321,10 @@ screen -dmS django bash -c "
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
   export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
-  export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-8000}' &&
-  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-2400}' &&
-  export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-8192}' &&
+  export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-40000}' &&
+  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-4096}' &&
+  export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-32768}' &&
+  export VLLM_MAX_MODEL_LEN='${VLLM_MAX_MODEL_LEN:-32768}' &&
   export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
   export RETRIEVAL_K='${RETRIEVAL_K:-16}' &&
   export RETRIEVAL_THRESHOLD='${RETRIEVAL_THRESHOLD:-0.7}' &&

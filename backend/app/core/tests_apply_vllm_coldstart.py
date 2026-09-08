@@ -25,6 +25,9 @@ class ApplyVllmColdstartTests(unittest.TestCase):
         self.assertEqual(merged["HF_HOME"], "/runpod-volume/huggingface-cache")
         self.assertEqual(merged["VLLM_CACHE_ROOT"], "/runpod-volume/vllm_cache")
         self.assertEqual(merged["ENFORCE_EAGER"], "true")
+        self.assertEqual(merged["MAX_MODEL_LEN"], "32768")
+        self.assertEqual(merged["MAX_NUM_SEQS"], "4")
+        self.assertEqual(merged["MAX_NUM_BATCHED_TOKENS"], "32768")
 
     def test_env_list_and_redact(self):
         mod = _load()

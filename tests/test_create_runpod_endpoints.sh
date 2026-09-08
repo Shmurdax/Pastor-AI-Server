@@ -51,6 +51,9 @@ assert env["RAW_OPENAI_OUTPUT"] == "1"
 assert env["DOWNLOAD_DIR"] == "/runpod-volume/huggingface-cache"
 assert env["HF_HOME"] == "/runpod-volume/huggingface-cache"
 assert env["ENFORCE_EAGER"] == "true"
+assert env["MAX_MODEL_LEN"] == "32768"
+assert env["MAX_NUM_SEQS"] == "4"
+assert env["MAX_NUM_BATCHED_TOKENS"] == "32768"
 assert "networkVolumeId" not in vllm_e
 assert "dataCenterIds" not in vllm_e
 
