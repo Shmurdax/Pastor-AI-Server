@@ -168,8 +168,9 @@
       {% else %}
         <p class="embedded-transcript-empty">
           No matching transcript was found for Vimeo ID {{ video.vimeo_id }}.
-          Ingest the audio as <code>{{ video.vimeo_id }}.m4a</code> (or another media
-          extension) so Whisper can write a <code>.transcript.json</code> sidecar.
+          Ingest the matching download (a numeric <code>{{ video.vimeo_id }}.m4a</code>
+          or a date-named file such as <code>april_10_v1_240p.mp4</code>) so Whisper
+          can write a <code>.transcript.json</code> sidecar.
         </p>
       {% endif %}
     </aside>
