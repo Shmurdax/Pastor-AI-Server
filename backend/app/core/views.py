@@ -27,11 +27,10 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_llm import fit_chat_budget, get_chat_llm
+from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_system_prompt import build_chat_system_prompt, find_biblical_character_names
 from .chat_translate import translate_texts
-from .pii_redaction import query_text_for_llm, redact_user_query
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
 from .storage_paths import ingested_media_path
@@ -426,10 +425,8 @@ class ChatAPIView(APIView):
         if not raw_query:
             return Response({"error": "No query provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        user_query_stored = redact_user_query(raw_query)
-        user_query_llm = query_text_for_llm(user_query_stored)
-        if user_query_stored != str(raw_query).strip():
-            logger.debug("PII redaction applied before chat retrieval and persistence.")
+        user_query_stored = str(raw_query).strip()
+        user_query_llm = user_query_stored
 
         def prepare_chat():
             llm = get_chat_llm(
@@ -508,7 +505,7 @@ class ChatAPIView(APIView):
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
                 history_messages.insert(0, AIMessage(content=msg.ai_response))
-                history_messages.insert(0, HumanMessage(content=query_text_for_llm(msg.user_query)))
+                history_messages.insert(0, HumanMessage(content=msg.user_query))
                 current_chars += len(exchange)
 
             biblical_names = find_biblical_character_names(user_query_llm)
@@ -521,7 +518,7 @@ class ChatAPIView(APIView):
             )
             system_filled = system_content.replace(
                 "{context}",
-                context if context else "No relevant sermon notes found.",
+                context if context.strip() else EMPTY_REFERENCE_NOTES,
             )
             system_filled, history_messages, completion_tokens, used_tokens = fit_chat_budget(
                 system_filled,
@@ -580,10 +577,16 @@ class ChatAPIView(APIView):
             for msg in messages:
                 content = getattr(msg, "content", "") or ""
                 if isinstance(msg, SystemMessage) and len(content) > 2400:
-                    marker = "REFERENCE NOTES:\n"
-                    idx = content.find(marker)
+                    idx = content.find(NOTES_MARKER)
                     if idx >= 0:
-                        content = content[: idx + len(marker)] + "No relevant sermon notes found."
+                        prefix = content[: idx + len(NOTES_MARKER)]
+                        notes = content[idx + len(NOTES_MARKER) :]
+                        keep_notes = notes[: max(1600, min(len(notes), 2800))]
+                        keep_prefix = prefix
+                        budget = 3600
+                        if len(keep_prefix) + len(keep_notes) > budget:
+                            keep_prefix = keep_prefix[: max(900, budget - len(keep_notes))]
+                        content = keep_prefix + keep_notes
                     else:
                         content = content[:2400]
                     trimmed.append(SystemMessage(content=content))

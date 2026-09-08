@@ -104,6 +104,37 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertLessEqual(used + completion + 96, 4096)
         self.assertGreaterEqual(completion, 128)
         self.assertLessEqual(estimate_chat_tokens(fitted), 4096)
+        self.assertNotIn("No relevant sermon notes found.", fitted)
+        self.assertIn("sermon chunk", fitted)
+
+    def test_fit_chat_budget_keeps_real_notes_on_4096_window(self):
+        from core.chat_system_prompt import build_chat_system_prompt
+
+        notes_body = (
+            "Pastor Don Nordin teaches, \"The main purpose of the church is to make disciples "
+            "and to preach the gospel of Jesus Christ to the nations.\" "
+            "Susan Nordin says, \"We gather to worship and then go into the world.\"\n"
+        ) * 50
+        system = (
+            build_chat_system_prompt(biblical_names=["Philemon"])
+            + "\nREFERENCE NOTES:\n"
+            + notes_body
+        )
+        env = {"CHAT_CONTEXT_WINDOW": "4096", "VLLM_MAX_MODEL_LEN": "4096"}
+        fitted, _hist, completion, used = fit_chat_budget(
+            system,
+            [],
+            "According to Pastor Don's sermons, what is the main purpose of the church?",
+            2400,
+            env=env,
+        )
+        notes = fitted.split("REFERENCE NOTES:\n", 1)[1]
+        self.assertNotEqual(notes.strip(), "No relevant sermon notes found.")
+        self.assertIn("The main purpose of the church", notes)
+        self.assertIn("Pastor Don Nordin", notes)
+        self.assertLessEqual(used + completion + 96, 4096)
+        self.assertGreaterEqual(completion, 128)
+        self.assertIn("REFERENCE NOTES:", fitted)
 
     def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
         from pathlib import Path
@@ -112,6 +143,11 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("from .chat_llm import", source)
         self.assertIn("get_chat_llm", source)
         self.assertIn("fit_chat_budget", source)
+        self.assertIn("EMPTY_REFERENCE_NOTES", source)
+        self.assertIn("NOTES_MARKER", source)
+        self.assertNotIn('"No relevant sermon notes found."', source)
+        self.assertNotIn("pii_redaction", source)
+        self.assertNotIn("redact_user_query", source)
         self.assertIn("llm = get_chat_llm(", source)
         self.assertIn("sse_keepalive()", source)
         self.assertIn("iter_with_sse_heartbeats", source)

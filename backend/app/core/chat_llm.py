@@ -130,6 +130,48 @@ def estimate_chat_tokens(text: str) -> int:
     return max(1, (len(text or "") * 2 + 4) // 5)
 
 
+NOTES_MARKER = "REFERENCE NOTES:\n"
+REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
+EMPTY_REFERENCE_NOTES = (
+    "No sermon excerpts were attached for this turn. "
+    "Answer from Scripture (NKJV) and Pastor Don and Susan Nordin's teaching "
+    "in several long paragraphs. Do not claim that sermon notes were missing or irrelevant."
+)
+
+# Prefer keeping retrieved notes over a long completion on 4096-token workers.
+_MIN_COMPLETION_TOKENS = 400
+_MIN_NOTES_CHARS = 1600
+_OPTIONAL_PROMPT_BLOCKS = (
+    re.compile(r"<scope_policy>.*?</scope_policy>\n*", re.DOTALL | re.IGNORECASE),
+    re.compile(r"<biblical_characters>.*?</biblical_characters>\n*", re.DOTALL | re.IGNORECASE),
+    re.compile(r"<safety_protocol>.*?</safety_protocol>\n*", re.DOTALL | re.IGNORECASE),
+)
+
+
+def split_reference_notes(system_filled: str) -> tuple[str, str | None]:
+    idx = (system_filled or "").find(NOTES_MARKER)
+    if idx < 0:
+        return system_filled, None
+    return system_filled[: idx + len(NOTES_MARKER)], system_filled[idx + len(NOTES_MARKER) :]
+
+
+def notes_are_usable(notes: str | None) -> bool:
+    text = (notes or "").strip()
+    return bool(text) and text != REFUSAL_NOTES_SENTINEL
+
+
+def _clip_notes(notes: str, keep: int) -> str:
+    keep = max(1, int(keep))
+    if len(notes) <= keep:
+        return notes
+    clipped = notes[:keep]
+    if "\n" in clipped:
+        return clipped.rsplit("\n", 1)[0] or clipped
+    if " " in clipped:
+        return clipped.rsplit(" ", 1)[0] or clipped
+    return clipped
+
+
 def fit_chat_budget(
     system_filled: str,
     history_messages,
@@ -140,9 +182,11 @@ def fit_chat_budget(
     safety: Optional[int] = None,
     env: Optional[Mapping[str, str]] = None,
 ):
-    """Trim history/notes/system so prompt + completion stays inside the model window.
+    """Trim history/system so prompt + completion stays inside the model window.
 
-    Returns (system_filled, history_messages, max_completion).
+    Retrieved REFERENCE NOTES are kept whenever they exist. Completion shrinks
+    first; optional prompt sections shrink next. Notes are never replaced with
+    the old "No relevant sermon notes found." refusal.
     """
     if window is None:
         window = resolve_chat_context_window(env)
@@ -150,7 +194,7 @@ def fit_chat_budget(
     if safety is None:
         safety = int(_env_get(env or {}, "CHAT_TOKEN_SAFETY", default="96") or "96")
     safety = max(16, int(safety))
-    completion = max(128, min(int(max_completion), window - 256))
+    completion = max(_MIN_COMPLETION_TOKENS, min(int(max_completion), window - 256))
 
     def prompt_tokens(sys_text, history, q):
         hist_text = "\n".join(getattr(m, "content", "") or "" for m in history)
@@ -161,37 +205,93 @@ def fit_chat_budget(
             + 24  # role/format overhead
         )
 
-    history = list(history_messages)
-    sys_text = system_filled
+    def over_budget(sys_text, history=None, comp=None) -> bool:
+        return (
+            prompt_tokens(sys_text, history if history is not None else history_msgs, question)
+            + (completion if comp is None else comp)
+            + safety
+            > window
+        )
 
-    while history and prompt_tokens(sys_text, history, question) + completion + safety > window:
-        if len(history) >= 2:
-            history = history[2:]
+    history_msgs = list(history_messages)
+    prefix, notes = split_reference_notes(system_filled)
+    if notes is None:
+        sys_text = system_filled
+    elif notes_are_usable(notes):
+        sys_text = prefix + notes
+    else:
+        notes = EMPTY_REFERENCE_NOTES
+        sys_text = prefix + notes
+
+    while history_msgs and over_budget(sys_text):
+        if len(history_msgs) >= 2:
+            history_msgs = history_msgs[2:]
         else:
-            history = history[1:]
+            history_msgs = history_msgs[1:]
 
-    marker = "REFERENCE NOTES:\n"
-    while prompt_tokens(sys_text, history, question) + completion + safety > window:
-        idx = sys_text.find(marker)
-        if idx < 0:
-            break
-        notes = sys_text[idx + len(marker) :]
-        if len(notes) <= 200:
-            sys_text = sys_text[: idx + len(marker)] + "No relevant sermon notes found."
-            break
-        keep = max(200, int(len(notes) * 0.7))
-        sys_text = sys_text[: idx + len(marker)] + notes[:keep]
+    if notes_are_usable(notes):
+        target_notes = min(len(notes), _MIN_NOTES_CHARS)
+        target_sys = prefix + notes[:target_notes]
+        while over_budget(target_sys) and completion > _MIN_COMPLETION_TOKENS:
+            completion = max(_MIN_COMPLETION_TOKENS, completion - 128)
+        while over_budget(sys_text) and completion > _MIN_COMPLETION_TOKENS:
+            completion = max(_MIN_COMPLETION_TOKENS, completion - 128)
+        for block_re in _OPTIONAL_PROMPT_BLOCKS:
+            if not over_budget(sys_text):
+                break
+            trimmed_prefix = block_re.sub("", prefix, count=1)
+            if trimmed_prefix != prefix:
+                prefix = trimmed_prefix
+                sys_text = prefix + notes
+        while over_budget(sys_text) and len(notes) > 400:
+            overflow = (
+                prompt_tokens(sys_text, history_msgs, question) + completion + safety - window
+            )
+            cut_chars = max(200, overflow * 3)
+            notes = _clip_notes(notes, max(400, len(notes) - cut_chars))
+            sys_text = prefix + notes
+        while over_budget(sys_text) and len(prefix) > 900:
+            overflow = (
+                prompt_tokens(sys_text, history_msgs, question) + completion + safety - window
+            )
+            cut_chars = max(300, overflow * 3)
+            prefix = prefix[: max(900, len(prefix) - cut_chars)]
+            sys_text = prefix + notes
+    else:
+        while over_budget(sys_text) and completion > 128:
+            completion = max(128, completion - 128)
+        for block_re in _OPTIONAL_PROMPT_BLOCKS:
+            if not over_budget(sys_text):
+                break
+            trimmed = block_re.sub("", sys_text, count=1)
+            if trimmed != sys_text:
+                sys_text = trimmed
+        while over_budget(sys_text) and completion > 128:
+            completion = max(128, completion - 128)
+        while over_budget(sys_text) and len(sys_text) > 800:
+            overflow = (
+                prompt_tokens(sys_text, history_msgs, question) + completion + safety - window
+            )
+            cut_chars = max(400, overflow * 3)
+            sys_text = sys_text[: max(800, len(sys_text) - cut_chars)]
 
-    while prompt_tokens(sys_text, history, question) + completion + safety > window and completion > 128:
-        completion = max(128, completion - 128)
+    while over_budget(sys_text) and completion > 128:
+        completion = max(128, completion - 64)
+    if over_budget(sys_text):
+        prefix, notes = split_reference_notes(sys_text)
+        if notes_are_usable(notes):
+            while over_budget(sys_text) and len(notes) > 240:
+                notes = _clip_notes(notes, max(240, int(len(notes) * 0.7)))
+                sys_text = prefix + notes
+            while over_budget(sys_text) and len(prefix) > 600:
+                prefix = prefix[: max(600, int(len(prefix) * 0.85))]
+                sys_text = prefix + notes
+        else:
+            while over_budget(sys_text) and len(sys_text) > 600:
+                sys_text = sys_text[: max(600, int(len(sys_text) * 0.85))]
 
-    while prompt_tokens(sys_text, history, question) + completion + safety > window and len(sys_text) > 800:
-        overflow = prompt_tokens(sys_text, history, question) + completion + safety - window
-        cut_chars = max(400, overflow * 3)
-        sys_text = sys_text[: max(800, len(sys_text) - cut_chars)]
-
-    used = prompt_tokens(sys_text, history, question)
-    return sys_text, history, completion, used
+    used = prompt_tokens(sys_text, history_msgs, question)
+    return sys_text, history_msgs, completion, used
 
 
 def _live_vllm_api_key(fallback: str):

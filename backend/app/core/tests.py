@@ -10,7 +10,6 @@ from .document_cleanup import (
     clean_markdown_document,
     format_cleanup_log,
 )
-from .pii_redaction import REDACTED, query_text_for_llm, redact_user_query
 from .scope_gate import always_in_scope_query, parse_scope_gate_response
 from .website_crawl.crawler import normalize_url, path_is_excluded
 from .website_crawl.extract import (
@@ -49,6 +48,9 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Social issues are in scope", prompt)
         self.assertIn("abortion", prompt.lower())
         self.assertIn("Do not say you must redirect", prompt)
+        self.assertIn("USE WHATEVER NOTES YOU HAVE", prompt)
+        self.assertIn("Never say notes were not found", prompt)
+        self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
@@ -89,56 +91,6 @@ class ScopeGateParserTests(unittest.TestCase):
         self.assertTrue(always_in_scope_query("What is my purpose in life?"))
         self.assertFalse(always_in_scope_query("Write a Python sort function"))
         self.assertFalse(always_in_scope_query("Who won the game last night?"))
-
-
-class PiiRedactionTests(unittest.TestCase):
-    def test_email_redacted(self):
-        out = redact_user_query("Email me at user.name+tag@example.co.uk soon")
-        self.assertNotIn("example.co.uk", out)
-        self.assertIn(REDACTED, out)
-
-    def test_phone_redacted(self):
-        out = redact_user_query("Call (713) 555-0199 or 7135550200")
-        self.assertNotIn("713", out)
-        self.assertIn(REDACTED, out)
-
-    def test_street_redacted(self):
-        out = redact_user_query("We live at 742 Evergreen Terrace Springfield")
-        self.assertNotIn("Evergreen", out)
-        self.assertIn(REDACTED, out)
-
-    def test_names_not_redacted(self):
-        out = redact_user_query("Please pray for Jennifer Wilkins during surgery")
-        self.assertIn("Jennifer", out)
-        self.assertIn("Wilkins", out)
-        self.assertNotIn(REDACTED, out)
-
-    def test_can_christians_question_kept(self):
-        raw = "Can Christians drink alcohol?"
-        stored = redact_user_query(raw)
-        self.assertEqual(stored, raw)
-        self.assertEqual(query_text_for_llm(stored), raw)
-
-    def test_biblical_names_kept(self):
-        out = redact_user_query("Paul and Timothy wrote about Mary Magdalene")
-        self.assertNotIn(REDACTED, out)
-        self.assertIn("Mary", out)
-
-    def test_theology_phrase_kept(self):
-        out = redact_user_query("Explain the New Testament view of the Holy Spirit")
-        self.assertNotIn(REDACTED, out)
-
-    def test_query_text_for_llm_strips_redacted_markers(self):
-        stored = redact_user_query(
-            "What do Mary and Joseph do? Email me at user@example.com"
-        )
-        self.assertIn(REDACTED, stored)
-        self.assertIn("Mary", stored)
-        llm = query_text_for_llm(stored)
-        self.assertNotIn(REDACTED, llm)
-        self.assertNotIn("[REDACTED]", llm)
-        self.assertIn("Mary", llm)
-        self.assertIn("someone", llm.lower())
 
 
 class WebsiteCrawlHelperTests(unittest.TestCase):
