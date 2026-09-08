@@ -186,7 +186,9 @@ LENGTH_STEER = (
     "\n\nWrite a complete teaching answer of at least 400 words in four or more "
     "long paragraphs. Quote Pastor Don and/or Susan Nordin word-for-word from "
     "the notes, quote NKJV Scripture, and apply it pastorally. Do not stop "
-    "after one short paragraph."
+    "after one short paragraph. If this question says summarize, compare, "
+    "distinguish, or asks for one illustration, still write the full teaching—"
+    "those words mean cover the notes thoroughly, not shorten the reply."
 )
 
 CONTINUE_STEER = (
@@ -194,7 +196,8 @@ CONTINUE_STEER = (
     "restarting or apologizing. Add at least two more long paragraphs, more "
     "word-for-word quotations from Pastor Don and/or Susan Nordin that appear "
     "in the notes, more NKJV verses, and pastoral application until the answer "
-    "is at least 400 words."
+    "is at least 400 words. If the question said summarize or asked for one "
+    "story, that is not permission to stop after a short add-on."
 )
 
 MIN_TEACHING_WORDS = 400
@@ -319,7 +322,10 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "should usually be several full paragraphs (often four or more) with substance, Scripture, "
         "direct quotes from Pastor Don and/or Susan Nordin, and application drawn from their notes—do not "
         "default to a single short paragraph, one-liners, bullet lists, or outline-style replies unless the "
-        "user clearly asks for a list or steps.\n"
+        "user clearly asks for a list or steps. Words like summarize, compare, distinguish, or "
+        "\"what story does he use\" are not permission to write one paragraph—unfold the notes in four "
+        "long paragraphs anyway. Follow-up questions stay at full teaching length even when an earlier "
+        "reply in the thread was already long.\n"
         "Lead with a clear pastoral answer, then unfold Scripture and the Nordins' perspective in connected "
         "prose—including at least one attributed quotation from Pastor Don or Susan—so the reader feels "
         "taught and guided, not scanned.\n"
@@ -351,6 +357,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "<length_close>\n"
         "Do not end this turn until a teaching answer has at least four long paragraphs "
         "(about 400 words or more), word-for-word quotes from Pastor Don and/or Susan when the notes "
-        "allow, NKJV Scripture, and pastoral application. A one-paragraph finish is incomplete.\n"
+        "allow, NKJV Scripture, and pastoral application. A one-paragraph finish is incomplete, "
+        "including on follow-up turns and questions that say summarize.\n"
         "</length_close>\n"
     )

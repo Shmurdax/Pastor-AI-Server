@@ -246,6 +246,59 @@ def _join_continuation(answer: str, extra: str) -> str:
     return answer.rstrip() + "\n\n" + extra
 
 
+def _trim_continuation_messages(messages):
+    """Drop history and clip notes so a continue turn still fits a short worker."""
+    system = None
+    last_human = None
+    last_ai = None
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            system = msg
+        elif isinstance(msg, HumanMessage):
+            last_human = msg
+        elif isinstance(msg, AIMessage):
+            last_ai = msg
+    trimmed = []
+    if system is not None:
+        content = getattr(system, "content", "") or ""
+        if len(content) > 2400:
+            idx = content.find(NOTES_MARKER)
+            if idx >= 0:
+                prefix = content[: idx + len(NOTES_MARKER)]
+                notes = content[idx + len(NOTES_MARKER) :]
+                keep_notes = notes[: max(1200, min(len(notes), 2200))]
+                keep_prefix = prefix
+                budget = 3200
+                if len(keep_prefix) + len(keep_notes) > budget:
+                    keep_prefix = keep_prefix[: max(900, budget - len(keep_notes))]
+                content = keep_prefix + keep_notes
+            else:
+                content = content[:2400]
+        trimmed.append(SystemMessage(content=content))
+    if last_ai is not None:
+        trimmed.append(last_ai)
+    if last_human is not None:
+        trimmed.append(last_human)
+    return trimmed
+
+
+def _iter_continuation_tokens(prepared, answer: str):
+    messages = _continuation_messages(prepared["messages"], answer)
+    yielded = False
+    try:
+        for text in _iter_chat_tokens(prepared["bound"], messages):
+            yielded = True
+            yield text
+        return
+    except Exception:
+        if yielded:
+            return
+        logger.exception("Continuation failed; retrying with a trimmed prompt")
+    trimmed = _trim_continuation_messages(messages)
+    smaller = max(1200, int(prepared["completion_tokens"]) // 2)
+    yield from _iter_chat_tokens(prepared["llm"].bind(max_tokens=smaller), trimmed)
+
+
 def _save_ai_response(
     *,
     regenerate: bool,
@@ -650,15 +703,16 @@ class ChatAPIView(APIView):
                     )
                     extra_parts = []
                     separator_sent = False
-                    for text in _iter_chat_tokens(
-                        prepared["bound"],
-                        _continuation_messages(prepared["messages"], answer),
-                    ):
-                        if not separator_sent:
-                            yield _sse({"type": "delta", "text": "\n\n"})
-                            separator_sent = True
-                        extra_parts.append(text)
-                        yield _sse({"type": "delta", "text": text})
+                    try:
+                        for text in _iter_continuation_tokens(prepared, answer):
+                            if not separator_sent:
+                                yield _sse({"type": "delta", "text": "\n\n"})
+                                separator_sent = True
+                            extra_parts.append(text)
+                            yield _sse({"type": "delta", "text": text})
+                    except Exception:
+                        logger.exception("Continuation failed; keeping the first answer")
+                        break
                     extra = "".join(extra_parts).strip()
                     if not extra:
                         break
@@ -712,10 +766,25 @@ class ChatAPIView(APIView):
                     expansion_pass,
                     MAX_EXPANSION_PASSES,
                 )
-                extra = prepared["bound"].invoke(
-                    _continuation_messages(prepared["messages"], answer)
-                )
-                extra_text = (getattr(extra, "content", "") or "").strip()
+                try:
+                    extra = prepared["bound"].invoke(
+                        _continuation_messages(prepared["messages"], answer)
+                    )
+                    extra_text = (getattr(extra, "content", "") or "").strip()
+                except Exception:
+                    logger.exception("Continuation failed; retrying with a trimmed prompt")
+                    try:
+                        extra = prepared["llm"].bind(
+                            max_tokens=max(1200, int(prepared["completion_tokens"]) // 2)
+                        ).invoke(
+                            _trim_continuation_messages(
+                                _continuation_messages(prepared["messages"], answer)
+                            )
+                        )
+                        extra_text = (getattr(extra, "content", "") or "").strip()
+                    except Exception:
+                        logger.exception("Continuation failed; keeping the first answer")
+                        break
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
