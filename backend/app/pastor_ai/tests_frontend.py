@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from django.test import TestCase, override_settings
+
 from pastor_ai.frontend import _index_html_with_warmup
 
 
@@ -24,6 +26,27 @@ class FrontendWarmupInjectTests(unittest.TestCase):
             )
             html = _index_html_with_warmup(path)
         self.assertEqual(html.count("__pastorVllmWarmup"), 1)
+
+
+class VimeoEmbedFrameTests(TestCase):
+    def test_vimeo_embed_allows_same_origin_iframe(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "index.html").write_text(
+                "<html><body><div id=app></div></body></html>",
+                encoding="utf-8",
+            )
+            (root / "vimeo_embed.html").write_text(
+                "<html><body>vimeo relay</body></html>",
+                encoding="utf-8",
+            )
+            with override_settings(FRONTEND_BUILD_DIR=str(root)):
+                embed = self.client.get("/vimeo_embed.html")
+                home = self.client.get("/")
+        self.assertEqual(embed.status_code, 200)
+        self.assertEqual(embed["X-Frame-Options"], "SAMEORIGIN")
+        self.assertEqual(home.status_code, 200)
+        self.assertEqual(home["X-Frame-Options"], "DENY")
 
 
 if __name__ == "__main__":
