@@ -48,7 +48,9 @@
   <h1>Embedded Videos</h1>
   <p class="embedded-videos-intro">
     Watch a Vimeo sermon in the admin player next to the Whisper transcript from
-    the matching ingested audio file. Click a row to open the video and transcript together.
+    the matching downloaded video. Rows are matched by Vimeo id when the filename
+    is numeric, or by sermon date (for example <code>april_10_v1_240p.mp4</code>
+    with Vimeo title “April 10”). Click a row to open the video and transcript together.
   </p>
 
   <div class="embedded-video-table-wrap">
@@ -57,8 +59,9 @@
       <tr>
         <th>Title</th>
         <th>Vimeo ID</th>
-        <th>Matched audio</th>
+        <th>Matched download</th>
         <th>Transcript</th>
+        <th>Embed</th>
         <th></th>
       </tr>
     </thead>
@@ -69,6 +72,8 @@
           <a href="{% url 'admin:core_embedded_video_detail' video.vimeo_id %}">{{ video.title }}</a>
           {% if video.featured %}
             <div class="embedded-featured-note">Featured embed</div>
+          {% elif video.matched_by_date %}
+            <div class="embedded-featured-note">Matched by sermon date</div>
           {% endif %}
         </td>
         <td>{{ video.vimeo_id }}</td>
@@ -91,12 +96,15 @@
           {% endif %}
         </td>
         <td>
+          <a href="{{ video.embed_url }}" target="_blank" rel="noopener">{{ video.embed_url }}</a>
+        </td>
+        <td>
           <a href="{% url 'admin:core_embedded_video_detail' video.vimeo_id %}">Watch with transcript</a>
         </td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="5">No Vimeo-matched videos were found.</td>
+        <td colspan="6">No Vimeo-matched videos were found.</td>
       </tr>
       {% endfor %}
     </tbody>

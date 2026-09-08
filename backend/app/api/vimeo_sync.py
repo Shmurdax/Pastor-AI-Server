@@ -46,6 +46,30 @@ def _extract_vimeo_id_and_hash(uri: str) -> tuple[str, str]:
     return match.group(1), match.group(2) or ""
 
 
+def privacy_hash_from_video(video: dict[str, Any], uri_hash: str = "") -> str:
+    """Prefer the URI hash, then player embed / watch URLs (`?h=` or `/id/hash`)."""
+    if uri_hash:
+        return uri_hash
+    sources: list[str] = [
+        str(video.get("player_embed_url") or ""),
+        str(video.get("link") or ""),
+    ]
+    embed = video.get("embed")
+    if isinstance(embed, dict):
+        sources.append(str(embed.get("html") or ""))
+        sources.append(str(embed.get("url") or ""))
+    elif embed:
+        sources.append(str(embed))
+    for source in sources:
+        match = re.search(r"[?&]h=([0-9a-fA-F]+)", source)
+        if match:
+            return match.group(1)
+        match = re.search(r"vimeo\.com/\d+/([0-9a-fA-F]+)", source)
+        if match:
+            return match.group(1)
+    return ""
+
+
 
 
 def _best_thumbnail(pictures: dict[str, Any] | None) -> str:
@@ -169,11 +193,12 @@ def sync_vimeo_media(
 
     for video in remote:
         try:
-            vimeo_id, privacy_hash = _extract_vimeo_id_and_hash(video.get("uri") or "")
+            vimeo_id, uri_hash = _extract_vimeo_id_and_hash(video.get("uri") or "")
         except VimeoSyncError:
             logger.warning("Skipping Vimeo row without id: %s", video.get("uri"))
             continue
         seen_ids.add(vimeo_id)
+        privacy_hash = privacy_hash_from_video(video, uri_hash)
 
         defaults = {
             "title": (video.get("name") or f"Vimeo {vimeo_id}").strip()[:300],
