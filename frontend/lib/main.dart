@@ -2132,7 +2132,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
           if (!isUser && msg["streaming"] != true) ...[
             if (sources.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _buildResponseSourcesDropdown(sources),
+              _buildResponseSourcesDropdown(sources, isMobile: isMobile),
             ],
             const SizedBox(height: 10),
             Row(
@@ -2374,8 +2374,8 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
     );
   }
 
-  Widget _buildResponseSourcesDropdown(List<String> sources) {
-    return Theme(
+  Widget _buildResponseSourcesDropdown(List<String> sources, {required bool isMobile}) {
+    final dropdown = Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         tilePadding: EdgeInsets.zero,
@@ -2416,6 +2416,19 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               onTap: () => _launchSermonDoc(source),
             ),
         ],
+      ),
+    );
+
+    if (isMobile) {
+      return dropdown;
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: FractionallySizedBox(
+        widthFactor: 1 / 3,
+        alignment: Alignment.centerLeft,
+        child: dropdown,
       ),
     );
   }
