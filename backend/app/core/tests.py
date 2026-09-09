@@ -1,14 +1,18 @@
 import unittest
 
 from .chat_system_prompt import (
+    CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_WORDS,
     answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
+    continuation_is_restatement,
     find_biblical_character_names,
+    prepare_continuation_text,
     query_expects_long_answer,
+    strip_continuation_restart,
 )
 from .document_cleanup import (
     clean_extracted_document,
@@ -64,6 +68,11 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("400 words", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
         self.assertIn("User question:", LENGTH_STEER)
+        self.assertIn("one continuous answer", LENGTH_STEER)
+        self.assertIn("Do not restate", CONTINUE_STEER)
+        self.assertIn("did not ask you to go deeper", CONTINUE_STEER)
+        self.assertIn("Let's delve deeper", prompt)
+        self.assertIn("same verses", prompt)
         self.assertIn("summarize", prompt.lower())
         self.assertIn("Follow-up questions stay at full teaching length", prompt)
         self.assertEqual(MIN_TEACHING_WORDS, 400)
@@ -92,6 +101,51 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
+
+    def test_strips_certainly_delve_opener(self):
+        extra = (
+            "Certainly, let's delve deeper into the relationship between "
+            "justification and sanctification as taught by Pastor Don and Susan Nordin. "
+            "Pastor Don also applies this to daily repentance in unused notes."
+        )
+        cleaned = strip_continuation_restart(extra)
+        self.assertFalse(cleaned.lower().startswith("certainly"))
+        self.assertIn("daily repentance", cleaned)
+
+    def test_drops_a_restated_continuation(self):
+        first = (
+            "Justification is a one-time declaration of righteousness, while "
+            "sanctification is the ongoing transformation of the believer. "
+            "Firstly, Romans 3:28 shows we are justified by faith. Secondly, "
+            "Ephesians 4:23 calls us to be renewed in the spirit of our mind. "
+            "Lastly, 1 John 3:3 gives assurance as we purify ourselves. In "
+            "conclusion, both processes are essential for a full Christian life."
+        )
+        extra = (
+            "Certainly, let's delve deeper into the relationship between "
+            "justification and sanctification as taught by Pastor Don and Susan Nordin. "
+            "Justification is a one-time declaration of righteousness, while "
+            "sanctification is the ongoing transformation of the believer. "
+            "Romans 3:28 shows we are justified by faith. Ephesians 4:23 calls "
+            "us to be renewed. 1 John 3:3 gives assurance as we purify ourselves."
+        )
+        self.assertTrue(continuation_is_restatement(first, extra))
+        self.assertEqual(prepare_continuation_text(first, extra), "")
+
+    def test_keeps_a_continuation_with_new_teaching(self):
+        first = (
+            "Justification is a one-time declaration of righteousness, while "
+            "sanctification is the ongoing transformation of the believer. "
+            "Romans 3:28 shows we are justified by faith."
+        )
+        extra = (
+            "Susan Nordin then walks through 1 Thessalonians 5:23 and urges the "
+            "church to keep body, soul, and spirit blameless while they wait. "
+            "She tells a hospital-visit story about a woman who already stood "
+            "forgiven yet still needed daily washing in the Word."
+        )
+        self.assertFalse(continuation_is_restatement(first, extra))
+        self.assertIn("1 Thessalonians 5:23", prepare_continuation_text(first, extra))
 
 
 class ScopeGateParserTests(unittest.TestCase):

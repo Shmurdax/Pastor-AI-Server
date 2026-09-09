@@ -188,17 +188,19 @@ LENGTH_STEER = (
     "the notes, quote NKJV Scripture, and apply it pastorally. Do not stop "
     "after one short paragraph. If the question says summarize, compare, "
     "distinguish, or asks for one illustration, still write the full teaching—"
-    "those words mean cover the notes thoroughly, not shorten the reply.\n\n"
+    "those words mean cover the notes thoroughly, not shorten the reply. "
+    "Write one continuous answer. Do not say In conclusion or In summary and "
+    "then start again. Do not write as if the user asked you to go deeper.\n\n"
     "User question:\n"
 )
 
 CONTINUE_STEER = (
-    "Your previous reply was too short. Continue the same teaching without "
-    "restarting or apologizing. Add at least two more long paragraphs, more "
-    "word-for-word quotations from Pastor Don and/or Susan Nordin that appear "
-    "in the notes, more NKJV verses, and pastoral application until the answer "
-    "is at least 400 words. If the question said summarize or asked for one "
-    "story, that is not permission to stop after a short add-on."
+    "Keep writing the same answer. The user did not ask a follow-up and did "
+    "not ask you to go deeper. Do not say Certainly, Of course, Let's delve, "
+    "In conclusion, or In summary. Do not restate definitions, the same "
+    "verses, or points already written above. Add only unused quotations from "
+    "the notes, unused NKJV verses, and fresh pastoral application in two or "
+    "more new long paragraphs until the teaching reaches about 400 words."
 )
 
 MIN_TEACHING_WORDS = 400
@@ -224,6 +226,77 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
     if not query_expects_long_answer(query):
         return False
     return answer_word_count(answer) < MIN_TEACHING_WORDS
+
+
+_SCRIPTURE_REF_RE = re.compile(
+    r"\b(?:[1-3]\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+\d+:\d+(?:-\d+)?\b"
+)
+_RESTART_OPENER_RE = re.compile(
+    r"""^\s*
+    (?:
+        (?:certainly|of\s+course|absolutely|sure|yes|indeed|okay|ok)[,!.]?\s+
+    )?
+    (?:let'?s|let\s+us|i\s+(?:will|shall)|i'?ll|to)\s+
+    (?:delve|dive|go(?:\s+deeper)?|look|explore|continue|unpack|expand|discuss|examine)
+    [^.\n]{0,240}[.!?]\s*
+    """,
+    re.IGNORECASE | re.VERBOSE | re.DOTALL,
+)
+_RESTATE_LEAD_RE = re.compile(
+    r"""^\s*
+    (?:as\s+(?:i|we)\s+(?:already\s+)?(?:said|mentioned|noted|explained)
+      |to\s+(?:reiterate|recap|summarize\s+again)
+      |as\s+(?:mentioned|stated)\s+above)
+    [^.\n]{0,200}[.!?]\s*
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def strip_continuation_restart(text: str) -> str:
+    """Drop fake follow-up openers such as 'Certainly, let's delve deeper...'."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    for _ in range(2):
+        nxt = _RESTART_OPENER_RE.sub("", cleaned, count=1)
+        nxt = _RESTATE_LEAD_RE.sub("", nxt, count=1).strip()
+        if nxt == cleaned:
+            break
+        cleaned = nxt
+    return cleaned
+
+
+def _content_words(text: str) -> set[str]:
+    return {word.lower() for word in re.findall(r"[A-Za-z']{4,}", text or "")}
+
+
+def _scripture_refs(text: str) -> set[str]:
+    return {match.group(0).lower() for match in _SCRIPTURE_REF_RE.finditer(text or "")}
+
+
+def continuation_is_restatement(first: str, extra: str) -> bool:
+    """True when the continue pass mostly repeats the first answer."""
+    extra = strip_continuation_restart(extra)
+    extra_words = _content_words(extra)
+    if not extra_words:
+        return True
+    first_words = _content_words(first)
+    reused = len(extra_words & first_words) / len(extra_words)
+    extra_refs = _scripture_refs(extra)
+    first_refs = _scripture_refs(first)
+    same_verses = bool(extra_refs) and extra_refs <= first_refs
+    if same_verses and reused >= 0.45:
+        return True
+    return reused >= 0.60
+
+
+def prepare_continuation_text(first: str, extra: str) -> str:
+    """Return new teaching to append, or empty if the continue pass is a rewrite."""
+    cleaned = strip_continuation_restart(extra)
+    if continuation_is_restatement(first, cleaned):
+        return ""
+    return cleaned
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
@@ -330,6 +403,10 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Lead with a clear pastoral answer, then unfold Scripture and the Nordins' perspective in connected "
         "prose—including at least one attributed quotation from Pastor Don or Susan—so the reader feels "
         "taught and guided, not scanned.\n"
+        "Write one continuous teaching in a single voice. Do not close with \"In conclusion\" or "
+        "\"In summary\" and then start a second essay. Never write as if the user asked you to continue "
+        "or go deeper (no \"Certainly,\" \"Of course,\" or \"Let's delve deeper\"). Do not repeat the "
+        "same definitions, the same verses, or the same three points later in the same reply.\n"
         "Prefer more than one short quote when REFERENCE NOTES offer several strong lines; one substantial "
         "quote is the minimum for an in-depth answer when quotable text is available.\n"
         "Speak with confidence and clarity when grounded in their notes.\n"
@@ -359,6 +436,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Do not end this turn until a teaching answer has at least four long paragraphs "
         "(about 400 words or more), word-for-word quotes from Pastor Don and/or Susan when the notes "
         "allow, NKJV Scripture, and pastoral application. A one-paragraph finish is incomplete, "
-        "including on follow-up turns and questions that say summarize.\n"
+        "including on follow-up turns and questions that say summarize. "
+        "If you still have more to teach, keep writing new unused material—do not recap or restart.\n"
         "</length_close>\n"
     )

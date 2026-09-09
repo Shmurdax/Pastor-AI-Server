@@ -28,7 +28,14 @@ from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
-from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
+from .chat_sse import (
+    iter_chat_tokens,
+    iter_with_sse_heartbeats,
+    split_stream_text,
+    sse_keepalive,
+    sse_pack,
+    wants_chat_stream,
+)
 from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
@@ -37,6 +44,7 @@ from .chat_system_prompt import (
     answer_word_count,
     build_chat_system_prompt,
     find_biblical_character_names,
+    prepare_continuation_text,
     query_expects_long_answer,
 )
 from .chat_translate import translate_texts
@@ -240,7 +248,7 @@ def _continuation_messages(messages, first_answer: str):
 
 
 def _join_continuation(answer: str, extra: str) -> str:
-    extra = (extra or "").strip()
+    extra = prepare_continuation_text(answer, extra)
     if not extra:
         return answer
     return answer.rstrip() + "\n\n" + extra
@@ -711,20 +719,19 @@ class ChatAPIView(APIView):
                         MAX_EXPANSION_PASSES,
                     )
                     extra_parts = []
-                    separator_sent = False
                     try:
                         for text in _iter_continuation_tokens(prepared, answer):
-                            if not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
-                                separator_sent = True
                             extra_parts.append(text)
-                            yield _sse({"type": "delta", "text": text})
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = "".join(extra_parts).strip()
+                    extra = prepare_continuation_text(answer, "".join(extra_parts))
                     if not extra:
+                        logger.warning("Dropped a continuation that restated the first answer")
                         break
+                    yield _sse({"type": "delta", "text": "\n\n"})
+                    for piece in split_stream_text(extra):
+                        yield _sse({"type": "delta", "text": piece})
                     answer = _join_continuation(answer, extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
@@ -794,7 +801,9 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
+                extra_text = prepare_continuation_text(answer, extra_text)
                 if not extra_text:
+                    logger.warning("Dropped a continuation that restated the first answer")
                     break
                 answer = _join_continuation(answer, extra_text)
             saved_message = _save_ai_response(
