@@ -135,12 +135,14 @@ REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
 EMPTY_REFERENCE_NOTES = (
     "No sermon excerpts were attached for this turn. "
     "Answer from Scripture (NKJV) and Pastor Don and Susan Nordin's teaching "
-    "in several long paragraphs. Do not claim that sermon notes were missing or irrelevant."
+    "in about 1500 characters with bold headings and bullet points. "
+    "Do not claim that sermon notes were missing or irrelevant."
 )
 
-# Prefer keeping retrieved notes over a long completion on short-context workers.
-# 400 was enough to emit EOS after one short paragraph; keep room for 4+ long ones.
-_MIN_COMPLETION_TOKENS = 2048
+# ~1500-character replies need a few hundred tokens, not a 2k-token essay budget.
+# Keep retrieved notes, and keep recent chat history ahead of extra completion.
+_MIN_COMPLETION_TOKENS = 384
+_MIN_KEEP_HISTORY_MESSAGES = 10  # 5 user/assistant exchanges
 _MIN_NOTES_CHARS = 1600
 _OPTIONAL_PROMPT_BLOCKS = (
     re.compile(r"<scope_policy>.*?</scope_policy>\n*", re.DOTALL | re.IGNORECASE),
@@ -197,9 +199,10 @@ def fit_chat_budget(
 ):
     """Trim history/system so prompt + completion stays inside the model window.
 
-    Retrieved REFERENCE NOTES are kept whenever they exist. Completion shrinks
-    first; optional prompt sections shrink next. Notes are never replaced with
-    the old "No relevant sermon notes found." refusal.
+    Retrieved REFERENCE NOTES are kept whenever they exist. Recent chat history
+    (about 5–10 turns) is kept ahead of extra completion length. Optional prompt
+    sections and notes shrink before dropping below 5 exchanges. Notes are never
+    replaced with the old "No relevant sermon notes found." refusal.
     """
     if window is None:
         window = resolve_chat_context_window(env)
@@ -236,11 +239,14 @@ def fit_chat_budget(
         notes = EMPTY_REFERENCE_NOTES
         sys_text = prefix + notes
 
-    while history_msgs and over_budget(sys_text):
-        if len(history_msgs) >= 2:
-            history_msgs = history_msgs[2:]
-        else:
-            history_msgs = history_msgs[1:]
+    def drop_oldest_history(keep_at_least: int) -> None:
+        nonlocal history_msgs
+        keep_at_least = max(0, int(keep_at_least))
+        while history_msgs and over_budget(sys_text) and len(history_msgs) > keep_at_least:
+            if len(history_msgs) >= 2:
+                history_msgs = history_msgs[2:]
+            else:
+                history_msgs = history_msgs[1:]
 
     if notes_are_usable(notes):
         target_notes = min(len(notes), _MIN_NOTES_CHARS)
@@ -271,22 +277,25 @@ def fit_chat_budget(
             prefix = _clip_prefix(prefix, max(900, len(prefix) - cut_chars))
             sys_text = prefix + notes
     else:
-        while over_budget(sys_text) and completion > 128:
-            completion = max(128, completion - 128)
+        while over_budget(sys_text) and completion > _MIN_COMPLETION_TOKENS:
+            completion = max(_MIN_COMPLETION_TOKENS, completion - 128)
         for block_re in _OPTIONAL_PROMPT_BLOCKS:
             if not over_budget(sys_text):
                 break
             trimmed = block_re.sub("", sys_text, count=1)
             if trimmed != sys_text:
                 sys_text = trimmed
-        while over_budget(sys_text) and completion > 128:
-            completion = max(128, completion - 128)
+        while over_budget(sys_text) and completion > _MIN_COMPLETION_TOKENS:
+            completion = max(_MIN_COMPLETION_TOKENS, completion - 128)
         while over_budget(sys_text) and len(sys_text) > 800:
             overflow = (
                 prompt_tokens(sys_text, history_msgs, question) + completion + safety - window
             )
             cut_chars = max(400, overflow * 3)
             sys_text = sys_text[: max(800, len(sys_text) - cut_chars)]
+
+    drop_oldest_history(_MIN_KEEP_HISTORY_MESSAGES)
+    drop_oldest_history(0)
 
     while over_budget(sys_text) and completion > 128:
         completion = max(128, completion - 64)
@@ -348,7 +357,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="6144"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="768"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))

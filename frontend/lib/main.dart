@@ -2179,6 +2179,32 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 fontWeight: FontWeight.bold, 
                 color: isUser ? Colors.white : Colors.black,
               ),
+              h1: GoogleFonts.figtree(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isUser ? Colors.white : Colors.black,
+              ),
+              h2: GoogleFonts.figtree(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+                color: isUser ? Colors.white : Colors.black,
+              ),
+              h3: GoogleFonts.figtree(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: isUser ? Colors.white : Colors.black,
+              ),
+              h4: GoogleFonts.figtree(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: isUser ? Colors.white : Colors.black,
+              ),
+              listBullet: GoogleFonts.figtree(
+                fontSize: 15,
+                color: isUser ? Colors.white : Colors.black87,
+              ),
+              listIndent: 24,
+              blockSpacing: 10,
             ),
           ),
           if (!isUser && msg["streaming"] != true) ...[

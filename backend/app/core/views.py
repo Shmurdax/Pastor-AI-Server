@@ -33,8 +33,8 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
+    answer_char_count,
     answer_needs_expansion,
-    answer_word_count,
     build_chat_system_prompt,
     find_biblical_character_names,
     query_expects_long_answer,
@@ -50,9 +50,10 @@ SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "16"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.45"))
 RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.7"))
-MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "3000"))
+MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
+MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "6144"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "768"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
@@ -285,7 +286,7 @@ def _trim_continuation_messages(messages):
 def _iter_continuation_tokens(prepared, answer: str):
     full = _continuation_messages(prepared["messages"], answer)
     trimmed = _trim_continuation_messages(full)
-    smaller = prepared["llm"].bind(max_tokens=max(1200, int(prepared["completion_tokens"]) // 2))
+    smaller = prepared["llm"].bind(max_tokens=max(256, int(prepared["completion_tokens"]) // 2))
     attempts = (
         (prepared["bound"], full),
         (smaller, trimmed),
@@ -585,6 +586,8 @@ class ChatAPIView(APIView):
             current_chars = 0
 
             for msg in db_messages:
+                if len(history_messages) >= MAX_HISTORY_TURNS * 2:
+                    break
                 exchange = f"{msg.user_query} {msg.ai_response}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
@@ -659,7 +662,7 @@ class ChatAPIView(APIView):
                 if yielded:
                     raise
                 logger.exception("Error while streaming chat tokens; retrying with a smaller budget")
-            smaller = max(1200, int(prepared["completion_tokens"]) // 2)
+            smaller = max(256, int(prepared["completion_tokens"]) // 2)
             trimmed = []
             for msg in messages:
                 content = getattr(msg, "content", "") or ""
@@ -705,8 +708,8 @@ class ChatAPIView(APIView):
                 ):
                     expansion_pass += 1
                     logger.warning(
-                        "Chat answer was short (%s words); requesting continuation %s/%s",
-                        answer_word_count(answer),
+                        "Chat answer was short (%s chars); requesting continuation %s/%s",
+                        answer_char_count(answer),
                         expansion_pass,
                         MAX_EXPANSION_PASSES,
                     )
@@ -770,8 +773,8 @@ class ChatAPIView(APIView):
             ):
                 expansion_pass += 1
                 logger.warning(
-                    "Chat answer was short (%s words); requesting continuation %s/%s",
-                    answer_word_count(answer),
+                    "Chat answer was short (%s chars); requesting continuation %s/%s",
+                    answer_char_count(answer),
                     expansion_pass,
                     MAX_EXPANSION_PASSES,
                 )
@@ -784,7 +787,7 @@ class ChatAPIView(APIView):
                     logger.exception("Continuation failed; retrying with a trimmed prompt")
                     try:
                         extra = prepared["llm"].bind(
-                            max_tokens=max(1200, int(prepared["completion_tokens"]) // 2)
+                            max_tokens=max(256, int(prepared["completion_tokens"]) // 2)
                         ).invoke(
                             _trim_continuation_messages(
                                 _continuation_messages(prepared["messages"], answer)

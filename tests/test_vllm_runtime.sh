@@ -63,6 +63,11 @@ CHAT_TIMEOUT_S=360
 vllm_apply_config "$TMP"
 grep -q '^VLLM_URL=https://api.runpod.ai/v2/ep9/openai/v1$' "$TMP" || fail "config url not rewritten"
 grep -q '^CHAT_TIMEOUT_S=600$' "$TMP" || fail "serverless timeout should bump to 600"
+grep -q '^CHAT_MAX_HISTORY_CHARS=20000$' "$TMP" || fail "history chars should be upserted"
+grep -q '^CHAT_MAX_HISTORY_TURNS=10$' "$TMP" || fail "history turns should be upserted"
+grep -q '^CHAT_MAX_TOKENS=768$' "$TMP" || fail "max tokens should be upserted to ~1500 chars"
+grep -q 'CHAT_MAX_HISTORY_TURNS' "$ROOT/start.sh" || fail "start.sh must export history turns"
+grep -q 'chat_apply_config' "$ROOT/start.sh" || fail "start.sh must apply chat budget to config.env"
 grep -q '^CPU_ONLY=1$' "$TMP" || fail "CPU_ONLY not written"
 grep -q '^RUNPOD_API_KEY=rp_cfg$' "$TMP" || fail "api key not written"
 

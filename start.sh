@@ -55,6 +55,11 @@ ensure_qdrant_binary || warn "Qdrant binary missing — collections will not loa
 source "$SCRIPT_DIR/gpu_runtime.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/vllm_runtime.sh"
+chat_apply_config "$CONFIG_ENV"
+# shellcheck disable=SC1090
+set -a
+source "$CONFIG_ENV"
+set +a
 gpu_detect
 VLLM_URL="$(vllm_resolved_url)"
 VLLM_API_KEY="$(vllm_resolved_api_key)"
@@ -320,9 +325,10 @@ screen -dmS django bash -c "
   export WHISPER_API_KEY=\"\${WHISPER_API_KEY:-${WHISPER_API_KEY:-}}\" &&
   export WHISPER_CACHE_DIR='${WHISPER_CACHE_DIR:-/workspace/persistent/whisper}' &&
   export PERSIST_PG_DUMP='${PERSIST_PG_DUMP}' &&
-  export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-3000}' &&
+  export CHAT_MAX_HISTORY_CHARS='${CHAT_MAX_HISTORY_CHARS:-20000}' &&
+  export CHAT_MAX_HISTORY_TURNS='${CHAT_MAX_HISTORY_TURNS:-10}' &&
   export CHAT_MAX_CONTEXT_CHARS='${CHAT_MAX_CONTEXT_CHARS:-40000}' &&
-  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-6144}' &&
+  export CHAT_MAX_TOKENS='${CHAT_MAX_TOKENS:-768}' &&
   export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-32768}' &&
   export VLLM_MAX_MODEL_LEN='${VLLM_MAX_MODEL_LEN:-32768}' &&
   export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
