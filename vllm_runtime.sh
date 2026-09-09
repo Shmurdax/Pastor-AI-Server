@@ -132,4 +132,15 @@ vllm_apply_config() {
     [[ -n "${RUNPOD_WHISPER_ENDPOINT_ID:-}" ]] && \
       vllm_upsert_config "$config" RUNPOD_WHISPER_ENDPOINT_ID "${RUNPOD_WHISPER_ENDPOINT_ID}"
   fi
+  chat_apply_config "$config"
+}
+
+# Force chat length/history defaults onto an existing pod config.env.
+chat_apply_config() {
+  local config="${1:-}"
+  [[ -n "$config" && -f "$config" ]] || return 0
+  vllm_upsert_config "$config" CHAT_MAX_HISTORY_CHARS 20000
+  vllm_upsert_config "$config" CHAT_MAX_HISTORY_TURNS 10
+  vllm_upsert_config "$config" CHAT_MAX_TOKENS 768
+  vllm_upsert_config "$config" CHAT_CONTEXT_WINDOW 32768
 }

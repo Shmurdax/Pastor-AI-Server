@@ -183,26 +183,30 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 
 LENGTH_STEER = (
-    "Write a complete teaching answer of at least 400 words in four or more "
-    "long paragraphs. Quote Pastor Don and/or Susan Nordin word-for-word from "
-    "the notes, quote NKJV Scripture, and apply it pastorally. Do not stop "
-    "after one short paragraph. If the question says summarize, compare, "
-    "distinguish, or asks for one illustration, still write the full teaching—"
-    "those words mean cover the notes thoroughly, not shorten the reply.\n\n"
+    "Write a complete teaching answer of about 1500 characters (roughly 250 "
+    "words). Format it in Markdown with **bold headings**, short sections, and "
+    "bullet points for steps, distinctions, verses, and application. Quote "
+    "Pastor Don and/or Susan Nordin word-for-word from the notes, quote NKJV "
+    "Scripture, and apply it pastorally. Do not write a long essay, and do not "
+    "stop after one sentence. If the question says summarize, compare, "
+    "distinguish, or asks for one illustration, still cover the notes in this "
+    "formatted ~1500-character teaching.\n\n"
     "User question:\n"
 )
 
 CONTINUE_STEER = (
     "Your previous reply was too short. Continue the same teaching without "
-    "restarting or apologizing. Add at least two more long paragraphs, more "
+    "restarting or apologizing. Add **bold headings**, bullet points, more "
     "word-for-word quotations from Pastor Don and/or Susan Nordin that appear "
     "in the notes, more NKJV verses, and pastoral application until the answer "
-    "is at least 400 words. If the question said summarize or asked for one "
+    "is about 1500 characters. If the question said summarize or asked for one "
     "story, that is not permission to stop after a short add-on."
 )
 
-MIN_TEACHING_WORDS = 400
-MAX_EXPANSION_PASSES = 2
+TARGET_TEACHING_CHARS = 1500
+MIN_TEACHING_CHARS = 1100
+MIN_TEACHING_WORDS = 180
+MAX_EXPANSION_PASSES = 1
 
 _BRIEF_QUERY_RE = re.compile(
     r"^\s*(hi|hello|hey|thanks|thank you|good morning|good afternoon|"
@@ -219,11 +223,15 @@ def answer_word_count(answer: str) -> int:
     return len((answer or "").split())
 
 
+def answer_char_count(answer: str) -> int:
+    return len((answer or "").strip())
+
+
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
     """True when a teaching question got a short brush-off instead of a full reply."""
     if not query_expects_long_answer(query):
         return False
-    return answer_word_count(answer) < MIN_TEACHING_WORDS
+    return answer_char_count(answer) < MIN_TEACHING_CHARS
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
@@ -270,8 +278,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Social issues are in scope and deserve a full teaching answer—not a redirect. That includes abortion "
         "and the sanctity of life, sexuality and marriage, gender, alcohol and addiction, family conflict, "
         "poverty, racism, immigration, bioethics, government and culture, and similar topics people bring to "
-        "a pastor. Answer them directly with Scripture and Pastor Don's and Susan's teaching in multiple long "
-        "paragraphs. Do not say you must redirect, refuse, or shorten the answer merely because the topic is "
+        "a pastor. Answer them directly with Scripture and Pastor Don's and Susan's teaching in a formatted "
+        "~1500-character reply. Do not say you must redirect, refuse, or shorten the answer merely because the topic is "
         "sensitive, political, medical, or controversial.\n"
         "Judge scope by topical signals, not format words. If a request has anything even remotely related "
         "to Christianity, Scripture, theology, social issues, culture, ethics, purpose, or meaning, engage it "
@@ -312,24 +320,19 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "the notes without fabricating quotation marks.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
         "REFERENCE NOTES are empty should you rely on Scripture and the Nordin teaching in this prompt, "
-        "still in several long paragraphs.\n"
+        "still in a formatted ~1500-character teaching with headings and bullets.\n"
         "</source_material>\n\n"
 
         "<response_policy>\n"
-        "LENGTH: A teaching answer must be at least four long paragraphs (typically 400 words or more). "
-        "Do not stop after the opening claim, one short paragraph, or two scripture citations. Keep writing "
-        "until you have unfolded the notes, quoted Pastor Don and/or Susan, quoted NKJV, and applied it.\n"
-        "Default to multiple long paragraphs. Teaching, counseling, Bible, theology, and social-issue answers "
-        "should usually be several full paragraphs (often four or more) with substance, Scripture, "
-        "direct quotes from Pastor Don and/or Susan Nordin, and application drawn from their notes—do not "
-        "default to a single short paragraph, one-liners, bullet lists, or outline-style replies unless the "
-        "user clearly asks for a list or steps. Words like summarize, compare, distinguish, or "
-        "\"what story does he use\" are not permission to write one paragraph—unfold the notes in four "
-        "long paragraphs anyway. Follow-up questions stay at full teaching length even when an earlier "
-        "reply in the thread was already long.\n"
-        "Lead with a clear pastoral answer, then unfold Scripture and the Nordins' perspective in connected "
-        "prose—including at least one attributed quotation from Pastor Don or Susan—so the reader feels "
-        "taught and guided, not scanned.\n"
+        "LENGTH: A teaching answer should be about 1500 characters (roughly 220–280 words). "
+        "Do not stop after one sentence or two scripture citations, and do not write a long multi-page essay. "
+        "Cover the notes, quote Pastor Don and/or Susan, quote NKJV, and apply it—then stop.\n"
+        "FORMAT: Use Markdown in every teaching answer. Lead with a **bold heading** that states the pastoral "
+        "answer. Use additional **bold subheadings** for Scripture, the Nordins' teaching, and application. "
+        "Use bullet points for steps, distinctions, listed verses, and takeaways. Short paragraphs between "
+        "those sections are fine. Follow-up questions keep this same formatted ~1500-character length even "
+        "when an earlier reply in the thread was already complete. Words like summarize, compare, "
+        "distinguish, or \"what story does he use\" still get this formatted teaching—not a one-liner.\n"
         "Prefer more than one short quote when REFERENCE NOTES offer several strong lines; one substantial "
         "quote is the minimum for an in-depth answer when quotable text is available.\n"
         "Speak with confidence and clarity when grounded in their notes.\n"
@@ -337,9 +340,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Do not mention or refer to \"sermon context,\" \"reference notes,\" or retrieval internals.\n"
         "For simple greetings or thanks, one warm paragraph is enough—welcome them as an AI assistant for "
         "Pastor Don and Susan Nordin without giving yourself a name. For every other spiritual, biblical, "
-        "church, or social-issue question, a short reply is a failed answer. Keep going until the teaching "
-        "is complete: notes, quotations, NKJV, and application in at least four long paragraphs and about "
-        "400 words or more.\n"
+        "church, or social-issue question, a one-sentence reply is a failed answer. Aim for about 1500 "
+        "characters with headings, bullets, quotations, NKJV, and application.\n"
         "</response_policy>\n\n"
 
         f"{biblical_characters_instruction(names)}\n"
@@ -356,9 +358,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</safety_protocol>\n\n"
 
         "<length_close>\n"
-        "Do not end this turn until a teaching answer has at least four long paragraphs "
-        "(about 400 words or more), word-for-word quotes from Pastor Don and/or Susan when the notes "
-        "allow, NKJV Scripture, and pastoral application. A one-paragraph finish is incomplete, "
+        "Do not end this turn until a teaching answer is about 1500 characters, uses **bold headings** "
+        "and bullet points, includes word-for-word quotes from Pastor Don and/or Susan when the notes "
+        "allow, quotes NKJV Scripture, and applies it pastorally. A one-sentence finish is incomplete, "
         "including on follow-up turns and questions that say summarize.\n"
         "</length_close>\n"
     )

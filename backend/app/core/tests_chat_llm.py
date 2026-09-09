@@ -144,6 +144,30 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertGreaterEqual(completion, 128)
         self.assertIn("REFERENCE NOTES:", fitted)
 
+    def test_fit_chat_budget_keeps_five_to_ten_turns_on_32k_window(self):
+        env = {"CHAT_CONTEXT_WINDOW": "32768", "VLLM_MAX_MODEL_LEN": "32768"}
+        system = (
+            "<priority>pastoral teaching</priority>\n"
+            "REFERENCE NOTES:\n" + ("sermon chunk " * 80)
+        )
+        history = []
+        for i in range(10):
+            history.append(type("Msg", (), {"content": f"user question {i} about faith and purpose"})())
+            history.append(type("Msg", (), {"content": ("pastoral answer with heading and bullets " * 40)})())
+        fitted, hist, completion, used = fit_chat_budget(
+            system,
+            history,
+            "What did we just discuss about faith?",
+            768,
+            env=env,
+        )
+        self.assertGreaterEqual(len(hist), 10)
+        self.assertIn("user question 5", "\n".join(m.content for m in hist))
+        self.assertLessEqual(used + completion + 96, 32768)
+        self.assertLessEqual(completion, 768)
+        self.assertGreaterEqual(completion, 128)
+        self.assertIn("sermon chunk", fitted)
+
     def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
         from pathlib import Path
 
@@ -153,7 +177,11 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("fit_chat_budget", source)
         self.assertIn("EMPTY_REFERENCE_NOTES", source)
         self.assertIn("NOTES_MARKER", source)
-        self.assertIn("LENGTH_STEER", source)
+        self.assertIn("MAX_HISTORY_TURNS", source)
+        self.assertIn("CHAT_MAX_HISTORY_TURNS", source)
+        self.assertIn("answer_char_count", source)
+        self.assertIn('os.getenv("CHAT_MAX_HISTORY_CHARS", "20000")', source)
+        self.assertIn('os.getenv("CHAT_MAX_TOKENS", "768")', source)
         self.assertIn("answer_needs_expansion", source)
         self.assertIn("CONTINUE_STEER", source)
         self.assertIn("MAX_EXPANSION_PASSES", source)
