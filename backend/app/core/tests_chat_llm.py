@@ -169,6 +169,9 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("sanitize_history_text", source)
         self.assertIn("looks_like_rewrite_leak", source)
         self.assertIn("language_generation_reminder", source)
+        self.assertIn("attribution_lock_instruction", source)
+        self.assertIn("attribution_generation_reminder", source)
+        self.assertIn("docs_matching_asked_terms", source)
         self.assertIn("%s chars", source)
         self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
         self.assertIn(

@@ -26,6 +26,11 @@ from qdrant_client import QdrantClient
 # Import the model
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
+from .chat_attribution import (
+    attribution_generation_reminder,
+    attribution_lock_instruction,
+    docs_matching_asked_terms,
+)
 from .chat_language import (
     language_generation_reminder,
     language_reply_instruction,
@@ -623,15 +628,14 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
+            notes_text = context if context.strip() else EMPTY_REFERENCE_NOTES
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + language_reply_instruction(chat_language)
+                + attribution_lock_instruction(user_query_llm, notes_text)
                 + "\nREFERENCE NOTES:\n{context}"
             )
-            system_filled = system_content.replace(
-                "{context}",
-                context if context.strip() else EMPTY_REFERENCE_NOTES,
-            )
+            system_filled = system_content.replace("{context}", notes_text)
             system_filled, history_messages, completion_tokens, used_tokens = fit_chat_budget(
                 system_filled,
                 history_messages,
@@ -650,6 +654,7 @@ class ChatAPIView(APIView):
             if query_expects_long_answer(user_query_llm):
                 human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
             human_content = f"{human_content}{language_generation_reminder(chat_language)}"
+            human_content = f"{human_content}{attribution_generation_reminder(user_query_llm, notes_text)}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -662,6 +667,7 @@ class ChatAPIView(APIView):
                 "bound": bound,
                 "messages": messages,
                 "docs": docs,
+                "source_docs": docs_matching_asked_terms(docs, user_query_llm),
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
                 "language": chat_language,
@@ -779,7 +785,9 @@ class ChatAPIView(APIView):
                 done = {
                     "type": "done",
                     "answer": answer,
-                    "sources": _unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                    "sources": _unique_sources(prepared.get("source_docs", prepared["docs"]))
+                    if prepared["docs"]
+                    else [],
                 }
                 if saved_message is not None:
                     done["message_id"] = saved_message.id
@@ -862,7 +870,9 @@ class ChatAPIView(APIView):
             return Response(
                 _chat_payload(
                     answer,
-                    sources=_unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                    sources=_unique_sources(prepared.get("source_docs", prepared["docs"]))
+                    if prepared["docs"]
+                    else [],
                     message_id=None if saved_message is None else saved_message.id,
                 ),
                 status=status.HTTP_200_OK,
