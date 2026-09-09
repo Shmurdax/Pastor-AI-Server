@@ -21,6 +21,7 @@ import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
+import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -2375,61 +2376,11 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
   }
 
   Widget _buildResponseSourcesDropdown(List<String> sources, {required bool isMobile}) {
-    final dropdown = Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 4),
-        visualDensity: VisualDensity.compact,
-        collapsedIconColor: _navy,
-        iconColor: _navy,
-        collapsedShape: const RoundedRectangleBorder(),
-        shape: const RoundedRectangleBorder(),
-        title: Text(
-          _s.sermonSourcesCount(sources.length),
-          style: GoogleFonts.figtree(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: _navy,
-          ),
-        ),
-        children: [
-          for (final source in sources)
-            ListTile(
-              dense: true,
-              minVerticalPadding: 10,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              leading: Icon(
-                isVideoSermonSource(source) ? Icons.videocam_outlined : Icons.description_outlined,
-                color: _navy,
-                size: 20,
-              ),
-              title: Text(
-                source,
-                style: GoogleFonts.figtree(
-                  fontSize: 14,
-                  color: _navy,
-                  decoration: TextDecoration.underline,
-                  decorationColor: _navy.withValues(alpha: 0.35),
-                ),
-              ),
-              onTap: () => _launchSermonDoc(source),
-            ),
-        ],
-      ),
-    );
-
-    if (isMobile) {
-      return dropdown;
-    }
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: 1 / 3,
-        alignment: Alignment.centerLeft,
-        child: dropdown,
-      ),
+    return ResponseSourcesDropdown(
+      sources: sources,
+      isMobile: isMobile,
+      title: _s.sermonSourcesCount(sources.length),
+      onSourceTap: _launchSermonDoc,
     );
   }
 
