@@ -166,8 +166,15 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("restated the first answer", source)
         self.assertIn("sanitize_chat_answer", source)
         self.assertIn("sanitize_stream_delta", source)
+        self.assertIn("sanitize_history_text", source)
+        self.assertIn("looks_like_rewrite_leak", source)
+        self.assertIn("language_generation_reminder", source)
         self.assertIn("%s chars", source)
         self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
+        self.assertIn(
+            'human_content = f"{human_content}{language_generation_reminder(chat_language)}"',
+            source,
+        )
         self.assertIn("prepared[\"messages\"] = trimmed", source)
         self.assertNotIn("min_tokens", source)
         self.assertNotIn('"No relevant sermon notes found."', source)

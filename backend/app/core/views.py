@@ -26,8 +26,17 @@ from qdrant_client import QdrantClient
 # Import the model
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
-from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_sanitize import sanitize_chat_answer, sanitize_stream_delta
+from .chat_language import (
+    language_generation_reminder,
+    language_reply_instruction,
+    normalize_chat_language,
+)
+from .chat_sanitize import (
+    looks_like_rewrite_leak,
+    sanitize_chat_answer,
+    sanitize_history_text,
+    sanitize_stream_delta,
+)
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import (
     iter_chat_tokens,
@@ -240,10 +249,11 @@ def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
 
 
-def _continuation_messages(messages, first_answer: str):
+def _continuation_messages(messages, first_answer: str, language: str = "en"):
+    reminder = language_generation_reminder(language)
     return list(messages) + [
-        AIMessage(content=first_answer),
-        HumanMessage(content=CONTINUE_STEER),
+        AIMessage(content=sanitize_chat_answer(first_answer, language=language)),
+        HumanMessage(content=CONTINUE_STEER + reminder),
     ]
 
 
@@ -291,7 +301,8 @@ def _trim_continuation_messages(messages):
 
 
 def _iter_continuation_tokens(prepared, answer: str):
-    full = _continuation_messages(prepared["messages"], answer)
+    language = prepared.get("language") or "en"
+    full = _continuation_messages(prepared["messages"], answer, language)
     trimmed = _trim_continuation_messages(full)
     smaller = prepared["llm"].bind(max_tokens=max(1200, int(prepared["completion_tokens"]) // 2))
     attempts = (
@@ -536,8 +547,11 @@ class ChatAPIView(APIView):
                 )
 
             if not query_in_scope(llm, user_query_llm):
-                out_of_scope_reply = generate_out_of_scope_reply(
-                    llm, user_query_llm, language=chat_language
+                out_of_scope_reply = sanitize_chat_answer(
+                    generate_out_of_scope_reply(
+                        llm, user_query_llm, language=chat_language
+                    ),
+                    language=chat_language,
                 )
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
@@ -593,11 +607,17 @@ class ChatAPIView(APIView):
             current_chars = 0
 
             for msg in db_messages:
-                exchange = f"{msg.user_query} {msg.ai_response}"
+                user_turn = sanitize_history_text(
+                    msg.user_query, language=chat_language, is_user=True
+                )
+                ai_turn = sanitize_history_text(
+                    msg.ai_response, language=chat_language
+                )
+                exchange = f"{user_turn} {ai_turn}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
-                history_messages.insert(0, AIMessage(content=msg.ai_response))
-                history_messages.insert(0, HumanMessage(content=msg.user_query))
+                history_messages.insert(0, AIMessage(content=ai_turn))
+                history_messages.insert(0, HumanMessage(content=user_turn))
                 current_chars += len(exchange)
 
             biblical_names = find_biblical_character_names(user_query_llm)
@@ -629,6 +649,7 @@ class ChatAPIView(APIView):
             human_content = user_query_llm
             if query_expects_long_answer(user_query_llm):
                 human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
+            human_content = f"{human_content}{language_generation_reminder(chat_language)}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -643,6 +664,7 @@ class ChatAPIView(APIView):
                 "docs": docs,
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
+                "language": chat_language,
             }
 
         def _unique_sources(docs):
@@ -700,8 +722,14 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 assembled = []
+                leak_started = False
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
+                    if leak_started:
+                        continue
+                    if looks_like_rewrite_leak("".join(assembled), language=chat_language):
+                        leak_started = True
+                        continue
                     visible = sanitize_stream_delta(text, language=chat_language)
                     if visible:
                         yield _sse({"type": "delta", "text": visible})
@@ -791,7 +819,11 @@ class ChatAPIView(APIView):
                 )
                 try:
                     extra = prepared["bound"].invoke(
-                        _continuation_messages(prepared["messages"], answer)
+                        _continuation_messages(
+                            prepared["messages"],
+                            answer,
+                            prepared.get("language") or chat_language,
+                        )
                     )
                     extra_text = (getattr(extra, "content", "") or "").strip()
                 except Exception:
@@ -801,7 +833,11 @@ class ChatAPIView(APIView):
                             max_tokens=max(1200, int(prepared["completion_tokens"]) // 2)
                         ).invoke(
                             _trim_continuation_messages(
-                                _continuation_messages(prepared["messages"], answer)
+                                _continuation_messages(
+                                    prepared["messages"],
+                                    answer,
+                                    prepared.get("language") or chat_language,
+                                )
                             )
                         )
                         extra_text = (getattr(extra, "content", "") or "").strip()

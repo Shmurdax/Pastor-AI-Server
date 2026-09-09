@@ -1,6 +1,11 @@
 import unittest
 
-from .chat_sanitize import sanitize_chat_answer, sanitize_stream_delta
+from .chat_sanitize import (
+    looks_like_rewrite_leak,
+    sanitize_chat_answer,
+    sanitize_history_text,
+    sanitize_stream_delta,
+)
 
 
 class ChatSanitizeTests(unittest.TestCase):
@@ -32,3 +37,46 @@ class ChatSanitizeTests(unittest.TestCase):
     def test_leaves_a_normal_english_reply_alone(self):
         text = 'Pastor Don Nordin teaches, "Feed the flock." John 21:17 calls us to that work.'
         self.assertEqual(sanitize_chat_answer(text, language="en"), text)
+
+    def test_joins_english_when_half_the_reply_is_chinese(self):
+        mixed = (
+            "Pastor Don Nordin teaches that shame is healed in community. "
+            "这段完全是中文而且会污染下一轮对话的上下文。"
+            "John 21:17 still calls us to feed the flock."
+        )
+        cleaned = sanitize_chat_answer(mixed, language="en")
+        self.assertNotRegex(cleaned, r"[\u3400-\u9fff]")
+        self.assertIn("shame is healed", cleaned)
+        self.assertIn("feed the flock", cleaned)
+
+    def test_history_ai_turn_cannot_reseed_chinese(self):
+        prior = (
+            "Restoration begins with truth. "
+            "重塑回答以确保它包含直接引文。以下是调整后的回答： "
+            "Keep walking in the light."
+        )
+        cleaned = sanitize_history_text(prior, language="en")
+        self.assertNotRegex(cleaned, r"[\u3400-\u9fff]")
+        self.assertIn("Restoration", cleaned)
+
+    def test_detects_rewrite_leak_in_long_session_reply(self):
+        self.assertTrue(
+            looks_like_rewrite_leak(
+                "self-esteem and重塑回答以确保它包含直接引文",
+                language="en",
+            )
+        )
+        self.assertFalse(looks_like_rewrite_leak("Feed the flock in love.", language="en"))
+
+    def test_strips_echoed_language_reminder(self):
+        text = (
+            'Pastor Don Nordin teaches, "Feed the flock."\n\n'
+            "[Write the reply only in English. Do not output Chinese, Japanese, "
+            "Korean, rewrite plans, or a second draft.]"
+        )
+        cleaned = sanitize_chat_answer(text, language="en")
+        self.assertNotIn("Write the reply only in English", cleaned)
+        self.assertIn("Feed the flock", cleaned)
+
+    def test_stream_delta_keeps_leading_space(self):
+        self.assertEqual(sanitize_stream_delta(" flock", language="en"), " flock")

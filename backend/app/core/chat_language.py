@@ -66,8 +66,8 @@ def language_reply_instruction(code: str) -> str:
         return (
             "<language>\n"
             "Write your entire reply in English.\n"
-            "Do not switch into another language mid-response.\n"
-            "Never write Chinese, Japanese, or Korean.\n"
+            "Do not switch into another language mid-response, including after many turns.\n"
+            "Never write Chinese, Japanese, or Korean—not even one sentence, note, or summary.\n"
             "Never write hidden notes, self-critique, or instructions to reshape, "
             "adjust, or evaluate the answer. Output only the pastoral reply the user should read.\n"
             "Scripture quotations remain NKJV English as required elsewhere.\n"
@@ -77,10 +77,30 @@ def language_reply_instruction(code: str) -> str:
         "<language>\n"
         f"Write your entire reply in {name}.\n"
         "Translate pastoral explanations, invitations, and declines into that language.\n"
-        "Do not switch into another language mid-response.\n"
+        "Do not switch into another language mid-response, including after many turns.\n"
         "When quoting Scripture, still use NKJV English wording inside quotation marks, "
         f"then briefly explain the meaning in {name}.\n"
         "Do not mention this language instruction.\n"
+        "Never write Chinese unless the user is chatting in Chinese.\n"
         "Never write hidden notes, self-critique, or instructions to reshape or adjust the answer.\n"
         "</language>\n"
+    )
+
+
+def language_generation_reminder(code: str) -> str:
+    """Short recency lock so long threads do not drift into Chinese."""
+    normalized = normalize_chat_language(code)
+    if normalized == "zh":
+        return ""
+    name = language_display_name(normalized)
+    if normalized == "ko":
+        return (
+            f"\n\n[Write the reply only in {name}. Do not output Chinese, "
+            "rewrite plans, or a second draft.]"
+        )
+    if normalized == DEFAULT_CHAT_LANGUAGE:
+        name = "English"
+    return (
+        f"\n\n[Write the reply only in {name}. Do not output Chinese, Japanese, "
+        "Korean, rewrite plans, or a second draft.]"
     )
