@@ -92,7 +92,12 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       }
     }.toJS;
     web.document.head!.append(script);
-    await completer.future;
+    await completer.future.timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => throw TimeoutException(
+        'Timed out loading Stripe.js from js.stripe.com',
+      ),
+    );
 
     for (var i = 0; i < 50; i++) {
       if (ready()) return;
@@ -101,6 +106,49 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     if (!ready()) {
       throw StateError('Stripe.js loaded but window.Stripe is unavailable.');
     }
+  }
+
+  /// Current Stripe.js uses [createEmbeddedCheckoutPage]; older builds used
+  /// [initEmbeddedCheckout]. Calling a missing method can hang forever when
+  /// the null result is awaited as a Promise — prefer the new name and fail
+  /// fast if neither exists.
+  Future<JSObject> _createEmbeddedCheckout(
+    JSObject stripe,
+    JSObject options,
+  ) async {
+    const methodNames = <String>[
+      'createEmbeddedCheckoutPage',
+      'initEmbeddedCheckout',
+    ];
+    String? methodName;
+    for (final name in methodNames) {
+      if (stripe.getProperty(name.toJS) != null) {
+        methodName = name;
+        break;
+      }
+    }
+    if (methodName == null) {
+      throw StateError(
+        'Stripe.js is missing createEmbeddedCheckoutPage. '
+        'Hard-refresh the page (Ctrl+Shift+R) and try again.',
+      );
+    }
+
+    final raw = stripe.callMethod(methodName.toJS, options);
+    if (raw == null) {
+      throw StateError('Stripe.$methodName returned null');
+    }
+
+    final result = await (raw as JSPromise<JSAny?>).toDart.timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => throw TimeoutException(
+        'Stripe checkout form timed out while initializing.',
+      ),
+    );
+    if (result == null) {
+      throw StateError('Stripe.$methodName resolved to null');
+    }
+    return result as JSObject;
   }
 
   Future<void> _mountCheckout() async {
@@ -113,7 +161,8 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       }
 
       final stripeFactory = web.window.getProperty('Stripe'.toJS) as JSFunction;
-      final stripe = stripeFactory.callAsConstructor(widget.publishableKey.toJS) as JSObject;
+      final stripe =
+          stripeFactory.callAsConstructor(widget.publishableKey.toJS) as JSObject;
 
       // fetchClientSecret must return a Promise<string>
       JSPromise<JSString> fetchClientSecret(JSAny? _) {
@@ -131,11 +180,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
         options['onComplete'] = handleComplete.toJS;
       }
 
-      final checkoutPromise = stripe.callMethod(
-        'initEmbeddedCheckout'.toJS,
-        options,
-      ) as JSPromise<JSAny?>;
-      final checkout = (await checkoutPromise.toDart)! as JSObject;
+      final checkout = await _createEmbeddedCheckout(stripe, options);
       _checkout = checkout;
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
 
