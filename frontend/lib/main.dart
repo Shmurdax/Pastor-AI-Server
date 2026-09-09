@@ -155,6 +155,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   String _textBeforeSpeech = '';
   String _streamRaw = '';
   bool _streamCancelled = false;
+  int _streamEpoch = 0;
+  /// True for the rest of the pointer that just pressed Stop, so a rebuilt
+  /// send button cannot start a new reply on the same click.
+  bool _absorbComposerTap = false;
   /// True while the latest AI bubble is still receiving generated tokens.
   bool get _isStreamingReply {
     if (_messages.isEmpty) return false;
@@ -1057,9 +1061,27 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
+  bool _isCurrentStream(int epoch) {
+    return !_streamCancelled &&
+        _isLoading &&
+        _activeClient != null &&
+        epoch == _streamEpoch;
+  }
+
+  void _onComposerPrimaryTap() {
+    if (_isLoading || _activeClient != null || _isStreamingReply) {
+      _stopResponse();
+      return;
+    }
+    if (_absorbComposerTap) return;
+    _sendMessage();
+  }
+
   void _stopResponse() {
-    if (!_isLoading && _activeClient == null) return;
+    if (!_isLoading && _activeClient == null && !_isStreamingReply) return;
+    _absorbComposerTap = true;
     _streamCancelled = true;
+    _streamEpoch += 1;
     _activeClient?.close();
     setState(() {
       _isLoading = false;
@@ -1071,21 +1093,26 @@ Future<void> _launchSermonDoc(String sermonName) async {
       );
       _streamRaw = '';
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _absorbComposerTap = false;
+      });
+    });
   }
 
-  void _appendStreamDelta(String delta) {
+  void _appendStreamDelta(String delta, int epoch) {
     if (delta.isEmpty) return;
-    if (_streamCancelled || !_isLoading || _activeClient == null) return;
+    if (!_isCurrentStream(epoch)) return;
     _streamRaw += delta;
     final display = _boldBibleReferences(_streamRaw);
-    if (!mounted) return;
+    if (!mounted || !_isCurrentStream(epoch)) return;
     setState(() => applyChatStreamDelta(_messages, display));
     _scrollToBottom(followStream: true);
   }
 
 Future<void> _sendMessage() async {
-  // Guard clause: prevent sending if already loading
-  if (_isLoading) return;
+  // Guard clause: prevent sending if already loading or this tap stopped one
+  if (_isLoading || _absorbComposerTap) return;
 
   if (_isListening || _speechToText.isListening) {
     await _speechToText.stop();
@@ -1111,6 +1138,7 @@ Future<void> _sendMessage() async {
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
   _streamRaw = '';
   _streamCancelled = false;
+  final epoch = ++_streamEpoch;
   setState(() {
     if (addUserMessage) {
       _messages.add({"role": "user", "text": userText});
@@ -1128,36 +1156,42 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       regenerate: regenerate,
       language: _languageCode,
       client: _activeClient,
-      onDelta: _appendStreamDelta,
-      isCancelled: () => _streamCancelled,
+      onDelta: (delta) => _appendStreamDelta(delta, epoch),
+      isCancelled: () => _streamCancelled || epoch != _streamEpoch,
     );
-    if (!mounted || _activeClient == null || _streamCancelled) return;
+    if (!mounted || !_isCurrentStream(epoch)) return;
     await _persistSessionId();
+    if (!mounted || !_isCurrentStream(epoch)) return;
 
     final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
     final messageId = data['message_id'];
     setState(() {
+      if (!mounted || !_isCurrentStream(epoch)) return;
       if (_librarySermons.isNotEmpty) {
         _previousSermons = withoutVideoSermonSources(
           [..._librarySermons, ..._previousSermons],
         ).toSet().take(25).toList();
       }
 
-      if (_isStreamingReply) {
-        applyChatStreamDelta(_messages, answer);
-        _messages.last['streaming'] = false;
-        _messages.last['sources'] = List<String>.from(data['sources'] ?? []);
-        _messages.last['reported'] = false;
-        if (messageId != null) _messages.last['message_id'] = messageId;
-      } else {
+      final sources = List<String>.from(data['sources'] ?? []);
+      var completed = completeChatStreamAnswer(
+        _messages,
+        answer: answer,
+        sources: sources,
+        messageId: messageId,
+      );
+      if (!completed &&
+          (_messages.isEmpty || _messages.last['role'] != 'ai')) {
         _messages.add({
-          "role": "ai",
-          "text": answer,
-          "sources": List<String>.from(data['sources'] ?? []),
-          if (messageId != null) "message_id": messageId,
-          "reported": false,
+          'role': 'ai',
+          'text': answer,
+          'sources': sources,
+          if (messageId != null) 'message_id': messageId,
+          'reported': false,
         });
+        completed = true;
       }
+      if (!completed) return;
 
       final newSources = librarySermonSources(data['sources']);
       if (newSources.isNotEmpty) {
@@ -1165,12 +1199,13 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         _previousSermons.removeWhere((s) => _librarySermons.contains(s));
       }
     });
+    if (!_isCurrentStream(epoch)) return;
     _scrollToBottom(followStream: true);
     await _persistChatHistory();
   } on http.ClientException {
     if (!mounted) return;
   } catch (e) {
-    if (_activeClient != null) {
+    if (_isCurrentStream(epoch)) {
       setState(() {
         if (_isStreamingReply) {
           _messages.last['streaming'] = false;
@@ -1178,22 +1213,21 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             _messages.last['localKey'] = 'serverError';
             _messages.last['text'] = _s.serverError;
           }
-        } else {
-          _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError});
         }
       });
-      _scrollToBottom();
     }
   } finally {
-    _streamRaw = '';
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _activeClient = null;
-        if (_isStreamingReply) {
-          _messages.last['streaming'] = false;
-        }
-      });
+    if (epoch == _streamEpoch) {
+      _streamRaw = '';
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _activeClient = null;
+          if (_isStreamingReply) {
+            _messages.last['streaming'] = false;
+          }
+        });
+      }
     }
   }
 }
@@ -2336,7 +2370,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                     onTapDown: (_) => setState(() => _isButtonTapped = true),
                     onTapUp: (_) => setState(() => _isButtonTapped = false),
                     onTapCancel: () => setState(() => _isButtonTapped = false),
-                    onTap: _isLoading ? _stopResponse : _sendMessage,
+                    onTap: _onComposerPrimaryTap,
                     child: AnimatedScale(
                       scale: _isButtonTapped ? 1.3 : (_controller.text.isNotEmpty || _isLoading ? 1.15 : 1.0),
                       duration: const Duration(milliseconds: 150),

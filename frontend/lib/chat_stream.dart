@@ -85,11 +85,14 @@ int? indexOfStreamingAi(List<Map<String, dynamic>> messages) {
 }
 
 /// Paints [display] into the live AI bubble. Late tokens after stop must not
-/// call this — they would open a second bubble.
+/// open a second bubble — if the last AI reply is already frozen, ignore them.
 void applyChatStreamDelta(List<Map<String, dynamic>> messages, String display) {
   final index = indexOfStreamingAi(messages);
   if (index != null) {
     messages[index]['text'] = display;
+    return;
+  }
+  if (messages.isNotEmpty && messages.last['role'] == 'ai') {
     return;
   }
   messages.add({
@@ -118,9 +121,32 @@ void finalizeChatStreamOnStop(
     }
     return;
   }
+  if (messages.isNotEmpty && messages.last['role'] == 'ai') {
+    messages.last['streaming'] = false;
+    return;
+  }
   messages.add({
     'role': 'ai',
     'localKey': 'responseCancelled',
     'text': cancelledText,
   });
+}
+
+/// Writes the finished answer into the live bubble. Returns false when that
+/// bubble is already gone (stopped), so the caller must not add another.
+bool completeChatStreamAnswer(
+  List<Map<String, dynamic>> messages, {
+  required String answer,
+  List<String> sources = const [],
+  dynamic messageId,
+}) {
+  final index = indexOfStreamingAi(messages);
+  if (index == null) return false;
+  final msg = messages[index];
+  msg['text'] = answer;
+  msg['streaming'] = false;
+  msg['sources'] = List<String>.from(sources);
+  msg['reported'] = false;
+  if (messageId != null) msg['message_id'] = messageId;
+  return true;
 }

@@ -77,4 +77,46 @@ void main() {
     expect(messages.last['localKey'], 'responseCancelled');
     expect(messages.last['text'], 'Response cancelled.');
   });
+
+  test('late tokens after stop do not open another bubble', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith',
+    );
+
+    applyChatStreamDelta(messages, 'Faith is the assurance');
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith');
+    expect(messages.last['streaming'], isFalse);
+  });
+
+  test('a finished payload after stop does not add a second answer', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith',
+    );
+
+    expect(
+      completeChatStreamAnswer(
+        messages,
+        answer: 'Faith is the assurance of things hoped for.',
+        sources: const ['Hebrews 11'],
+        messageId: 9,
+      ),
+      isFalse,
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith');
+    expect(messages.last.containsKey('message_id'), isFalse);
+  });
 }
