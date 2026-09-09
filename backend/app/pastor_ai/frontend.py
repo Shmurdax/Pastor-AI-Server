@@ -24,6 +24,138 @@ _WARMUP_SCRIPT = (
     "</script>"
 )
 
+VIMEO_EMBED_FILENAME = "vimeo_embed.html"
+_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+# Last-resort copy of frontend/web/vimeo_embed.html. The media page iframes
+# /vimeo_embed.html; sermon-sources embeds player.vimeo.com directly and does
+# not need this file. Keep the two HTML copies in sync.
+_VIMEO_EMBED_FALLBACK = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vimeo embed</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .err {
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      padding: 24px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var id = (params.get('id') || '').trim();
+      var hash = (params.get('h') || '').trim();
+      var title = params.get('title') || 'Vimeo video';
+      if (!id) {
+        document.body.innerHTML = '<p class="err">Missing Vimeo video id.</p>';
+        return;
+      }
+      // Match the admin sermon-sources player: privacy hash first, then dnt.
+      var q = [];
+      if (hash) q.push('h=' + encodeURIComponent(hash));
+      q.push('dnt=1');
+      q.push('badge=0');
+      q.push('autopause=0');
+      q.push('player_id=0');
+      q.push('app_id=58479');
+      var iframe = document.createElement('iframe');
+      iframe.src = 'https://player.vimeo.com/video/' + encodeURIComponent(id) + '?' + q.join('&');
+      iframe.setAttribute('frameborder', '0');
+      iframe.setAttribute(
+        'allow',
+        'autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share'
+      );
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      iframe.setAttribute('allowfullscreen', 'true');
+      iframe.title = title;
+      document.body.appendChild(iframe);
+    })();
+  </script>
+</body>
+</html>
+"""
+
+
+def _apply_cache_headers(response):
+    for key, value in _CACHE_HEADERS.items():
+        response[key] = value
+    return response
+
+
+def vimeo_embed_file_candidates(configured_dir: Path | None = None) -> list[Path]:
+    """Resolve the media-page Vimeo relay even when a stale Flutter build omitted it."""
+    paths: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        resolved = path if path.is_absolute() else path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            paths.append(resolved)
+
+    if configured_dir is not None:
+        add(configured_dir / VIMEO_EMBED_FILENAME)
+        add(configured_dir / "web" / VIMEO_EMBED_FILENAME)
+        add(configured_dir / "build" / "web" / VIMEO_EMBED_FILENAME)
+        add(configured_dir.parent / VIMEO_EMBED_FILENAME)
+        add(configured_dir.parent / "web" / VIMEO_EMBED_FILENAME)
+        add(configured_dir.parent.parent / "web" / VIMEO_EMBED_FILENAME)
+
+    repo_root = Path(settings.BASE_DIR).resolve().parent.parent
+    add(repo_root / "frontend" / "web" / VIMEO_EMBED_FILENAME)
+    add(repo_root / "frontend" / "build" / "web" / VIMEO_EMBED_FILENAME)
+    return paths
+
+
+def load_vimeo_embed_html(configured_dir: Path | None = None) -> str:
+    for path in vimeo_embed_file_candidates(configured_dir):
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    return _VIMEO_EMBED_FALLBACK
+
+
+def vimeo_embed_response(configured_dir: Path | None = None) -> HttpResponse:
+    """Same-origin relay so Vimeo domain privacy sees this site as the referrer."""
+    response = HttpResponse(
+        load_vimeo_embed_html(configured_dir),
+        content_type="text/html; charset=utf-8",
+    )
+    _apply_cache_headers(response)
+    # Global X_FRAME_OPTIONS=DENY makes Chrome report "refused to connect."
+    response["X-Frame-Options"] = "SAMEORIGIN"
+    return response
+
+
+def serve_vimeo_embed(request):
+    configured_dir = Path(getattr(settings, "FRONTEND_BUILD_DIR", "/frontend"))
+    return vimeo_embed_response(configured_dir if configured_dir.exists() else None)
+
 
 def _resolve_frontend_dir(configured_dir: Path) -> Path:
     """Accept either a Flutter project root (build/web) or a prebuilt web dir."""
@@ -58,6 +190,9 @@ def serve_frontend(request, path: str = ""):
     build_dir = _resolve_frontend_dir(configured_dir)
 
     normalized_path = (path or "").lstrip("/")
+    if Path(normalized_path).name == VIMEO_EMBED_FILENAME:
+        return vimeo_embed_response(configured_dir)
+
     candidate = (build_dir / normalized_path).resolve()
     build_dir_resolved = build_dir.resolve()
 
@@ -78,26 +213,15 @@ def serve_frontend(request, path: str = ""):
         raise Http404("Frontend entrypoint not found.")
 
     content_type, _ = mimetypes.guess_type(str(file_path))
-    cache_headers = {
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
-    }
     if file_path.name.lower() == "index.html":
         response = HttpResponse(
             _index_html_with_warmup(file_path),
             content_type="text/html; charset=utf-8",
         )
-        for key, value in cache_headers.items():
-            response[key] = value
-        return response
+        return _apply_cache_headers(response)
 
     response = FileResponse(open(file_path, "rb"), content_type=content_type or "application/octet-stream")
-    for key, value in cache_headers.items():
-        response[key] = value
-    # Flutter plays Vimeo through a same-origin iframe of /vimeo_embed.html so
-    # player.vimeo.com sees this site as the referrer. Global X_FRAME_OPTIONS=DENY
-    # makes Chrome report "<this domain> refused to connect."
-    if file_path.name == "vimeo_embed.html":
+    _apply_cache_headers(response)
+    if file_path.name == VIMEO_EMBED_FILENAME:
         response["X-Frame-Options"] = "SAMEORIGIN"
     return response

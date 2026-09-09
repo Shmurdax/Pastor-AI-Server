@@ -45,8 +45,24 @@ class VimeoEmbedFrameTests(TestCase):
                 home = self.client.get("/")
         self.assertEqual(embed.status_code, 200)
         self.assertEqual(embed["X-Frame-Options"], "SAMEORIGIN")
+        self.assertContains(embed, "vimeo relay")
         self.assertEqual(home.status_code, 200)
         self.assertEqual(home["X-Frame-Options"], "DENY")
+
+    def test_vimeo_embed_survives_stale_flutter_build(self):
+        """Media page iframes /vimeo_embed.html; sermon-sources do not need it."""
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "index.html").write_text(
+                "<html><body><div id=app></div></body></html>",
+                encoding="utf-8",
+            )
+            with override_settings(FRONTEND_BUILD_DIR=str(root)):
+                embed = self.client.get("/vimeo_embed.html?id=403856658&h=6bce8bb9e6")
+        self.assertEqual(embed.status_code, 200)
+        self.assertEqual(embed["X-Frame-Options"], "SAMEORIGIN")
+        self.assertContains(embed, "player.vimeo.com/video/")
+        self.assertContains(embed, "dnt=1")
 
 
 if __name__ == "__main__":

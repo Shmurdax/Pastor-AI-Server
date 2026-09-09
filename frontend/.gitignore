@@ -31,7 +31,9 @@ dart_defines.env
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+/build/*
+!/build/web/
+!/build/web/vimeo_embed.html
 /coverage/
 
 # Symbolication related
