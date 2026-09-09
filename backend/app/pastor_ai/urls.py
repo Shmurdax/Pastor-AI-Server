@@ -41,7 +41,7 @@ from core.views import (
     TranslateAPIView,
     ResponseReportAPIView,
 )
-from .frontend import serve_frontend
+from .frontend import serve_frontend, serve_vimeo_embed
 from .robots import robots_txt_view
 
 
@@ -93,6 +93,9 @@ urlpatterns = [
     path('api/media/', MediaVideoListAPI.as_view(), name='media_list_api'),
     path('api/ingested-documents/', IngestedDocumentsAPIView.as_view(), name='ingested_documents_api'),
     path('api/ingested-documents/<int:document_id>/file/', IngestedDocumentFileAPIView.as_view(), name='ingested_document_file_api'),
+    # Media page Flutter player iframes this relay. Dedicated route so a stale
+    # frontend/build/web (which gitignored the new file) cannot 404 it.
+    path("vimeo_embed.html", serve_vimeo_embed, name="vimeo_embed"),
     # Backward-compatible route for existing Flutter builds that open /sermons/<name>.pdf directly.
     path('sermons/<str:sermon_name>.pdf', SermonPdfByNameAPIView.as_view(), name='sermon_pdf_by_name'),
     # Legacy alias: older Flutter builds POST to /chat/; route here so CSRF does not hit serve_frontend.
