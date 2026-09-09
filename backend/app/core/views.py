@@ -283,20 +283,26 @@ def _trim_continuation_messages(messages):
 
 
 def _iter_continuation_tokens(prepared, answer: str):
-    messages = _continuation_messages(prepared["messages"], answer)
-    yielded = False
-    try:
-        for text in _iter_chat_tokens(prepared["bound"], messages):
-            yielded = True
-            yield text
-        return
-    except Exception:
-        if yielded:
-            return
-        logger.exception("Continuation failed; retrying with a trimmed prompt")
-    trimmed = _trim_continuation_messages(messages)
-    smaller = max(1200, int(prepared["completion_tokens"]) // 2)
-    yield from _iter_chat_tokens(prepared["llm"].bind(max_tokens=smaller), trimmed)
+    full = _continuation_messages(prepared["messages"], answer)
+    trimmed = _trim_continuation_messages(full)
+    smaller = prepared["llm"].bind(max_tokens=max(1200, int(prepared["completion_tokens"]) // 2))
+    attempts = (
+        (prepared["bound"], full),
+        (smaller, trimmed),
+    )
+    for bound, messages in attempts:
+        yielded = False
+        try:
+            for text in _iter_chat_tokens(bound, messages):
+                yielded = True
+                yield text
+            if yielded:
+                return
+        except Exception:
+            if yielded:
+                return
+            logger.exception("Continuation attempt failed")
+    logger.warning("Continuation produced no extra text")
 
 
 def _save_ai_response(
@@ -614,7 +620,7 @@ class ChatAPIView(APIView):
 
             human_content = user_query_llm
             if query_expects_long_answer(user_query_llm):
-                human_content = f"{user_query_llm.rstrip()}{LENGTH_STEER}"
+                human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -673,7 +679,10 @@ class ChatAPIView(APIView):
                     trimmed.append(SystemMessage(content=content))
                 else:
                     trimmed.append(msg)
-            yield from _iter_chat_tokens(prepared["llm"].bind(max_tokens=smaller), trimmed)
+            retry_bound = prepared["llm"].bind(max_tokens=smaller)
+            prepared["messages"] = trimmed
+            prepared["bound"] = retry_bound
+            yield from _iter_chat_tokens(retry_bound, trimmed)
 
         if want_stream:
             def produce_events():
@@ -695,7 +704,7 @@ class ChatAPIView(APIView):
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
-                    logger.info(
+                    logger.warning(
                         "Chat answer was short (%s words); requesting continuation %s/%s",
                         answer_word_count(answer),
                         expansion_pass,
@@ -738,7 +747,7 @@ class ChatAPIView(APIView):
             def token_events():
                 yield sse_keepalive()
                 try:
-                    yield from iter_with_sse_heartbeats(produce_events, interval_s=8.0)
+                    yield from iter_with_sse_heartbeats(produce_events, interval_s=2.0)
                 except Exception:
                     logger.exception("Error while streaming chat tokens")
                     yield _sse({
@@ -760,7 +769,7 @@ class ChatAPIView(APIView):
                 and expansion_pass < MAX_EXPANSION_PASSES
             ):
                 expansion_pass += 1
-                logger.info(
+                logger.warning(
                     "Chat answer was short (%s words); requesting continuation %s/%s",
                     answer_word_count(answer),
                     expansion_pass,

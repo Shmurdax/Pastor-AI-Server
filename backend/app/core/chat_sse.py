@@ -11,13 +11,33 @@ def wants_chat_stream(stream_flag, accept_header: str = "") -> bool:
     return "text/event-stream" in (accept_header or "")
 
 
+# Cloudflare and some browsers buffer SSE until ~4KB arrives. Tiny ": keepalive"
+# comments never flush, so the UI sees the whole answer at once.
+_SSE_FLUSH_PAD = " " * 4096
+
+
 def sse_pack(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def sse_keepalive() -> str:
-    """Comment ping so proxies flush headers before retrieval/generation."""
-    return ": keepalive\n\n"
+    """Comment ping large enough to flush proxy buffers before tokens arrive."""
+    return f": keepalive{_SSE_FLUSH_PAD}\n\n"
+
+
+def split_stream_text(text: str, max_chars: int = 28) -> list[str]:
+    """Break a model chunk so the UI can paint tokens instead of one dump."""
+    raw = text or ""
+    if not raw:
+        return []
+    if len(raw) <= max_chars:
+        return [raw]
+    parts: list[str] = []
+    start = 0
+    while start < len(raw):
+        parts.append(raw[start : start + max_chars])
+        start += max_chars
+    return parts
 
 
 def iter_with_sse_heartbeats(producer, interval_s: float = 8.0):
@@ -90,5 +110,5 @@ def chunk_text(chunk) -> str:
 def iter_chat_tokens(bound_llm, messages):
     for chunk in bound_llm.stream(messages):
         text = chunk_text(chunk)
-        if text:
-            yield text
+        for piece in split_stream_text(text):
+            yield piece

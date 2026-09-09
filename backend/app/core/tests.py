@@ -63,6 +63,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("400 words", prompt)
         self.assertIn("400 words", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
+        self.assertIn("User question:", LENGTH_STEER)
         self.assertIn("summarize", prompt.lower())
         self.assertIn("Follow-up questions stay at full teaching length", prompt)
         self.assertEqual(MIN_TEACHING_WORDS, 400)

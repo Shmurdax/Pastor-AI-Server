@@ -332,7 +332,7 @@ screen -dmS django bash -c "
   export INGEST_CHUNK_OVERLAP='${INGEST_CHUNK_OVERLAP:-250}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
-  exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --workers 2 --timeout 1800 \
+  exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --worker-class gthread --threads 4 --workers 2 --timeout 1800 \
     >> '${LOG_DIR}/django.log' 2>&1
 "
 sleep 3

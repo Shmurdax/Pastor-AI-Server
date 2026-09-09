@@ -162,6 +162,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("keeping the first answer", source)
+        self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
+        self.assertIn("prepared[\"messages\"] = trimmed", source)
         self.assertNotIn("min_tokens", source)
         self.assertNotIn('"No relevant sermon notes found."', source)
         self.assertNotIn("pii_redaction", source)

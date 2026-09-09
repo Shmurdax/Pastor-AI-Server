@@ -5,6 +5,7 @@ from core.chat_sse import (
     chunk_text,
     iter_chat_tokens,
     iter_with_sse_heartbeats,
+    split_stream_text,
     sse_keepalive,
     sse_pack,
     wants_chat_stream,
@@ -27,7 +28,10 @@ class ChatSseTests(unittest.TestCase):
         self.assertTrue(wants_chat_stream(True, ""))
         self.assertTrue(wants_chat_stream(False, "text/event-stream"))
         self.assertFalse(wants_chat_stream(False, "application/json"))
-        self.assertEqual(sse_keepalive(), ": keepalive\n\n")
+        self.assertGreaterEqual(len(sse_keepalive()), 4096)
+        self.assertTrue(sse_keepalive().startswith(": keepalive"))
+        self.assertEqual(split_stream_text("short"), ["short"])
+        self.assertEqual(split_stream_text("abcdefghij", max_chars=4), ["abcd", "efgh", "ij"])
 
     def test_iter_chat_tokens_skips_empty_chunks(self):
         bound = SimpleNamespace(

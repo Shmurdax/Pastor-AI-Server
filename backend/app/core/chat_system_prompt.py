@@ -183,12 +183,13 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 
 LENGTH_STEER = (
-    "\n\nWrite a complete teaching answer of at least 400 words in four or more "
+    "Write a complete teaching answer of at least 400 words in four or more "
     "long paragraphs. Quote Pastor Don and/or Susan Nordin word-for-word from "
     "the notes, quote NKJV Scripture, and apply it pastorally. Do not stop "
-    "after one short paragraph. If this question says summarize, compare, "
+    "after one short paragraph. If the question says summarize, compare, "
     "distinguish, or asks for one illustration, still write the full teaching—"
-    "those words mean cover the notes thoroughly, not shorten the reply."
+    "those words mean cover the notes thoroughly, not shorten the reply.\n\n"
+    "User question:\n"
 )
 
 CONTINUE_STEER = (
