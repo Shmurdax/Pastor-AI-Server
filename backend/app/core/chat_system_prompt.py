@@ -244,6 +244,23 @@ def clip_teaching_answer(answer: str, limit: int = TEACHING_CHAR_LIMIT) -> str:
     return window.rstrip()
 
 
+def take_stream_delta(shown: str, chunk: str, limit: int = TEACHING_CHAR_LIMIT) -> str:
+    """Return only the part of [chunk] that can still be shown.
+
+    Already-streamed text is never rewritten, so the UI cannot snap backward
+    when the 2500-character cap is applied.
+    """
+    chunk = chunk or ""
+    if not chunk or len(shown) >= limit:
+        return ""
+    if len(shown) + len(chunk) <= limit:
+        return chunk
+    clipped = clip_teaching_answer(shown + chunk, limit)
+    if clipped.startswith(shown) and len(clipped) > len(shown):
+        return clipped[len(shown) :]
+    return chunk[: limit - len(shown)]
+
+
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
     """True when a teaching question is still under the 2500-character target."""
     if not query_expects_long_answer(query):

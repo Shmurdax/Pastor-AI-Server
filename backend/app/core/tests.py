@@ -7,6 +7,7 @@ from .chat_system_prompt import (
     TEACHING_CHAR_LIMIT,
     answer_needs_expansion,
     clip_teaching_answer,
+    take_stream_delta,
     biblical_characters_instruction,
     build_chat_system_prompt,
     continuation_is_restatement,
@@ -161,6 +162,14 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertEqual(prepare_continuation_text(clipped, extra), "")
         self.assertFalse(answer_needs_expansion("x" * 2500, query="What is justification?"))
+
+    def test_stream_delta_never_rewrites_already_shown_text(self):
+        shown = "A" * 2400 + " First ending."
+        extra = " More teaching that would push the reply well past the cap. " * 10
+        piece = take_stream_delta(shown, extra)
+        self.assertTrue((shown + piece).startswith(shown))
+        self.assertLessEqual(len(shown + piece), 2500)
+        self.assertEqual(take_stream_delta("x" * 2500, "more"), "")
 
 
 class ScopeGateParserTests(unittest.TestCase):

@@ -165,6 +165,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("prepare_continuation_text", source)
         self.assertIn("restated the first answer", source)
         self.assertIn("clip_teaching_answer", source)
+        self.assertIn("take_stream_delta", source)
         self.assertIn("%s chars", source)
         self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
         self.assertIn("prepared[\"messages\"] = trimmed", source)

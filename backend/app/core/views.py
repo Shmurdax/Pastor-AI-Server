@@ -31,7 +31,6 @@ from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_
 from .chat_sse import (
     iter_chat_tokens,
     iter_with_sse_heartbeats,
-    split_stream_text,
     sse_keepalive,
     sse_pack,
     wants_chat_stream,
@@ -40,6 +39,7 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
+    TEACHING_CHAR_LIMIT,
     answer_char_count,
     answer_needs_expansion,
     build_chat_system_prompt,
@@ -47,6 +47,7 @@ from .chat_system_prompt import (
     find_biblical_character_names,
     prepare_continuation_text,
     query_expects_long_answer,
+    take_stream_delta,
 )
 from .chat_translate import translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -701,10 +702,19 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 assembled = []
+                shown = ""
                 for text in _generate_tokens(prepared):
-                    assembled.append(text)
-                    yield _sse({"type": "delta", "text": text})
-                answer = "".join(assembled)
+                    piece = take_stream_delta(shown, text)
+                    if not piece:
+                        if len(shown) >= TEACHING_CHAR_LIMIT:
+                            break
+                        continue
+                    assembled.append(piece)
+                    shown += piece
+                    yield _sse({"type": "delta", "text": piece})
+                    if len(shown) >= TEACHING_CHAR_LIMIT:
+                        break
+                answer = shown
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
@@ -730,11 +740,12 @@ class ChatAPIView(APIView):
                     if not extra:
                         logger.warning("Dropped a continuation that restated the first answer")
                         break
-                    yield _sse({"type": "delta", "text": "\n\n"})
-                    for piece in split_stream_text(extra):
-                        yield _sse({"type": "delta", "text": piece})
-                    answer = _join_continuation(answer, extra)
-                answer = clip_teaching_answer(answer)
+                    extra = take_stream_delta(answer, "\n\n" + extra)
+                    if not extra:
+                        break
+                    yield _sse({"type": "delta", "text": extra})
+                    answer = answer + extra
+                # Final payload matches what was already streamed — never clip backward.
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],

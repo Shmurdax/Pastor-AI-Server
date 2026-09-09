@@ -1102,7 +1102,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     if (!mounted || _activeClient == null) return;
     await _persistSessionId();
 
-    final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
+    // Keep the text already painted on screen. Replacing it with a clipped
+    // `done.answer` is what made a streaming reply snap into a shorter one.
+    final streamed = _streamRaw;
+    final serverAnswer = (data['answer'] as String?) ?? '';
+    final answer = _boldBibleReferences(streamed.isNotEmpty ? streamed : serverAnswer);
     final messageId = data['message_id'];
     setState(() {
       if (_librarySermons.isNotEmpty) {
