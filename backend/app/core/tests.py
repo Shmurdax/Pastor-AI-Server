@@ -4,8 +4,9 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
-    MIN_TEACHING_WORDS,
+    TEACHING_CHAR_LIMIT,
     answer_needs_expansion,
+    clip_teaching_answer,
     biblical_characters_instruction,
     build_chat_system_prompt,
     continuation_is_restatement,
@@ -48,7 +49,7 @@ class ChatSystemPromptTests(unittest.TestCase):
     def test_prompt_requires_sermon_notes_and_long_paragraphs(self):
         prompt = build_chat_system_prompt(biblical_names=["Moses"])
         self.assertIn("Susan Nordin", prompt)
-        self.assertIn("multiple long paragraphs", prompt)
+        self.assertIn("2500 characters", prompt)
         self.assertIn("sermon notes", prompt)
         self.assertIn("Quality and pastoral depth", prompt)
         self.assertIn("REQUIRED QUOTES", prompt)
@@ -61,21 +62,21 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("LENGTH:", prompt)
-        self.assertIn("four long paragraphs", prompt)
-        self.assertIn("a short reply is a failed answer", prompt)
+        self.assertIn("2500 characters", prompt)
+        self.assertIn("a one-sentence reply is a failed answer", prompt)
         self.assertIn("<length_close>", prompt)
-        self.assertIn("400 words", prompt)
-        self.assertIn("400 words", LENGTH_STEER)
+        self.assertIn("2500 characters", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
         self.assertIn("User question:", LENGTH_STEER)
         self.assertIn("one continuous answer", LENGTH_STEER)
         self.assertIn("Do not restate", CONTINUE_STEER)
         self.assertIn("did not ask you to go deeper", CONTINUE_STEER)
+        self.assertIn("2500 characters", CONTINUE_STEER)
         self.assertIn("Let's delve deeper", prompt)
         self.assertIn("same verses", prompt)
         self.assertIn("summarize", prompt.lower())
-        self.assertIn("Follow-up questions stay at full teaching length", prompt)
-        self.assertEqual(MIN_TEACHING_WORDS, 400)
+        self.assertIn("2500-character teaching length", prompt)
+        self.assertEqual(TEACHING_CHAR_LIMIT, 2500)
         self.assertEqual(MAX_EXPANSION_PASSES, 2)
         self.assertTrue(query_expects_long_answer(
             "According to Pastor Don's sermons, what is the main purpose of the church?"
@@ -88,12 +89,13 @@ class ChatSystemPromptTests(unittest.TestCase):
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."
         )
-        mid = " ".join(["teaching"] * 300)
-        long_enough = " ".join(["teaching"] * 400)
+        mid = "x" * 1800
+        long_enough = "x" * 2500
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
         self.assertFalse(answer_needs_expansion(long_enough, query=query))
+        self.assertLessEqual(len(clip_teaching_answer(("Pastoral sentence. " * 200).strip())), 2500)
         self.assertTrue(answer_needs_expansion(
             short,
             query="Summarize his view of the Holy Spirit's work in conversion.",
@@ -146,6 +148,19 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertFalse(continuation_is_restatement(first, extra))
         self.assertIn("1 Thessalonians 5:23", prepare_continuation_text(first, extra))
+
+    def test_clips_and_stops_at_2500_characters(self):
+        first = ("Justification is declared once by God. " * 70).strip()
+        self.assertGreater(len(first), 2500)
+        clipped = clip_teaching_answer(first)
+        self.assertLessEqual(len(clipped), 2500)
+        self.assertTrue(clipped.endswith("."))
+        extra = (
+            "Susan Nordin then walks through 1 Thessalonians 5:23 and urges the "
+            "church to keep body, soul, and spirit blameless while they wait."
+        )
+        self.assertEqual(prepare_continuation_text(clipped, extra), "")
+        self.assertFalse(answer_needs_expansion("x" * 2500, query="What is justification?"))
 
 
 class ScopeGateParserTests(unittest.TestCase):

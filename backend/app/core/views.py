@@ -40,9 +40,10 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
+    answer_char_count,
     answer_needs_expansion,
-    answer_word_count,
     build_chat_system_prompt,
+    clip_teaching_answer,
     find_biblical_character_names,
     prepare_continuation_text,
     query_expects_long_answer,
@@ -250,8 +251,8 @@ def _continuation_messages(messages, first_answer: str):
 def _join_continuation(answer: str, extra: str) -> str:
     extra = prepare_continuation_text(answer, extra)
     if not extra:
-        return answer
-    return answer.rstrip() + "\n\n" + extra
+        return clip_teaching_answer(answer)
+    return clip_teaching_answer(answer.rstrip() + "\n\n" + extra)
 
 
 def _trim_continuation_messages(messages):
@@ -713,8 +714,8 @@ class ChatAPIView(APIView):
                 ):
                     expansion_pass += 1
                     logger.warning(
-                        "Chat answer was short (%s words); requesting continuation %s/%s",
-                        answer_word_count(answer),
+                        "Chat answer was short (%s chars); requesting continuation %s/%s",
+                        answer_char_count(answer),
                         expansion_pass,
                         MAX_EXPANSION_PASSES,
                     )
@@ -733,6 +734,7 @@ class ChatAPIView(APIView):
                     for piece in split_stream_text(extra):
                         yield _sse({"type": "delta", "text": piece})
                     answer = _join_continuation(answer, extra)
+                answer = clip_teaching_answer(answer)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -777,8 +779,8 @@ class ChatAPIView(APIView):
             ):
                 expansion_pass += 1
                 logger.warning(
-                    "Chat answer was short (%s words); requesting continuation %s/%s",
-                    answer_word_count(answer),
+                    "Chat answer was short (%s chars); requesting continuation %s/%s",
+                    answer_char_count(answer),
                     expansion_pass,
                     MAX_EXPANSION_PASSES,
                 )
@@ -806,6 +808,7 @@ class ChatAPIView(APIView):
                     logger.warning("Dropped a continuation that restated the first answer")
                     break
                 answer = _join_continuation(answer, extra_text)
+            answer = clip_teaching_answer(answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
