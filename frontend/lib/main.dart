@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_stream_scroll.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
@@ -123,6 +124,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _tokenStorage = const TokenStorage();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final _streamScroll = ChatStreamScrollPolicy();
   final _chatFocusNode = FocusNode();
   final _inputAreaKey = GlobalKey();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
@@ -685,13 +687,51 @@ final bibleRefRegex = RegExp(
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
+  double _distanceFromBottom() {
+    if (!_scrollController.hasClients) return 0;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels;
+  }
+
+  bool _onChatScrollNotification(ScrollNotification notification) {
+    if (notification.depth != 0) return false;
+
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _streamScroll.onUserDragStart();
+    } else if (notification is PointerScrollNotification) {
+      if (notification.scrollDelta.dy < 0) {
+        _streamScroll.onUserScrollTowardStart();
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _streamScroll.onUserScrollTowardEnd(_distanceFromBottom());
+        });
+      }
+    } else if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.forward) {
+        _streamScroll.onUserScrollTowardStart();
+      } else if (notification.direction == ScrollDirection.reverse) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _streamScroll.onUserScrollTowardEnd(_distanceFromBottom());
+        });
+      }
+    } else if (notification is ScrollEndNotification) {
+      _streamScroll.onUserDragEnd(_distanceFromBottom());
+    }
+    return false;
+  }
+
   void _scrollToBottom({bool followStream = false}) {
     if (followStream) {
+      if (!_streamScroll.shouldFollowStream) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!_scrollController.hasClients) return;
+        if (!_streamScroll.shouldFollowStream) return;
         final position = _scrollController.position;
         final distance = position.maxScrollExtent - position.pixels;
-        if (_showBackToBottomButton && distance > 80) return;
+        if (distance <= 1) return;
         _scrollController.jumpTo(position.maxScrollExtent);
         if (mounted && _showBackToBottomButton) {
           setState(() => _showBackToBottomButton = false);
@@ -699,6 +739,8 @@ final bibleRefRegex = RegExp(
       });
       return;
     }
+
+    _streamScroll.pinToBottom();
 
     Future<void> scrollSmoothly() async {
       if (!_scrollController.hasClients) return;
@@ -719,6 +761,8 @@ final bibleRefRegex = RegExp(
         ),
         curve: Curves.easeInOutCubic,
       );
+
+      if (!_streamScroll.shouldFollowStream) return;
 
       // Tiny follow-up animate only if late layout grew the extent (no jumpTo).
       if (_scrollController.hasClients) {
@@ -1953,18 +1997,21 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     constraints: const BoxConstraints(maxWidth: 1100),
                     child: Stack(
                       children: [
-                        ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          // Keep offscreen messages measured so Back to bottom
-                          // can animate to the true end in one smooth scroll.
-                          cacheExtent: 100000,
-                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final msg = _messages[index];
-                            return _buildChatBubble(msg, msg["role"] == "user", isMobile, index);
-                          },
+                        NotificationListener<ScrollNotification>(
+                          onNotification: _onChatScrollNotification,
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            // Keep offscreen messages measured so Back to bottom
+                            // can animate to the true end in one smooth scroll.
+                            cacheExtent: 100000,
+                            padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 20, vertical: 20),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              final msg = _messages[index];
+                              return _buildChatBubble(msg, msg["role"] == "user", isMobile, index);
+                            },
+                          ),
                         ),
                         if (_showBackToBottomButton)
                           Positioned(
