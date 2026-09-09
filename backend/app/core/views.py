@@ -27,14 +27,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_llm import (
-    EMPTY_REFERENCE_NOTES,
-    NOTES_MARKER,
-    fit_chat_budget,
-    get_chat_llm,
-    parse_context_length_error,
-    remember_worker_max_model_len,
-)
+from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_system_prompt import (
     CONTINUE_STEER,
@@ -237,31 +230,6 @@ def _sse_response(iterator):
 
 def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
-
-
-def _refit_prepared(prepared, window: int):
-    messages = prepared["messages"]
-    system = getattr(messages[0], "content", "") or ""
-    history = list(messages[1:-1])
-    question = getattr(messages[-1], "content", "") or ""
-    fitted, hist, completion, used = fit_chat_budget(
-        system,
-        history,
-        question,
-        min(int(prepared["completion_tokens"]), max(128, window - 256)),
-        window=window,
-    )
-    prepared["messages"] = [SystemMessage(content=fitted), *hist, HumanMessage(content=question)]
-    prepared["completion_tokens"] = completion
-    prepared["bound"] = prepared["llm"].bind(max_tokens=completion)
-    logger.warning(
-        "Refit chat to worker window=%s prompt≈%s completion=%s history=%s",
-        window,
-        used,
-        completion,
-        len(hist),
-    )
-    return prepared
 
 
 def _continuation_messages(messages, first_answer: str):
@@ -636,22 +604,23 @@ class ChatAPIView(APIView):
                 "{context}",
                 context if context.strip() else EMPTY_REFERENCE_NOTES,
             )
-            human_content = user_query_llm
-            if query_expects_long_answer(user_query_llm):
-                human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
             system_filled, history_messages, completion_tokens, used_tokens = fit_chat_budget(
                 system_filled,
                 history_messages,
-                human_content,
+                user_query_llm,
                 CHAT_MAX_TOKENS,
-                safety=int(os.getenv("CHAT_TOKEN_SAFETY", "192")),
+                safety=int(os.getenv("CHAT_TOKEN_SAFETY", "96")),
             )
-            logger.warning(
+            logger.debug(
                 "Chat token budget: prompt≈%s completion=%s history_msgs=%s",
                 used_tokens,
                 completion_tokens,
                 len(history_messages),
             )
+
+            human_content = user_query_llm
+            if query_expects_long_answer(user_query_llm):
+                human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -686,19 +655,9 @@ class ChatAPIView(APIView):
                     yielded = True
                     yield text
                 return
-            except Exception as exc:
+            except Exception:
                 if yielded:
                     raise
-                worker_len = parse_context_length_error(exc)
-                if worker_len:
-                    remember_worker_max_model_len(worker_len)
-                    logger.warning(
-                        "vLLM worker max context is %s tokens; refitting the prompt",
-                        worker_len,
-                    )
-                    _refit_prepared(prepared, worker_len)
-                    yield from _iter_chat_tokens(prepared["bound"], prepared["messages"])
-                    return
                 logger.exception("Error while streaming chat tokens; retrying with a smaller budget")
             smaller = max(1200, int(prepared["completion_tokens"]) // 2)
             trimmed = []
@@ -802,19 +761,7 @@ class ChatAPIView(APIView):
             prepared = prepare_chat()
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
-            try:
-                response = prepared["bound"].invoke(prepared["messages"])
-            except Exception as exc:
-                worker_len = parse_context_length_error(exc)
-                if not worker_len:
-                    raise
-                remember_worker_max_model_len(worker_len)
-                logger.warning(
-                    "vLLM worker max context is %s tokens; refitting the prompt",
-                    worker_len,
-                )
-                _refit_prepared(prepared, worker_len)
-                response = prepared["bound"].invoke(prepared["messages"])
+            response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
             expansion_pass = 0
             while (

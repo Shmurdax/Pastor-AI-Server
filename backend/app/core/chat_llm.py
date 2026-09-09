@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import time
 from typing import Mapping, Optional
 from urllib.parse import urlparse
 
@@ -109,46 +108,6 @@ def resolve_vllm_model(env: Optional[Mapping[str, str]] = None) -> str:
     return _env_get(env, "VLLM_MODEL", "CHRISTIANAI_SERVED_NAME", default=_DEFAULT_MODEL)
 
 
-_CONTEXT_LEN_RE = re.compile(r"maximum context length is (\d+) tokens", re.IGNORECASE)
-_DISCOVERED_WORKER_LEN: Optional[int] = None
-_DISCOVERED_WORKER_AT = 0.0
-_DISCOVERED_WORKER_TTL_S = 600.0
-
-
-def parse_context_length_error(exc: BaseException | str) -> Optional[int]:
-    """Read the live worker window from a vLLM 400 overflow error."""
-    parts = [str(exc)]
-    if isinstance(exc, BaseException):
-        cause = exc.__cause__ or getattr(exc, "__context__", None)
-        if cause is not None:
-            parts.append(str(cause))
-        parts.extend(str(arg) for arg in getattr(exc, "args", ()))
-    match = _CONTEXT_LEN_RE.search(" ".join(parts))
-    if not match:
-        return None
-    return max(512, int(match.group(1)))
-
-
-def remember_worker_max_model_len(length: int) -> None:
-    global _DISCOVERED_WORKER_LEN, _DISCOVERED_WORKER_AT
-    _DISCOVERED_WORKER_LEN = max(512, int(length))
-    _DISCOVERED_WORKER_AT = time.monotonic()
-
-
-def discovered_worker_max_model_len(*, ttl_s: float = _DISCOVERED_WORKER_TTL_S) -> Optional[int]:
-    if _DISCOVERED_WORKER_LEN is None:
-        return None
-    if time.monotonic() - _DISCOVERED_WORKER_AT > max(30.0, float(ttl_s)):
-        return None
-    return _DISCOVERED_WORKER_LEN
-
-
-def reset_discovered_worker_max_model_len_for_tests() -> None:
-    global _DISCOVERED_WORKER_LEN, _DISCOVERED_WORKER_AT
-    _DISCOVERED_WORKER_LEN = None
-    _DISCOVERED_WORKER_AT = 0.0
-
-
 def resolve_chat_context_window(env: Optional[Mapping[str, str]] = None) -> int:
     """Prompt+completion budget. Never larger than the vLLM worker's max length."""
     if env is None:
@@ -160,9 +119,6 @@ def resolve_chat_context_window(env: Optional[Mapping[str, str]] = None) -> int:
     vllm_len = _env_get(env, "VLLM_MAX_MODEL_LEN")
     if vllm_len.isdigit():
         window = min(window, int(vllm_len))
-    discovered = discovered_worker_max_model_len()
-    if discovered:
-        window = min(window, discovered)
     return max(512, window)
 
 
@@ -249,13 +205,9 @@ def fit_chat_budget(
         window = resolve_chat_context_window(env)
     window = max(512, int(window))
     if safety is None:
-        safety = int(_env_get(env or {}, "CHAT_TOKEN_SAFETY", default="192") or "192")
+        safety = int(_env_get(env or {}, "CHAT_TOKEN_SAFETY", default="96") or "96")
     safety = max(16, int(safety))
-    hard_cap = max(128, window - 256)
-    min_completion = min(_MIN_COMPLETION_TOKENS, max(768, window // 2), hard_cap)
-    if window <= 8192:
-        min_completion = min(min_completion, max(768, window - 2000), hard_cap)
-    completion = max(min_completion, min(int(max_completion), hard_cap))
+    completion = max(_MIN_COMPLETION_TOKENS, min(int(max_completion), window - 256))
 
     def prompt_tokens(sys_text, history, q):
         hist_text = "\n".join(getattr(m, "content", "") or "" for m in history)
@@ -275,9 +227,6 @@ def fit_chat_budget(
         )
 
     history_msgs = list(history_messages)
-    # Follow-up answers blow a 4096 worker. Drop history so completion stays usable.
-    if window <= 8192:
-        history_msgs = []
     prefix, notes = split_reference_notes(system_filled)
     if notes is None:
         sys_text = system_filled
