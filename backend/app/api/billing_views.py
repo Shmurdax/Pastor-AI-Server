@@ -358,18 +358,37 @@ class CheckoutSessionStatusView(APIView):
             sub_id = session.get("subscription") or ""
             if isinstance(sub_id, dict):
                 sub_id = sub_id.get("id") or ""
+            period_end = None
+            if sub_id:
+                try:
+                    subscription = stripe.Subscription.retrieve(sub_id)
+                    period_end = _datetime_from_stripe_ts(
+                        subscription.get("current_period_end")
+                    )
+                    if not period:
+                        period = _billing_period_from_subscription(subscription)
+                except stripe.error.StripeError:
+                    logger.exception(
+                        "Failed to retrieve Stripe subscription %s for session status",
+                        sub_id,
+                    )
+            if period_end is None and period:
+                period_end = _period_end_from_now(period)
             _apply_subscription_to_profile(
                 profile,
                 status_value=Profile.SubscriptionStatus.ACTIVE,
                 customer_id=session.get("customer") or "",
                 subscription_id=sub_id or "",
                 billing_period=period,
+                current_period_end=period_end,
             )
 
+        # Reload so serializer sees the updated related Profile (not a stale cache).
+        user = User.objects.select_related("profile").get(pk=request.user.pk)
         return Response(
             {
                 "status": payment_status,
-                "user": UserSerializer(request.user).data,
+                "user": UserSerializer(user).data,
             }
         )
 

@@ -294,11 +294,15 @@ class ApiClient {
     _ensureOk(res);
   }
 
+  static const _billingTimeout = Duration(seconds: 30);
+
   Future<Map<String, dynamic>> getBillingConfig() async {
-    final res = await _client.get(
-      Uri.parse(_resolveUrl('/api/billing/config/')),
-      headers: _headers(),
-    );
+    final res = await _client
+        .get(
+          Uri.parse(_resolveUrl('/api/billing/config/')),
+          headers: _headers(),
+        )
+        .timeout(_billingTimeout);
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -306,11 +310,13 @@ class ApiClient {
   Future<Map<String, dynamic>> createCheckoutSession({
     required String billingPeriod,
   }) async {
-    final res = await _client.post(
-      Uri.parse(_resolveUrl('/api/billing/create-checkout-session/')),
-      headers: _headers(json: true),
-      body: jsonEncode({'billing_period': billingPeriod}),
-    );
+    final res = await _client
+        .post(
+          Uri.parse(_resolveUrl('/api/billing/create-checkout-session/')),
+          headers: _headers(json: true),
+          body: jsonEncode({'billing_period': billingPeriod}),
+        )
+        .timeout(_billingTimeout);
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -319,7 +325,7 @@ class ApiClient {
     final uri = Uri.parse(_resolveUrl('/api/billing/session-status/')).replace(
       queryParameters: {'session_id': sessionId},
     );
-    final res = await _client.get(uri, headers: _headers());
+    final res = await _client.get(uri, headers: _headers()).timeout(_billingTimeout);
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -328,21 +334,25 @@ class ApiClient {
   Future<Map<String, dynamic>> mockActivatePremium({
     required String billingPeriod,
   }) async {
-    final res = await _client.post(
-      Uri.parse(_resolveUrl('/api/billing/mock-activate/')),
-      headers: _headers(json: true),
-      body: jsonEncode({'billing_period': billingPeriod}),
-    );
+    final res = await _client
+        .post(
+          Uri.parse(_resolveUrl('/api/billing/mock-activate/')),
+          headers: _headers(json: true),
+          body: jsonEncode({'billing_period': billingPeriod}),
+        )
+        .timeout(_billingTimeout);
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> cancelSubscription() async {
-    final res = await _client.post(
-      Uri.parse(_resolveUrl('/api/billing/cancel-subscription/')),
-      headers: _headers(json: true),
-      body: jsonEncode(const {}),
-    );
+    final res = await _client
+        .post(
+          Uri.parse(_resolveUrl('/api/billing/cancel-subscription/')),
+          headers: _headers(json: true),
+          body: jsonEncode(const {}),
+        )
+        .timeout(_billingTimeout);
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
