@@ -1102,15 +1102,18 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     if (!mounted || _activeClient == null) return;
     await _persistSessionId();
 
-    // Never replace painted stream text with a shorter server clip.
+    // Keep a longer stream only when the server answer is a truncated prefix
+    // (character-limit clip). Use the server text when it stripped leaked
+    // rewrite notes or a second draft.
     final streamed = _streamRaw;
     final serverAnswer = (data['answer'] as String?) ?? '';
-    final raw = streamed.isNotEmpty
-        ? (serverAnswer.isNotEmpty && serverAnswer.length > streamed.length
-            ? serverAnswer
-            : streamed)
-        : serverAnswer;
-    final answer = _boldBibleReferences(raw);
+    final bool looksLikeClip = streamed.isNotEmpty &&
+        serverAnswer.isNotEmpty &&
+        streamed.startsWith(serverAnswer) &&
+        serverAnswer.length < streamed.length &&
+        serverAnswer.length >= (streamed.length * 0.7).round();
+    final raw = looksLikeClip || serverAnswer.isEmpty ? streamed : serverAnswer;
+    final answer = _boldBibleReferences(raw.isNotEmpty ? raw : streamed);
     final messageId = data['message_id'];
     setState(() {
       if (_librarySermons.isNotEmpty) {

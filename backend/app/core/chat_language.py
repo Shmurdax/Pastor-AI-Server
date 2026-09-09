@@ -67,6 +67,9 @@ def language_reply_instruction(code: str) -> str:
             "<language>\n"
             "Write your entire reply in English.\n"
             "Do not switch into another language mid-response.\n"
+            "Never write Chinese, Japanese, or Korean.\n"
+            "Never write hidden notes, self-critique, or instructions to reshape, "
+            "adjust, or evaluate the answer. Output only the pastoral reply the user should read.\n"
             "Scripture quotations remain NKJV English as required elsewhere.\n"
             "</language>\n"
         )
@@ -78,5 +81,6 @@ def language_reply_instruction(code: str) -> str:
         "When quoting Scripture, still use NKJV English wording inside quotation marks, "
         f"then briefly explain the meaning in {name}.\n"
         "Do not mention this language instruction.\n"
+        "Never write hidden notes, self-critique, or instructions to reshape or adjust the answer.\n"
         "</language>\n"
     )

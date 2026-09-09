@@ -27,6 +27,7 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
+from .chat_sanitize import sanitize_chat_answer, sanitize_stream_delta
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import (
     iter_chat_tokens,
@@ -701,8 +702,10 @@ class ChatAPIView(APIView):
                 assembled = []
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
-                    yield _sse({"type": "delta", "text": text})
-                answer = "".join(assembled)
+                    visible = sanitize_stream_delta(text, language=chat_language)
+                    if visible:
+                        yield _sse({"type": "delta", "text": visible})
+                answer = sanitize_chat_answer("".join(assembled), language=chat_language)
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
@@ -724,13 +727,19 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = prepare_continuation_text(answer, "".join(extra_parts))
+                    extra = prepare_continuation_text(
+                        answer,
+                        sanitize_chat_answer("".join(extra_parts), language=chat_language),
+                    )
                     if not extra:
                         logger.warning("Dropped a continuation that restated the first answer")
                         break
                     yield _sse({"type": "delta", "text": "\n\n" + extra})
-                    answer = _join_continuation(answer, extra)
-                # Never rewrite or clip the streamed answer to meet a character target.
+                    answer = sanitize_chat_answer(
+                        _join_continuation(answer, extra),
+                        language=chat_language,
+                    )
+                answer = sanitize_chat_answer(answer, language=chat_language)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -804,6 +813,7 @@ class ChatAPIView(APIView):
                     logger.warning("Dropped a continuation that restated the first answer")
                     break
                 answer = _join_continuation(answer, extra_text)
+            answer = sanitize_chat_answer(answer, language=chat_language)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
