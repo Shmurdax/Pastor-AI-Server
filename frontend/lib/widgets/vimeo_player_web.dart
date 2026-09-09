@@ -5,21 +5,19 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/widgets.dart';
 
+import 'vimeo_player_src.dart';
+
 final Set<String> _registeredVimeoViews = <String>{};
 
-/// Loads Vimeo through a same-origin relay page (`/vimeo_embed.html`) so the
-/// player receives a real localhost/site referrer for domain privacy checks.
+/// Iframes `player.vimeo.com` directly, matching admin sermon-sources embeds.
 Widget buildVimeoPlayer(String vimeoId, {String? privacyHash}) {
+  final src = vimeoPlayerSrc(vimeoId, privacyHash: privacyHash);
   final hash = (privacyHash ?? '').trim();
-  final viewType = hash.isEmpty ? 'vimeo-relay-$vimeoId' : 'vimeo-relay-$vimeoId-$hash';
+  final viewType = hash.isEmpty ? 'vimeo-direct-$vimeoId' : 'vimeo-direct-$vimeoId-$hash';
   if (!_registeredVimeoViews.contains(viewType)) {
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final qp = StringBuffer('id=${Uri.encodeQueryComponent(vimeoId)}');
-      if (hash.isNotEmpty) {
-        qp.write('&h=${Uri.encodeQueryComponent(hash)}');
-      }
       final iframe = html.IFrameElement()
-        ..src = '/vimeo_embed.html?$qp'
+        ..src = src
         ..style.border = 'none'
         ..style.width = '100%'
         ..style.height = '100%'

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'vimeo_player_stub.dart'
     if (dart.library.html) 'vimeo_player_web.dart' as vimeo_impl;
 
-/// Embeds a Vimeo player (web iframe). Non-web shows a fallback link message.
+/// Embeds a Vimeo player with the same `player.vimeo.com` iframe sermon sources use.
 class VimeoPlayerEmbed extends StatelessWidget {
   const VimeoPlayerEmbed({
     super.key,
