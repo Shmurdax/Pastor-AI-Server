@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,5 +72,53 @@ void main() {
     policy.pinToBottom();
     expect(policy.userDragging, isFalse);
     expect(policy.shouldFollowStream, isTrue);
+  });
+
+  testWidgets('dragging up unsticks so later jumps cannot pin the list', (tester) async {
+    final policy = ChatStreamScrollPolicy();
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification.depth != 0) return false;
+            if (notification is ScrollStartNotification &&
+                notification.dragDetails != null) {
+              policy.onUserDragStart();
+            } else if (notification is ScrollUpdateNotification) {
+              final delta = notification.scrollDelta ?? 0;
+              if (delta < 0) policy.onUserScrollTowardStart();
+            } else if (notification is ScrollEndNotification) {
+              policy.onUserDragEnd(
+                notification.metrics.maxScrollExtent - notification.metrics.pixels,
+              );
+            }
+            return false;
+          },
+          child: ListView.builder(
+            controller: controller,
+            itemCount: 40,
+            itemBuilder: (_, i) => SizedBox(height: 80, child: Text('item $i')),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pump();
+    expect(policy.shouldFollowStream, isTrue);
+
+    await tester.drag(find.byType(ListView), const Offset(0, 400));
+    await tester.pumpAndSettle();
+    expect(policy.shouldFollowStream, isFalse);
+
+    final offsetAfterUserScroll = controller.offset;
+    if (policy.shouldFollowStream) {
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pump();
+    }
+    expect(controller.offset, offsetAfterUserScroll);
   });
 }

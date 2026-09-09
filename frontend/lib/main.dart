@@ -125,6 +125,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _streamScroll = ChatStreamScrollPolicy();
+  bool _programmaticScroll = false;
   final _chatFocusNode = FocusNode();
   final _inputAreaKey = GlobalKey();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
@@ -694,48 +695,51 @@ final bibleRefRegex = RegExp(
   }
 
   bool _onChatScrollNotification(ScrollNotification notification) {
-    if (notification.depth != 0) return false;
+    if (notification.depth != 0 || _programmaticScroll) return false;
 
     if (notification is ScrollStartNotification &&
         notification.dragDetails != null) {
       _streamScroll.onUserDragStart();
-    } else if (notification is PointerScrollNotification) {
-      if (notification.scrollDelta.dy < 0) {
+    } else if (notification is ScrollUpdateNotification) {
+      final delta = notification.scrollDelta ?? 0;
+      if (delta < 0) {
         _streamScroll.onUserScrollTowardStart();
-      } else {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _streamScroll.onUserScrollTowardEnd(_distanceFromBottom());
-        });
-      }
-    } else if (notification is UserScrollNotification) {
-      if (notification.direction == ScrollDirection.forward) {
-        _streamScroll.onUserScrollTowardStart();
-      } else if (notification.direction == ScrollDirection.reverse) {
+      } else if (delta > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           _streamScroll.onUserScrollTowardEnd(_distanceFromBottom());
         });
       }
     } else if (notification is ScrollEndNotification) {
-      _streamScroll.onUserDragEnd(_distanceFromBottom());
+      _streamScroll.onUserDragEnd(
+        notification.metrics.maxScrollExtent - notification.metrics.pixels,
+      );
     }
     return false;
+  }
+
+  void _jumpToBottom() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final distance = position.maxScrollExtent - position.pixels;
+    if (distance <= 1) return;
+    _programmaticScroll = true;
+    try {
+      _scrollController.jumpTo(position.maxScrollExtent);
+    } finally {
+      _programmaticScroll = false;
+    }
+    if (mounted && _showBackToBottomButton) {
+      setState(() => _showBackToBottomButton = false);
+    }
   }
 
   void _scrollToBottom({bool followStream = false}) {
     if (followStream) {
       if (!_streamScroll.shouldFollowStream) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!_scrollController.hasClients) return;
         if (!_streamScroll.shouldFollowStream) return;
-        final position = _scrollController.position;
-        final distance = position.maxScrollExtent - position.pixels;
-        if (distance <= 1) return;
-        _scrollController.jumpTo(position.maxScrollExtent);
-        if (mounted && _showBackToBottomButton) {
-          setState(() => _showBackToBottomButton = false);
-        }
+        _jumpToBottom();
       });
       return;
     }
