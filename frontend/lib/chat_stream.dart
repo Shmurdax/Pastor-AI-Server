@@ -72,3 +72,55 @@ List<ChatStreamEvent> consumeSseChunk(StringBuffer carry, String chunk) {
   }
   return events;
 }
+
+bool isStreamingAiMessage(Map<String, dynamic> message) {
+  return message['role'] == 'ai' && message['streaming'] == true;
+}
+
+int? indexOfStreamingAi(List<Map<String, dynamic>> messages) {
+  for (var i = messages.length - 1; i >= 0; i--) {
+    if (isStreamingAiMessage(messages[i])) return i;
+  }
+  return null;
+}
+
+/// Paints [display] into the live AI bubble. Late tokens after stop must not
+/// call this — they would open a second bubble.
+void applyChatStreamDelta(List<Map<String, dynamic>> messages, String display) {
+  final index = indexOfStreamingAi(messages);
+  if (index != null) {
+    messages[index]['text'] = display;
+    return;
+  }
+  messages.add({
+    'role': 'ai',
+    'text': display,
+    'streaming': true,
+    'reported': false,
+  });
+}
+
+/// Ends the live reply in place. Adds a cancelled bubble only when nothing
+/// has started painting yet (thinking / pre-token).
+void finalizeChatStreamOnStop(
+  List<Map<String, dynamic>> messages, {
+  required String cancelledText,
+  required String raw,
+}) {
+  final index = indexOfStreamingAi(messages);
+  if (index != null) {
+    final msg = messages[index];
+    msg['streaming'] = false;
+    final existing = (msg['text'] as String?)?.trim() ?? '';
+    if (raw.trim().isEmpty && existing.isEmpty) {
+      msg['localKey'] = 'responseCancelled';
+      msg['text'] = cancelledText;
+    }
+    return;
+  }
+  messages.add({
+    'role': 'ai',
+    'localKey': 'responseCancelled',
+    'text': cancelledText,
+  });
+}

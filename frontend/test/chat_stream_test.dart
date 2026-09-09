@@ -43,4 +43,38 @@ void main() {
     expect(events[1].isDelta, isTrue);
     expect(events[1].text, 'When');
   });
+
+  test('stop keeps the live bubble instead of opening another', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    applyChatStreamDelta(messages, 'Faith is');
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith is');
+
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith is',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['streaming'], isFalse);
+    expect(messages.last['text'], 'Faith is');
+    expect(indexOfStreamingAi(messages), isNull);
+  });
+
+  test('stop before tokens adds a single cancelled bubble', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: '',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['localKey'], 'responseCancelled');
+    expect(messages.last['text'], 'Response cancelled.');
+  });
 }

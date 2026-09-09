@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
@@ -153,10 +154,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isListening = false;
   String _textBeforeSpeech = '';
   String _streamRaw = '';
+  bool _streamCancelled = false;
   /// True while the latest AI bubble is still receiving generated tokens.
   bool get _isStreamingReply {
     if (_messages.isEmpty) return false;
-    return _messages.last['role'] == 'ai' && _messages.last['streaming'] == true;
+    return isStreamingAiMessage(_messages.last);
   }
 
   bool get _showThinkingLogo {
@@ -1056,48 +1058,28 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _stopResponse() {
-    if (_activeClient == null) return;
-    _activeClient!.close();
+    if (!_isLoading && _activeClient == null) return;
+    _streamCancelled = true;
+    _activeClient?.close();
     setState(() {
       _isLoading = false;
       _activeClient = null;
-      _finalizeStreamingMessageOnStop();
-    });
-    _scrollToBottom();
-  }
-
-  void _finalizeStreamingMessageOnStop() {
-    if (_isStreamingReply) {
-      final last = _messages.last;
-      last['streaming'] = false;
-      if (_streamRaw.trim().isEmpty) {
-        last['localKey'] = 'responseCancelled';
-        last['text'] = _s.responseCancelled;
-      }
+      finalizeChatStreamOnStop(
+        _messages,
+        cancelledText: _s.responseCancelled,
+        raw: _streamRaw,
+      );
       _streamRaw = '';
-      return;
-    }
-    _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
-    _streamRaw = '';
+    });
   }
 
   void _appendStreamDelta(String delta) {
     if (delta.isEmpty) return;
+    if (_streamCancelled || !_isLoading || _activeClient == null) return;
     _streamRaw += delta;
     final display = _boldBibleReferences(_streamRaw);
     if (!mounted) return;
-    setState(() {
-      if (_isStreamingReply) {
-        _messages.last['text'] = display;
-      } else {
-        _messages.add({
-          "role": "ai",
-          "text": display,
-          "streaming": true,
-          "reported": false,
-        });
-      }
-    });
+    setState(() => applyChatStreamDelta(_messages, display));
     _scrollToBottom(followStream: true);
   }
 
@@ -1128,6 +1110,7 @@ Future<void> _sendMessage() async {
 
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
   _streamRaw = '';
+  _streamCancelled = false;
   setState(() {
     if (addUserMessage) {
       _messages.add({"role": "user", "text": userText});
@@ -1146,8 +1129,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       language: _languageCode,
       client: _activeClient,
       onDelta: _appendStreamDelta,
+      isCancelled: () => _streamCancelled,
     );
-    if (!mounted || _activeClient == null) return;
+    if (!mounted || _activeClient == null || _streamCancelled) return;
     await _persistSessionId();
 
     final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
@@ -1160,7 +1144,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       }
 
       if (_isStreamingReply) {
-        _messages.last['text'] = answer;
+        applyChatStreamDelta(_messages, answer);
         _messages.last['streaming'] = false;
         _messages.last['sources'] = List<String>.from(data['sources'] ?? []);
         _messages.last['reported'] = false;
