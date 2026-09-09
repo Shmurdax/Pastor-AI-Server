@@ -39,15 +39,12 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
-    TEACHING_CHAR_LIMIT,
     answer_char_count,
     answer_needs_expansion,
     build_chat_system_prompt,
-    clip_teaching_answer,
     find_biblical_character_names,
     prepare_continuation_text,
     query_expects_long_answer,
-    take_stream_delta,
 )
 from .chat_translate import translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -252,8 +249,8 @@ def _continuation_messages(messages, first_answer: str):
 def _join_continuation(answer: str, extra: str) -> str:
     extra = prepare_continuation_text(answer, extra)
     if not extra:
-        return clip_teaching_answer(answer)
-    return clip_teaching_answer(answer.rstrip() + "\n\n" + extra)
+        return answer
+    return answer.rstrip() + "\n\n" + extra
 
 
 def _trim_continuation_messages(messages):
@@ -702,19 +699,10 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 assembled = []
-                shown = ""
                 for text in _generate_tokens(prepared):
-                    piece = take_stream_delta(shown, text)
-                    if not piece:
-                        if len(shown) >= TEACHING_CHAR_LIMIT:
-                            break
-                        continue
-                    assembled.append(piece)
-                    shown += piece
-                    yield _sse({"type": "delta", "text": piece})
-                    if len(shown) >= TEACHING_CHAR_LIMIT:
-                        break
-                answer = shown
+                    assembled.append(text)
+                    yield _sse({"type": "delta", "text": text})
+                answer = "".join(assembled)
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
@@ -740,12 +728,9 @@ class ChatAPIView(APIView):
                     if not extra:
                         logger.warning("Dropped a continuation that restated the first answer")
                         break
-                    extra = take_stream_delta(answer, "\n\n" + extra)
-                    if not extra:
-                        break
-                    yield _sse({"type": "delta", "text": extra})
-                    answer = answer + extra
-                # Final payload matches what was already streamed — never clip backward.
+                    yield _sse({"type": "delta", "text": "\n\n" + extra})
+                    answer = _join_continuation(answer, extra)
+                # Never rewrite or clip the streamed answer to meet a character target.
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -819,7 +804,6 @@ class ChatAPIView(APIView):
                     logger.warning("Dropped a continuation that restated the first answer")
                     break
                 answer = _join_continuation(answer, extra_text)
-            answer = clip_teaching_answer(answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

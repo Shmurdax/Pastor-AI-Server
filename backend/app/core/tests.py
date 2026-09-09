@@ -1,13 +1,12 @@
 import unittest
 
 from .chat_system_prompt import (
+    BRUSH_OFF_CHAR_LIMIT,
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
-    TEACHING_CHAR_LIMIT,
+    TEACHING_CHAR_GUIDE,
     answer_needs_expansion,
-    clip_teaching_answer,
-    take_stream_delta,
     biblical_characters_instruction,
     build_chat_system_prompt,
     continuation_is_restatement,
@@ -67,18 +66,21 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("a one-sentence reply is a failed answer", prompt)
         self.assertIn("<length_close>", prompt)
         self.assertIn("2500 characters", LENGTH_STEER)
+        self.assertIn("suggestion, not a hard limit", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
         self.assertIn("User question:", LENGTH_STEER)
         self.assertIn("one continuous answer", LENGTH_STEER)
         self.assertIn("Do not restate", CONTINUE_STEER)
         self.assertIn("did not ask you to go deeper", CONTINUE_STEER)
-        self.assertIn("2500 characters", CONTINUE_STEER)
+        self.assertIn("suggestion, not a cap", CONTINUE_STEER)
         self.assertIn("Let's delve deeper", prompt)
         self.assertIn("same verses", prompt)
         self.assertIn("summarize", prompt.lower())
-        self.assertIn("2500-character teaching length", prompt)
-        self.assertEqual(TEACHING_CHAR_LIMIT, 2500)
-        self.assertEqual(MAX_EXPANSION_PASSES, 2)
+        self.assertIn("not a hard limit", prompt)
+        self.assertIn("Never cut, recap, or restart", prompt)
+        self.assertEqual(TEACHING_CHAR_GUIDE, 2500)
+        self.assertEqual(BRUSH_OFF_CHAR_LIMIT, 200)
+        self.assertEqual(MAX_EXPANSION_PASSES, 1)
         self.assertTrue(query_expects_long_answer(
             "According to Pastor Don's sermons, what is the main purpose of the church?"
         ))
@@ -86,19 +88,19 @@ class ChatSystemPromptTests(unittest.TestCase):
             "Summarize his view of the Holy Spirit's work in conversion."
         ))
         self.assertFalse(query_expects_long_answer("Thanks!"))
-        short = (
+        brush_off = "The church exists to make disciples."
+        finished_short = (
             "According to Pastor Don's sermon, the main purpose of the church is to "
-            "feed the flock spiritually, as emphasized in John 21:15-17."
+            "feed the flock spiritually, as emphasized in John 21:15-17, and to send "
+            "believers into the world with the gospel of Jesus Christ so they can "
+            "make disciples in their homes and neighborhoods."
         )
-        mid = "x" * 1800
-        long_enough = "x" * 2500
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
-        self.assertTrue(answer_needs_expansion(short, query=query))
-        self.assertTrue(answer_needs_expansion(mid, query=query))
-        self.assertFalse(answer_needs_expansion(long_enough, query=query))
-        self.assertLessEqual(len(clip_teaching_answer(("Pastoral sentence. " * 200).strip())), 2500)
+        self.assertTrue(answer_needs_expansion(brush_off, query=query))
+        self.assertFalse(answer_needs_expansion(finished_short, query=query))
+        self.assertFalse(answer_needs_expansion("x" * 1800, query=query))
         self.assertTrue(answer_needs_expansion(
-            short,
+            brush_off,
             query="Summarize his view of the Holy Spirit's work in conversion.",
         ))
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
@@ -150,26 +152,16 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(continuation_is_restatement(first, extra))
         self.assertIn("1 Thessalonians 5:23", prepare_continuation_text(first, extra))
 
-    def test_clips_and_stops_at_2500_characters(self):
+    def test_does_not_clip_a_long_finished_answer(self):
         first = ("Justification is declared once by God. " * 70).strip()
         self.assertGreater(len(first), 2500)
-        clipped = clip_teaching_answer(first)
-        self.assertLessEqual(len(clipped), 2500)
-        self.assertTrue(clipped.endswith("."))
         extra = (
             "Susan Nordin then walks through 1 Thessalonians 5:23 and urges the "
             "church to keep body, soul, and spirit blameless while they wait."
         )
-        self.assertEqual(prepare_continuation_text(clipped, extra), "")
-        self.assertFalse(answer_needs_expansion("x" * 2500, query="What is justification?"))
-
-    def test_stream_delta_never_rewrites_already_shown_text(self):
-        shown = "A" * 2400 + " First ending."
-        extra = " More teaching that would push the reply well past the cap. " * 10
-        piece = take_stream_delta(shown, extra)
-        self.assertTrue((shown + piece).startswith(shown))
-        self.assertLessEqual(len(shown + piece), 2500)
-        self.assertEqual(take_stream_delta("x" * 2500, "more"), "")
+        kept = prepare_continuation_text(first, extra)
+        self.assertIn("1 Thessalonians 5:23", kept)
+        self.assertFalse(answer_needs_expansion(first, query="What is justification?"))
 
 
 class ScopeGateParserTests(unittest.TestCase):
