@@ -29,6 +29,16 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
+from .chat_retrieval import (
+    expand_search_queries,
+    extract_used_quotes,
+    extract_used_verse_refs,
+    format_reference_notes,
+    is_bible_source,
+    search_queries_on_store,
+    select_diverse_docs,
+    uniqueness_instruction,
+)
 from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
@@ -49,7 +59,10 @@ PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "16"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.45"))
-RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.7"))
+RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.45"))
+RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "4"))
+RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "2"))
+RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "1"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
@@ -114,8 +127,7 @@ _get_embeddings = get_embeddings
 
 
 def _is_bible_source(source_name: str) -> bool:
-    normalized = (source_name or "").lower()
-    return any(marker in normalized for marker in BIBLE_SOURCE_MARKERS)
+    return is_bible_source(source_name, BIBLE_SOURCE_MARKERS)
 
 
 def _doc_source_name(doc) -> str:
@@ -162,33 +174,6 @@ def _doc_source_label(doc) -> str:
     if timestamp and ("video" in content_type):
         return f"{name} [{timestamp}]"
     return name
-
-
-def _weighted_docs(docs, total_k: int):
-    """
-    Keep retrieval mix close to 55/45 (default/bible) with fallback fill.
-    """
-    if total_k <= 0:
-        return []
-    bible_target = max(1, min(total_k - 1, int(round(total_k * RETRIEVAL_BIBLE_RATIO)))) if total_k > 1 else 0
-    default_target = total_k - bible_target
-
-    bible_docs = []
-    default_docs = []
-    for doc in docs:
-        source_name = _doc_source_name(doc)
-        if _is_bible_source(source_name):
-            bible_docs.append(doc)
-        else:
-            default_docs.append(doc)
-
-    selected = default_docs[:default_target] + bible_docs[:bible_target]
-    remaining = total_k - len(selected)
-    if remaining > 0:
-        selected_sources = {id(doc) for doc in selected}
-        extras = [doc for doc in (default_docs + bible_docs) if id(doc) not in selected_sources]
-        selected.extend(extras[:remaining])
-    return selected
 
 
 def _require_api_key(request):
@@ -513,11 +498,11 @@ class ChatAPIView(APIView):
 
         def prepare_chat():
             llm = get_chat_llm(
-                temperature=0.8,
+                temperature=0.85,
                 max_tokens=CHAT_MAX_TOKENS,
                 timeout=CHAT_TIMEOUT_S,
-                presence_penalty=0.25,
-                frequency_penalty=0.15,
+                presence_penalty=0.4,
+                frequency_penalty=0.35,
             )
             target_message = None
             if regenerate:
@@ -547,6 +532,18 @@ class ChatAPIView(APIView):
                 )
                 return {"kind": "final", "payload": payload}
 
+            db_messages = ChatMessage.objects.filter(session_id=session_id).order_by("-timestamp")
+            if regenerate and target_message:
+                db_messages = db_messages.exclude(id=target_message.id)
+
+            history_rows = list(db_messages[:MAX_HISTORY_TURNS])
+            prior_user_queries = [row.user_query for row in reversed(history_rows)]
+            prior_ai_texts = [row.ai_response for row in reversed(history_rows)]
+            if regenerate and target_message and target_message.ai_response:
+                prior_ai_texts.append(target_message.ai_response)
+            used_quotes = extract_used_quotes(prior_ai_texts)
+            used_verses = extract_used_verse_refs(prior_ai_texts)
+
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
             client = QdrantClient(url=get_qdrant_url())
@@ -559,33 +556,56 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            logger.debug("Searching Qdrant for incoming chat request.")
-
-            candidate_k = max(RETRIEVAL_K * 3, 15)
-            retriever = vectorstore.as_retriever(
-                search_type="similarity_score_threshold",
-                search_kwargs={"k": candidate_k, "score_threshold": RETRIEVAL_THRESHOLD}
+            search_queries = expand_search_queries(user_query_llm, prior_user_queries)
+            candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
+            logger.debug(
+                "Searching Qdrant with %s queries (k=%s each): %s",
+                len(search_queries),
+                candidate_k,
+                search_queries,
             )
-            candidates = retriever.invoke(user_query_llm)
-            docs = _weighted_docs(candidates, RETRIEVAL_K)
-            context = "\n\n".join([doc.page_content for doc in docs])[:MAX_CONTEXT_CHARS]
+            scored_hits = search_queries_on_store(
+                vectorstore,
+                search_queries,
+                k_per_query=candidate_k,
+            )
+            if RETRIEVAL_THRESHOLD > 0 and len(scored_hits) > RETRIEVAL_K:
+                above = [pair for pair in scored_hits if pair[1] >= RETRIEVAL_THRESHOLD]
+                if len(above) >= max(6, RETRIEVAL_K // 2):
+                    scored_hits = above
+            docs = select_diverse_docs(
+                scored_hits,
+                k=RETRIEVAL_K,
+                bible_ratio=RETRIEVAL_BIBLE_RATIO,
+                max_per_source=RETRIEVAL_MAX_PER_SOURCE,
+                max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
+                used_quotes=used_quotes,
+                used_verses=used_verses,
+                is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                source_key=lambda doc: (
+                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                    or _doc_source_name(doc)
+                ),
+            )
+            context = format_reference_notes(
+                docs,
+                _doc_source_label,
+                max_chars=MAX_CONTEXT_CHARS,
+            )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             logger.debug(
-                "Selected retrieval chunks: total=%s default=%s bible=%s",
+                "Selected retrieval chunks: total=%s default=%s bible=%s queries=%s",
                 len(docs),
                 len(docs) - bible_count,
                 bible_count,
+                search_queries,
             )
-
-            db_messages = ChatMessage.objects.filter(session_id=session_id).order_by('-timestamp')
-            if regenerate and target_message:
-                db_messages = db_messages.exclude(id=target_message.id)
 
             history_messages = []
             current_chars = 0
 
-            for msg in db_messages:
+            for msg in history_rows:
                 if len(history_messages) >= MAX_HISTORY_TURNS * 2:
                     break
                 exchange = f"{msg.user_query} {msg.ai_response}"
@@ -600,6 +620,7 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
+                + uniqueness_instruction(used_quotes, used_verses)
                 + language_reply_instruction(chat_language)
                 + "\nREFERENCE NOTES:\n{context}"
             )
