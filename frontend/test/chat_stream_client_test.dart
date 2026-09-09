@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/services/api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -79,6 +80,29 @@ void main() {
     );
     expect(deltas, ['Grace first']);
     expect(result['answer'], 'Grace first');
+  });
+
+  test('chatStream throws ChatRequestCancelled instead of applying a late done event', () async {
+    const payload =
+        'data: {"type":"delta","text":"Partial "}\n\n'
+        'data: {"type":"delta","text":"answer"}\n\n'
+        'data: {"type":"done","answer":"Partial answer","sources":["Hebrews"]}\n\n';
+    final api = ApiClient(client: _ScriptedStreamClient(payload));
+    final deltas = <String>[];
+    var cancelled = false;
+
+    final future = api.chatStream(
+      query: 'q',
+      sessionId: 's',
+      isCancelled: () => cancelled,
+      onDelta: (delta) {
+        deltas.add(delta);
+        cancelled = true;
+      },
+    );
+
+    await expectLater(future, throwsA(isA<ChatRequestCancelled>()));
+    expect(deltas, ['Partial ']);
   });
 
   test('warmupChat posts to /api/chat/warmup/ and swallows errors', () async {

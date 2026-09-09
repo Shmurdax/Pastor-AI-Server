@@ -1,5 +1,13 @@
 import 'dart:convert';
 
+/// Thrown when the user stops a reply or leaves it before the stream finishes.
+class ChatRequestCancelled implements Exception {
+  const ChatRequestCancelled();
+
+  @override
+  String toString() => 'ChatRequestCancelled';
+}
+
 class ChatStreamEvent {
   const ChatStreamEvent({
     required this.type,

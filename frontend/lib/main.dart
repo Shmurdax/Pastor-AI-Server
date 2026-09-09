@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_stream.dart';
+import 'package:flutter_application_1/http_client_factory.dart';
+import 'package:flutter_application_1/live_chat_thread.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
@@ -138,33 +141,29 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _translatingThread = false;
   LocaleController? _localeListener;
 
-  // State
-  final List<Map<String, dynamic>> _messages = [];
-  List<String> _librarySermons = [];
-  List<String> _previousSermons = [];
-  bool _isLoading = false;
-  bool _isFirstMessage = true;
+  // Per-session state. The visible UI always reads the thread for [sessionId];
+  // other threads keep generating after the user switches or starts a new chat.
+  final Map<String, LiveChatThread> _threads = {};
   bool _isButtonTapped = false;
   bool _showBackToBottomButton = false;
   bool _speechAvailable = false;
   bool _isListening = false;
   String _textBeforeSpeech = '';
-  String _streamRaw = '';
-  /// True while the latest AI bubble is still receiving generated tokens.
-  bool get _isStreamingReply {
-    if (_messages.isEmpty) return false;
-    return _messages.last['role'] == 'ai' && _messages.last['streaming'] == true;
-  }
 
-  bool get _showThinkingLogo {
-    if (!_isLoading) return false;
-    if (!_isStreamingReply) return true;
-    final text = (_messages.last['text'] as String?) ?? '';
-    return text.trim().isEmpty;
-  }
+  LiveChatThread get _thread => _threadFor(sessionId);
+
+  LiveChatThread _threadFor(String id) =>
+      _threads.putIfAbsent(id, () => LiveChatThread(sessionId: id));
+
+  List<Map<String, dynamic>> get _messages => _thread.messages;
+  List<String> get _librarySermons => _thread.librarySermons;
+  List<String> get _previousSermons => _thread.previousSermons;
+  bool get _isLoading => _thread.isLoading;
+  bool get _isFirstMessage => _thread.isFirstMessage;
+  bool get _showThinkingLogo => _thread.showThinkingLogo;
+
   /// Full [_buildInputArea] height including bottom inset; grows with multiline input.
   double _inputAreaHeight = _layoutBottomInsetDesktop + _chatInputBarBlockHeight;
-  http.Client? _activeClient;
 
   // Prayer request panel
   bool _prayerPanelExpanded = false;
@@ -470,36 +469,34 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _restoreMessagesForCurrentSession(String userId) async {
+    final live = _threads[sessionId];
+    if (live != null && (live.isLoading || live.messages.isNotEmpty)) return;
+
     for (final entry in _chatHistoryEntries) {
       if (entry['sessionId'] == sessionId) {
         final rawMessages = entry['messages'];
         if (rawMessages is! List || rawMessages.isEmpty) return;
         if (!mounted) return;
         setState(() {
-          _messages
-            ..clear()
-            ..addAll(
-              rawMessages
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m)),
-            );
-          _librarySermons = withoutVideoSermonSources(
-              List<String>.from(entry['librarySermons'] ?? const []));
-          _previousSermons = withoutVideoSermonSources(
-              List<String>.from(entry['previousSermons'] ?? const []));
-          _isFirstMessage = _messages.isEmpty;
+          _hydrateThreadFromSnapshot(_threadFor(sessionId), entry);
         });
         return;
       }
     }
   }
 
+  void _hydrateThreadFromSnapshot(LiveChatThread thread, Map<String, dynamic> entry) {
+    thread.hydrateFromSnapshot(entry);
+    thread.librarySermons = withoutVideoSermonSources(thread.librarySermons);
+    thread.previousSermons = withoutVideoSermonSources(thread.previousSermons);
+  }
+
   Future<void> _persistSessionId() async {
     await _tokenStorage.saveChatSessionId(_historyStorageId, sessionId);
   }
 
-  String _chatHistoryTitle() {
-    for (final msg in _messages) {
+  String _chatHistoryTitleFor(LiveChatThread thread) {
+    for (final msg in thread.messages) {
       if (msg['role'] == 'user') {
         final text = (msg['text'] as String? ?? '').trim();
         if (text.isNotEmpty) {
@@ -510,21 +507,20 @@ final bibleRefRegex = RegExp(
     return _s.newConversation;
   }
 
-  Map<String, dynamic> _currentChatSnapshot() => {
-        'sessionId': sessionId,
-        'title': _chatHistoryTitle(),
-        'updatedAt': DateTime.now().millisecondsSinceEpoch,
-        'messages': _messages.map((m) => Map<String, dynamic>.from(m)).toList(),
-        'librarySermons': withoutVideoSermonSources(_librarySermons),
-        'previousSermons': withoutVideoSermonSources(_previousSermons),
-      };
+  Map<String, dynamic> _snapshotFor(LiveChatThread thread) {
+    final snapshot = thread.toSnapshot(title: _chatHistoryTitleFor(thread));
+    snapshot['librarySermons'] = withoutVideoSermonSources(thread.librarySermons);
+    snapshot['previousSermons'] = withoutVideoSermonSources(thread.previousSermons);
+    return snapshot;
+  }
 
-  Future<void> _persistChatHistory() async {
-    if (_messages.isEmpty) return;
+  Future<void> _persistChatHistory({LiveChatThread? thread}) async {
+    final target = thread ?? _thread;
+    if (target.messages.isEmpty) return;
 
     final storageId = _historyStorageId;
-    final snapshot = _currentChatSnapshot();
-    final sid = sessionId;
+    final snapshot = _snapshotFor(target);
+    final sid = target.sessionId;
     final updated = <Map<String, dynamic>>[
       snapshot,
       ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
@@ -579,13 +575,12 @@ final bibleRefRegex = RegExp(
     final updated = _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList();
     await _saveChatHistoryEntries(updated);
 
+    _threads[sid]?.stopAndDiscardReply();
+    _threads.remove(sid);
+
     if (sid == sessionId && mounted) {
       setState(() {
         sessionId = const Uuid().v4();
-        _messages.clear();
-        _librarySermons.clear();
-        _previousSermons.clear();
-        _isFirstMessage = true;
         _showBackToBottomButton = false;
       });
       await _persistSessionId();
@@ -607,6 +602,10 @@ final bibleRefRegex = RegExp(
     if (_speechToText.isListening) {
       _speechToText.stop();
     }
+    for (final thread in _threads.values) {
+      thread.stopAndDiscardReply();
+    }
+    _threads.clear();
     _pulseController.dispose();
     _scrollController.dispose();
     _controller.dispose();
@@ -844,10 +843,6 @@ Future<void> _launchSermonDoc(String sermonName) async {
     if (!mounted) return;
     setState(() {
       sessionId = const Uuid().v4();
-      _messages.clear();
-      _librarySermons.clear();
-      _previousSermons.clear();
-      _isFirstMessage = true;
       _showBackToBottomButton = false;
     });
     _persistSessionId();
@@ -965,24 +960,29 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _loadChatFromHistory(Map<String, dynamic> entry) {
+    final sid = entry['sessionId'] as String? ?? sessionId;
     setState(() {
-      sessionId = entry['sessionId'] as String? ?? sessionId;
-      _messages
-        ..clear()
-        ..addAll(
-          (entry['messages'] as List<dynamic>? ?? const [])
-              .whereType<Map>()
-              .map((m) => Map<String, dynamic>.from(m)),
-        );
-      _librarySermons = withoutVideoSermonSources(
-          List<String>.from(entry['librarySermons'] ?? const []));
-      _previousSermons = withoutVideoSermonSources(
-          List<String>.from(entry['previousSermons'] ?? const []));
-      _isFirstMessage = _messages.isEmpty;
+      sessionId = sid;
+      final live = _threads[sid];
+      final keepLive = live != null && (live.isLoading || live.messages.isNotEmpty);
+      if (!keepLive) {
+        _hydrateThreadFromSnapshot(_threadFor(sid), entry);
+      }
       _showBackToBottomButton = false;
     });
     _persistSessionId();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  void _resetChatsAfterSignOut() {
+    for (final thread in _threads.values) {
+      thread.stopAndDiscardReply();
+    }
+    _threads.clear();
+    sessionId = const Uuid().v4();
+    _chatHistoryEntries = [];
+    _sidebarPanel = _SidebarPanel.sermonLibrary;
+    _showBackToBottomButton = false;
   }
 
   void _showProfileSheet() {
@@ -995,11 +995,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
       onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
         if (!mounted) return;
-        setState(() {
-          sessionId = const Uuid().v4();
-          _chatHistoryEntries = [];
-          _sidebarPanel = _SidebarPanel.sermonLibrary;
-        });
+        setState(_resetChatsAfterSignOut);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_s.signedOut)),
         );
@@ -1008,53 +1004,23 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _stopResponse() {
-    if (_activeClient == null) return;
-    _activeClient!.close();
-    setState(() {
-      _isLoading = false;
-      _activeClient = null;
-      _finalizeStreamingMessageOnStop();
-    });
+    final thread = _thread;
+    if (!thread.isLoading && thread.client == null) return;
+    thread.stopAndDiscardReply();
+    setState(() {});
+    _persistChatHistory(thread: thread);
     _scrollToBottom();
   }
 
-  void _finalizeStreamingMessageOnStop() {
-    if (_isStreamingReply) {
-      final last = _messages.last;
-      last['streaming'] = false;
-      if (_streamRaw.trim().isEmpty) {
-        last['localKey'] = 'responseCancelled';
-        last['text'] = _s.responseCancelled;
-      }
-      _streamRaw = '';
-      return;
-    }
-    _messages.add({"role": "ai", "localKey": "responseCancelled", "text": _s.responseCancelled});
-    _streamRaw = '';
-  }
-
-  void _appendStreamDelta(String delta) {
-    if (delta.isEmpty) return;
-    _streamRaw += delta;
-    final display = _boldBibleReferences(_streamRaw);
-    if (!mounted) return;
-    setState(() {
-      if (_isStreamingReply) {
-        _messages.last['text'] = display;
-      } else {
-        _messages.add({
-          "role": "ai",
-          "text": display,
-          "streaming": true,
-          "reported": false,
-        });
-      }
-    });
+  void _appendStreamDelta(LiveChatThread thread, String delta) {
+    thread.appendDelta(delta, format: _boldBibleReferences);
+    if (!mounted || thread.sessionId != sessionId) return;
+    setState(() {});
     _scrollToBottom(followStream: true);
   }
 
 Future<void> _sendMessage() async {
-  // Guard clause: prevent sending if already loading
+  // Guard clause: prevent sending if this chat is already generating
   if (_isLoading) return;
 
   if (_isListening || _speechToText.isListening) {
@@ -1069,6 +1035,7 @@ Future<void> _sendMessage() async {
 }
 
   void _regenerateResponse(int index) {
+    if (_isLoading) return;
     if (index <= 0 || index >= _messages.length) return;
     if (_messages[index]['localKey'] is String) return;
     final userMessage = _messages[index - 1];
@@ -1079,89 +1046,61 @@ Future<void> _sendMessage() async {
   }
 
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
-  _streamRaw = '';
+  final thread = _thread;
+  if (thread.isLoading) return;
+
   setState(() {
     if (addUserMessage) {
-      _messages.add({"role": "user", "text": userText});
-      _isFirstMessage = false;
+      thread.appendUser(userText);
     }
-    _isLoading = true;
-    _activeClient = http.Client();
+    thread.beginRequest(httpClient: createHttpClient());
   });
-  _scrollToBottom();
+  if (thread.sessionId == sessionId) _scrollToBottom();
+  await _persistChatHistory(thread: thread);
 
   try {
     final data = await _apiService.streamMessage(
       userText,
-      sessionId,
+      thread.sessionId,
       regenerate: regenerate,
       language: _languageCode,
-      client: _activeClient,
-      onDelta: _appendStreamDelta,
+      client: thread.client,
+      isCancelled: () => thread.cancelled,
+      onDelta: (delta) => _appendStreamDelta(thread, delta),
     );
-    if (!mounted || _activeClient == null) return;
-    await _persistSessionId();
-
-    final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
-    final messageId = data['message_id'];
-    setState(() {
-      if (_librarySermons.isNotEmpty) {
-        _previousSermons = withoutVideoSermonSources(
-          [..._librarySermons, ..._previousSermons],
-        ).toSet().take(25).toList();
-      }
-
-      if (_isStreamingReply) {
-        _messages.last['text'] = answer;
-        _messages.last['streaming'] = false;
-        _messages.last['sources'] = List<String>.from(data['sources'] ?? []);
-        _messages.last['reported'] = false;
-        if (messageId != null) _messages.last['message_id'] = messageId;
-      } else {
-        _messages.add({
-          "role": "ai",
-          "text": answer,
-          "sources": List<String>.from(data['sources'] ?? []),
-          if (messageId != null) "message_id": messageId,
-          "reported": false,
-        });
-      }
-
-      final newSources = librarySermonSources(data['sources']);
-      if (newSources.isNotEmpty) {
-        _librarySermons = newSources;
-        _previousSermons.removeWhere((s) => _librarySermons.contains(s));
-      }
-    });
-    _scrollToBottom(followStream: true);
-    await _persistChatHistory();
-  } on http.ClientException {
+    if (thread.cancelled) return;
     if (!mounted) return;
-  } catch (e) {
-    if (_activeClient != null) {
-      setState(() {
-        if (_isStreamingReply) {
-          _messages.last['streaming'] = false;
-          if (_streamRaw.trim().isEmpty) {
-            _messages.last['localKey'] = 'serverError';
-            _messages.last['text'] = _s.serverError;
-          }
-        } else {
-          _messages.add({"role": "ai", "localKey": "serverError", "text": _s.serverError});
-        }
-      });
-      _scrollToBottom();
+
+    final answer = _boldBibleReferences((data['answer'] as String?) ?? thread.streamRaw);
+    final messageId = data['message_id'];
+    final newSources = librarySermonSources(data['sources']);
+    thread.applySources(sources: newSources);
+    thread.librarySermons = withoutVideoSermonSources(thread.librarySermons);
+    thread.previousSermons = withoutVideoSermonSources(thread.previousSermons);
+    thread.complete(
+      answer: answer,
+      sources: List<String>.from(data['sources'] ?? []),
+      messageId: messageId,
+    );
+    if (mounted) setState(() {});
+    if (thread.sessionId == sessionId) {
+      await _persistSessionId();
+      _scrollToBottom(followStream: true);
     }
+    await _persistChatHistory(thread: thread);
+  } on ChatRequestCancelled {
+    return;
+  } on http.ClientException {
+    if (thread.cancelled || !mounted) return;
+  } catch (e) {
+    if (thread.cancelled || !mounted) return;
+    thread.applyServerError(localKey: 'serverError', text: _s.serverError);
+    if (mounted) setState(() {});
+    if (thread.sessionId == sessionId) _scrollToBottom();
   } finally {
-    _streamRaw = '';
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _activeClient = null;
-        if (_isStreamingReply) {
-          _messages.last['streaming'] = false;
-        }
-      });
+    if (!thread.cancelled) {
+      thread.finishRequest();
+      if (mounted) setState(() {});
     }
   }
 }
@@ -1267,11 +1206,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               onOpenResponseReports: _openResponseReportsInbox,
               onSignedOut: () {
                 if (!mounted) return;
-                setState(() {
-                  sessionId = const Uuid().v4();
-                  _chatHistoryEntries = [];
-                  _sidebarPanel = _SidebarPanel.sermonLibrary;
-                });
+                setState(_resetChatsAfterSignOut);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(_s.signedOut)),
                 );
@@ -1401,8 +1336,23 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     );
   }
 
+  List<Map<String, dynamic>> _historyEntriesForDisplay() {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final entry in _chatHistoryEntries) {
+      final sid = entry['sessionId'] as String?;
+      if (sid != null) byId[sid] = entry;
+    }
+    for (final thread in _threads.values) {
+      if (thread.messages.isEmpty) continue;
+      byId.putIfAbsent(thread.sessionId, () => _snapshotFor(thread));
+    }
+    return byId.values.toList()
+      ..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
+  }
+
   Widget _buildPreviousChatsPanel(AuthController auth) {
-    if (_chatHistoryEntries.isEmpty) {
+    final entries = _historyEntriesForDisplay();
+    if (entries.isEmpty) {
       return Text(
         auth.hasPremiumAccess
             ? _s.historyEmptySignedIn
@@ -1428,7 +1378,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             physics: _eventsNavPanelOpen
                 ? const NeverScrollableScrollPhysics()
                 : const ClampingScrollPhysics(),
-            children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
+            children: entries.map(_buildChatHistoryLink).toList(),
           ),
         ),
       ],
@@ -1481,11 +1431,20 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                    color: _gold,
-                    size: 18,
-                  ),
+                  _threads[entry['sessionId']]?.isLoading == true
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _gold,
+                          ),
+                        )
+                      : Icon(
+                          isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                          color: _gold,
+                          size: 18,
+                        ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Padding(

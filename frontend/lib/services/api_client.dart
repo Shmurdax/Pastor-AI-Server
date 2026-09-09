@@ -65,8 +65,15 @@ class ApiClient {
     bool regenerate = false,
     String language = 'en',
     http.Client? client,
+    bool Function()? isCancelled,
     required void Function(String delta) onDelta,
   }) async {
+    bool cancelled() => isCancelled?.call() == true;
+    void throwIfCancelled() {
+      if (cancelled()) throw const ChatRequestCancelled();
+    }
+
+    throwIfCancelled();
     final httpClient = client ?? _client;
     final request = http.Request('POST', Uri.parse(_resolveUrl('/api/chat/')));
     request.headers.addAll(
@@ -81,6 +88,7 @@ class ApiClient {
     });
 
     final streamed = await httpClient.send(request);
+    throwIfCancelled();
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       final body = await streamed.stream.bytesToString();
       throw Exception('HTTP ${streamed.statusCode}: $body');
@@ -89,6 +97,7 @@ class ApiClient {
     final contentType = streamed.headers['content-type'] ?? '';
     if (!contentType.contains('event-stream')) {
       final body = await streamed.stream.bytesToString();
+      throwIfCancelled();
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Unexpected chat response');
@@ -102,7 +111,9 @@ class ApiClient {
     Map<String, dynamic>? done;
     String assembled = '';
     await for (final chunk in streamed.stream.transform(utf8.decoder)) {
+      throwIfCancelled();
       for (final event in consumeSseChunk(carry, chunk)) {
+        throwIfCancelled();
         if (event.isDelta && event.text.isNotEmpty) {
           assembled += event.text;
           onDelta(event.text);
@@ -117,6 +128,7 @@ class ApiClient {
         }
       }
     }
+    throwIfCancelled();
     if (done != null) return done;
     if (assembled.isNotEmpty) {
       return {'answer': assembled, 'sources': <String>[]};
