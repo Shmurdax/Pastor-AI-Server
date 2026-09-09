@@ -46,7 +46,7 @@ class ChatSystemPromptTests(unittest.TestCase):
     def test_prompt_requires_sermon_notes_and_formatted_length(self):
         prompt = build_chat_system_prompt(biblical_names=["Moses"])
         self.assertIn("Susan Nordin", prompt)
-        self.assertIn("1500 characters", prompt)
+        self.assertIn("2000 characters", prompt)
         self.assertIn("sermon notes", prompt)
         self.assertIn("Quality and pastoral depth", prompt)
         self.assertIn("REQUIRED QUOTES", prompt)
@@ -59,20 +59,21 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("LENGTH:", prompt)
-        self.assertIn("**bold heading**", prompt)
-        self.assertIn("bullet points", prompt)
+        self.assertIn("connected paragraphs", prompt)
+        self.assertIn("never open with a Scripture citation", prompt)
+        self.assertIn("Weave NKJV", prompt)
         self.assertIn("a one-sentence reply is a failed answer", prompt)
         self.assertIn("<length_close>", prompt)
-        self.assertIn("1500 characters", LENGTH_STEER)
-        self.assertIn("bold headings", LENGTH_STEER)
-        self.assertIn("bullet points", LENGTH_STEER)
+        self.assertIn("2000 characters", LENGTH_STEER)
+        self.assertIn("Open with a pastoral paragraph", LENGTH_STEER)
+        self.assertIn("never make the whole reply an outline", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
         self.assertIn("User question:", LENGTH_STEER)
         self.assertIn("summarize", prompt.lower())
-        self.assertIn("Follow-up questions keep this same formatted", prompt)
-        self.assertEqual(TARGET_TEACHING_CHARS, 1500)
-        self.assertEqual(MIN_TEACHING_CHARS, 1100)
-        self.assertEqual(MIN_TEACHING_WORDS, 180)
+        self.assertIn("Follow-up questions keep this same ~2000-character mixed-prose length", prompt)
+        self.assertEqual(TARGET_TEACHING_CHARS, 2000)
+        self.assertEqual(MIN_TEACHING_CHARS, 1500)
+        self.assertEqual(MIN_TEACHING_WORDS, 250)
         self.assertEqual(MAX_EXPANSION_PASSES, 1)
         self.assertTrue(query_expects_long_answer(
             "According to Pastor Don's sermons, what is the main purpose of the church?"
@@ -85,8 +86,8 @@ class ChatSystemPromptTests(unittest.TestCase):
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."
         )
-        mid = "x" * 900
-        long_enough = "x" * 1100
+        mid = "x" * 1200
+        long_enough = "x" * 1500
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
