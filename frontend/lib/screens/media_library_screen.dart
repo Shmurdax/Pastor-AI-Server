@@ -19,6 +19,23 @@ const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _surface = Color(0xFFF4F4F9);
 
+/// Tight caption strip under the 16:9 thumbnail (title and date).
+const kMediaTileCaptionHeight = 84.0;
+
+/// Aspect ratio for a media grid cell so the video fills most of the tile.
+double mediaGridChildAspectRatio({
+  required double viewportWidth,
+  required int crossAxisCount,
+  required double horizontalPadding,
+  double crossAxisSpacing = 20,
+  double captionHeight = kMediaTileCaptionHeight,
+}) {
+  final gaps = crossAxisSpacing * (crossAxisCount - 1);
+  final tileWidth = (viewportWidth - horizontalPadding - gaps) / crossAxisCount;
+  if (tileWidth <= 1) return 16 / 10;
+  return tileWidth / (tileWidth * 9 / 16 + captionHeight);
+}
+
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
 /// Catalog loads from GET /api/media/ (Vimeo sync); falls back to local mock.
 class MediaLibraryScreen extends StatefulWidget {
@@ -549,7 +566,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         crossAxisCount: screenWidth >= 1100 ? 3 : 2,
                         mainAxisSpacing: 20,
                         crossAxisSpacing: 20,
-                        childAspectRatio: 0.82,
+                        childAspectRatio: mediaGridChildAspectRatio(
+                          viewportWidth: screenWidth,
+                          crossAxisCount: screenWidth >= 1100 ? 3 : 2,
+                          horizontalPadding: isMobile ? 32 : 64,
+                        ),
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) => _MediaPostCard(
@@ -972,15 +993,15 @@ class _MediaPostCard extends StatelessWidget {
                 ),
               ),
               if (compact)
-                Expanded(
+                Flexible(
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                     child: _MediaPostCardBody(item: item, compact: true),
                   ),
                 )
               else
                 Padding(
-                  padding: const EdgeInsets.all(18),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
                   child: _MediaPostCardBody(item: item, compact: false),
                 ),
             ],
@@ -1014,37 +1035,43 @@ class _MediaPostCardBody extends StatelessWidget {
             color: _navy,
           ),
         ),
-        SizedBox(height: compact ? 4 : 8),
-        Text(
-          item.description,
-          maxLines: compact ? 2 : 3,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.figtree(
-            fontSize: compact ? 12 : 13,
-            height: 1.4,
-            color: Colors.black54,
+        if (!compact) ...[
+          const SizedBox(height: 8),
+          Text(
+            item.description,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.figtree(
+              fontSize: 13,
+              height: 1.4,
+              color: Colors.black54,
+            ),
           ),
-        ),
-        if (compact) const Spacer(),
-        if (!compact) const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ] else
+          const SizedBox(height: 6),
         Row(
           children: [
-            Text(
-              kMediaCollectionLabel,
-              style: GoogleFonts.figtree(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: _gold,
+            Expanded(
+              child: Text(
+                kMediaCollectionLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.figtree(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: _gold,
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             Text(
               dateLabel,
               style: GoogleFonts.figtree(fontSize: 11, color: Colors.black45),
             ),
           ],
         ),
-        if (!item.isPlayable) ...[
+        if (!compact && !item.isPlayable) ...[
           const SizedBox(height: 6),
           Text(
             'Coming soon',
