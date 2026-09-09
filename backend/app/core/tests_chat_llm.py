@@ -2,10 +2,15 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.chat_llm import (
+    discovered_worker_max_model_len,
     estimate_chat_tokens,
     fit_chat_budget,
     get_chat_llm,
     normalize_vllm_base_url,
+    parse_context_length_error,
+    remember_worker_max_model_len,
+    reset_discovered_worker_max_model_len_for_tests,
+    resolve_chat_context_window,
     resolve_vllm_api_key,
     resolve_vllm_model,
     resolve_vllm_url,
@@ -15,6 +20,9 @@ from core.chat_llm import (
 
 
 class VllmUrlResolutionTests(unittest.TestCase):
+    def setUp(self):
+        reset_discovered_worker_max_model_len_for_tests()
+
     def test_local_defaults_and_hosts(self):
         self.assertEqual(resolve_vllm_url({}), "http://vllm:8000/v1")
         self.assertTrue(vllm_url_is_local("http://127.0.0.1:8010/v1"))
@@ -91,6 +99,37 @@ class VllmUrlResolutionTests(unittest.TestCase):
             }),
             32768,
         )
+        overflow = (
+            "Error code: 400 - This model's maximum context length is 4096 tokens. "
+            "However, you requested 4629 tokens (3129 in the messages, 1500 in the completion)."
+        )
+        self.assertEqual(parse_context_length_error(overflow), 4096)
+        remember_worker_max_model_len(4096)
+        self.assertEqual(discovered_worker_max_model_len(), 4096)
+        self.assertEqual(
+            resolve_chat_context_window({
+                "CHAT_CONTEXT_WINDOW": "32768",
+                "VLLM_MAX_MODEL_LEN": "32768",
+            }),
+            4096,
+        )
+
+    def test_fit_chat_budget_drops_history_on_4096_worker(self):
+        env = {"CHAT_CONTEXT_WINDOW": "32768", "VLLM_MAX_MODEL_LEN": "4096"}
+        history = [
+            type("Msg", (), {"content": "What is the purpose of the church?"})(),
+            type("Msg", (), {"content": "A long previous pastoral answer " * 80})(),
+        ]
+        fitted, hist, completion, used = fit_chat_budget(
+            "REFERENCE NOTES:\n" + ("sermon chunk " * 400),
+            history,
+            "Summarize his view of the Holy Spirit.",
+            6144,
+            env=env,
+        )
+        self.assertEqual(hist, [])
+        self.assertLessEqual(used + completion + 192, 4096)
+        self.assertIn("sermon chunk", fitted)
 
     def test_fit_chat_budget_stays_inside_4096_with_huge_prompt(self):
         env = {"CHAT_CONTEXT_WINDOW": "8192", "VLLM_MAX_MODEL_LEN": "4096"}
@@ -164,6 +203,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("keeping the first answer", source)
         self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
         self.assertIn("prepared[\"messages\"] = trimmed", source)
+        self.assertIn("parse_context_length_error", source)
+        self.assertIn("_refit_prepared", source)
         self.assertNotIn("min_tokens", source)
         self.assertNotIn('"No relevant sermon notes found."', source)
         self.assertNotIn("pii_redaction", source)
