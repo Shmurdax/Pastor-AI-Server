@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_application_1/chat_stream.dart';
+import 'package:flutter_application_1/http_client_factory.dart';
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/models/response_report.dart';
@@ -11,7 +12,7 @@ import 'package:http/http.dart' as http;
 const kUseMockPrayer = bool.fromEnvironment('USE_MOCK_PRAYER', defaultValue: false);
 
 class ApiClient {
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({http.Client? client}) : _client = client ?? createHttpClient();
   final http.Client _client;
 
   static const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');

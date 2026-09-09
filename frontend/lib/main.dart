@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_typewriter.dart';
+import 'package:flutter_application_1/http_client_factory.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
@@ -150,6 +152,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _isListening = false;
   String _textBeforeSpeech = '';
   String _streamRaw = '';
+  late final ChatTypewriter _typewriter = ChatTypewriter(onReveal: _paintRevealedText);
   /// True while the latest AI bubble is still receiving generated tokens.
   bool get _isStreamingReply {
     if (_messages.isEmpty) return false;
@@ -615,6 +618,7 @@ final bibleRefRegex = RegExp(
     _prayerEmailController.dispose();
     _prayerPhoneController.dispose();
     _prayerTextController.dispose();
+    _typewriter.dispose();
     super.dispose();
   }
 
@@ -1010,6 +1014,7 @@ Future<void> _launchSermonDoc(String sermonName) async {
   void _stopResponse() {
     if (_activeClient == null) return;
     _activeClient!.close();
+    _typewriter.flush();
     setState(() {
       _isLoading = false;
       _activeClient = null;
@@ -1033,11 +1038,9 @@ Future<void> _launchSermonDoc(String sermonName) async {
     _streamRaw = '';
   }
 
-  void _appendStreamDelta(String delta) {
-    if (delta.isEmpty) return;
-    _streamRaw += delta;
-    final display = _boldBibleReferences(_streamRaw);
-    if (!mounted) return;
+  void _paintRevealedText(String revealed) {
+    if (!mounted || revealed.isEmpty) return;
+    final display = _boldBibleReferences(revealed);
     setState(() {
       if (_isStreamingReply) {
         _messages.last['text'] = display;
@@ -1051,6 +1054,12 @@ Future<void> _launchSermonDoc(String sermonName) async {
       }
     });
     _scrollToBottom(followStream: true);
+  }
+
+  void _appendStreamDelta(String delta) {
+    if (delta.isEmpty) return;
+    _streamRaw += delta;
+    _typewriter.add(delta);
   }
 
 Future<void> _sendMessage() async {
@@ -1080,13 +1089,14 @@ Future<void> _sendMessage() async {
 
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
   _streamRaw = '';
+  _typewriter.reset();
   setState(() {
     if (addUserMessage) {
       _messages.add({"role": "user", "text": userText});
       _isFirstMessage = false;
     }
     _isLoading = true;
-    _activeClient = http.Client();
+    _activeClient = createHttpClient();
   });
   _scrollToBottom();
 
@@ -1099,6 +1109,12 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       client: _activeClient,
       onDelta: _appendStreamDelta,
     );
+    if (!mounted || _activeClient == null) return;
+    final streamedAnswer = (data['answer'] as String?) ?? _streamRaw;
+    if (streamedAnswer.length > _typewriter.revealed.length) {
+      _typewriter.add(streamedAnswer.substring(_typewriter.revealed.length));
+    }
+    await _typewriter.waitUntilDrained();
     if (!mounted || _activeClient == null) return;
     await _persistSessionId();
 
