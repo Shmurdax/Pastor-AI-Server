@@ -38,6 +38,27 @@ class ChatSanitizeTests(unittest.TestCase):
         text = 'Pastor Don Nordin teaches, "Feed the flock." John 21:17 calls us to that work.'
         self.assertEqual(sanitize_chat_answer(text, language="en"), text)
 
+    def test_strips_mid_sentence_chinese_on_long_session_racism_reply(self):
+        leaked = (
+            "Pastor Don Nordin addresses racism as both a personal sin and a structural sin. "
+            "He does not treat it as merely private prejudice, nor as only a social system.\n\n"
+            "While terms like \"woke\" and \"CRT\" are part of today's conversation, he insists "
+            "they must be tested by Scripture. Reconciliation is not a slogan.\n\n"
+            "One of these foundational truths is the concept of \"the image of God.\" This "
+            "principle asserts that every human being is created in the likeness of God, "
+            "regardless of skin color, socioeconomic status, or any other distinguishing factor. "
+            "Recognizing this inherent value in each person compels us to reject"
+            "任何形式的歧视，并努力实现真正的和解。\n\n"
+            "诺丁牧师强调，种族主义既是个人的罪，也是结构性的罪。他使用圣经语言，"
+            "如上帝的形象和同一血脉，而不是当代的政治口号来谈论这个问题。\n\n"
+            "真正的和解要求教会承认这两种层面的罪，并在基督里彼此相爱，拒绝任何形式的歧视。"
+        )
+        cleaned = sanitize_chat_answer(leaked, language="en")
+        self.assertNotRegex(cleaned, r"[\u3400-\u9fff]")
+        self.assertIn("image of God", cleaned)
+        self.assertIn("personal sin", cleaned)
+        self.assertNotIn("歧视", cleaned)
+
     def test_joins_english_when_half_the_reply_is_chinese(self):
         mixed = (
             "Pastor Don Nordin teaches that shame is healed in community. "

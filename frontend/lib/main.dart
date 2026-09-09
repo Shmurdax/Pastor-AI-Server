@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_sanitize.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
@@ -267,7 +268,11 @@ final bibleRefRegex = RegExp(
     final key = msg['localKey'] as String?;
     if (key == 'responseCancelled') return _s.responseCancelled;
     if (key == 'serverError') return _s.serverError;
-    return (msg['text'] as String?) ?? '';
+    final text = (msg['text'] as String?) ?? '';
+    if (msg['role'] == 'ai') {
+      return sanitizeVisibleChatText(text, language: _languageCode);
+    }
+    return text;
   }
 
   Future<void> _retranslateThreadForLanguage(String language) async {
@@ -306,7 +311,10 @@ final bibleRefRegex = RegExp(
       setState(() {
         for (var i = 0; i < aiIndexes.length; i++) {
           if (i >= translated.length) break;
-          final next = translated[i].trim();
+          final next = sanitizeVisibleChatText(
+            translated[i].trim(),
+            language: language,
+          );
           if (next.isEmpty) continue;
           _messages[aiIndexes[i]] = {
             ..._messages[aiIndexes[i]],
@@ -479,9 +487,16 @@ final bibleRefRegex = RegExp(
           _messages
             ..clear()
             ..addAll(
-              rawMessages
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m)),
+              rawMessages.whereType<Map>().map((m) {
+                final copy = Map<String, dynamic>.from(m);
+                if (copy['role'] == 'ai') {
+                  copy['text'] = sanitizeVisibleChatText(
+                    (copy['text'] as String?) ?? '',
+                    language: _languageCode,
+                  );
+                }
+                return copy;
+              }),
             );
           _librarySermons = withoutVideoSermonSources(
               List<String>.from(entry['librarySermons'] ?? const []));
@@ -1036,7 +1051,9 @@ Future<void> _launchSermonDoc(String sermonName) async {
   void _appendStreamDelta(String delta) {
     if (delta.isEmpty) return;
     _streamRaw += delta;
-    final display = _boldBibleReferences(_streamRaw);
+    final display = _boldBibleReferences(
+      sanitizeVisibleChatText(_streamRaw, language: _languageCode),
+    );
     if (!mounted) return;
     setState(() {
       if (_isStreamingReply) {
@@ -1104,10 +1121,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 
     // Keep a longer stream only when the server answer is a truncated prefix
     // (character-limit clip). Use the server text when it stripped leaked
-    // rewrite notes or a second draft.
-    final streamed = _streamRaw;
-    final serverAnswer = (data['answer'] as String?) ?? '';
-    final bool looksLikeClip = streamed.isNotEmpty &&
+    // rewrite notes, a second draft, or unexpected Chinese.
+    final streamed = sanitizeVisibleChatText(_streamRaw, language: _languageCode);
+    final serverAnswer = sanitizeVisibleChatText(
+      (data['answer'] as String?) ?? '',
+      language: _languageCode,
+    );
+    final bool streamedHadCjk = hasUnexpectedCjk(_streamRaw, language: _languageCode);
+    final bool looksLikeClip = !streamedHadCjk &&
+        streamed.isNotEmpty &&
         serverAnswer.isNotEmpty &&
         streamed.startsWith(serverAnswer) &&
         serverAnswer.length < streamed.length &&
