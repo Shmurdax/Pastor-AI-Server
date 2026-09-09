@@ -135,13 +135,14 @@ REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
 EMPTY_REFERENCE_NOTES = (
     "No sermon excerpts were attached for this turn. "
     "Answer from Scripture (NKJV) and Pastor Don and Susan Nordin's teaching "
-    "in about 1500 characters with bold headings and bullet points. "
+    "in about 2000 characters of mixed paragraphs with a few bullets. "
+    "Weave Scripture into the prose; do not open with a verse dump. "
     "Do not claim that sermon notes were missing or irrelevant."
 )
 
-# ~1500-character replies need a few hundred tokens, not a 2k-token essay budget.
+# ~2000-character replies need ~500–800 tokens, not a long-essay budget.
 # Keep retrieved notes, and keep recent chat history ahead of extra completion.
-_MIN_COMPLETION_TOKENS = 384
+_MIN_COMPLETION_TOKENS = 512
 _MIN_KEEP_HISTORY_MESSAGES = 10  # 5 user/assistant exchanges
 _MIN_NOTES_CHARS = 1600
 _OPTIONAL_PROMPT_BLOCKS = (
@@ -357,7 +358,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="768"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="1024"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))

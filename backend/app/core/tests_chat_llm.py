@@ -158,13 +158,13 @@ class VllmUrlResolutionTests(unittest.TestCase):
             system,
             history,
             "What did we just discuss about faith?",
-            768,
+            1024,
             env=env,
         )
         self.assertGreaterEqual(len(hist), 10)
         self.assertIn("user question 5", "\n".join(m.content for m in hist))
         self.assertLessEqual(used + completion + 96, 32768)
-        self.assertLessEqual(completion, 768)
+        self.assertLessEqual(completion, 1024)
         self.assertGreaterEqual(completion, 128)
         self.assertIn("sermon chunk", fitted)
 
@@ -181,7 +181,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("CHAT_MAX_HISTORY_TURNS", source)
         self.assertIn("answer_char_count", source)
         self.assertIn('os.getenv("CHAT_MAX_HISTORY_CHARS", "20000")', source)
-        self.assertIn('os.getenv("CHAT_MAX_TOKENS", "768")', source)
+        self.assertIn('os.getenv("CHAT_MAX_TOKENS", "1024")', source)
         self.assertIn("answer_needs_expansion", source)
         self.assertIn("CONTINUE_STEER", source)
         self.assertIn("MAX_EXPANSION_PASSES", source)

@@ -141,6 +141,6 @@ chat_apply_config() {
   [[ -n "$config" && -f "$config" ]] || return 0
   vllm_upsert_config "$config" CHAT_MAX_HISTORY_CHARS 20000
   vllm_upsert_config "$config" CHAT_MAX_HISTORY_TURNS 10
-  vllm_upsert_config "$config" CHAT_MAX_TOKENS 768
+  vllm_upsert_config "$config" CHAT_MAX_TOKENS 1024
   vllm_upsert_config "$config" CHAT_CONTEXT_WINDOW 32768
 }
