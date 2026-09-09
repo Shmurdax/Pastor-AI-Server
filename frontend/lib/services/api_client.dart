@@ -66,7 +66,9 @@ class ApiClient {
     String language = 'en',
     http.Client? client,
     required void Function(String delta) onDelta,
+    bool Function()? isCancelled,
   }) async {
+    bool cancelled() => isCancelled?.call() ?? false;
     final httpClient = client ?? _client;
     final request = http.Request('POST', Uri.parse(_resolveUrl('/api/chat/')));
     request.headers.addAll(
@@ -80,7 +82,14 @@ class ApiClient {
       'stream': true,
     });
 
+    if (cancelled()) {
+      return {'answer': '', 'sources': <String>[], 'cancelled': true};
+    }
+
     final streamed = await httpClient.send(request);
+    if (cancelled()) {
+      return {'answer': '', 'sources': <String>[], 'cancelled': true};
+    }
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       final body = await streamed.stream.bytesToString();
       throw Exception('HTTP ${streamed.statusCode}: $body');
@@ -89,6 +98,9 @@ class ApiClient {
     final contentType = streamed.headers['content-type'] ?? '';
     if (!contentType.contains('event-stream')) {
       final body = await streamed.stream.bytesToString();
+      if (cancelled()) {
+        return {'answer': '', 'sources': <String>[], 'cancelled': true};
+      }
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Unexpected chat response');
@@ -102,7 +114,21 @@ class ApiClient {
     Map<String, dynamic>? done;
     String assembled = '';
     await for (final chunk in streamed.stream.transform(utf8.decoder)) {
+      if (cancelled()) {
+        return {
+          'answer': assembled,
+          'sources': <String>[],
+          'cancelled': true,
+        };
+      }
       for (final event in consumeSseChunk(carry, chunk)) {
+        if (cancelled()) {
+          return {
+            'answer': assembled,
+            'sources': <String>[],
+            'cancelled': true,
+          };
+        }
         if (event.isDelta && event.text.isNotEmpty) {
           assembled += event.text;
           onDelta(event.text);
@@ -116,6 +142,13 @@ class ApiClient {
           throw Exception(event.error.isNotEmpty ? event.error : 'Chat stream failed');
         }
       }
+    }
+    if (cancelled()) {
+      return {
+        'answer': assembled,
+        'sources': <String>[],
+        'cancelled': true,
+      };
     }
     if (done != null) return done;
     if (assembled.isNotEmpty) {

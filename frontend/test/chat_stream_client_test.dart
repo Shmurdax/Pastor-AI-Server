@@ -90,4 +90,28 @@ void main() {
     final failing = ApiClient(client: _FailingClient());
     await failing.warmupChat();
   });
+
+  test('chatStream stops painting tokens after isCancelled', () async {
+    const payload =
+        'data: {"type":"delta","text":"Faith "}\n\n'
+        'data: {"type":"delta","text":"grows"}\n\n'
+        'data: {"type":"done","answer":"Faith grows","sources":[]}\n\n';
+    final api = ApiClient(client: _ScriptedStreamClient(payload));
+    final deltas = <String>[];
+    var cancelled = false;
+
+    final result = await api.chatStream(
+      query: 'What is faith?',
+      sessionId: 's1',
+      onDelta: (text) {
+        deltas.add(text);
+        cancelled = true;
+      },
+      isCancelled: () => cancelled,
+    );
+
+    expect(deltas, ['Faith ']);
+    expect(result['cancelled'], isTrue);
+    expect(result['answer'], 'Faith ');
+  });
 }

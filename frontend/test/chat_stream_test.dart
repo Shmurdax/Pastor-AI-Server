@@ -43,4 +43,80 @@ void main() {
     expect(events[1].isDelta, isTrue);
     expect(events[1].text, 'When');
   });
+
+  test('stop keeps the live bubble instead of opening another', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    applyChatStreamDelta(messages, 'Faith is');
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith is');
+
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith is',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['streaming'], isFalse);
+    expect(messages.last['text'], 'Faith is');
+    expect(indexOfStreamingAi(messages), isNull);
+  });
+
+  test('stop before tokens adds a single cancelled bubble', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: '',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['localKey'], 'responseCancelled');
+    expect(messages.last['text'], 'Response cancelled.');
+  });
+
+  test('late tokens after stop do not open another bubble', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith',
+    );
+
+    applyChatStreamDelta(messages, 'Faith is the assurance');
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith');
+    expect(messages.last['streaming'], isFalse);
+  });
+
+  test('a finished payload after stop does not add a second answer', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith');
+    finalizeChatStreamOnStop(
+      messages,
+      cancelledText: 'Response cancelled.',
+      raw: 'Faith',
+    );
+
+    expect(
+      completeChatStreamAnswer(
+        messages,
+        answer: 'Faith is the assurance of things hoped for.',
+        sources: const ['Hebrews 11'],
+        messageId: 9,
+      ),
+      isFalse,
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith');
+    expect(messages.last.containsKey('message_id'), isFalse);
+  });
 }
