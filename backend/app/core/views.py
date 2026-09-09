@@ -29,7 +29,8 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_attribution import (
     attribution_generation_reminder,
     attribution_lock_instruction,
-    docs_matching_asked_terms,
+    docs_for_response_sources,
+    expand_retrieval_queries,
 )
 from .chat_language import (
     language_generation_reminder,
@@ -592,7 +593,15 @@ class ChatAPIView(APIView):
                 search_type="similarity_score_threshold",
                 search_kwargs={"k": candidate_k, "score_threshold": RETRIEVAL_THRESHOLD}
             )
-            candidates = retriever.invoke(user_query_llm)
+            candidates = []
+            seen_chunks = set()
+            for search in expand_retrieval_queries(user_query_llm):
+                for doc in retriever.invoke(search):
+                    chunk = (getattr(doc, "page_content", "") or "")[:240]
+                    if not chunk or chunk in seen_chunks:
+                        continue
+                    seen_chunks.add(chunk)
+                    candidates.append(doc)
             docs = _weighted_docs(candidates, RETRIEVAL_K)
             context = "\n\n".join([doc.page_content for doc in docs])[:MAX_CONTEXT_CHARS]
 
@@ -667,7 +676,7 @@ class ChatAPIView(APIView):
                 "bound": bound,
                 "messages": messages,
                 "docs": docs,
-                "source_docs": docs_matching_asked_terms(docs, user_query_llm),
+                "source_docs": docs_for_response_sources(docs, user_query_llm),
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
                 "language": chat_language,

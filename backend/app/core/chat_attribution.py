@@ -173,24 +173,113 @@ def unmentioned_claim_terms(query: str, notes: str) -> list[str]:
     return [term for term in distinctive_query_terms(query) if not notes_mention_term(notes, term)]
 
 
+# Nearby pastoral subjects to retrieve when the asked-about wording is rare or Greek.
+_RELATED_TOPICS = {
+    "homoousios": (
+        "Trinity",
+        "deity of Christ",
+        "Jesus is God",
+        "fully God",
+        "one with the Father",
+        "Godhead",
+        "Son of God",
+        "divinity of Jesus",
+    ),
+    "nicaea": (
+        "Trinity",
+        "deity of Christ",
+        "Jesus is God",
+        "fully God",
+        "Godhead",
+        "Son of God",
+    ),
+    "arian": (
+        "deity of Christ",
+        "Jesus is God",
+        "fully God",
+        "Trinity",
+    ),
+    "hypostasis": (
+        "Trinity",
+        "Godhead",
+        "persons of God",
+    ),
+    "filioque": (
+        "Holy Spirit",
+        "Trinity",
+        "Godhead",
+    ),
+    "transubstantiation": (
+        "Lord's Supper",
+        "communion",
+        "body and blood",
+    ),
+    "consubstantiation": (
+        "Lord's Supper",
+        "communion",
+    ),
+}
+
+
+def related_topic_phrases(query: str) -> list[str]:
+    """Pastoral subjects that cover the same ground as rare/unknown terms."""
+    folded = _fold(query)
+    found: list[str] = []
+    seen: set[str] = set()
+    for key, phrases in _RELATED_TOPICS.items():
+        if key not in folded:
+            continue
+        for phrase in phrases:
+            mark = phrase.casefold()
+            if mark in seen:
+                continue
+            seen.add(mark)
+            found.append(phrase)
+    return found
+
+
+def expand_retrieval_queries(query: str) -> list[str]:
+    """Original question plus a related-topic search when the term may be unknown."""
+    raw = (query or "").strip()
+    if not raw:
+        return []
+    extra = related_topic_phrases(raw)
+    if not extra:
+        return [raw]
+    related = ", ".join(extra)
+    return [raw, f"{related}. {raw}"]
+
+
 def attribution_lock_instruction(query: str, notes: str) -> str:
-    """Concrete lock listing terms the notes never use."""
+    """Lock the exact missing wording, then require related Nordin quotes."""
     missing = unmentioned_claim_terms(query, notes)
     if not missing:
         return ""
     listed = ", ".join(f'"{term}"' for term in missing)
+    related = related_topic_phrases(query)
+    related_bit = ""
+    if related:
+        related_bit = (
+            f"Nearest subjects in their preaching include: {', '.join(related)}. "
+        )
     return (
         "<attribution_lock>\n"
         f"REFERENCE NOTES do not mention: {listed}.\n"
         "Do not say Pastor Don Nordin or Susan Nordin taught, used, defined, affirmed, "
-        "or gave an opinion on those terms. Lead with that fact in plain language.\n"
-        "You may still teach the biblical or historical meaning from NKJV Scripture and "
-        "orthodox Christianity, but you must label that as Scripture or church history—"
-        "never as their sermon teaching.\n"
-        "Forbidden phrasing about those terms: \"According to Pastor Don\", "
+        "or gave an opinion on those exact terms. One short sentence may name that gap.\n"
+        f"{related_bit}"
+        "Then you MUST teach from their related preaching in REFERENCE NOTES—the closest "
+        "subjects they did cover (for example the deity of Christ, the Trinity, Jesus as "
+        "fully God, or whatever the notes actually discuss). Include at least one "
+        "word-for-word quotation from Pastor Don or Susan from those related notes.\n"
+        "Label it honestly: they have not used this wording; they have taught [the quoted "
+        "line]. Do not invent that they used the missing terms.\n"
+        "Do not fall back to a generic Bible-only outline with headings and stock verses "
+        "when the notes contain related pastoral teaching. NKJV may accompany their quotes, "
+        "not replace them.\n"
+        "Forbidden about the missing terms themselves: \"According to Pastor Don\", "
         "\"Pastor Don explains\", \"In his teachings\", \"Pastor Don emphasizes\", "
         "\"Pastor Don believed\".\n"
-        "Quotes from the notes may be used only for what those notes actually discuss. "
         "Do not quote an unrelated sentence and present it as their view of the missing terms.\n"
         "</attribution_lock>\n"
     )
@@ -202,19 +291,14 @@ def attribution_generation_reminder(query: str, notes: str) -> str:
         return ""
     listed = ", ".join(f'"{term}"' for term in missing)
     return (
-        f"\n\n[Do not attribute {listed} to Pastor Don or Susan. Those words are not "
-        "in the notes. Say they have not addressed that wording, then teach from Scripture "
-        "without putting the term in their mouth.]"
+        f"\n\n[Do not attribute {listed} to Pastor Don or Susan. Those exact words are not "
+        "in the notes. Say they have not used that wording, then quote their related teaching "
+        "from the notes on the nearest subject—do not answer with Scripture only.]"
     )
 
 
-def docs_matching_asked_terms(docs: Iterable, query: str) -> list:
-    """Keep displayed sermon sources that actually mention the asked-about terms.
-
-    If the question has no distinctive terms, return docs unchanged. If it does and
-    none of the chunks mention them, return an empty list so the UI does not imply
-    those sermons taught the missing term.
-    """
+def docs_for_response_sources(docs: Iterable, query: str) -> list:
+    """Prefer chunks that name the asked-about terms; else keep related retrieved notes."""
     items = list(docs or [])
     terms = distinctive_query_terms(query)
     if not terms:
@@ -224,4 +308,8 @@ def docs_matching_asked_terms(docs: Iterable, query: str) -> list:
         text = getattr(doc, "page_content", "") or ""
         if any(notes_mention_term(text, term) for term in terms):
             matched.append(doc)
-    return matched
+    return matched or items
+
+
+docs_matching_asked_terms = docs_for_response_sources
+
