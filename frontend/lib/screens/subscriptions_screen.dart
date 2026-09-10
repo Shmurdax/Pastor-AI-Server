@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
@@ -43,6 +45,36 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   final _apiService = ApiService();
   bool _eventsOpen = false;
   BillingPeriod _billingPeriod = BillingPeriod.monthly;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_syncSubscriptionIfNeeded());
+    });
+  }
+
+  Future<void> _syncSubscriptionIfNeeded() async {
+    if (!mounted || _syncing) return;
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated || auth.hasPremiumAccess) return;
+    setState(() => _syncing = true);
+    try {
+      _apiService.setAccessToken(auth.token);
+      final result = await _apiService.syncSubscription();
+      final userJson = result['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+    } catch (_) {
+      // Non-fatal — user can still subscribe manually.
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
 
   Future<void> _launchUrl(String urlString) async {
     final url = Uri.parse(urlString);

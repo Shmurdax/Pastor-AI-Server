@@ -390,6 +390,18 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> syncSubscription() async {
+    final res = await _client
+        .post(
+          Uri.parse(_resolveUrl('/api/billing/sync-subscription/')),
+          headers: _headers(json: true),
+          body: jsonEncode(const {}),
+        )
+        .timeout(_billingTimeout);
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> submitResponseReport({
     required int messageId,
     required String reason,

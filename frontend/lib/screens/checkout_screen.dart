@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
@@ -44,6 +46,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _publishableKey;
   String? _clientSecret;
   String? _sessionId;
+  bool _confirmingPurchase = false;
+  bool _purchaseHandled = false;
+  Timer? _statusPollTimer;
 
   String get _periodLabel =>
       widget.billingPeriod == BillingPeriod.monthly ? 'Monthly' : 'Yearly';
@@ -65,6 +70,62 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _api.setAccessToken(auth.token);
       _loadConfigAndStart();
     });
+  }
+
+  @override
+  void dispose() {
+    _stopStatusPolling();
+    super.dispose();
+  }
+
+  void _stopStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+  }
+
+  void _startStatusPolling() {
+    _stopStatusPolling();
+    // Stripe's onComplete / return_url often miss on Flutter web (especially with
+    // the body overlay). Poll session-status so Premium still syncs after pay.
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      unawaited(_pollSessionStatus());
+    });
+  }
+
+  Future<void> _pollSessionStatus() async {
+    if (!mounted || _purchaseHandled || _confirmingPurchase) return;
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+    try {
+      final auth = context.read<AuthController>();
+      _api.setAccessToken(auth.token);
+      final status = await _api.getCheckoutSessionStatus(sessionId);
+      final userJson = status['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      }
+      if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+        await _handlePurchaseSuccess();
+      }
+    } catch (_) {
+      // Keep polling; transient API blips are common right after payment.
+    }
+  }
+
+  Future<void> _handlePurchaseSuccess() async {
+    if (!mounted || _purchaseHandled) return;
+    _purchaseHandled = true;
+    _stopStatusPolling();
+    if (mounted) setState(() => _confirmingPurchase = true);
+    final complete = await _confirmSessionIfNeeded();
+    if (!mounted) return;
+    if (!complete) {
+      _purchaseHandled = false;
+      if (mounted) setState(() => _confirmingPurchase = false);
+      _startStatusPolling();
+      return;
+    }
+    await _showPurchaseCompleteAndReturn();
   }
 
   Future<void> _loadConfigAndStart() async {
@@ -115,34 +176,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ? session['publishable_key'] as String
                 : _publishableKey;
         _startingCheckout = false;
+        _purchaseHandled = false;
       });
+      if (_sessionId != null && _sessionId!.isNotEmpty) {
+        _startStatusPolling();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _startingCheckout = false;
         _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       });
-    }
-  }
-
-  Future<bool> _confirmSessionIfNeeded() async {
-    final sessionId = _sessionId;
-    if (sessionId == null || sessionId.isEmpty) return false;
-    try {
-      final auth = context.read<AuthController>();
-      _api.setAccessToken(auth.token);
-      final status = await _api.getCheckoutSessionStatus(sessionId);
-      final userJson = status['user'];
-      if (userJson is Map<String, dynamic>) {
-        await auth.applyUser(AuthUser.fromJson(userJson));
-      } else {
-        await auth.refreshMe();
-      }
-      return status['status'] == 'complete';
-    } catch (_) {
-      if (!mounted) return false;
-      await context.read<AuthController>().refreshMe();
-      return false;
     }
   }
 
@@ -157,10 +201,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _returnToChatbot();
   }
 
+  Future<bool> _confirmSessionIfNeeded() async {
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.isEmpty) return false;
+    Object? lastError;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
+      try {
+        final auth = context.read<AuthController>();
+        _api.setAccessToken(auth.token);
+        final status = await _api.getCheckoutSessionStatus(sessionId);
+        final userJson = status['user'];
+        if (userJson is Map<String, dynamic>) {
+          await auth.applyUser(AuthUser.fromJson(userJson));
+        } else {
+          await auth.refreshMe();
+        }
+        if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+          return true;
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (!mounted) return false;
+    try {
+      await context.read<AuthController>().refreshMe();
+      if (context.read<AuthController>().hasPremiumAccess) return true;
+    } catch (_) {}
+    // Fallback: payment may have completed in Stripe even if this session
+    // status poll raced; sync any active Stripe subscription onto the profile.
+    try {
+      final auth = context.read<AuthController>();
+      _api.setAccessToken(auth.token);
+      final sync = await _api.syncSubscription();
+      final userJson = sync['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      }
+      if (sync['synced'] == true || auth.hasPremiumAccess) return true;
+    } catch (e) {
+      lastError ??= e;
+    }
+    if (lastError != null && mounted) {
+      setState(() {
+        _error =
+            'Payment may have succeeded, but Premium status did not refresh. '
+            'Open Subscriptions or sign out/in to retry. '
+            '(${lastError.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')})';
+      });
+    }
+    return false;
+  }
+
   Future<void> _onStripeCheckoutComplete() async {
-    final complete = await _confirmSessionIfNeeded();
-    if (!mounted || !complete) return;
-    await _showPurchaseCompleteAndReturn();
+    await _handlePurchaseSuccess();
   }
 
   Future<void> _onMockCheckoutSuccess(AuthUser user) async {
@@ -192,171 +289,133 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ),
       body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(isMobile ? 24 : 40),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Complete your Premium plan',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(
-                    fontSize: isMobile ? 26 : 32,
-                    fontWeight: FontWeight.bold,
-                    color: _navy,
-                  ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  isMobile ? 20 : 32,
+                  isMobile ? 12 : 16,
+                  isMobile ? 20 : 32,
+                  8,
                 ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Container(height: 2, width: 48, color: _gold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Signed in as ${auth.user?.email ?? 'member'}',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
-                ),
-                const SizedBox(height: 28),
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      colors: [_pink, _navy],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Complete your Premium plan',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(
+                        fontSize: isMobile ? 22 : 28,
+                        fontWeight: FontWeight.bold,
+                        color: _navy,
+                      ),
                     ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: Container(height: 2, width: 48, color: _gold),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Signed in as ${auth.user?.email ?? 'member'} · '
+                      '$_priceLabel $_pricePeriod',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(
+                        fontSize: 13,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _mockCheckout
+                          ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
+                          : 'Card and billing fields are provided by Stripe. '
+                              'A payment overlay will open — scroll to Confirm.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.figtree(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    isMobile ? 12 : 24,
+                    0,
+                    isMobile ? 12 : 24,
+                    isMobile ? 12 : 20,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Premium',
-                        style: GoogleFonts.figtree(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _periodLabel,
-                        style: GoogleFonts.figtree(
-                          fontSize: 14,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _priceLabel,
-                            style: GoogleFonts.figtree(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              _pricePeriod,
-                              style: GoogleFonts.figtree(
-                                fontSize: 14,
-                                color: Colors.white70,
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final stripeHeight = box.maxHeight.clamp(640.0, 1600.0);
+                      if (_loadingConfig || _startingCheckout) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: _navy),
+                        );
+                      }
+                      if (_error != null && !_mockCheckout) {
+                        return ListView(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.shade200),
+                              ),
+                              child: Text(
+                                _error!,
+                                style: GoogleFonts.figtree(
+                                  color: Colors.red.shade800,
+                                ),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: _loadConfigAndStart,
+                              child: const Text('Try again'),
+                            ),
+                          ],
+                        );
+                      }
+                      if (_mockCheckout) {
+                        return SingleChildScrollView(
+                          child: _MockCheckoutForm(
+                            billingPeriod: _periodApiValue,
+                            priceLabel: '$_priceLabel $_pricePeriod',
+                            onSuccess: _onMockCheckoutSuccess,
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Text(
-                  'Payment details',
-                  style: GoogleFonts.figtree(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: _navy,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _mockCheckout
-                      ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
-                      : 'Card and billing fields are provided by Stripe. '
-                          'Your card details never touch our servers.',
-                  style: GoogleFonts.figtree(
-                    fontSize: 14,
-                    height: 1.45,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (_loadingConfig || _startingCheckout)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Center(child: CircularProgressIndicator(color: _navy)),
-                  )
-                else if (_error != null && !_mockCheckout) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.shade200),
-                    ),
-                    child: Text(
-                      _error!,
-                      style: GoogleFonts.figtree(color: Colors.red.shade800),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: _loadConfigAndStart,
-                    child: const Text('Try again'),
-                  ),
-                ] else if (_mockCheckout)
-                  _MockCheckoutForm(
-                    billingPeriod: _periodApiValue,
-                    priceLabel: '$_priceLabel $_pricePeriod',
-                    onSuccess: _onMockCheckoutSuccess,
-                  )
-                else if (_stripeConfigured &&
-                    _publishableKey != null &&
-                    _clientSecret != null)
-                  StripeEmbeddedCheckout(
-                    publishableKey: _publishableKey!,
-                    clientSecret: _clientSecret!,
-                    height: isMobile ? 560 : 520,
-                    onComplete: () {
-                      _onStripeCheckoutComplete();
+                        );
+                      }
+                      if (_stripeConfigured &&
+                          _publishableKey != null &&
+                          _clientSecret != null) {
+                        return StripeEmbeddedCheckout(
+                          publishableKey: _publishableKey!,
+                          clientSecret: _clientSecret!,
+                          height: stripeHeight,
+                          onComplete: _onStripeCheckoutComplete,
+                        );
+                      }
+                      return const SingleChildScrollView(child: _SetupHint());
                     },
-                  )
-                else
-                  const _SetupHint(),
-                if (!_mockCheckout) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'After paying, Stripe returns you to the app and unlocks '
-                    'unlimited chat history for Premium.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
                   ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
+
 
 /// TEMPORARY visual checkout — card values stay in memory only and are cleared
 /// on submit. Delete this widget when Stripe Embedded Checkout is live.
