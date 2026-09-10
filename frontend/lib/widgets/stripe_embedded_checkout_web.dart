@@ -14,7 +14,7 @@ const _gold = Color(0xFFD4AF37);
 /// Mounts into a `position: fixed` overlay on `document.body` rather than an
 /// [HtmlElementView]. Flutter web sets `overflow: hidden` on `html`/`body` and
 /// clips platform views, which cuts off Stripe's tall iframe and blocks scroll
-/// to the Confirm button. A body-level overlay with its own `overflow-y: auto`
+/// to the Confirm button. A body-level overlay with its own `overflow-y: scroll`
 /// restores normal scrolling.
 class StripeEmbeddedCheckout extends StatefulWidget {
   const StripeEmbeddedCheckout({
@@ -68,17 +68,26 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     } catch (_) {}
     _overlay = null;
     // Restore page scroll lock used by Flutter web shell.
-    web.document.documentElement?.style.overflow = 'hidden';
-    web.document.body?.style.overflow = 'hidden';
+    _setRootOverflow('hidden');
+  }
+
+  void _setRootOverflow(String value) {
+    final root = web.document.documentElement;
+    if (root != null) {
+      (root as web.HTMLElement).style.overflow = value;
+    }
+    final body = web.document.body;
+    if (body != null) {
+      body.style.overflow = value;
+    }
   }
 
   web.HTMLDivElement _ensureOverlay() {
     final existing = _overlay;
     if (existing != null) return existing;
 
-    // Allow the overlay itself to scroll (Flutter locks html/body).
-    web.document.documentElement?.style.overflow = 'hidden';
-    web.document.body?.style.overflow = 'hidden';
+    // Overlay scrolls itself; keep Flutter's html/body overflow lock.
+    _setRootOverflow('hidden');
 
     final overlay = web.HTMLDivElement()
       ..id = _overlayId
@@ -286,7 +295,6 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       _checkout = checkout;
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
 
-      // After Stripe sizes its iframe, scroll hint stays useful; nudge to top.
       _overlay?.scrollTop = 0;
 
       if (mounted) setState(() => _loading = false);
