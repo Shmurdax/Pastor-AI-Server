@@ -27,7 +27,17 @@ from qdrant_client import QdrantClient
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
-from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
+from .chat_llm import (
+    CHAT_FREQUENCY_PENALTY,
+    CHAT_PRESENCE_PENALTY,
+    CHAT_TEMPERATURE,
+    CHAT_TOP_P,
+    CHAT_VLLM_EXTRA_BODY,
+    EMPTY_REFERENCE_NOTES,
+    NOTES_MARKER,
+    fit_chat_budget,
+    get_chat_llm,
+)
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -53,12 +63,10 @@ from .chat_system_prompt import (
     answer_char_count,
     answer_needs_expansion,
     build_chat_system_prompt,
+    continuation_token_budget,
     find_biblical_character_names,
-    generation_should_stop,
     looks_like_brief_social,
-    next_stream_payload,
     query_expects_long_answer,
-    trim_runaway_generation,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -292,12 +300,18 @@ def _trim_continuation_messages(messages):
 
 
 def _iter_continuation_tokens(prepared, answer: str):
+    budget = continuation_token_budget(
+        answer, completion_tokens=prepared["completion_tokens"]
+    )
+    if budget <= 0:
+        return
+        yield
     full = _continuation_messages(prepared["messages"], answer)
     trimmed = _trim_continuation_messages(full)
-    smaller = prepared["llm"].bind(max_tokens=max(256, int(prepared["completion_tokens"]) // 2))
+    bound = prepared["llm"].bind(max_tokens=budget)
     attempts = (
-        (prepared["bound"], full),
-        (smaller, trimmed),
+        (bound, full),
+        (bound, trimmed),
     )
     for bound, messages in attempts:
         yielded = False
@@ -556,13 +570,15 @@ class ChatAPIView(APIView):
 
         def prepare_chat():
             llm = get_chat_llm(
-                # Slightly lower temperature + higher frequency_penalty reduces
-                # post-conclusion synonym loops / language mixing on long answers.
-                temperature=0.75,
+                # Qwen2.5-14B-Instruct-AWQ: official Instruct sampling, not
+                # OpenAI frequency_penalty (that pushes unused Chinese tokens).
+                temperature=CHAT_TEMPERATURE,
                 max_tokens=CHAT_MAX_TOKENS,
                 timeout=CHAT_TIMEOUT_S,
-                presence_penalty=0.3,
-                frequency_penalty=0.5,
+                top_p=CHAT_TOP_P,
+                presence_penalty=CHAT_PRESENCE_PENALTY,
+                frequency_penalty=CHAT_FREQUENCY_PENALTY,
+                extra_body=CHAT_VLLM_EXTRA_BODY,
             )
             target_message = None
             if regenerate:
@@ -838,26 +854,16 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 assembled = []
-                published = ""
-                stopped_runaway = False
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
-                    joined = "".join(assembled)
-                    event_type, payload, should_stop = next_stream_payload(published, joined)
-                    if emit_live and event_type and payload:
-                        yield _sse({"type": event_type, "text": payload})
-                        published = payload if event_type == "replace" else published + payload
-                    if should_stop:
-                        logger.info("Stopping chat stream after runaway detected")
-                        stopped_runaway = True
-                        break
-                answer = trim_runaway_generation("".join(assembled))
+                    if emit_live:
+                        yield _sse({"type": "delta", "text": text})
+                answer = "".join(assembled)
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
                 while (
-                    not stopped_runaway
-                    and answer_needs_expansion(answer, query=user_query_llm)
+                    answer_needs_expansion(answer, query=user_query_llm)
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
@@ -874,31 +880,16 @@ class ChatAPIView(APIView):
                             if emit_live and not separator_sent:
                                 yield _sse({"type": "delta", "text": "\n\n"})
                                 separator_sent = True
-                                published += "\n\n"
                             extra_parts.append(text)
-                            tentative_joined = _join_continuation(answer, "".join(extra_parts))
-                            event_type, payload, should_stop = next_stream_payload(
-                                published, tentative_joined
-                            )
-                            if emit_live and event_type and payload:
-                                yield _sse({"type": event_type, "text": payload})
-                                published = (
-                                    payload if event_type == "replace" else published + payload
-                                )
-                            if should_stop:
-                                logger.info("Stopping continuation after runaway detected")
-                                stopped_runaway = True
-                                break
+                            if emit_live:
+                                yield _sse({"type": "delta", "text": text})
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
                     extra = "".join(extra_parts).strip()
                     if not extra:
                         break
-                    answer = trim_runaway_generation(_join_continuation(answer, extra))
-                    if stopped_runaway:
-                        break
-                answer = trim_runaway_generation(answer)
+                    answer = _join_continuation(answer, extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -942,7 +933,7 @@ class ChatAPIView(APIView):
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
-            answer = trim_runaway_generation(response.content or "")
+            answer = response.content or ""
             expansion_pass = 0
             while (
                 answer_needs_expansion(answer, query=user_query_llm)
@@ -955,8 +946,13 @@ class ChatAPIView(APIView):
                     expansion_pass,
                     MAX_EXPANSION_PASSES,
                 )
+                continue_tokens = continuation_token_budget(
+                    answer, completion_tokens=prepared["completion_tokens"]
+                )
+                if continue_tokens <= 0:
+                    break
                 try:
-                    extra = prepared["bound"].invoke(
+                    extra = prepared["llm"].bind(max_tokens=continue_tokens).invoke(
                         _continuation_messages(prepared["messages"], answer)
                     )
                     extra_text = (getattr(extra, "content", "") or "").strip()
@@ -964,7 +960,7 @@ class ChatAPIView(APIView):
                     logger.exception("Continuation failed; retrying with a trimmed prompt")
                     try:
                         extra = prepared["llm"].bind(
-                            max_tokens=max(256, int(prepared["completion_tokens"]) // 2)
+                            max_tokens=continue_tokens
                         ).invoke(
                             _trim_continuation_messages(
                                 _continuation_messages(prepared["messages"], answer)
@@ -976,8 +972,7 @@ class ChatAPIView(APIView):
                         break
                 if not extra_text:
                     break
-                answer = trim_runaway_generation(_join_continuation(answer, extra_text))
-            answer = trim_runaway_generation(answer)
+                answer = _join_continuation(answer, extra_text)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

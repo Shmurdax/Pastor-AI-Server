@@ -15,6 +15,19 @@ _RUNPOD_ENDPOINT_RE = re.compile(
 _DEFAULT_LOCAL_URL = "http://vllm:8000/v1"
 _DEFAULT_MODEL = "christianai"
 
+# Qwen2.5-14B-Instruct-AWQ (served as christianai) is bilingual. Official
+# Instruct decoding is temperature 0.7, top_p 0.8, top_k 20, repetition_penalty
+# 1.05. OpenAI-style frequency/presence penalties are wrong here: once common
+# English words are penalized, unused Chinese tokens become the cheap next pick.
+CHAT_TEMPERATURE = 0.7
+CHAT_TOP_P = 0.8
+CHAT_PRESENCE_PENALTY = 0.0
+CHAT_FREQUENCY_PENALTY = 0.0
+CHAT_VLLM_EXTRA_BODY = {
+    "repetition_penalty": 1.05,
+    "top_k": 20,
+}
+
 
 def _env_get(env: Mapping[str, str], *keys: str, default: str = "") -> str:
     for key in keys:
@@ -344,7 +357,7 @@ def _live_vllm_api_key(fallback: str):
 
 def get_chat_llm(
     *,
-    temperature: float = 0.7,
+    temperature: float = CHAT_TEMPERATURE,
     max_tokens: Optional[int] = None,
     timeout: Optional[float] = None,
     env: Optional[Mapping[str, str]] = None,
@@ -374,6 +387,12 @@ def get_chat_llm(
         os.environ["RUNPOD_API_KEY"] = api_key
         os.environ["VLLM_API_KEY"] = api_key
     headers.update(kwargs.pop("default_headers", None) or {})
+    extra_body = kwargs.pop("extra_body", None)
+    if extra_body is None:
+        extra_body = dict(CHAT_VLLM_EXTRA_BODY)
+    top_p = kwargs.pop("top_p", CHAT_TOP_P)
+    presence_penalty = kwargs.pop("presence_penalty", CHAT_PRESENCE_PENALTY)
+    frequency_penalty = kwargs.pop("frequency_penalty", CHAT_FREQUENCY_PENALTY)
     client_api_key: object = api_key
     if remote and api_key:
         client_api_key = _live_vllm_api_key(api_key)
@@ -382,6 +401,10 @@ def get_chat_llm(
         api_key=client_api_key,
         model=resolve_vllm_model(env),
         temperature=temperature,
+        top_p=top_p,
+        presence_penalty=presence_penalty,
+        frequency_penalty=frequency_penalty,
+        extra_body=extra_body,
         max_tokens=max_tokens,
         timeout=timeout,
         max_retries=max_retries,

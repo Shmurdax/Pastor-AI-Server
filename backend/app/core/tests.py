@@ -132,71 +132,36 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
 
-    def test_trims_filler_after_in_conclusion(self):
-        from .chat_system_prompt import generation_should_stop, trim_runaway_generation
-
+    def test_short_teaching_answer_still_requests_expansion(self):
+        query = (
+            "According to this pastor's sermons, what is the main purpose of the church? "
+            "Quote or closely paraphrase the language he actually uses."
+        )
         answer = (
-            "Speak to the student with compassion and clarity about God's design.\n\n"
-            "In conclusion, both the student and the parents need grace, truth, and "
-            "prayerful wisdom from God.\n\n"
-            "This approach ensures that both parties receive the necessary emotional "
-            "support while adhering closely to Scriptural teachings and guidelines set "
-            "forth by their respective local authorities entrusted charge thereof charged "
-            "responsibility overseeing matters pertaining public welfare collective good "
-            "inhabitants residing therein inclusive all members constituent communities "
-            "comprised diverse demographic constituencies represented respectively diverse "
-            "walks life embracing myriad perspectives orientations beliefs values held dear "
-            "cherished esteemed worthy consideration respect accorded rightfully so "
-            "universally recognized acknowledged respected embraced warmly welcomed openly "
-            "accepted unconditionally lovingly cared for protected nurtured guided towards "
-            "paths righteousness goodness integrity honor dignity worthy emulation emulated "
-            "perpetuated sustained indefinitely ad infinitum永恒不变。"
+            "According to Pastor Don Nordin, the primary purpose of the church is to serve "
+            "as a place where believers can receive ministry and grow spiritually. In one of "
+            "his sermons, he illustrates this point through a story about visiting a member "
+            "who had stopped attending church. The Pastor found the man sitting by a blazing "
+            "fire and noticed that when he isolated one burning ember from the rest, it "
+            "quickly died out. However, when placed back among the other embers in the center "
+            "of the fire, it regained its strength and warmth. This metaphor emphasizes how "
+            "crucial it is for believers to remain connected within their local church "
+            "community for ongoing spiritual nourishment and encouragement.\n\n"
+            "Churches are ordained by God specifically for ministering to believers and "
+            "reaching out to those who do not yet know Christ. As Pastor Don teaches:\n\n"
+            '"God ordained the church and fellowship with other believers for the purpose '
+            'of ministering to the saints and reaching the world."\n\n'
+            "Furthermore, Pastor Don highlights that individuals cannot effectively reach "
+            "others if they themselves are not receiving ministry from their local church "
+            "community. Therefore, attending church regularly ensures continuous growth and "
+            "support essential for living a Christ-centered life."
         )
-        trimmed = trim_runaway_generation(answer)
-        self.assertIn("In conclusion", trimmed)
-        self.assertNotIn("This approach ensures", trimmed)
-        self.assertNotIn("永恒", trimmed)
-        self.assertTrue(generation_should_stop(answer))
-        self.assertFalse(generation_should_stop(
-            "In conclusion, love them well."
-        ))
-
-    def test_stream_payload_hides_runaway_tokens(self):
-        from .chat_system_prompt import generation_should_stop, next_stream_payload
-
-        good = (
-            "Abel brought the firstborn of his flock because he wanted to honor God. "
-            "Cain brought fruit from the ground when he got around to it. "
-            "The difference was not the gift itself but the heart behind the gift. "
-            "Pastor Don teaches that worship is meant to make God glad, not to make us comfortable. "
-            "That same choice shows up whenever we decide whether to put the Lord first."
-        )
-        event, text, stop = next_stream_payload("", good)
-        self.assertEqual(event, "delta")
-        self.assertEqual(text, good)
-        self.assertFalse(stop)
-        self.assertFalse(generation_should_stop(good))
-
-        closing = (
-            good
-            + "\n\nIn conclusion, offer God your first and best rather than leftovers.\n\n"
-        )
-        junk = (
-            "This approach ensures respective pertaining thereof herein aforementioned "
-            "constituencies demographic indefinitely perpetuated emulation ad infinitum "
-            "inclusive all collective good public welfare 永恒不变"
-        )
-        event, text, stop = next_stream_payload(good, closing + junk)
-        self.assertTrue(stop)
-        self.assertNotIn("永恒", text)
-        self.assertNotIn("This approach ensures", text)
-        self.assertIn("In conclusion", text)
-
-        published = good + "\n\nIn conclusion, offer God your first and best rather than leftovers."
-        event, text, stop = next_stream_payload(published, published + "\n\n" + junk)
-        self.assertEqual(event, "")
-        self.assertEqual(text, "")
-        self.assertTrue(stop)
+        self.assertLess(len(answer), MIN_TEACHING_CHARS)
+        self.assertTrue(answer_needs_expansion(answer, query=query))
+        from .chat_system_prompt import continuation_token_budget
+        self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
+        self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)
+        self.assertEqual(continuation_token_budget("x" * 2300, completion_tokens=1024), 0)
 
 
 class ScopeGateParserTests(unittest.TestCase):
