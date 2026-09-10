@@ -360,18 +360,32 @@ final bibleRefRegex = RegExp(
     if (!auth.isAuthenticated) return;
     _apiService.setAccessToken(auth.token);
     try {
-      final status = await _apiService.getCheckoutSessionStatus(sessionId);
-      final userJson = status['user'];
-      if (userJson is Map<String, dynamic>) {
-        await auth.applyUser(AuthUser.fromJson(userJson));
-      } else {
-        await auth.refreshMe();
+      Map<String, dynamic>? status;
+      for (var attempt = 0; attempt < 6; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+        }
+        try {
+          status = await _apiService.getCheckoutSessionStatus(sessionId);
+          final userJson = status['user'];
+          if (userJson is Map<String, dynamic>) {
+            await auth.applyUser(AuthUser.fromJson(userJson));
+          } else {
+            await auth.refreshMe();
+          }
+          if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+            break;
+          }
+        } catch (_) {
+          if (attempt == 5) rethrow;
+        }
       }
       if (!mounted) return;
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
       if (!mounted) return;
-      final complete = status['status'] == 'complete' || auth.hasPremiumAccess;
+      final complete =
+          status?['status'] == 'complete' || auth.hasPremiumAccess;
       if (complete) {
         await showPurchaseCompleteDialog(context);
       }
