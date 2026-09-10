@@ -134,3 +134,55 @@ class ChatAPIUserLinkTests(TestCase):
         self.assertIn(OUT_OF_SCOPE_REPLY, body)
         self.assertIn('"type": "done"', body)
         self.assertEqual(ChatMessage.objects.get().ai_response, OUT_OF_SCOPE_REPLY)
+
+    @patch("core.views.display_reply", side_effect=lambda text, lang: f"[{lang}] {text}")
+    @patch(
+        "core.views.english_search_query",
+        side_effect=lambda text, lang: "What does Scripture say about hope?",
+    )
+    @patch("core.views.query_in_scope", return_value=False)
+    @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
+    @patch("core.views.get_chat_llm", return_value=MagicMock())
+    def test_spanish_chat_searches_english_and_returns_spanish(
+        self, _mock_llm, mock_oos, mock_scope, _mock_en, _mock_display
+    ):
+        res = self.client.post(
+            self.url,
+            {
+                "query": "¿Qué dice la Escritura sobre la esperanza?",
+                "session_id": "client-session-es",
+                "language": "es",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(mock_scope.call_args[0][1], "What does Scripture say about hope?")
+        self.assertEqual(mock_oos.call_args.kwargs["language"], "en")
+        self.assertEqual(res.data["answer"], f"[es] {OUT_OF_SCOPE_REPLY}")
+        msg = ChatMessage.objects.get()
+        self.assertEqual(msg.user_query, "¿Qué dice la Escritura sobre la esperanza?")
+        self.assertEqual(msg.ai_response, OUT_OF_SCOPE_REPLY)
+
+    @patch("core.views.display_reply", side_effect=lambda text, lang: f"[{lang}] {text}")
+    @patch(
+        "core.views.english_search_query",
+        side_effect=lambda text, lang: "What does Scripture say about hope?",
+    )
+    @patch("core.views.query_in_scope", return_value=False)
+    @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
+    @patch("core.views.get_chat_llm", return_value=MagicMock())
+    def test_each_ui_language_gets_translated_payload(self, _mock_llm, _mock_oos, _mock_scope, _mock_en, _mock_display):
+        for lang in ("es", "fr", "pt", "de", "ko", "zh"):
+            ChatMessage.objects.all().delete()
+            res = self.client.post(
+                self.url,
+                {
+                    "query": "pregunta",
+                    "session_id": f"client-session-{lang}",
+                    "language": lang,
+                },
+                format="json",
+            )
+            self.assertEqual(res.status_code, 200, lang)
+            self.assertEqual(res.data["answer"], f"[{lang}] {OUT_OF_SCOPE_REPLY}", lang)
+            self.assertEqual(ChatMessage.objects.get().ai_response, OUT_OF_SCOPE_REPLY)
