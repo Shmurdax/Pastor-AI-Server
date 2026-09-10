@@ -39,6 +39,26 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(any("clarify" in item.lower() for item in queries))
         self.assertGreaterEqual(len(queries), 2)
 
+    def test_followup_query_uses_prior_ai_steps(self):
+        queries = expand_search_queries(
+            "Can you further clarify those steps?",
+            ["What should I say to someone who is gay?"],
+            prior_ai_texts=[
+                "Pastor Don Nordin teaches compassion.\n\n"
+                "**Affirm Their Worth**\n"
+                "**Express Care**\n"
+                "**Offer Truth**\n"
+                "Genesis 1:27 shows every person bears God's image."
+            ],
+            limit=5,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("gay", joined)
+        self.assertTrue(
+            any("affirm" in item.lower() or "worth" in item.lower() for item in queries),
+            queries,
+        )
+
     def test_first_turn_adds_keyword_and_sermon_query(self):
         queries = expand_search_queries("What should I say to someone who is gay?")
         self.assertEqual(queries[0], "What should I say to someone who is gay?")
@@ -50,6 +70,18 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertFalse(looks_like_followup(
             "If a teenager in the youth group comes out, what would this pastor say to the student?"
         ))
+
+    def test_uniqueness_followup_stays_on_topic(self):
+        text = uniqueness_instruction(
+            ['We love and accept the sinner but refuse to accept a sinful lifestyle.'],
+            ["Genesis 1:27"],
+            is_followup=True,
+            prior_user_query="What should I say to someone who is gay?",
+        )
+        self.assertIn("SAME chat", text)
+        self.assertIn("gay", text.lower())
+        self.assertIn("do not switch to an unrelated sermon theme", text.lower())
+        self.assertIn("Genesis 1:27", text)
 
     def test_extracts_quotes_and_ezekiel_verse(self):
         answer = (

@@ -239,10 +239,11 @@ def keyword_search_query(text: str) -> str:
 def expand_search_queries(
     current: str,
     prior_user_queries: Optional[Iterable[str]] = None,
+    prior_ai_texts: Optional[Iterable[str]] = None,
     *,
-    limit: int = 3,
+    limit: int = 5,
 ) -> list[str]:
-    """Build a small set of distinct Qdrant queries for one chat turn."""
+    """Build distinct Qdrant queries, anchoring follow-ups to prior turns."""
     queries: list[str] = []
     seen: set[str] = set()
 
@@ -255,15 +256,42 @@ def expand_search_queries(
         queries.append(cleaned)
 
     current_q = (current or "").strip()
-    add(current_q)
-
     prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
     last_prior = ""
     for item in reversed(prior):
         if item.lower() != current_q.lower():
             last_prior = item
             break
-    if last_prior:
+    followup = bool(last_prior) and looks_like_followup(current_q)
+
+    # For follow-ups, lead with topic-carrying rewrites so retrieval stays on
+    # the prior pastoral question instead of a vague "clarify those steps".
+    if followup and last_prior:
+        add(f"{last_prior} {current_q}")
+        prior_keywords = keyword_search_query(f"{last_prior} {current_q}")
+        if prior_keywords:
+            add(prior_keywords)
+        last_ai = ""
+        for item in reversed(list(prior_ai_texts or [])):
+            text = str(item or "").strip()
+            if text:
+                last_ai = text
+                break
+        if last_ai:
+            # Prefer headings / bold step labels from the prior answer.
+            step_bits = re.findall(
+                r"\*\*([^*]{3,60})\*\*|^(?:[-*]\s+)?([A-Z][A-Za-z' ]{2,40}):",
+                last_ai,
+                flags=re.MULTILINE,
+            )
+            step_text = " ".join(part for pair in step_bits for part in pair if part)
+            ai_keywords = keyword_search_query((step_text + " " + last_ai[:900]).strip())
+            if ai_keywords:
+                add(f"{ai_keywords} {current_q}")
+                add(f"{last_prior} {ai_keywords}")
+
+    add(current_q)
+    if last_prior and not followup:
         add(f"{last_prior} {current_q}")
 
     keywords = keyword_search_query(current_q)
@@ -600,17 +628,42 @@ def format_reference_notes(
     return "\n\n".join(blocks)
 
 
-def uniqueness_instruction(used_quotes: Iterable[str], used_verses: Iterable[str]) -> str:
+def uniqueness_instruction(
+    used_quotes: Iterable[str],
+    used_verses: Iterable[str],
+    *,
+    is_followup: bool = False,
+    prior_user_query: str = "",
+) -> str:
     quotes = [item.strip() for item in used_quotes if item and item.strip()]
     verses = [item.strip() for item in used_verses if item and item.strip()]
-    lines = [
-        "<uniqueness>",
-        "Each reply must be unique. Do not restate the previous answer, recycle the same outline, "
-        "or reuse the same Pastor Don/Susan quotation or the same NKJV verse across turns.",
-        "Answer THIS user question with different notes, a different quotation, and different Scripture "
-        "than earlier turns. Quote from more than one labeled source in REFERENCE NOTES when they fit.",
-        "If a follow-up asks to clarify or apply the last answer, add a new pastoral angle instead of repeating it.",
-    ]
+    lines = ["<uniqueness>"]
+    if is_followup:
+        topic = " ".join((prior_user_query or "").split())
+        if len(topic) > 160:
+            topic = topic[:157] + "..."
+        lines.extend(
+            [
+                "This is a follow-up in the SAME chat. Stay on the same pastoral topic as the prior turn.",
+                "Clarify or expand the previous answer's steps; do not switch to an unrelated sermon theme.",
+                "You may use fresh quotations and different NKJV verses, but they must serve THIS same topic.",
+            ]
+        )
+        if topic:
+            lines.append(f'Prior user question to stay anchored to: "{topic}"')
+    else:
+        lines.extend(
+            [
+                "Each reply must be unique. Do not restate the previous answer, recycle the same outline, "
+                "or reuse the same Pastor Don/Susan quotation or the same NKJV verse across turns.",
+                "Answer THIS user question with different notes, a different quotation, and different Scripture "
+                "than earlier turns. Quote from more than one labeled source in REFERENCE NOTES when they fit.",
+            ]
+        )
+    lines.append(
+        "If a follow-up asks to clarify or apply the last answer, deepen those same steps with new wording—"
+        "do not abandon them for a different subject."
+    )
     if quotes:
         lines.append("Already-used quotations (do not repeat):")
         for quote in quotes[:8]:
@@ -618,7 +671,7 @@ def uniqueness_instruction(used_quotes: Iterable[str], used_verses: Iterable[str
             lines.append(f'- "{clipped}"')
     if verses:
         lines.append(
-            "Already-used Scripture references (choose different NKJV passages): "
+            "Already-used Scripture references (choose different NKJV passages on the same topic): "
             + ", ".join(verses[:12])
         )
     lines.append("</uniqueness>")

@@ -296,7 +296,9 @@ def fit_chat_budget(
             sys_text = sys_text[: max(800, len(sys_text) - cut_chars)]
 
     drop_oldest_history(_MIN_KEEP_HISTORY_MESSAGES)
-    drop_oldest_history(0)
+    # Never wipe the whole thread — keep at least one prior exchange so follow-ups
+    # stay grounded in this chat's context.
+    drop_oldest_history(2)
 
     while over_budget(sys_text) and completion > 128:
         completion = max(128, completion - 64)

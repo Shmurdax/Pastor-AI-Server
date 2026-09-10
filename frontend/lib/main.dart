@@ -496,7 +496,16 @@ final bibleRefRegex = RegExp(
     for (final entry in _chatHistoryEntries) {
       if (entry['sessionId'] == sessionId) {
         final rawMessages = entry['messages'];
-        if (rawMessages is! List || rawMessages.isEmpty) return;
+        if (rawMessages is! List || rawMessages.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            _messages.clear();
+            _librarySermons.clear();
+            _previousSermons.clear();
+            _isFirstMessage = true;
+          });
+          return;
+        }
         if (!mounted) return;
         setState(() {
           _messages
@@ -515,6 +524,15 @@ final bibleRefRegex = RegExp(
         return;
       }
     }
+    // No matching thread for this session — start clean so another chat's
+    // bubbles cannot bleed into this one after sign-in / sign-out.
+    if (!mounted) return;
+    setState(() {
+      _messages.clear();
+      _librarySermons.clear();
+      _previousSermons.clear();
+      _isFirstMessage = true;
+    });
   }
 
   Future<void> _persistSessionId() async {
@@ -1066,8 +1084,13 @@ Future<void> _launchSermonDoc(String sermonName) async {
         setState(() {
           sessionId = const Uuid().v4();
           _chatHistoryEntries = [];
+          _messages.clear();
+          _librarySermons.clear();
+          _previousSermons.clear();
+          _isFirstMessage = true;
           _sidebarPanel = _SidebarPanel.sermonLibrary;
         });
+        _persistSessionId();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_s.signedOut)),
         );
@@ -1350,8 +1373,13 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 setState(() {
                   sessionId = const Uuid().v4();
                   _chatHistoryEntries = [];
+                  _messages.clear();
+                  _librarySermons.clear();
+                  _previousSermons.clear();
+                  _isFirstMessage = true;
                   _sidebarPanel = _SidebarPanel.sermonLibrary;
                 });
+                _persistSessionId();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(_s.signedOut)),
                 );
