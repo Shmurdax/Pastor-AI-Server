@@ -129,6 +129,24 @@ def _datetime_from_stripe_ts(value) -> datetime | None:
         return None
 
 
+def _stripe_get(obj, key: str, default=None):
+    """Read a field from a Stripe object or plain dict.
+
+    Newer stripe-python StripeObjects are not dict subclasses and do not
+    implement ``.get``; using ``obj.get(...)`` raises AttributeError and
+    aborts Premium sync after a successful Checkout payment.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    try:
+        value = obj[key]
+    except (KeyError, TypeError, AttributeError):
+        return default
+    return default if value is None else value
+
+
 def _apply_subscription_to_profile(
     profile: Profile,
     *,
@@ -167,8 +185,12 @@ def _apply_subscription_to_profile(
 
 def _billing_period_from_subscription(subscription: dict | stripe.Subscription) -> str:
     try:
-        items = subscription["items"]["data"]
-        interval = items[0]["price"]["recurring"]["interval"]
+        items = _stripe_get(_stripe_get(subscription, "items"), "data") or []
+        if not items:
+            return ""
+        price = _stripe_get(items[0], "price")
+        recurring = _stripe_get(price, "recurring")
+        interval = _stripe_get(recurring, "interval")
         return (
             Profile.BillingPeriod.YEARLY
             if interval == "year"
@@ -344,7 +366,7 @@ class CheckoutSessionStatusView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        ref = str(session.get("client_reference_id") or "")
+        ref = str(_stripe_get(session, "client_reference_id") or "")
         if ref and ref != str(request.user.id):
             return Response(
                 {"detail": "Checkout session does not belong to this user."},
@@ -352,18 +374,21 @@ class CheckoutSessionStatusView(APIView):
             )
 
         profile = _get_or_create_profile(request.user)
-        payment_status = session.get("status")
+        payment_status = _stripe_get(session, "status")
         if payment_status == "complete":
-            period = (session.get("metadata") or {}).get("billing_period") or ""
-            sub_id = session.get("subscription") or ""
-            if isinstance(sub_id, dict):
-                sub_id = sub_id.get("id") or ""
+            metadata = _stripe_get(session, "metadata") or {}
+            period = _stripe_get(metadata, "billing_period") or ""
+            if isinstance(metadata, dict):
+                period = metadata.get("billing_period") or period
+            sub_id = _stripe_get(session, "subscription") or ""
+            if not isinstance(sub_id, str):
+                sub_id = _stripe_get(sub_id, "id") or ""
             period_end = None
             if sub_id:
                 try:
                     subscription = stripe.Subscription.retrieve(sub_id)
                     period_end = _datetime_from_stripe_ts(
-                        subscription.get("current_period_end")
+                        _stripe_get(subscription, "current_period_end")
                     )
                     if not period:
                         period = _billing_period_from_subscription(subscription)
@@ -374,10 +399,13 @@ class CheckoutSessionStatusView(APIView):
                     )
             if period_end is None and period:
                 period_end = _period_end_from_now(period)
+            customer_id = _stripe_get(session, "customer") or ""
+            if not isinstance(customer_id, str):
+                customer_id = _stripe_get(customer_id, "id") or ""
             _apply_subscription_to_profile(
                 profile,
                 status_value=Profile.SubscriptionStatus.ACTIVE,
-                customer_id=session.get("customer") or "",
+                customer_id=customer_id or "",
                 subscription_id=sub_id or "",
                 billing_period=period,
                 current_period_end=period_end,
@@ -424,11 +452,14 @@ class CancelSubscriptionView(APIView):
                     {"detail": str(exc.user_message or exc)},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
-            period_end = _datetime_from_stripe_ts(subscription.get("current_period_end"))
+            period_end = _datetime_from_stripe_ts(
+                _stripe_get(subscription, "current_period_end")
+            )
             _apply_subscription_to_profile(
                 profile,
                 status_value=Profile.SubscriptionStatus.ACTIVE,
-                subscription_id=subscription.get("id") or profile.stripe_subscription_id,
+                subscription_id=_stripe_get(subscription, "id")
+                or profile.stripe_subscription_id,
                 billing_period=_billing_period_from_subscription(subscription)
                 or profile.billing_period,
                 cancel_at_period_end=True,
@@ -502,8 +533,12 @@ class StripeWebhookView(APIView):
         return Response({"received": True})
 
     def _profile_for_stripe_object(self, obj) -> Profile | None:
-        metadata = obj.get("metadata") or {}
-        user_id = metadata.get("user_id") or obj.get("client_reference_id")
+        metadata = _stripe_get(obj, "metadata") or {}
+        user_id = _stripe_get(metadata, "user_id") or _stripe_get(
+            obj, "client_reference_id"
+        )
+        if isinstance(metadata, dict) and not _stripe_get(metadata, "user_id"):
+            user_id = metadata.get("user_id") or user_id
         if user_id:
             try:
                 user = User.objects.get(pk=int(user_id))
@@ -511,9 +546,9 @@ class StripeWebhookView(APIView):
             except (User.DoesNotExist, TypeError, ValueError):
                 pass
 
-        customer_id = obj.get("customer") or ""
-        if isinstance(customer_id, dict):
-            customer_id = customer_id.get("id") or ""
+        customer_id = _stripe_get(obj, "customer") or ""
+        if not isinstance(customer_id, str):
+            customer_id = _stripe_get(customer_id, "id") or ""
         if customer_id:
             return Profile.objects.filter(stripe_customer_id=customer_id).select_related("user").first()
         return None
@@ -521,16 +556,25 @@ class StripeWebhookView(APIView):
     def _on_checkout_completed(self, session) -> None:
         profile = self._profile_for_stripe_object(session)
         if profile is None:
-            logger.warning("checkout.session.completed with no matching user: %s", session.get("id"))
+            logger.warning(
+                "checkout.session.completed with no matching user: %s",
+                _stripe_get(session, "id"),
+            )
             return
-        period = (session.get("metadata") or {}).get("billing_period") or ""
-        sub_id = session.get("subscription") or ""
-        if isinstance(sub_id, dict):
-            sub_id = sub_id.get("id") or ""
+        metadata = _stripe_get(session, "metadata") or {}
+        period = _stripe_get(metadata, "billing_period") or ""
+        if isinstance(metadata, dict):
+            period = metadata.get("billing_period") or period
+        sub_id = _stripe_get(session, "subscription") or ""
+        if not isinstance(sub_id, str):
+            sub_id = _stripe_get(sub_id, "id") or ""
+        customer_id = _stripe_get(session, "customer") or ""
+        if not isinstance(customer_id, str):
+            customer_id = _stripe_get(customer_id, "id") or ""
         _apply_subscription_to_profile(
             profile,
             status_value=Profile.SubscriptionStatus.ACTIVE,
-            customer_id=session.get("customer") or "",
+            customer_id=customer_id or "",
             subscription_id=sub_id or "",
             billing_period=period,
             cancel_at_period_end=False,
@@ -539,12 +583,14 @@ class StripeWebhookView(APIView):
     def _on_subscription_updated(self, subscription) -> None:
         profile = self._profile_for_stripe_object(subscription)
         if profile is None:
-            customer_id = subscription.get("customer") or ""
+            customer_id = _stripe_get(subscription, "customer") or ""
+            if not isinstance(customer_id, str):
+                customer_id = _stripe_get(customer_id, "id") or ""
             profile = Profile.objects.filter(stripe_customer_id=customer_id).first()
         if profile is None:
             return
 
-        stripe_status = subscription.get("status") or ""
+        stripe_status = _stripe_get(subscription, "status") or ""
         if stripe_status in {"active", "trialing"}:
             status_value = Profile.SubscriptionStatus.ACTIVE
         elif stripe_status == "past_due":
@@ -552,27 +598,39 @@ class StripeWebhookView(APIView):
         else:
             status_value = Profile.SubscriptionStatus.CANCELED
 
+        customer_id = _stripe_get(subscription, "customer") or ""
+        if not isinstance(customer_id, str):
+            customer_id = _stripe_get(customer_id, "id") or ""
         _apply_subscription_to_profile(
             profile,
             status_value=status_value,
-            customer_id=subscription.get("customer") or "",
-            subscription_id=subscription.get("id") or "",
+            customer_id=customer_id or "",
+            subscription_id=_stripe_get(subscription, "id") or "",
             billing_period=_billing_period_from_subscription(subscription),
-            cancel_at_period_end=bool(subscription.get("cancel_at_period_end")),
-            current_period_end=_datetime_from_stripe_ts(subscription.get("current_period_end")),
+            cancel_at_period_end=bool(
+                _stripe_get(subscription, "cancel_at_period_end")
+            ),
+            current_period_end=_datetime_from_stripe_ts(
+                _stripe_get(subscription, "current_period_end")
+            ),
         )
 
     def _on_subscription_deleted(self, subscription) -> None:
         profile = self._profile_for_stripe_object(subscription)
         if profile is None:
-            customer_id = subscription.get("customer") or ""
+            customer_id = _stripe_get(subscription, "customer") or ""
+            if not isinstance(customer_id, str):
+                customer_id = _stripe_get(customer_id, "id") or ""
             profile = Profile.objects.filter(stripe_customer_id=customer_id).first()
         if profile is None:
             return
+        customer_id = _stripe_get(subscription, "customer") or ""
+        if not isinstance(customer_id, str):
+            customer_id = _stripe_get(customer_id, "id") or ""
         _apply_subscription_to_profile(
             profile,
             status_value=Profile.SubscriptionStatus.CANCELED,
-            customer_id=subscription.get("customer") or "",
-            subscription_id=subscription.get("id") or "",
+            customer_id=customer_id or "",
+            subscription_id=_stripe_get(subscription, "id") or "",
             cancel_at_period_end=False,
         )

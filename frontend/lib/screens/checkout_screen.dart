@@ -125,27 +125,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
   }
 
-  Future<bool> _confirmSessionIfNeeded() async {
-    final sessionId = _sessionId;
-    if (sessionId == null || sessionId.isEmpty) return false;
-    try {
-      final auth = context.read<AuthController>();
-      _api.setAccessToken(auth.token);
-      final status = await _api.getCheckoutSessionStatus(sessionId);
-      final userJson = status['user'];
-      if (userJson is Map<String, dynamic>) {
-        await auth.applyUser(AuthUser.fromJson(userJson));
-      } else {
-        await auth.refreshMe();
-      }
-      return status['status'] == 'complete';
-    } catch (_) {
-      if (!mounted) return false;
-      await context.read<AuthController>().refreshMe();
-      return false;
-    }
-  }
-
   Future<void> _returnToChatbot() async {
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -157,9 +136,54 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _returnToChatbot();
   }
 
+  Future<bool> _confirmSessionIfNeeded() async {
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.isEmpty) return false;
+    Object? lastError;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+      }
+      try {
+        final auth = context.read<AuthController>();
+        _api.setAccessToken(auth.token);
+        final status = await _api.getCheckoutSessionStatus(sessionId);
+        final userJson = status['user'];
+        if (userJson is Map<String, dynamic>) {
+          await auth.applyUser(AuthUser.fromJson(userJson));
+        } else {
+          await auth.refreshMe();
+        }
+        if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+          return true;
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (!mounted) return false;
+    try {
+      await context.read<AuthController>().refreshMe();
+      if (context.read<AuthController>().hasPremiumAccess) return true;
+    } catch (_) {}
+    if (lastError != null && mounted) {
+      setState(() {
+        _error =
+            'Payment may have succeeded, but Premium status did not refresh. '
+            'Open Subscriptions or sign out/in to retry. '
+            '(${lastError.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')})';
+      });
+    }
+    return false;
+  }
+
   Future<void> _onStripeCheckoutComplete() async {
     final complete = await _confirmSessionIfNeeded();
-    if (!mounted || !complete) return;
+    if (!mounted) return;
+    if (!complete) {
+      // Keep checkout screen visible with error/guidance from confirm helper.
+      return;
+    }
     await _showPurchaseCompleteAndReturn();
   }
 
