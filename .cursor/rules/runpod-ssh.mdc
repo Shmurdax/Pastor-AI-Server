@@ -1,0 +1,25 @@
+---
+description: How agents must SSH into the production RunPod server
+alwaysApply: true
+---
+
+# RunPod SSH
+
+When you need to access the production RunPod server for this project, use this command:
+
+```bash
+ssh -tt rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519
+```
+
+## Required details
+
+- Always use `-tt` (forced PTY). RunPod's proxy rejects non-PTY sessions with `Your SSH client doesn't support PTY`.
+- Key path: `~/.ssh/id_ed25519`
+- If the key file is missing, reconstruct it from the Cloud Agent secret `SSH_Private_Key` (OpenSSH private key; may be stored as a single line — rewrite with proper newlines before use).
+- Project files on the pod live under `/workspace/pastor-ai`.
+- For non-interactive agent use, keep `-tt` and send shell commands over stdin (heredoc), then `exit`.
+
+## Do not
+
+- Do not omit `-tt` / PTY for this host.
+- Do not rely on `root@216.243.220.182 -p 10426` unless that direct port is confirmed open again.
