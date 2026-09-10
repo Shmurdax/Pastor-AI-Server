@@ -41,6 +41,7 @@ from .chat_retrieval import (
     uniqueness_instruction,
 )
 from .chat_system_prompt import (
+    CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
@@ -49,6 +50,7 @@ from .chat_system_prompt import (
     build_chat_system_prompt,
     find_biblical_character_names,
     generation_should_stop,
+    looks_like_brief_social,
     query_expects_long_answer,
     trim_runaway_generation,
 )
@@ -572,50 +574,63 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            search_queries = expand_search_queries(
-                user_query_llm,
-                prior_user_queries,
-                prior_ai_texts=prior_ai_texts,
-                limit=5,
-            )
-            is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
-            candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
-            logger.debug(
-                "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
-                len(search_queries),
-                candidate_k,
-                is_followup,
-                session_id[:18],
-                search_queries,
-            )
-            scored_hits = search_queries_on_store(
-                vectorstore,
-                search_queries,
-                k_per_query=candidate_k,
-            )
-            if RETRIEVAL_THRESHOLD > 0 and len(scored_hits) > RETRIEVAL_K:
-                above = [pair for pair in scored_hits if pair[1] >= RETRIEVAL_THRESHOLD]
-                if len(above) >= max(6, RETRIEVAL_K // 2):
-                    scored_hits = above
-            docs = select_diverse_docs(
-                scored_hits,
-                k=RETRIEVAL_K,
-                bible_ratio=RETRIEVAL_BIBLE_RATIO,
-                max_per_source=RETRIEVAL_MAX_PER_SOURCE,
-                max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
-                used_quotes=used_quotes,
-                used_verses=used_verses,
-                is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                source_key=lambda doc: (
-                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                    or _doc_source_name(doc)
-                ),
-            )
-            context = format_reference_notes(
-                docs,
-                _doc_source_label,
-                max_chars=MAX_CONTEXT_CHARS,
-            )
+            brief_social = looks_like_brief_social(user_query_llm)
+            # Pure greetings should not pull sermon notes—those notes trigger
+            # quote/timestamp dumps. Informational questions keep full RAG.
+            if brief_social:
+                search_queries = [user_query_llm]
+                is_followup = False
+                docs = []
+                context = ""
+                logger.debug(
+                    "Skipping Qdrant for brief social message (session=%s)",
+                    session_id[:18],
+                )
+            else:
+                search_queries = expand_search_queries(
+                    user_query_llm,
+                    prior_user_queries,
+                    prior_ai_texts=prior_ai_texts,
+                    limit=5,
+                )
+                is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
+                candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
+                logger.debug(
+                    "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
+                    len(search_queries),
+                    candidate_k,
+                    is_followup,
+                    session_id[:18],
+                    search_queries,
+                )
+                scored_hits = search_queries_on_store(
+                    vectorstore,
+                    search_queries,
+                    k_per_query=candidate_k,
+                )
+                if RETRIEVAL_THRESHOLD > 0 and len(scored_hits) > RETRIEVAL_K:
+                    above = [pair for pair in scored_hits if pair[1] >= RETRIEVAL_THRESHOLD]
+                    if len(above) >= max(6, RETRIEVAL_K // 2):
+                        scored_hits = above
+                docs = select_diverse_docs(
+                    scored_hits,
+                    k=RETRIEVAL_K,
+                    bible_ratio=RETRIEVAL_BIBLE_RATIO,
+                    max_per_source=RETRIEVAL_MAX_PER_SOURCE,
+                    max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
+                    used_quotes=used_quotes,
+                    used_verses=used_verses,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    source_key=lambda doc: (
+                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                        or _doc_source_name(doc)
+                    ),
+                )
+                context = format_reference_notes(
+                    docs,
+                    _doc_source_label,
+                    max_chars=MAX_CONTEXT_CHARS,
+                )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             logger.debug(
@@ -642,14 +657,17 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
-            system_content = (
-                build_chat_system_prompt(biblical_names=biblical_names)
-                + uniqueness_instruction(
+            uniqueness = ""
+            if not brief_social:
+                uniqueness = uniqueness_instruction(
                     used_quotes,
                     used_verses,
                     is_followup=is_followup,
                     prior_user_query=(prior_user_queries[-1] if prior_user_queries else ""),
                 )
+            system_content = (
+                build_chat_system_prompt(biblical_names=biblical_names)
+                + uniqueness
                 + language_reply_instruction(chat_language)
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -672,7 +690,9 @@ class ChatAPIView(APIView):
             )
 
             human_content = user_query_llm
-            if query_expects_long_answer(user_query_llm):
+            if brief_social:
+                human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
+            elif query_expects_long_answer(user_query_llm):
                 human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
