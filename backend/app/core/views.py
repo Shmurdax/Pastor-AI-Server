@@ -632,7 +632,7 @@ class ChatAPIView(APIView):
                     user_query_llm,
                     prior_user_queries,
                     prior_ai_texts=prior_ai_texts,
-                    limit=5,
+                    limit=7,
                 )
                 is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)

@@ -8,11 +8,13 @@ from core.chat_retrieval import (
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
+    filter_hits_by_topic,
     format_reference_notes,
     is_bible_source,
     is_video_chunk,
     looks_like_followup,
     merge_scored_hits,
+    query_focus_tokens,
     search_queries_on_store,
     select_diverse_docs,
     uniqueness_instruction,
@@ -68,10 +70,108 @@ class ChatRetrievalTests(unittest.TestCase):
             queries,
         )
 
-    def test_first_turn_adds_keyword_and_sermon_query(self):
+    def test_first_turn_embeds_topic_not_the_full_prompt(self):
         queries = expand_search_queries("What should I say to someone who is gay?")
-        self.assertEqual(queries[0], "What should I say to someone who is gay?")
+        joined = " | ".join(queries).lower()
+        self.assertTrue(queries[0].lower() == "gay" or queries[0].lower().startswith("gay"), queries)
+        self.assertIn("gay", joined)
         self.assertTrue(any("gay" in item.lower() and "pastor don" in item.lower() for item in queries))
+        self.assertFalse(any("what should i say" in item.lower() for item in queries), queries)
+
+    def test_generate_a_sermon_embeds_social_issue_not_template(self):
+        queries = expand_search_queries(
+            "Generate a sermon based on homosexuality and abortion",
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("homosexuality", joined)
+        self.assertIn("abortion", joined)
+        self.assertTrue(
+            queries[0].lower() in {"homosexuality abortion", "abortion homosexuality"}
+            or ("homosexuality" in queries[0].lower() and "abortion" in queries[0].lower()),
+            queries,
+        )
+        self.assertFalse(any("generate" in item.lower() for item in queries), queries)
+        self.assertFalse(any(item.lower().startswith("generate a sermon") for item in queries), queries)
+        focus = query_focus_tokens("Generate a sermon based on homosexuality and abortion")
+        self.assertIn("homosexuality", focus)
+        self.assertIn("abortion", focus)
+        self.assertNotIn("generate", focus)
+        self.assertNotIn("sermon", focus)
+
+    def test_theology_prompt_embeds_predestination_and_salvation(self):
+        queries = expand_search_queries(
+            "Write me a sermon about predestination and salvation",
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("predestination", joined)
+        self.assertIn("salvation", joined)
+        self.assertTrue("predestination" in queries[0].lower() or "salvation" in queries[0].lower(), queries)
+        self.assertFalse(any("write" in item.lower() for item in queries), queries)
+
+    def test_cain_and_abel_queries_lead_with_names_not_give_me_a_sermon(self):
+        queries = expand_search_queries(
+            "Give me a sermon based on the story of Cain and Abel",
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertTrue(queries[0].lower().startswith("cain"), queries)
+        self.assertIn("abel", queries[0].lower())
+        self.assertIn("genesis 4", joined)
+        focus = query_focus_tokens("Give me a sermon based on the story of Cain and Abel")
+        self.assertIn("cain", focus)
+        self.assertIn("abel", focus)
+        self.assertNotIn("sermon", focus)
+        self.assertNotIn("story", focus)
+        self.assertNotIn("based", focus)
+
+    def test_named_story_drops_unrelated_intro_video(self):
+        cain_video = _doc(
+            "Pastor Don teaches Kane and Able brought offerings in Genesis.",
+            source="walk_through_word.mp4",
+            title="Walk Through the Word",
+            content_type="video_transcript",
+            timestamp="12:10–14:02",
+        )
+        intro = _doc(
+            "Welcome everyone give me a sermon based on living your best life today.",
+            source="april_7.mp4",
+            title="April 7",
+            content_type="video_transcript",
+            timestamp="00:00–02:31",
+        )
+        notes = _doc(
+            "Cain and Abel show the heart of true worship and offering.",
+            source="better_days.pdf",
+            title="Better Days Ahead",
+            content_type="document",
+        )
+        query = "Give me a sermon based on the story of Cain and Abel"
+        kept = filter_hits_by_topic(
+            [(intro, 0.93), (notes, 0.88), (cain_video, 0.81)],
+            query,
+            retrieval_k=24,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertIn("walk_through_word.mp4", sources)
+        self.assertIn("better_days.pdf", sources)
+        self.assertNotIn("april_7.mp4", sources)
+
+        selected = select_diverse_docs(
+            [(intro, 0.93), (notes, 0.88), (cain_video, 0.81)],
+            k=6,
+            bible_ratio=0.3,
+            video_ratio=0.45,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            is_video=is_video_chunk,
+            source_key=lambda doc: doc.metadata["source"],
+            query=query,
+        )
+        selected_sources = [doc.metadata["source"] for doc in selected]
+        self.assertIn("walk_through_word.mp4", selected_sources)
+        self.assertNotIn("april_7.mp4", selected_sources)
 
     def test_looks_like_followup(self):
         self.assertTrue(looks_like_followup("Can you further clarify that guidance?"))

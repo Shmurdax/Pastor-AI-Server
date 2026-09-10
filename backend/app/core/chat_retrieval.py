@@ -172,6 +172,93 @@ _VERSE_RE = re.compile(
 )
 _TOKEN_RE = re.compile(r"[a-z0-9']{3,}")
 
+# Generic ask-phrasing that should not be embedded or count as topical overlap.
+# Keep social-issue and theology terms (homosexuality, abortion, predestination,
+# salvation, etc.) — only drop instruction/template language.
+_GENERIC_FOCUS_STOPWORDS = frozenset(
+    {
+        "about",
+        "answer",
+        "based",
+        "chapter",
+        "compose",
+        "create",
+        "draft",
+        "essay",
+        "explain",
+        "generate",
+        "give",
+        "help",
+        "homily",
+        "lesson",
+        "lessons",
+        "like",
+        "make",
+        "message",
+        "messages",
+        "need",
+        "notes",
+        "outline",
+        "paper",
+        "passage",
+        "passages",
+        "please",
+        "prepare",
+        "produce",
+        "prompt",
+        "question",
+        "request",
+        "response",
+        "sermon",
+        "sermons",
+        "someone",
+        "something",
+        "stories",
+        "story",
+        "talk",
+        "talks",
+        "teach",
+        "teaching",
+        "teachings",
+        "tell",
+        "topic",
+        "topics",
+        "verse",
+        "verses",
+        "video",
+        "videos",
+        "want",
+        "would",
+        "write",
+        "written",
+    }
+)
+
+# Whisper often misspells short biblical names; match those variants in transcripts.
+_WHISPER_NAME_ALIASES = {
+    "abel": ("abel", "able"),
+    "abraham": ("abraham", "abram"),
+    "cain": ("cain", "cane", "kane", "kayn"),
+    "elijah": ("elijah", "elija"),
+    "isaac": ("isaac", "issac"),
+    "moses": ("moses", "mozes"),
+    "noah": ("noah", "noa"),
+    "pharaoh": ("pharaoh", "pharoah"),
+    "sarah": ("sarah", "sarai"),
+}
+
+# When several names appear together, add the usual NKJV landing passage.
+_NAME_PASSAGES = {
+    frozenset({"cain", "abel"}): "Genesis 4",
+    frozenset({"cain"}): "Genesis 4",
+    frozenset({"abel"}): "Genesis 4",
+    frozenset({"noah"}): "Genesis 6",
+    frozenset({"abraham", "isaac"}): "Genesis 22",
+    frozenset({"david", "goliath"}): "1 Samuel 17",
+    frozenset({"moses"}): "Exodus",
+    frozenset({"jonah"}): "Jonah 1",
+}
+
 
 def bible_source_markers() -> tuple[str, ...]:
     raw = os.environ.get("BIBLE_SOURCE_MARKERS", "")
@@ -275,21 +362,120 @@ def looks_like_followup(query: str) -> bool:
 
 
 def keyword_search_query(text: str) -> str:
+    """Content words for embeddings: drop filler like \"generate a sermon\"."""
     terms = [
         token
         for token in re.findall(r"[A-Za-z']{3,}", text or "")
         if token.lower() not in _QUESTION_STOPWORDS
+        and token.lower() not in _GENERIC_FOCUS_STOPWORDS
+        and token.lower() not in _ENTITY_NOISE
     ]
     return " ".join(terms).strip()
 
 
+_ENTITY_NOISE = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "do",
+        "for",
+        "from",
+        "her",
+        "him",
+        "his",
+        "if",
+        "in",
+        "is",
+        "it",
+        "its",
+        "me",
+        "my",
+        "no",
+        "not",
+        "of",
+        "on",
+        "or",
+        "our",
+        "she",
+        "so",
+        "the",
+        "to",
+        "us",
+        "we",
+        "with",
+        "you",
+        "your",
+    }
+)
+
+
+def retrieval_bible_names(text: str) -> list[str]:
+    """Character names from the query, ignoring Bible-list collisions like ``the`` / ``on``."""
+    from .chat_system_prompt import find_biblical_character_names
+
+    names = []
+    seen: set[str] = set()
+    for name in find_biblical_character_names(text):
+        key = str(name).lower().strip()
+        if len(key) < 3 or key in _ENTITY_NOISE or key in seen:
+            continue
+        seen.add(key)
+        names.append(str(name).strip())
+    return names
+
+
+def query_entity_tokens(text: str) -> frozenset[str]:
+    """Biblical names (plus Whisper aliases) the query is actually about."""
+    expanded: set[str] = set()
+    for name in retrieval_bible_names(text):
+        key = name.lower()
+        expanded.add(key)
+        expanded.update(_WHISPER_NAME_ALIASES.get(key, ()))
+    return frozenset(expanded)
+
+
+def story_passage_for_query(text: str) -> str:
+    names = frozenset(name.lower() for name in retrieval_bible_names(text))
+    if not names:
+        return ""
+    if names in _NAME_PASSAGES:
+        return _NAME_PASSAGES[names]
+    for key, passage in _NAME_PASSAGES.items():
+        if key.issubset(names):
+            return passage
+    return ""
+
+
 def query_focus_tokens(text: str) -> frozenset[str]:
-    """Distinctive query words used for topical overlap (not generic pastoral vocabulary)."""
+    """Distinctive query words used for topical overlap.
+
+    Named Bible-story questions use the character names, not filler like
+    \"sermon\" / \"story\" / \"based\" that matches almost every pastoral clip.
+    """
+    entities = query_entity_tokens(text)
+    if entities:
+        return entities
     return frozenset(
         token.lower()
         for token in keyword_search_query(text).split()
-        if len(token) >= 4
+        if len(token) >= 4 and token.lower() not in _GENERIC_FOCUS_STOPWORDS
     )
+
+
+def _blob_has_token(hay: str, token: str) -> bool:
+    cleaned = (token or "").strip().lower()
+    if not cleaned or not hay:
+        return False
+    if len(cleaned) <= 4:
+        return bool(re.search(rf"\b{re.escape(cleaned)}\b", hay))
+    return cleaned in hay
 
 
 def source_stem_key(label: str) -> str:
@@ -326,7 +512,7 @@ def topic_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     hay = _metadata_search_blob(doc)
     if not hay:
         return 0.0
-    hits = sum(1 for token in tokens if token in hay)
+    hits = sum(1 for token in tokens if _blob_has_token(hay, token))
     return hits / len(tokens)
 
 
@@ -339,17 +525,25 @@ def filter_hits_by_topic(
     """Drop embedding-only matches that share no distinctive query words.
 
     Vector search is already ANN (not a slow scan). Extra *time* does not help;
-    extra *candidates + lexical overlap* does. Keep the full list if too few
-    chunks mention the question's own terms.
+    extra *candidates + lexical overlap* does. Named-entity questions keep only
+    chunks that mention those names (or Whisper aliases) instead of padding with
+    unrelated sermon intros.
     """
     tokens = query_focus_tokens(query)
-    if len(tokens) < 2 or not scored_hits:
+    entities = query_entity_tokens(query)
+    if not tokens or not scored_hits:
         return scored_hits
     ranked = []
     for doc, score in scored_hits:
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    if entities:
+        # A Cain/Abel question with 1–3 true hits should not fall back to 24
+        # generic \"sermon\" clips just to fill the quota.
+        if on_topic:
+            return on_topic
+        return scored_hits
     min_keep = max(6, retrieval_k)
     if len(on_topic) >= min_keep:
         return on_topic
@@ -386,13 +580,33 @@ def expand_search_queries(
             break
     followup = bool(last_prior) and looks_like_followup(current_q)
 
+    bible_names = retrieval_bible_names(current_q)
+    focus = keyword_search_query(current_q)
+    if bible_names:
+        joined = " ".join(bible_names)
+        add(joined)
+        add(f"Pastor Don Nordin {joined}")
+        passage = story_passage_for_query(current_q)
+        if passage:
+            add(f"{passage} {joined}")
+        aliases = []
+        for name in bible_names:
+            for alias in _WHISPER_NAME_ALIASES.get(name.lower(), ()):
+                if alias.lower() != name.lower():
+                    aliases.append(alias)
+        if aliases:
+            add(" ".join(bible_names + aliases))
+    elif focus:
+        # Embed the topical core first (homosexuality, salvation, …), not
+        # "generate a sermon based on …".
+        add(focus)
+        add(f"Pastor Don Nordin {focus}")
+
     # For follow-ups, lead with topic-carrying rewrites so retrieval stays on
     # the prior pastoral question instead of a vague "clarify those steps".
     if followup and last_prior:
-        add(f"{last_prior} {current_q}")
-        prior_keywords = keyword_search_query(f"{last_prior} {current_q}")
-        if prior_keywords:
-            add(prior_keywords)
+        prior_focus = keyword_search_query(f"{last_prior} {current_q}") or focus
+        add(prior_focus)
         last_ai = ""
         for item in reversed(list(prior_ai_texts or [])):
             text = str(item or "").strip()
@@ -409,22 +623,23 @@ def expand_search_queries(
             step_text = " ".join(part for pair in step_bits for part in pair if part)
             ai_keywords = keyword_search_query((step_text + " " + last_ai[:900]).strip())
             if ai_keywords:
-                add(f"{ai_keywords} {current_q}")
-                add(f"{last_prior} {ai_keywords}")
+                add(f"{ai_keywords} {focus or current_q}")
+                add(f"{keyword_search_query(last_prior)} {ai_keywords}".strip())
 
-    add(current_q)
+    # Only embed the raw prompt when it already is the topical core.
+    if focus and current_q.lower() == focus.lower():
+        add(current_q)
     if last_prior and not followup:
-        add(f"{last_prior} {current_q}")
+        add(keyword_search_query(f"{last_prior} {current_q}"))
 
-    keywords = keyword_search_query(current_q)
-    if keywords and keywords.lower() != current_q.lower():
-        add(keywords)
+    if focus and focus.lower() != current_q.lower():
+        add(focus)
 
     if last_prior and looks_like_followup(current_q):
         add(keyword_search_query(f"{last_prior} {current_q}"))
 
-    if not last_prior and keywords:
-        add(f"Pastor Don Nordin sermon {keywords}")
+    if not last_prior and focus:
+        add(f"Pastor Don Nordin {focus}")
 
     return queries[: max(1, limit)]
 
@@ -745,7 +960,13 @@ def select_diverse_docs(
         bible_target = max(1, min(k - 1, int(round(k * bible_ratio))))
     sermon_target = k - bible_target
 
-    has_video = any(not item.is_bible and item.is_video for item in chunks)
+    entity_tokens = query_entity_tokens(query)
+    has_video = any(
+        not item.is_bible
+        and item.is_video
+        and (not entity_tokens or item.topic_overlap > 0)
+        for item in chunks
+    )
     has_document = any(not item.is_bible and not item.is_video for item in chunks)
     if sermon_target <= 1 or not (has_video and has_document):
         video_target = sermon_target if has_video and not has_document else 0
@@ -780,9 +1001,18 @@ def select_diverse_docs(
             return False
         if prefer_video is True and (chunk.is_bible or not chunk.is_video):
             return False
+        if prefer_video is True and entity_tokens and chunk.topic_overlap <= 0:
+            return False
         if prefer_video is False and (chunk.is_bible or chunk.is_video):
             return False
-        if query and not chunk.is_bible and chunk.topic_overlap <= 0:
+        if entity_tokens and not chunk.is_bible and chunk.topic_overlap <= 0:
+            return False
+        if (
+            query
+            and not entity_tokens
+            and not chunk.is_bible
+            and chunk.topic_overlap <= 0
+        ):
             has_topical = any(
                 (not other.is_bible)
                 and other.topic_overlap > 0
@@ -973,7 +1203,10 @@ def ensure_source_media_mix(
 
     if by_stem:
         _inject(_is_note)
-        _inject(video_fn)
+        if query_entity_tokens(query):
+            _inject(lambda doc: video_fn(doc) and topic_overlap_score(doc, focus) > 0)
+        else:
+            _inject(video_fn)
 
     while len(picked) < min(want, len(by_stem)):
         added = False
