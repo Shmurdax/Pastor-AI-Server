@@ -1590,10 +1590,16 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           opacity: _fadeAnimation.value,
                           child: Transform.scale(
                             scale: _wobbleAnimation.value,
-                            child: Image.asset(
-                              'assets/images/nordins_transparent_logo.png',
-                              height: 18,
-                              width: 18,
+                            child: ColorFiltered(
+                              colorFilter: const ColorFilter.mode(
+                                Colors.white,
+                                BlendMode.srcIn,
+                              ),
+                              child: Image.asset(
+                                'assets/images/nordins_transparent_logo.png',
+                                height: 18,
+                                width: 18,
+                              ),
                             ),
                           ),
                         ),
