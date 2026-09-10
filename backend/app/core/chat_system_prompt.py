@@ -189,7 +189,9 @@ LENGTH_STEER = (
     "few bullet points only where a list actually helps—never make the whole "
     "reply an outline. Quote Pastor Don and/or Susan Nordin word-for-word from "
     "the notes—choose lines that have not already been quoted in this chat—and "
-    "apply them pastorally. Do not stop after one sentence. If the "
+    "apply them pastorally. Do not stop after one sentence. When you reach a "
+    "clear closing paragraph (for example \"In conclusion\"), stop there—do not "
+    "pad with filler, synonym lists, or extra languages. If the "
     "question says summarize, compare, distinguish, or asks for one "
     "illustration, still cover the notes in this ~2000-character teaching.\n\n"
     "User question:\n"
@@ -202,7 +204,8 @@ CONTINUE_STEER = (
     "list if it helps, more word-for-word quotations from Pastor Don and/or "
     "Susan Nordin that appear in the notes and were not used earlier in this "
     "chat, and pastoral application until the "
-    "answer is about 2000 characters. If the question said summarize or asked "
+    "answer is about 2000 characters. Then stop at a clear closing—do not append "
+    "filler after \"In conclusion.\" If the question said summarize or asked "
     "for one story, that is not permission to stop after a short add-on."
 )
 
@@ -214,6 +217,17 @@ MAX_EXPANSION_PASSES = 1
 _BRIEF_QUERY_RE = re.compile(
     r"^\s*(hi|hello|hey|thanks|thank you|good morning|good afternoon|"
     r"good evening|ok|okay|bye|amen)[\s!.?]*$",
+    re.IGNORECASE,
+)
+_CONCLUSION_RE = re.compile(
+    r"(?im)(?:^|\n)\s*(?:\*\*)?(?:in conclusion|in closing|to conclude|to sum up|"
+    r"in summary|finally)[,:]?\s+"
+)
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]")
+_LEGALESE_RE = re.compile(
+    r"\b(respective|pertaining|thereof|herein|aforementioned|constituencies|"
+    r"demographic|indefinitely|perpetuated|emulation|ad infinitum|inclusive all|"
+    r"collective good|public welfare)\b",
     re.IGNORECASE,
 )
 
@@ -230,9 +244,118 @@ def answer_char_count(answer: str) -> int:
     return len((answer or "").strip())
 
 
+def answer_has_conclusion(answer: str) -> bool:
+    return bool(_CONCLUSION_RE.search(answer or ""))
+
+
+def _clause_looks_degenerate(clause: str) -> bool:
+    words = [w for w in re.findall(r"[A-Za-z']+", clause)]
+    if _CJK_RE.search(clause):
+        return True
+    if len(words) >= 55:
+        return True
+    if len(words) >= 28:
+        unique = {w.lower() for w in words}
+        if len(unique) / max(len(words), 1) < 0.58:
+            return True
+        if len(_LEGALESE_RE.findall(clause)) >= 3:
+            return True
+    return False
+
+
+def text_looks_degenerate(text: str) -> bool:
+    sample = (text or "").strip()
+    if not sample:
+        return False
+    if _CJK_RE.search(sample):
+        return True
+    if len(_LEGALESE_RE.findall(sample)) >= 4:
+        return True
+    for clause in re.split(r"[.!?]\s+", sample):
+        if _clause_looks_degenerate(clause):
+            return True
+    return False
+
+
+def generation_should_stop(answer: str) -> bool:
+    """True when streaming should halt: conclusion reached and a runaway tail started."""
+    text = (answer or "").strip()
+    if not text or not answer_has_conclusion(text):
+        return False
+    if answer_char_count(text) < 900:
+        return False
+    tail = text[-500:]
+    return text_looks_degenerate(tail) or bool(_CJK_RE.search(tail))
+
+
+def trim_runaway_generation(answer: str) -> str:
+    """
+    Cut filler after a natural close, and strip synonym-loop / CJK degeneration.
+
+    Length-steering sometimes makes the model keep writing after \"In conclusion,\"
+    drifting into repetitive legalese or another script. Keep the pastoral close.
+    """
+    text = (answer or "").rstrip()
+    if not text:
+        return ""
+
+    cjk = _CJK_RE.search(text)
+    if cjk:
+        text = text[: cjk.start()].rstrip(" \n\t,;:.-")
+
+    match = None
+    for match in _CONCLUSION_RE.finditer(text):
+        pass
+    if match is not None:
+        head = text[: match.start()].rstrip()
+        # Regex may consume leading newlines; start the closing at the keyword.
+        rest = text[match.start() :].lstrip("\n").lstrip()
+        paragraphs = re.split(r"\n\s*\n", rest, maxsplit=1)
+        closing = paragraphs[0].strip()
+        leftover = paragraphs[1].strip() if len(paragraphs) > 1 else ""
+        # If the closing paragraph itself ran away, keep the first sane sentences.
+        if text_looks_degenerate(closing):
+            sentences = re.split(r"(?<=[.!?])\s+", closing)
+            keep: list[str] = []
+            for sentence in sentences:
+                if keep and _clause_looks_degenerate(sentence):
+                    break
+                keep.append(sentence)
+                if len(keep) >= 3:
+                    break
+            closing = " ".join(keep).strip()
+        if leftover and (
+            text_looks_degenerate(leftover)
+            or leftover.lower().startswith("this approach ensures")
+            or len(leftover.split()) > 80
+        ):
+            text = f"{head}\n\n{closing}".strip() if head else closing
+        else:
+            body = closing
+            if leftover:
+                body = f"{closing}\n\n{leftover}"
+            text = f"{head}\n\n{body}".strip() if head else body
+
+    if text_looks_degenerate(text[-700:] if len(text) > 700 else text):
+        # Fall back: cut at the last clean sentence boundary before the mess.
+        cut = text
+        for match in re.finditer(r"[.!?]\s+", text):
+            prefix = text[: match.end()]
+            if not text_looks_degenerate(prefix[-400:]):
+                cut = prefix.rstrip()
+        text = cut
+
+    return text.strip()
+
+
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
     """True when a teaching question got a short brush-off instead of a full reply."""
     if not query_expects_long_answer(query):
+        return False
+    # Already closed cleanly—do not force more tokens (that causes filler after the close).
+    if answer_has_conclusion(answer) and answer_char_count(answer) >= 1000:
+        return False
+    if text_looks_degenerate(answer):
         return False
     return answer_char_count(answer) < MIN_TEACHING_CHARS
 
@@ -333,7 +456,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "<response_policy>\n"
         "LENGTH: A teaching answer should be about 2000 characters (roughly 300–360 words). "
         "Do not stop after one sentence, and do not write a long multi-page essay. "
-        "Cover the notes, quote Pastor Don and/or Susan, weave in NKJV, and apply it—then stop.\n"
+        "Cover the notes, quote Pastor Don and/or Susan, weave in NKJV, and apply it—then stop. "
+        "Once you write a closing paragraph (\"In conclusion,\" \"In closing,\" or similar), end the "
+        "reply immediately. Never pad afterward with filler, synonym chains, legalese, or another language.\n"
         "FORMAT: Write mostly in connected paragraphs. Open with a pastoral answer in prose—never open "
         "with a Scripture citation, a verse block, or an outline heading. Weave NKJV quotations into the "
         "sentences where they support the point (for example: As John 1:14 (NKJV) says, \"...\"). "
@@ -369,10 +494,11 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</safety_protocol>\n\n"
 
         "<length_close>\n"
-        "Do not end this turn until a teaching answer is about 2000 characters, written mostly in "
-        "paragraphs with at most a short bullet list, with Scripture woven into the prose (not stacked "
-        "at the top), word-for-word quotes from Pastor Don and/or Susan when the notes allow, and "
-        "pastoral application. A one-sentence finish or an all-bullet outline is incomplete, "
-        "including on follow-up turns and questions that say summarize.\n"
+        "Aim for about 2000 characters of mixed paragraphs (with at most a short bullet list), "
+        "Scripture woven into the prose (not stacked at the top), word-for-word quotes from Pastor "
+        "Don and/or Susan when the notes allow, and pastoral application. A one-sentence finish or "
+        "an all-bullet outline is incomplete, including on follow-up turns and questions that say "
+        "summarize. When the teaching is complete—especially after an \"In conclusion\" paragraph—"
+        "stop. Do not keep writing to fill space.\n"
         "</length_close>\n"
     )

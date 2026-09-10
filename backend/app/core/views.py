@@ -47,7 +47,9 @@ from .chat_system_prompt import (
     answer_needs_expansion,
     build_chat_system_prompt,
     find_biblical_character_names,
+    generation_should_stop,
     query_expects_long_answer,
+    trim_runaway_generation,
 )
 from .chat_translate import translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -498,11 +500,13 @@ class ChatAPIView(APIView):
 
         def prepare_chat():
             llm = get_chat_llm(
-                temperature=0.85,
+                # Slightly lower temperature + higher frequency_penalty reduces
+                # post-conclusion synonym loops / language mixing on long answers.
+                temperature=0.75,
                 max_tokens=CHAT_MAX_TOKENS,
                 timeout=CHAT_TIMEOUT_S,
-                presence_penalty=0.4,
-                frequency_penalty=0.35,
+                presence_penalty=0.3,
+                frequency_penalty=0.5,
             )
             target_message = None
             if regenerate:
@@ -718,8 +722,12 @@ class ChatAPIView(APIView):
                 assembled = []
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
+                    joined = "".join(assembled)
                     yield _sse({"type": "delta", "text": text})
-                answer = "".join(assembled)
+                    if generation_should_stop(joined):
+                        logger.info("Stopping chat stream after conclusion runaway detected")
+                        break
+                answer = trim_runaway_generation("".join(assembled))
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
@@ -743,13 +751,20 @@ class ChatAPIView(APIView):
                                 separator_sent = True
                             extra_parts.append(text)
                             yield _sse({"type": "delta", "text": text})
+                            tentative = trim_runaway_generation(
+                                _join_continuation(answer, "".join(extra_parts))
+                            )
+                            if generation_should_stop(tentative):
+                                logger.info("Stopping continuation after conclusion runaway detected")
+                                break
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
                     extra = "".join(extra_parts).strip()
                     if not extra:
                         break
-                    answer = _join_continuation(answer, extra)
+                    answer = trim_runaway_generation(_join_continuation(answer, extra))
+                answer = trim_runaway_generation(answer)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -786,7 +801,7 @@ class ChatAPIView(APIView):
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
-            answer = response.content or ""
+            answer = trim_runaway_generation(response.content or "")
             expansion_pass = 0
             while (
                 answer_needs_expansion(answer, query=user_query_llm)
@@ -820,7 +835,8 @@ class ChatAPIView(APIView):
                         break
                 if not extra_text:
                     break
-                answer = _join_continuation(answer, extra_text)
+                answer = trim_runaway_generation(_join_continuation(answer, extra_text))
+            answer = trim_runaway_generation(answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
