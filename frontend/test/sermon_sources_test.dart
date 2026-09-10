@@ -57,6 +57,32 @@ void main() {
     ]);
   });
 
+  test('parseSermonSources caps at five unique sermons', () {
+    final sources = parseSermonSources([
+      'One.pdf',
+      'Two.pdf',
+      'Three.pdf',
+      'Four.pdf',
+      'Five.pdf',
+      'Six.pdf',
+    ]);
+    expect(sources.length, 5);
+  });
+
+  test('parseSermonSources dedupes timestamp clips from the same video', () {
+    final sources = parseSermonSources([
+      'May 17 [09:44–10:37]',
+      'May 17 [11:00–12:00]',
+      'Elders Charge.pdf',
+      'Boundaries.pdf',
+    ]);
+    expect(sources, [
+      'May 17 [09:44–10:37]',
+      'Elders Charge',
+      'Boundaries',
+    ]);
+  });
+
   test('parseSermonSourceRef extracts stem and seek seconds', () {
     final ref = parseSermonSourceRef('June 30 [08:50–09:30]');
     expect(ref.displayStem, 'June 30');

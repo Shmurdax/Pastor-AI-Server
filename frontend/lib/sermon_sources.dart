@@ -134,11 +134,16 @@ List<String> parseSermonSources(
     final original = item.toString().trim();
     if (original.isEmpty) continue;
     if (!includeVideos && isVideoSermonSource(original)) continue;
-    final value = normalizeSermonSourceLabel(original);
-    if (value.isEmpty) continue;
-    if (!includeVideos && isVideoSermonSource(value)) continue;
-    if (!seen.add(value)) continue;
-    out.add(value);
+    final display = isVideoSermonSource(original)
+        ? original
+        : normalizeSermonSourceLabel(original);
+    if (display.isEmpty) continue;
+    final stem = parseSermonSourceRef(display).displayStem;
+    final dedupeKey = stem.isEmpty ? display : stem;
+    if (dedupeKey.isEmpty) continue;
+    if (!includeVideos && isVideoSermonSource(dedupeKey)) continue;
+    if (!seen.add(dedupeKey.toLowerCase())) continue;
+    out.add(display);
     if (out.length >= limit) break;
   }
   return out;

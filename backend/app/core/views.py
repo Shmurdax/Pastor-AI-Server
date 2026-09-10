@@ -35,6 +35,7 @@ from .chat_retrieval import (
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
+    filter_hits_by_topic,
     format_reference_notes,
     is_bible_source,
     is_video_chunk,
@@ -70,9 +71,11 @@ RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.40"))
 RETRIEVAL_VIDEO_RATIO = float(os.getenv("RETRIEVAL_VIDEO_RATIO", "0.45"))
 RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.8"))
-RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "5"))
+RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "8"))
 RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "4"))
 RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "2"))
+RETRIEVAL_SOURCE_MIN = int(os.getenv("RETRIEVAL_SOURCE_MIN", "3"))
+RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
@@ -650,6 +653,11 @@ class ChatAPIView(APIView):
                     threshold=RETRIEVAL_THRESHOLD,
                     retrieval_k=RETRIEVAL_K,
                 )
+                scored_hits = filter_hits_by_topic(
+                    scored_hits,
+                    user_query_llm,
+                    retrieval_k=RETRIEVAL_K,
+                )
                 docs = select_diverse_docs(
                     scored_hits,
                     k=RETRIEVAL_K,
@@ -665,6 +673,7 @@ class ChatAPIView(APIView):
                         str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
                         or _doc_source_name(doc)
                     ),
+                    query=user_query_llm,
                 )
                 context = format_reference_notes(
                     docs,
@@ -762,18 +771,20 @@ class ChatAPIView(APIView):
                 }
             )
 
-        def _response_sources(docs, answer: str):
-            """Prefer sources actually cited; keep a notes+video mix when both were retrieved."""
+        def _response_sources(docs, answer: str, query: str = ""):
+            """3–5 distinct sources: cited first, then topical retrieved notes/videos."""
             if not docs:
                 return []
-            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=8)
+            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX)
             preferred = cited if cited else _unique_sources(docs)
             return ensure_source_media_mix(
                 preferred,
                 docs,
                 _doc_source_label,
                 is_video=is_video_chunk,
-                limit=8,
+                min_count=RETRIEVAL_SOURCE_MIN,
+                limit=RETRIEVAL_SOURCE_MAX,
+                query=query,
             )
 
         def _generate_tokens(prepared):
@@ -878,7 +889,11 @@ class ChatAPIView(APIView):
                 done = {
                     "type": "done",
                     "answer": answer,
-                    "sources": _response_sources(prepared["docs"], answer),
+                    "sources": _response_sources(
+                        prepared["docs"],
+                        answer,
+                        query=user_query_llm,
+                    ),
                 }
                 if saved_message is not None:
                     done["message_id"] = saved_message.id
@@ -951,7 +966,11 @@ class ChatAPIView(APIView):
             return Response(
                 _chat_payload(
                     answer,
-                    sources=_response_sources(prepared["docs"], answer),
+                    sources=_response_sources(
+                        prepared["docs"],
+                        answer,
+                        query=user_query_llm,
+                    ),
                     message_id=None if saved_message is None else saved_message.id,
                 ),
                 status=status.HTTP_200_OK,

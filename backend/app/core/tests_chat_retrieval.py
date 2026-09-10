@@ -193,9 +193,75 @@ class ChatRetrievalTests(unittest.TestCase):
             ts = meta.get("timestamp")
             return f"{name} [{ts}]" if ts else name
 
-        mixed = ensure_source_media_mix(["Elders Charge"], docs, label, limit=5)
+        mixed = ensure_source_media_mix(["Elders Charge"], docs, label, limit=5, min_count=2)
         self.assertIn("Elders Charge", mixed)
         self.assertTrue(any("May 23" in item for item in mixed), mixed)
+
+    def test_ensure_source_media_mix_fills_three_to_five(self):
+        docs = [
+            _doc("women pastors elders complementarian teaching", source="elders.pdf", title="Elders Charge", content_type="document"),
+            _doc("women in ministry egalitarian notes", source="boundaries.pdf", title="Christian Boundaries", content_type="document"),
+            _doc("discipleship of leaders in the church", source="d101.pdf", title="Discipleship 101", content_type="document"),
+            _doc(
+                "women pastors elders preachers complementarian video",
+                source="may_23.mp4",
+                title="Women in Leadership",
+                content_type="video_transcript",
+                timestamp="10:45–12:43",
+            ),
+            _doc(
+                "unrelated weather announcement from sunday",
+                source="may_17.mp4",
+                title="May 17",
+                content_type="video_transcript",
+                timestamp="09:44–10:37",
+            ),
+        ]
+
+        def label(doc):
+            meta = doc.metadata
+            name = meta.get("title") or meta["source"]
+            ts = meta.get("timestamp")
+            return f"{name} [{ts}]" if ts else name
+
+        query = "Women as pastors elders preachers complementarian egalitarian"
+        mixed = ensure_source_media_mix(
+            ["Elders Charge"],
+            docs,
+            label,
+            min_count=3,
+            limit=5,
+            query=query,
+        )
+        self.assertGreaterEqual(len(mixed), 3)
+        self.assertLessEqual(len(mixed), 5)
+        self.assertIn("Elders Charge", mixed)
+        self.assertTrue(any("Women in Leadership" in item for item in mixed), mixed)
+        self.assertFalse(any(item.startswith("May 17") for item in mixed), mixed)
+
+    def test_filter_hits_by_topic_drops_unrelated_when_enough_on_topic(self):
+        from core.chat_retrieval import filter_hits_by_topic
+
+        on_topic = _doc(
+            "complementarian egalitarian women pastors elders preachers",
+            source="elders.pdf",
+            title="Elders Charge",
+        )
+        off_topic = _doc(
+            "thirty things for a blessed life prosperity list",
+            source="may_17.mp4",
+            title="May 17",
+            content_type="video_transcript",
+        )
+        hits = [(on_topic, 0.91) for _ in range(8)] + [(off_topic, 0.89)]
+        kept = filter_hits_by_topic(
+            hits,
+            "Women as pastors elders preachers complementarian egalitarian",
+            retrieval_k=6,
+        )
+        texts = " ".join(doc.page_content for doc, _score in kept)
+        self.assertIn("complementarian", texts)
+        self.assertNotIn("thirty things", texts)
 
     def test_novelty_skips_already_quoted_chunk_when_alternatives_exist(self):
         used_quote = "I am not sure how the term Gay became part of the lexicon"

@@ -283,6 +283,81 @@ def keyword_search_query(text: str) -> str:
     return " ".join(terms).strip()
 
 
+def query_focus_tokens(text: str) -> frozenset[str]:
+    """Distinctive query words used for topical overlap (not generic pastoral vocabulary)."""
+    return frozenset(
+        token.lower()
+        for token in keyword_search_query(text).split()
+        if len(token) >= 4
+    )
+
+
+def source_stem_key(label: str) -> str:
+    """Collapse timestamped clips of the same sermon into one source identity."""
+    stem = re.sub(
+        r"\s*\[[0-9:]{4,8}[–-][0-9:]{4,8}\]\s*$",
+        "",
+        (label or "").strip(),
+    )
+    stem = re.sub(r"\s*\([^)]*\)\s*$", "", stem).strip()
+    return stem.lower()
+
+
+def _metadata_search_blob(doc: Any) -> str:
+    metadata = getattr(doc, "metadata", None) or {}
+    parts: list[str] = [chunk_text(doc)]
+    for key in ("topic_title", "title", "original_title", "summary"):
+        value = metadata.get(key)
+        if value:
+            parts.append(str(value))
+    for key in ("topics", "keywords", "scripture_refs"):
+        value = metadata.get(key)
+        if isinstance(value, (list, tuple)):
+            parts.extend(str(item) for item in value if item)
+        elif value:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
+def topic_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
+    tokens = [str(token).lower() for token in query_tokens if str(token).strip()]
+    if not tokens:
+        return 0.0
+    hay = _metadata_search_blob(doc)
+    if not hay:
+        return 0.0
+    hits = sum(1 for token in tokens if token in hay)
+    return hits / len(tokens)
+
+
+def filter_hits_by_topic(
+    scored_hits: list[tuple[Any, float]],
+    query: str,
+    *,
+    retrieval_k: int,
+) -> list[tuple[Any, float]]:
+    """Drop embedding-only matches that share no distinctive query words.
+
+    Vector search is already ANN (not a slow scan). Extra *time* does not help;
+    extra *candidates + lexical overlap* does. Keep the full list if too few
+    chunks mention the question's own terms.
+    """
+    tokens = query_focus_tokens(query)
+    if len(tokens) < 2 or not scored_hits:
+        return scored_hits
+    ranked = []
+    for doc, score in scored_hits:
+        overlap = topic_overlap_score(doc, tokens)
+        ranked.append((doc, score, overlap))
+    on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    min_keep = max(6, retrieval_k)
+    if len(on_topic) >= min_keep:
+        return on_topic
+    # Prefer any overlap, then original rank.
+    ranked.sort(key=lambda item: (item[2], item[1]), reverse=True)
+    return [(doc, score) for doc, score, _overlap in ranked]
+
+
 def expand_search_queries(
     current: str,
     prior_user_queries: Optional[Iterable[str]] = None,
@@ -437,6 +512,7 @@ class ScoredChunk:
     book_key: str = ""
     novelty: float = 0.0
     is_video: bool = False
+    topic_overlap: float = 0.0
 
 
 def merge_scored_hits(
@@ -512,11 +588,13 @@ def _as_scored_chunks(
     used_quotes: Iterable[str],
     used_verses: Iterable[str],
     is_video: Optional[Callable[[Any], bool]] = None,
+    query_tokens: Optional[Iterable[str]] = None,
 ) -> list[ScoredChunk]:
     chunks: list[ScoredChunk] = []
     quotes = list(used_quotes)
     verses = list(used_verses)
     video_fn = is_video or is_video_chunk
+    focus = list(query_tokens or ())
     for doc, score in scored_docs:
         text = chunk_text(doc)
         if not text:
@@ -534,6 +612,7 @@ def _as_scored_chunks(
                 book_key=bible_book_key(text) if bible else "",
                 novelty=_novelty_penalty(text, quotes, verses),
                 is_video=False if bible else bool(video_fn(doc)),
+                topic_overlap=topic_overlap_score(doc, focus),
             )
         )
     return chunks
@@ -636,6 +715,7 @@ def select_diverse_docs(
     is_video: Optional[Callable[[Any], bool]] = None,
     source_key: Optional[Callable[[Any], str]] = None,
     relevance: float = 0.72,
+    query: str = "",
 ) -> list[Any]:
     """Pick ``k`` chunks that stay relevant while spreading across sermons, videos, and books.
 
@@ -654,6 +734,7 @@ def select_diverse_docs(
         used_quotes=used_quotes or (),
         used_verses=used_verses or (),
         is_video=video_fn,
+        query_tokens=query_focus_tokens(query),
     )
     if not chunks:
         return []
@@ -701,6 +782,16 @@ def select_diverse_docs(
             return False
         if prefer_video is False and (chunk.is_bible or chunk.is_video):
             return False
+        if query and not chunk.is_bible and chunk.topic_overlap <= 0:
+            has_topical = any(
+                (not other.is_bible)
+                and other.topic_overlap > 0
+                and other.fingerprint not in selected_fps
+                and per_source.get(other.source_key, 0) < max_per_source
+                for other in chunks
+            )
+            if has_topical:
+                return False
         if chunk.is_bible and chunk.book_key:
             if per_book.get(chunk.book_key, 0) >= max_per_bible_book and any(
                 item.is_bible for item in chunks if item.fingerprint not in selected_fps
@@ -738,7 +829,14 @@ def select_diverse_docs(
                 continue
             overlap = max((_jaccard(chunk.tokens, tokens) for tokens in selected_tokens), default=0.0)
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
-            value = (relevance * chunk.score) - ((1.0 - relevance) * overlap) - chunk.novelty - source_pen
+            topic_boost = 0.40 * chunk.topic_overlap
+            value = (
+                (relevance * chunk.score)
+                - ((1.0 - relevance) * overlap)
+                - chunk.novelty
+                - source_pen
+                + topic_boost
+            )
             if value > best_value:
                 best_value = value
                 best = chunk
@@ -783,68 +881,114 @@ def ensure_source_media_mix(
     source_label: Callable[[Any], str],
     *,
     is_video: Optional[Callable[[Any], bool]] = None,
-    limit: int = 8,
+    limit: int = 5,
+    min_count: int = 3,
+    query: str = "",
 ) -> list[str]:
-    """Keep preferred citations, but ensure both a note and a video appear when available."""
+    """Return 3–5 distinct sermon/video sources, mixed when both media types exist.
+
+    Citations are preferred, then remaining retrieved docs ranked by topical overlap.
+    Multiple timestamps from the same sermon count as one source.
+    """
     video_fn = is_video or is_video_chunk
-    labels: list[str] = []
-    seen: set[str] = set()
+    max_count = max(1, min(int(limit), 5))
+    want = max(1, min(int(min_count), max_count))
+    focus = query_focus_tokens(query)
+
+    labeled: list[tuple[Any, str, str, float]] = []
+    for doc in list(docs or []):
+        label = (source_label(doc) or "").strip()
+        if not label or label == "Unknown":
+            continue
+        labeled.append((doc, label, source_stem_key(label), topic_overlap_score(doc, focus)))
+
+    def _is_note(doc: Any) -> bool:
+        return (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))
+
+    by_stem: dict[str, tuple[Any, str, float]] = {}
+    for doc, label, stem, overlap in labeled:
+        previous = by_stem.get(stem)
+        if previous is None or overlap > previous[2]:
+            by_stem[stem] = (doc, label, overlap)
+
+    ordered: list[tuple[Any, str, float]] = []
+    seen_stems: set[str] = set()
     for label in preferred_labels:
-        cleaned = (label or "").strip()
-        if not cleaned or cleaned == "Unknown":
+        stem = source_stem_key(label)
+        if not stem or stem in seen_stems:
             continue
-        key = cleaned.lower()
-        if key in seen:
+        if stem in by_stem:
+            ordered.append(by_stem[stem])
+        else:
+            cleaned = (label or "").strip()
+            if cleaned and cleaned != "Unknown":
+                ordered.append((None, cleaned, 0.0))
+        seen_stems.add(stem)
+
+    leftovers = sorted(
+        (item for stem, item in by_stem.items() if stem not in seen_stems),
+        key=lambda row: row[2],
+        reverse=True,
+    )
+    # Prefer topical leftovers, then any remaining unique sermons (skip extra Bible fills).
+    topical = [row for row in leftovers if row[2] > 0]
+    rest = [row for row in leftovers if row[2] <= 0]
+    for row in topical + rest:
+        doc, _label, _overlap = row
+        if doc is not None and is_bible_source(metadata_source_hint(doc)) and len(ordered) >= want:
             continue
-        seen.add(key)
-        labels.append(cleaned)
-        if len(labels) >= limit:
+        ordered.append(row)
+
+    picked: list[tuple[Any, str, float]] = []
+    picked_stems: set[str] = set()
+    for row in ordered:
+        stem = source_stem_key(row[1])
+        if not stem or stem in picked_stems:
+            continue
+        overlap = row[2]
+        if len(picked) >= want and overlap <= 0:
+            continue
+        picked.append(row)
+        picked_stems.add(stem)
+        if len(picked) >= max_count:
             break
 
-    doc_list = list(docs or [])
-    labeled = [(doc, (source_label(doc) or "").strip()) for doc in doc_list]
-    labeled = [(doc, label) for doc, label in labeled if label and label != "Unknown"]
-
-    def _has_video(items: list[str]) -> bool:
-        item_set = {item.lower() for item in items}
-        return any(
-            video_fn(doc) and label.lower() in item_set
-            for doc, label in labeled
-        )
-
-    def _has_document(items: list[str]) -> bool:
-        item_set = {item.lower() for item in items}
-        return any(
-            (not video_fn(doc))
-            and (not is_bible_source(metadata_source_hint(doc)))
-            and label.lower() in item_set
-            for doc, label in labeled
-        )
-
-    def _append_first(predicate: Callable[[Any], bool]) -> None:
-        nonlocal labels
-        if len(labels) >= limit:
-            # Replace the weakest (last) slot if needed to keep the mix.
-            for doc, label in labeled:
-                if predicate(doc) and label.lower() not in seen:
-                    labels[-1] = label
-                    seen.add(label.lower())
-                    return
+    def _inject(predicate: Callable[[Any], bool]) -> None:
+        if any(doc is not None and predicate(doc) for doc, _label, _overlap in picked):
             return
-        for doc, label in labeled:
-            if predicate(doc) and label.lower() not in seen:
-                seen.add(label.lower())
-                labels.append(label)
-                return
+        for row in ordered:
+            doc, label, overlap = row
+            if doc is None or not predicate(doc):
+                continue
+            stem = source_stem_key(label)
+            if stem in picked_stems:
+                continue
+            if len(picked) < max_count:
+                picked.append(row)
+                picked_stems.add(stem)
+            else:
+                picked[-1] = row
+                picked_stems.add(stem)
+            return
 
-    if labeled:
-        if not _has_document(labels):
-            _append_first(
-                lambda doc: (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))
-            )
-        if not _has_video(labels):
-            _append_first(video_fn)
-    return labels[:limit]
+    if by_stem:
+        _inject(_is_note)
+        _inject(video_fn)
+
+    while len(picked) < min(want, len(by_stem)):
+        added = False
+        for row in ordered:
+            stem = source_stem_key(row[1])
+            if stem in picked_stems:
+                continue
+            picked.append(row)
+            picked_stems.add(stem)
+            added = True
+            break
+        if not added:
+            break
+
+    return [label for _doc, label, _overlap in picked[:max_count]]
 
 
 def format_reference_notes(
