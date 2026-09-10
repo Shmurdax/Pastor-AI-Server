@@ -10,10 +10,23 @@ import 'vimeo_player_src.dart';
 final Set<String> _registeredVimeoViews = <String>{};
 
 /// Iframes `player.vimeo.com` directly, matching admin sermon-sources embeds.
-Widget buildVimeoPlayer(String vimeoId, {String? privacyHash}) {
-  final src = vimeoPlayerSrc(vimeoId, privacyHash: privacyHash);
+Widget buildVimeoPlayer(
+  String vimeoId, {
+  String? privacyHash,
+  int? startSeconds,
+}) {
+  final src = vimeoPlayerSrc(
+    vimeoId,
+    privacyHash: privacyHash,
+    startSeconds: startSeconds,
+  );
   final hash = (privacyHash ?? '').trim();
-  final viewType = hash.isEmpty ? 'vimeo-direct-$vimeoId' : 'vimeo-direct-$vimeoId-$hash';
+  final seekKey = (startSeconds != null && startSeconds >= 0)
+      ? '-t$startSeconds'
+      : '';
+  final viewType = hash.isEmpty
+      ? 'vimeo-direct-$vimeoId$seekKey'
+      : 'vimeo-direct-$vimeoId-$hash$seekKey';
   if (!_registeredVimeoViews.contains(viewType)) {
     ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
       final iframe = html.IFrameElement()
