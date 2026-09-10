@@ -10,10 +10,13 @@ class VimeoPlayerEmbed extends StatelessWidget {
     super.key,
     required this.vimeoId,
     this.privacyHash,
+    this.startSeconds,
   });
 
   final String vimeoId;
   final String? privacyHash;
+  /// When set, player URL includes `#t={seconds}s` so Vimeo seeks on load.
+  final int? startSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +29,10 @@ class VimeoPlayerEmbed extends StatelessWidget {
         ),
       );
     }
-    return vimeo_impl.buildVimeoPlayer(vimeoId, privacyHash: privacyHash);
+    return vimeo_impl.buildVimeoPlayer(
+      vimeoId,
+      privacyHash: privacyHash,
+      startSeconds: startSeconds,
+    );
   }
 }

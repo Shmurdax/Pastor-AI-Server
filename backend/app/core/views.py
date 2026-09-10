@@ -402,6 +402,8 @@ class IngestedDocumentsAPIView(APIView):
             documents_qs = documents_qs.filter(source_kind=source_kind)
         documents_qs = documents_qs[:limit]
 
+        catalog = None
+        date_index = None
         documents = []
         for document in documents_qs:
             file_relative_url = reverse("ingested_document_file_api", args=[document.id])
@@ -410,6 +412,23 @@ class IngestedDocumentsAPIView(APIView):
             if not stored_ext.startswith("."):
                 stored_ext = f".{stored_ext}"
             title_source_name = f"{(document.title or '').strip()}{stored_ext}"
+            vimeo_id = ""
+            privacy_hash = ""
+            media_title = ""
+            if document.source_kind == "video":
+                if catalog is None:
+                    from .embedded_videos import match_source_to_catalog, _load_catalog
+
+                    catalog, date_index = _load_catalog()
+                entry = match_source_to_catalog(
+                    document.source_name or "", catalog, date_index
+                ) or match_source_to_catalog(
+                    document.title or "", catalog, date_index
+                )
+                if entry is not None:
+                    vimeo_id = entry.vimeo_id or ""
+                    privacy_hash = entry.privacy_hash or ""
+                    media_title = entry.title or ""
             documents.append(
                 {
                     "id": document.id,
@@ -425,6 +444,9 @@ class IngestedDocumentsAPIView(APIView):
                     # Return URL (not server filesystem path) so link opening works
                     # regardless of where the frontend is hosted.
                     "file_path": file_absolute_url,
+                    "vimeo_id": vimeo_id,
+                    "privacy_hash": privacy_hash,
+                    "media_title": media_title,
                 }
             )
         return Response({"documents": documents}, status=status.HTTP_200_OK)

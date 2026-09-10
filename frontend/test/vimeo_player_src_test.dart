@@ -15,4 +15,11 @@ void main() {
       'https://player.vimeo.com/video/1217796650?dnt=1',
     );
   });
+
+  test('appends Vimeo #t= seek fragment', () {
+    expect(
+      vimeoPlayerSrc('1217796650', privacyHash: 'abc', startSeconds: 530),
+      'https://player.vimeo.com/video/1217796650?h=abc&dnt=1#t=530s',
+    );
+  });
 }

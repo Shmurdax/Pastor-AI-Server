@@ -39,7 +39,17 @@ double mediaGridChildAspectRatio({
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
 /// Catalog loads from GET /api/media/ (Vimeo sync); falls back to local mock.
 class MediaLibraryScreen extends StatefulWidget {
-  const MediaLibraryScreen({super.key});
+  const MediaLibraryScreen({
+    super.key,
+    this.openVimeoId,
+    this.openSeekSeconds,
+  });
+
+  /// When set, open this Vimeo episode after the catalog loads (chat source tap).
+  final String? openVimeoId;
+
+  /// Optional start offset in seconds for [openVimeoId] (Vimeo `#t=` seek).
+  final int? openSeekSeconds;
 
   @override
   State<MediaLibraryScreen> createState() => _MediaLibraryScreenState();
@@ -52,6 +62,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   final _searchController = TextEditingController();
   bool _eventsOpen = false;
   bool _catalogLoading = true;
+  bool _openedInitialVideo = false;
   List<MediaItem> _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
@@ -88,6 +99,58 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         _catalogLoading = false;
       });
     }
+    _maybeOpenInitialVideo();
+  }
+
+  void _maybeOpenInitialVideo() {
+    if (_openedInitialVideo || _catalogLoading) return;
+    final targetId = (widget.openVimeoId ?? '').trim();
+    if (targetId.isEmpty) return;
+    _openedInitialVideo = true;
+
+    MediaItem? inCatalog;
+    for (final item in _catalogItems) {
+      if ((item.vimeoId ?? '').trim() == targetId) {
+        inCatalog = item;
+        break;
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (inCatalog == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'That sermon was not found in the media library.',
+              style: GoogleFonts.figtree(),
+            ),
+          ),
+        );
+        return;
+      }
+      final item = inCatalog!;
+      final allowed = _accessibleItems.any(
+        (entry) => (entry.vimeoId ?? '').trim() == targetId,
+      );
+      if (!allowed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'This episode is for Premium members. Subscribe to unlock.',
+              style: GoogleFonts.figtree(),
+            ),
+            action: SnackBarAction(
+              label: 'Subscribe',
+              onPressed: _openSubscriptions,
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+      _openItem(item, seekSeconds: widget.openSeekSeconds);
+    });
   }
 
   Future<void> _launchUrl(String urlString) async {
@@ -162,11 +225,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     });
   }
 
-  void _openItem(MediaItem item) {
+  void _openItem(MediaItem item, {int? seekSeconds}) {
     if (item.isPlayable) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => _WatchEpisodeScreen(item: item),
+          builder: (_) => _WatchEpisodeScreen(
+            item: item,
+            startSeconds: seekSeconds,
+          ),
         ),
       );
       return;
@@ -1114,9 +1180,13 @@ class _Badge extends StatelessWidget {
 }
 
 class _WatchEpisodeScreen extends StatefulWidget {
-  const _WatchEpisodeScreen({required this.item});
+  const _WatchEpisodeScreen({
+    required this.item,
+    this.startSeconds,
+  });
 
   final MediaItem item;
+  final int? startSeconds;
 
   @override
   State<_WatchEpisodeScreen> createState() => _WatchEpisodeScreenState();
@@ -1164,6 +1234,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
       return VimeoPlayerEmbed(
         vimeoId: widget.item.vimeoId!.trim(),
         privacyHash: widget.item.vimeoPrivacyHash,
+        startSeconds: widget.startSeconds,
       );
     }
 

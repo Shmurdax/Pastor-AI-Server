@@ -898,62 +898,93 @@ final bibleRefRegex = RegExp(
     }
   }
 
-Future<void> _launchSermonDoc(String sermonName) async {
-  final ref = parseSermonSourceRef(sermonName);
-  final stem = ref.displayStem;
-  if (stem.isEmpty) return;
+  Future<void> _launchSermonDoc(String sermonName) async {
+    final ref = parseSermonSourceRef(sermonName);
+    final stem = ref.displayStem;
+    if (stem.isEmpty) return;
 
-  try {
-    final data = await _apiService.getIngestedDocuments(limit: 5, match: stem);
-    final docs = List<Map<String, dynamic>>.from(data['documents'] ?? const []);
-    if (docs.isNotEmpty) {
-      var fileUrl =
-          (docs.first['file_url'] ?? docs.first['file_path'] ?? '').toString();
-      final sourceKind = (docs.first['source_kind'] ?? '').toString();
-      if (fileUrl.isNotEmpty) {
-        if (isVideoFileUrl(fileUrl, sourceKind: sourceKind)) {
-          fileUrl = appendMediaSeekFragment(fileUrl, ref.seekSeconds);
+    try {
+      final data = await _apiService.getIngestedDocuments(limit: 5, match: stem);
+      final docs = List<Map<String, dynamic>>.from(data['documents'] ?? const []);
+      if (docs.isNotEmpty) {
+        final doc = docs.first;
+        final sourceKind = (doc['source_kind'] ?? '').toString();
+        final fileUrl =
+            (doc['file_url'] ?? doc['file_path'] ?? '').toString();
+        final vimeoId = (doc['vimeo_id'] ?? '').toString().trim();
+        final isVideo = sourceKind == 'video' ||
+            isVideoFileUrl(fileUrl, sourceKind: sourceKind) ||
+            isVideoSermonSource(sermonName);
+
+        if (isVideo) {
+          if (vimeoId.isNotEmpty) {
+            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+              Navigator.of(context).pop();
+            }
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MediaLibraryScreen(
+                  openVimeoId: vimeoId,
+                  openSeekSeconds: ref.seekSeconds,
+                ),
+              ),
+            );
+            return;
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'No Vimeo media match for “$stem”.',
+                  style: GoogleFonts.figtree(),
+                ),
+              ),
+            );
+          }
+          return;
         }
-        final launched = await launchUrl(
-          Uri.parse(fileUrl),
-          mode: LaunchMode.externalApplication,
-          webOnlyWindowName: '_blank',
+
+        if (fileUrl.isNotEmpty) {
+          final launched = await launchUrl(
+            Uri.parse(fileUrl),
+            mode: LaunchMode.externalApplication,
+            webOnlyWindowName: '_blank',
+          );
+          if (launched) return;
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Ingested source lookup failed: $e\n$st');
+    }
+
+    // Same-origin PDF route: uploaded file when present, else rebuilt from Qdrant notes.
+    final Uri fileUri = Uri(
+      scheme: Uri.base.scheme.isEmpty ? 'https' : Uri.base.scheme,
+      host: Uri.base.host,
+      port: Uri.base.hasPort ? Uri.base.port : null,
+      pathSegments: <String>['sermons', '$stem.pdf'],
+    );
+
+    try {
+      final launched = await launchUrl(
+        fileUri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_s.couldNotOpenSource(stem))),
         );
-        if (launched) return;
+      }
+    } catch (e, st) {
+      debugPrint('Error opening sermon link: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_s.couldNotOpenSource(stem))),
+        );
       }
     }
-  } catch (e, st) {
-    debugPrint('Ingested source lookup failed: $e\n$st');
   }
-
-  // Same-origin PDF route: uploaded file when present, else rebuilt from Qdrant notes.
-  final Uri fileUri = Uri(
-    scheme: Uri.base.scheme.isEmpty ? 'https' : Uri.base.scheme,
-    host: Uri.base.host,
-    port: Uri.base.hasPort ? Uri.base.port : null,
-    pathSegments: <String>['sermons', '$stem.pdf'],
-  );
-
-  try {
-    final launched = await launchUrl(
-      fileUri,
-      mode: LaunchMode.externalApplication,
-      webOnlyWindowName: '_blank',
-    );
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_s.couldNotOpenSource(stem))),
-      );
-    }
-  } catch (e, st) {
-    debugPrint('Error opening sermon link: $e\n$st');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_s.couldNotOpenSource(stem))),
-      );
-    }
-  }
-}
 
   void _copyToClipboard(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
