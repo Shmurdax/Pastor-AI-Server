@@ -235,7 +235,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       _mockCheckout
                           ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
                           : 'Card and billing fields are provided by Stripe. '
-                              'Scroll inside the payment box to reach Confirm.',
+                              'A payment overlay will open — scroll to Confirm.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.figtree(
                         fontSize: 13,
