@@ -305,15 +305,75 @@ def text_looks_degenerate(text: str) -> bool:
     return False
 
 
+def generation_tail_is_runaway(text: str) -> bool:
+    """True when the latest tokens look like a synonym loop, legalese, or another script.
+
+    Long pastoral sentences are allowed; this is for the \"random words then snap back\"
+    failure where the model keeps emitting filler after a good draft.
+    """
+    tail = (text or "")[-500:]
+    if not tail.strip():
+        return False
+    if _CJK_RE.search(tail):
+        return True
+    if len(_LEGALESE_RE.findall(tail)) >= 3:
+        return True
+    compact = re.sub(r"\s+", " ", tail.lower()).strip()
+    collapsed = re.sub(r"[^a-z]+", "", compact)
+    window = 12
+    if len(collapsed) >= window * 4:
+        prev = ""
+        run = 0
+        for index in range(0, len(collapsed) - window + 1, window):
+            gram = collapsed[index : index + window]
+            if gram == prev:
+                run += 1
+                if run >= 4:
+                    return True
+            else:
+                prev = gram
+                run = 1
+    return False
+
+
 def generation_should_stop(answer: str) -> bool:
-    """True when streaming should halt: conclusion reached and a runaway tail started."""
+    """True when streaming should halt: conclusion runaway, CJK, or a degenerate tail."""
     text = (answer or "").strip()
-    if not text or not answer_has_conclusion(text):
+    if not text:
+        return False
+    if _CJK_RE.search(text) and answer_char_count(text) >= 200:
+        return True
+    if generation_tail_is_runaway(text) and answer_char_count(text) >= 600:
+        return True
+    if not answer_has_conclusion(text):
         return False
     if answer_char_count(text) < 900:
         return False
     tail = text[-500:]
     return text_looks_degenerate(tail) or bool(_CJK_RE.search(tail))
+
+
+def next_stream_payload(published: str, joined: str) -> tuple[str, str, bool]:
+    """Decide what to paint for the latest assembled draft.
+
+    Returns ``(event_type, text, should_stop)`` where event_type is
+    ``delta``, ``replace``, or empty when nothing new should be shown.
+    Hidden junk is not emitted; the UI therefore never paints the runaway
+    tail that used to appear before ``done`` snapped back to the trim.
+    """
+    trimmed = trim_runaway_generation(joined)
+    hidden = max(0, len(joined.rstrip()) - len(trimmed))
+    should_stop = generation_should_stop(joined) or hidden >= 60
+    if trimmed == published:
+        return ("", "", should_stop)
+    if published and trimmed.startswith(published):
+        extra = trimmed[len(published) :]
+        if not extra:
+            return ("", "", should_stop)
+        return ("delta", extra, should_stop)
+    if not published:
+        return ("delta", trimmed, should_stop)
+    return ("replace", trimmed, should_stop)
 
 
 def trim_runaway_generation(answer: str) -> str:
@@ -384,6 +444,8 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
     if answer_has_conclusion(answer) and answer_char_count(answer) >= 1000:
         return False
     if text_looks_degenerate(answer):
+        return False
+    if generation_tail_is_runaway(answer):
         return False
     return answer_char_count(answer) < MIN_TEACHING_CHARS
 

@@ -24,6 +24,17 @@ void main() {
     expect(second[1].messageId, 9);
   });
 
+  test('consumeSseChunk parses replace events', () {
+    final carry = StringBuffer();
+    final events = consumeSseChunk(
+      carry,
+      'data: {"type":"replace","text":"Faith is the assurance"}\n\n',
+    );
+    expect(events, hasLength(1));
+    expect(events.first.isReplace, isTrue);
+    expect(events.first.text, 'Faith is the assurance');
+  });
+
   test('consumeSseChunk holds partial frames until a blank line', () {
     final carry = StringBuffer();
     expect(consumeSseChunk(carry, 'data: {"type":"delta"'), isEmpty);

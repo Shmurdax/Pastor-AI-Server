@@ -1203,6 +1203,19 @@ final bibleRefRegex = RegExp(
     }
   }
 
+  void _replaceStreamText(String text, int epoch, String boundSessionId) {
+    final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
+    if (!_isCurrentStream(runtime, epoch)) return;
+    runtime.streamRaw = text;
+    final display = _boldBibleReferences(runtime.streamRaw);
+    if (!mounted || !_isCurrentStream(runtime, epoch)) return;
+    applyChatStreamDelta(runtime.messages, display);
+    setState(() {});
+    if (boundSessionId == _sessions.currentSessionId) {
+      _scrollToBottom(followStream: true);
+    }
+  }
+
 Future<void> _sendMessage() async {
   // Guard clause: prevent sending if already loading or this tap stopped one
   if (_isLoading || _absorbComposerTap) return;
@@ -1260,6 +1273,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       language: _languageCode,
       client: client,
       onDelta: (delta) => _appendStreamDelta(delta, epoch, boundSessionId),
+      onReplace: (text) => _replaceStreamText(text, epoch, boundSessionId),
       isCancelled: () =>
           runtime.streamCancelled || epoch != runtime.streamEpoch,
     );

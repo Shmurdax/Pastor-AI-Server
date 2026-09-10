@@ -235,17 +235,20 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
 )
 
 # Whisper often misspells short biblical names; match those variants in transcripts.
+# Do not use common English words (able, cane) as global aliases — they match
+# ordinary sermon intros ("we are able to…") and drown the real story clips.
 _WHISPER_NAME_ALIASES = {
-    "abel": ("abel", "able"),
-    "abraham": ("abraham", "abram"),
-    "cain": ("cain", "cane", "kane", "kayn"),
-    "elijah": ("elijah", "elija"),
-    "isaac": ("isaac", "issac"),
-    "moses": ("moses", "mozes"),
-    "noah": ("noah", "noa"),
-    "pharaoh": ("pharaoh", "pharoah"),
-    "sarah": ("sarah", "sarai"),
+    "abel": ("able",),
+    "abraham": ("abram",),
+    "cain": ("kane", "kayn"),
+    "elijah": ("elija",),
+    "isaac": ("issac",),
+    "moses": ("mozes",),
+    "noah": ("noa",),
+    "pharaoh": ("pharoah",),
+    "sarah": ("sarai",),
 }
+_NOISY_WHISPER_ALIASES = frozenset({"able", "cane"})
 
 # When several names appear together, add the usual NKJV landing passage.
 _NAME_PASSAGES = {
@@ -431,13 +434,26 @@ def retrieval_bible_names(text: str) -> list[str]:
     return names
 
 
+def query_canonical_entity_tokens(text: str) -> frozenset[str]:
+    """Canonical biblical names the query is about, without Whisper aliases."""
+    return frozenset(name.lower() for name in retrieval_bible_names(text))
+
+
+def _safe_whisper_aliases(name: str) -> tuple[str, ...]:
+    return tuple(
+        alias
+        for alias in _WHISPER_NAME_ALIASES.get((name or "").lower(), ())
+        if alias and alias not in _NOISY_WHISPER_ALIASES
+    )
+
+
 def query_entity_tokens(text: str) -> frozenset[str]:
-    """Biblical names (plus Whisper aliases) the query is actually about."""
+    """Biblical names plus safe Whisper aliases (excludes able/cane)."""
     expanded: set[str] = set()
     for name in retrieval_bible_names(text):
         key = name.lower()
         expanded.add(key)
-        expanded.update(_WHISPER_NAME_ALIASES.get(key, ()))
+        expanded.update(_safe_whisper_aliases(key))
     return frozenset(expanded)
 
 
@@ -458,8 +474,9 @@ def query_focus_tokens(text: str) -> frozenset[str]:
 
     Named Bible-story questions use the character names, not filler like
     \"sermon\" / \"story\" / \"based\" that matches almost every pastoral clip.
+    Aliases are resolved at match time so \"able\" is not a focus token.
     """
-    entities = query_entity_tokens(text)
+    entities = query_canonical_entity_tokens(text)
     if entities:
         return entities
     return frozenset(
@@ -505,6 +522,30 @@ def _metadata_search_blob(doc: Any) -> str:
     return " ".join(parts).lower()
 
 
+def _focus_token_in_blob(token: str, hay: str, sibling_tokens: set[str]) -> bool:
+    """True when a focus token (or a safe Whisper spelling) appears in the chunk.
+
+    Noisy aliases such as Abel→able only count when a companion name from the
+    same query (Cain / Kane) is also in the chunk.
+    """
+    cleaned = (token or "").strip().lower()
+    if not cleaned or not hay:
+        return False
+    if _blob_has_token(hay, cleaned):
+        return True
+    companion_surface = {item for item in sibling_tokens if item != cleaned}
+    for sibling in list(companion_surface):
+        companion_surface.update(_safe_whisper_aliases(sibling))
+    for alias in _WHISPER_NAME_ALIASES.get(cleaned, ()):
+        if not _blob_has_token(hay, alias):
+            continue
+        if alias in _NOISY_WHISPER_ALIASES:
+            if not any(_blob_has_token(hay, companion) for companion in companion_surface):
+                continue
+        return True
+    return False
+
+
 def topic_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     tokens = [str(token).lower() for token in query_tokens if str(token).strip()]
     if not tokens:
@@ -512,7 +553,8 @@ def topic_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     hay = _metadata_search_blob(doc)
     if not hay:
         return 0.0
-    hits = sum(1 for token in tokens if _blob_has_token(hay, token))
+    token_set = set(tokens)
+    hits = sum(1 for token in tokens if _focus_token_in_blob(token, hay, token_set))
     return hits / len(tokens)
 
 
@@ -540,10 +582,15 @@ def filter_hits_by_topic(
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
-        # generic \"sermon\" clips just to fill the quota.
+        # generic \"sermon\" clips just to fill the quota. If nothing names the
+        # people, keep Bible verses only — never April-7 intros / unrelated PDFs.
         if on_topic:
             return on_topic
-        return scored_hits
+        return [
+            (doc, score)
+            for doc, score, _overlap in ranked
+            if is_bible_source(metadata_source_hint(doc))
+        ]
     min_keep = max(6, retrieval_k)
     if len(on_topic) >= min_keep:
         return on_topic
@@ -591,7 +638,7 @@ def expand_search_queries(
             add(f"{passage} {joined}")
         aliases = []
         for name in bible_names:
-            for alias in _WHISPER_NAME_ALIASES.get(name.lower(), ()):
+            for alias in _safe_whisper_aliases(name.lower()):
                 if alias.lower() != name.lower():
                     aliases.append(alias)
         if aliases:
@@ -845,6 +892,10 @@ def apply_retrieval_threshold(
     so the model still has *some* context. At >=0.7 we only need one strong hit.
     """
     if threshold <= 0 or not scored_hits:
+        return scored_hits
+    # Small already-filtered sets (named-story lexical hits) must not be
+    # discarded because a generic intro scored 0.93 and they scored 0.74.
+    if len(scored_hits) <= max(6, retrieval_k // 4):
         return scored_hits
     if len(scored_hits) <= retrieval_k and threshold < 0.7:
         return scored_hits
@@ -1163,7 +1214,9 @@ def ensure_source_media_mix(
     # Prefer topical leftovers, then any remaining unique sermons (skip extra Bible fills).
     topical = [row for row in leftovers if row[2] > 0]
     rest = [row for row in leftovers if row[2] <= 0]
-    for row in topical + rest:
+    entity_tokens = query_canonical_entity_tokens(query)
+    fill_rows = topical if entity_tokens else topical + rest
+    for row in fill_rows:
         doc, _label, _overlap = row
         if doc is not None and is_bible_source(metadata_source_hint(doc)) and len(ordered) >= want:
             continue
@@ -1176,6 +1229,10 @@ def ensure_source_media_mix(
         if not stem or stem in picked_stems:
             continue
         overlap = row[2]
+        if entity_tokens and overlap <= 0:
+            doc = row[0]
+            if doc is None or not is_bible_source(metadata_source_hint(doc)):
+                continue
         if len(picked) >= want and overlap <= 0:
             continue
         picked.append(row)
@@ -1190,6 +1247,8 @@ def ensure_source_media_mix(
             doc, label, overlap = row
             if doc is None or not predicate(doc):
                 continue
+            if entity_tokens and overlap <= 0:
+                continue
             stem = source_stem_key(label)
             if stem in picked_stems:
                 continue
@@ -1203,7 +1262,7 @@ def ensure_source_media_mix(
 
     if by_stem:
         _inject(_is_note)
-        if query_entity_tokens(query):
+        if entity_tokens:
             _inject(lambda doc: video_fn(doc) and topic_overlap_score(doc, focus) > 0)
         else:
             _inject(video_fn)
@@ -1214,6 +1273,10 @@ def ensure_source_media_mix(
             stem = source_stem_key(row[1])
             if stem in picked_stems:
                 continue
+            if entity_tokens and row[2] <= 0:
+                doc = row[0]
+                if doc is None or not is_bible_source(metadata_source_hint(doc)):
+                    continue
             picked.append(row)
             picked_stems.add(stem)
             added = True

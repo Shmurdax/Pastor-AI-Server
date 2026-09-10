@@ -1,8 +1,10 @@
+import re
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 from core.chat_retrieval import (
+    apply_retrieval_threshold,
     bible_book_key,
     ensure_source_media_mix,
     expand_search_queries,
@@ -17,6 +19,7 @@ from core.chat_retrieval import (
     query_focus_tokens,
     search_queries_on_store,
     select_diverse_docs,
+    topic_overlap_score,
     uniqueness_instruction,
 )
 
@@ -122,9 +125,15 @@ class ChatRetrievalTests(unittest.TestCase):
         focus = query_focus_tokens("Give me a sermon based on the story of Cain and Abel")
         self.assertIn("cain", focus)
         self.assertIn("abel", focus)
+        self.assertNotIn("able", focus)
+        self.assertNotIn("cane", focus)
         self.assertNotIn("sermon", focus)
         self.assertNotIn("story", focus)
         self.assertNotIn("based", focus)
+        self.assertFalse(
+            any(re.search(r"\b(?:able|cane)\b", item.lower()) for item in queries),
+            queries,
+        )
 
     def test_named_story_drops_unrelated_intro_video(self):
         cain_video = _doc(
@@ -172,6 +181,130 @@ class ChatRetrievalTests(unittest.TestCase):
         selected_sources = [doc.metadata["source"] for doc in selected]
         self.assertIn("walk_through_word.mp4", selected_sources)
         self.assertNotIn("april_7.mp4", selected_sources)
+
+    def test_able_in_ordinary_english_does_not_match_abel(self):
+        query = "Give me a sermon based on the story of Cain and Abel"
+        focus = query_focus_tokens(query)
+        intro = _doc(
+            "Welcome everyone we are able to worship the Lord together this morning.",
+            source="april_7.mp4",
+            title="April 7",
+            content_type="video_transcript",
+            timestamp="00:00–02:31",
+        )
+        whisper = _doc(
+            "Pastor Don teaches Kane and Able brought offerings in Genesis.",
+            source="cain_abel.mp4",
+            title="Cain and Abel",
+            content_type="video_transcript",
+            timestamp="12:10–14:02",
+        )
+        self.assertEqual(topic_overlap_score(intro, focus), 0.0)
+        self.assertGreater(topic_overlap_score(whisper, focus), 0.0)
+
+        kept = filter_hits_by_topic(
+            [(intro, 0.94), (whisper, 0.74)],
+            query,
+            retrieval_k=24,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["cain_abel.mp4"])
+
+        thresholded = apply_retrieval_threshold(kept, threshold=0.8, retrieval_k=24)
+        self.assertEqual(
+            [doc.metadata["source"] for doc, _score in thresholded],
+            ["cain_abel.mp4"],
+        )
+
+    def test_named_story_does_not_fallback_to_unrelated_hits(self):
+        intro = _doc(
+            "Welcome we are able to start the service today with prayer.",
+            source="april_7.mp4",
+            title="April 7",
+            content_type="video_transcript",
+        )
+        notes = _doc(
+            "Christian boundaries for dating and friendship in the church.",
+            source="boundaries.pdf",
+            title="Christian Boundaries",
+            content_type="document",
+        )
+        bible = _doc(
+            "In the beginning God created the heaven and the earth.",
+            source="nkjv-bible.pdf",
+        )
+        query = "Give me a sermon based on the story of Cain and Abel"
+        kept = filter_hits_by_topic(
+            [(intro, 0.94), (notes, 0.91), (bible, 0.70)],
+            query,
+            retrieval_k=24,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["nkjv-bible.pdf"])
+        empty = filter_hits_by_topic(
+            [(intro, 0.94), (notes, 0.91)],
+            query,
+            retrieval_k=24,
+        )
+        self.assertEqual(empty, [])
+
+    def test_named_story_sources_do_not_pad_to_five_unrelated(self):
+        query = "Give me a sermon based on the story of Cain and Abel"
+        docs = [
+            _doc(
+                "Pastor Don teaches Kane and Able brought offerings in Genesis.",
+                source="walk_through_word.mp4",
+                title="Walk Through the Word",
+                content_type="video_transcript",
+                timestamp="12:10–14:02",
+            ),
+            _doc(
+                "Cain and Abel show the heart of true worship and offering.",
+                source="better_days.pdf",
+                title="Better Days Ahead",
+                content_type="document",
+            ),
+            _doc(
+                "Welcome we are able to worship together this morning.",
+                source="april_7.mp4",
+                title="April 7",
+                content_type="video_transcript",
+                timestamp="00:00–02:31",
+            ),
+            _doc(
+                "Christian boundaries for dating and friendship.",
+                source="boundaries.pdf",
+                title="Christian Boundaries",
+                content_type="document",
+            ),
+            _doc(
+                "Contagious Christianity outreach notes for the city.",
+                source="contagious.pdf",
+                title="Contagious Christianity",
+                content_type="document",
+            ),
+        ]
+
+        def label(doc):
+            meta = doc.metadata
+            name = meta.get("title") or meta["source"]
+            ts = meta.get("timestamp")
+            return f"{name} [{ts}]" if ts else name
+
+        mixed = ensure_source_media_mix(
+            ["April 7 [00:00–02:31]", "Better Days Ahead", "Christian Boundaries"],
+            docs,
+            label,
+            min_count=3,
+            limit=5,
+            query=query,
+        )
+        self.assertTrue(any("Walk Through the Word" in item for item in mixed), mixed)
+        self.assertIn("Better Days Ahead", mixed)
+        self.assertFalse(any("April 7" in item for item in mixed), mixed)
+        self.assertFalse(any("Christian Boundaries" in item for item in mixed), mixed)
+        self.assertFalse(any("Contagious" in item for item in mixed), mixed)
+        self.assertLessEqual(len(mixed), 2)
 
     def test_looks_like_followup(self):
         self.assertTrue(looks_like_followup("Can you further clarify that guidance?"))

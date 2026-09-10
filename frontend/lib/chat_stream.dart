@@ -18,6 +18,7 @@ class ChatStreamEvent {
   final String error;
 
   bool get isDelta => type == 'delta';
+  bool get isReplace => type == 'replace';
   bool get isDone => type == 'done';
   bool get isError => type == 'error';
 

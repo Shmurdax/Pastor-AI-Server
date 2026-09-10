@@ -58,6 +58,7 @@ class ApiClient {
   }
 
   /// Streams model tokens as they are generated. [onDelta] receives each text chunk.
+  /// [onReplace] replaces the live draft when the server trims a runaway tail.
   /// Returns the final payload (`answer`, `sources`, `message_id`).
   Future<Map<String, dynamic>> chatStream({
     required String query,
@@ -66,6 +67,7 @@ class ApiClient {
     String language = 'en',
     http.Client? client,
     required void Function(String delta) onDelta,
+    void Function(String text)? onReplace,
     bool Function()? isCancelled,
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
@@ -132,6 +134,9 @@ class ApiClient {
         if (event.isDelta && event.text.isNotEmpty) {
           assembled += event.text;
           onDelta(event.text);
+        } else if (event.isReplace && event.text.isNotEmpty) {
+          assembled = event.text;
+          onReplace?.call(event.text);
         } else if (event.isDone) {
           done = {
             'answer': event.answer.isNotEmpty ? event.answer : assembled,

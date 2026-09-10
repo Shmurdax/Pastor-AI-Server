@@ -35,6 +35,7 @@ class ApiService {
     String language = 'en',
     http.Client? client,
     required void Function(String delta) onDelta,
+    void Function(String text)? onReplace,
     bool Function()? isCancelled,
   }) {
     return _apiClient.chatStream(
@@ -44,6 +45,7 @@ class ApiService {
       language: language,
       client: client,
       onDelta: onDelta,
+      onReplace: onReplace,
       isCancelled: isCancelled,
     );
   }

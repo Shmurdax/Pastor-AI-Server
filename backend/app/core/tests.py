@@ -106,8 +106,14 @@ class ChatSystemPromptTests(unittest.TestCase):
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."
         )
-        mid = "x" * 1200
-        long_enough = "x" * 1500
+        filler = [
+            f"Pastoral point {index}: love God, love people, and keep the gospel first in this church body."
+            for index in range(40)
+        ]
+        mid = " ".join(filler)[:1200]
+        long_enough = " ".join(filler)[:1500]
+        self.assertEqual(len(mid), 1200)
+        self.assertEqual(len(long_enough), 1500)
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
@@ -154,6 +160,43 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(generation_should_stop(
             "In conclusion, love them well."
         ))
+
+    def test_stream_payload_hides_runaway_tokens(self):
+        from .chat_system_prompt import generation_should_stop, next_stream_payload
+
+        good = (
+            "Abel brought the firstborn of his flock because he wanted to honor God. "
+            "Cain brought fruit from the ground when he got around to it. "
+            "The difference was not the gift itself but the heart behind the gift. "
+            "Pastor Don teaches that worship is meant to make God glad, not to make us comfortable. "
+            "That same choice shows up whenever we decide whether to put the Lord first."
+        )
+        event, text, stop = next_stream_payload("", good)
+        self.assertEqual(event, "delta")
+        self.assertEqual(text, good)
+        self.assertFalse(stop)
+        self.assertFalse(generation_should_stop(good))
+
+        closing = (
+            good
+            + "\n\nIn conclusion, offer God your first and best rather than leftovers.\n\n"
+        )
+        junk = (
+            "This approach ensures respective pertaining thereof herein aforementioned "
+            "constituencies demographic indefinitely perpetuated emulation ad infinitum "
+            "inclusive all collective good public welfare 永恒不变"
+        )
+        event, text, stop = next_stream_payload(good, closing + junk)
+        self.assertTrue(stop)
+        self.assertNotIn("永恒", text)
+        self.assertNotIn("This approach ensures", text)
+        self.assertIn("In conclusion", text)
+
+        published = good + "\n\nIn conclusion, offer God your first and best rather than leftovers."
+        event, text, stop = next_stream_payload(published, published + "\n\n" + junk)
+        self.assertEqual(event, "")
+        self.assertEqual(text, "")
+        self.assertTrue(stop)
 
 
 class ScopeGateParserTests(unittest.TestCase):
