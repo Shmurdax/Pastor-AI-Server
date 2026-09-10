@@ -189,6 +189,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("frequency_penalty=0.5", source)
         self.assertIn("trim_runaway_generation", source)
         self.assertIn("generation_should_stop", source)
+        self.assertIn("next_stream_payload", source)
         self.assertIn("expand_search_queries", source)
         self.assertIn("prior_ai_texts=", source)
         self.assertIn("is_followup=", source)

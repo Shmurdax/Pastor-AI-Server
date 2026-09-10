@@ -64,6 +64,27 @@ void main() {
     expect(result['message_id'], 4);
   });
 
+  test('chatStream applies replace events without appending junk', () async {
+    const payload =
+        'data: {"type":"delta","text":"Faith grows"}\n\n'
+        'data: {"type":"replace","text":"Faith grows by hearing."}\n\n'
+        'data: {"type":"done","answer":"Faith grows by hearing.","sources":[]}\n\n';
+    final api = ApiClient(client: _ScriptedStreamClient(payload));
+    final deltas = <String>[];
+    final replacements = <String>[];
+
+    final result = await api.chatStream(
+      query: 'What is faith?',
+      sessionId: 's1',
+      onDelta: deltas.add,
+      onReplace: replacements.add,
+    );
+
+    expect(deltas, ['Faith grows']);
+    expect(replacements, ['Faith grows by hearing.']);
+    expect(result['answer'], 'Faith grows by hearing.');
+  });
+
   test('chatStream falls back to a full JSON body', () async {
     final api = ApiClient(
       client: _ScriptedStreamClient(

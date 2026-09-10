@@ -56,6 +56,7 @@ from .chat_system_prompt import (
     find_biblical_character_names,
     generation_should_stop,
     looks_like_brief_social,
+    next_stream_payload,
     query_expects_long_answer,
     trim_runaway_generation,
 )
@@ -649,14 +650,16 @@ class ChatAPIView(APIView):
                     search_queries,
                     k_per_query=candidate_k,
                 )
-                scored_hits = apply_retrieval_threshold(
-                    scored_hits,
-                    threshold=RETRIEVAL_THRESHOLD,
-                    retrieval_k=RETRIEVAL_K,
-                )
+                # Lexical topic filter first so a 0.93 intro cannot bury a 0.74
+                # Cain/Abel clip under the similarity threshold.
                 scored_hits = filter_hits_by_topic(
                     scored_hits,
                     user_query_llm,
+                    retrieval_k=RETRIEVAL_K,
+                )
+                scored_hits = apply_retrieval_threshold(
+                    scored_hits,
+                    threshold=RETRIEVAL_THRESHOLD,
                     retrieval_k=RETRIEVAL_K,
                 )
                 docs = select_diverse_docs(
@@ -835,20 +838,26 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 assembled = []
+                published = ""
+                stopped_runaway = False
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
                     joined = "".join(assembled)
-                    if emit_live:
-                        yield _sse({"type": "delta", "text": text})
-                    if generation_should_stop(joined):
-                        logger.info("Stopping chat stream after conclusion runaway detected")
+                    event_type, payload, should_stop = next_stream_payload(published, joined)
+                    if emit_live and event_type and payload:
+                        yield _sse({"type": event_type, "text": payload})
+                        published = payload if event_type == "replace" else published + payload
+                    if should_stop:
+                        logger.info("Stopping chat stream after runaway detected")
+                        stopped_runaway = True
                         break
                 answer = trim_runaway_generation("".join(assembled))
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
                 while (
-                    answer_needs_expansion(answer, query=user_query_llm)
+                    not stopped_runaway
+                    and answer_needs_expansion(answer, query=user_query_llm)
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
@@ -865,14 +874,20 @@ class ChatAPIView(APIView):
                             if emit_live and not separator_sent:
                                 yield _sse({"type": "delta", "text": "\n\n"})
                                 separator_sent = True
+                                published += "\n\n"
                             extra_parts.append(text)
-                            if emit_live:
-                                yield _sse({"type": "delta", "text": text})
-                            tentative = trim_runaway_generation(
-                                _join_continuation(answer, "".join(extra_parts))
+                            tentative_joined = _join_continuation(answer, "".join(extra_parts))
+                            event_type, payload, should_stop = next_stream_payload(
+                                published, tentative_joined
                             )
-                            if generation_should_stop(tentative):
-                                logger.info("Stopping continuation after conclusion runaway detected")
+                            if emit_live and event_type and payload:
+                                yield _sse({"type": event_type, "text": payload})
+                                published = (
+                                    payload if event_type == "replace" else published + payload
+                                )
+                            if should_stop:
+                                logger.info("Stopping continuation after runaway detected")
+                                stopped_runaway = True
                                 break
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
@@ -881,6 +896,8 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = trim_runaway_generation(_join_continuation(answer, extra))
+                    if stopped_runaway:
+                        break
                 answer = trim_runaway_generation(answer)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
