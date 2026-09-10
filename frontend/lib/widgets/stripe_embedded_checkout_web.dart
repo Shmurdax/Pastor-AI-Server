@@ -190,17 +190,11 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       final stripe =
           stripeFactory.callAsConstructor(widget.publishableKey.toJS) as JSObject;
 
+      // Stripe requires exactly one of clientSecret or fetchClientSecret.
       // Dart→JS Promise interop for fetchClientSecret is fragile on Flutter web
-      // and can hang forever. Pass clientSecret directly (still supported) and
-      // also provide a carefully typed fetchClientSecret fallback.
-      JSPromise<JSString> fetchClientSecret() {
-        final secret = widget.clientSecret;
-        return Future<JSString>.microtask(() => secret.toJS).toJS;
-      }
-
+      // and can hang forever, so pass clientSecret only (still supported).
       final options = JSObject();
       options['clientSecret'] = widget.clientSecret.toJS;
-      options['fetchClientSecret'] = fetchClientSecret.toJS;
       final onComplete = widget.onComplete;
       if (onComplete != null) {
         void handleComplete() {
