@@ -73,6 +73,11 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Do not reuse a quotation or NKJV verse", prompt)
         self.assertIn("Follow-up turns must use new quotations", prompt)
         self.assertIn("choose lines that have not already been quoted", LENGTH_STEER)
+        self.assertIn("closing paragraph", LENGTH_STEER)
+        self.assertIn("do not pad with filler", LENGTH_STEER)
+        self.assertIn("Never pad afterward", prompt)
+        self.assertIn("In conclusion", prompt)
+        self.assertIn("stop. Do not keep writing to fill space", prompt)
         self.assertEqual(TARGET_TEACHING_CHARS, 2000)
         self.assertEqual(MIN_TEACHING_CHARS, 1500)
         self.assertEqual(MIN_TEACHING_WORDS, 250)
@@ -94,6 +99,12 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
         self.assertFalse(answer_needs_expansion(long_enough, query=query))
+        concluded = (
+            ("Pastoral counsel for the student and parents. " * 24)
+            + "\n\nIn conclusion, speak with grace and truth, and pray together."
+        )
+        self.assertGreaterEqual(len(concluded), 1000)
+        self.assertFalse(answer_needs_expansion(concluded, query=query))
         self.assertTrue(answer_needs_expansion(
             short,
             query="Summarize his view of the Holy Spirit's work in conversion.",
@@ -101,6 +112,35 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
+
+    def test_trims_filler_after_in_conclusion(self):
+        from .chat_system_prompt import generation_should_stop, trim_runaway_generation
+
+        answer = (
+            "Speak to the student with compassion and clarity about God's design.\n\n"
+            "In conclusion, both the student and the parents need grace, truth, and "
+            "prayerful wisdom from God.\n\n"
+            "This approach ensures that both parties receive the necessary emotional "
+            "support while adhering closely to Scriptural teachings and guidelines set "
+            "forth by their respective local authorities entrusted charge thereof charged "
+            "responsibility overseeing matters pertaining public welfare collective good "
+            "inhabitants residing therein inclusive all members constituent communities "
+            "comprised diverse demographic constituencies represented respectively diverse "
+            "walks life embracing myriad perspectives orientations beliefs values held dear "
+            "cherished esteemed worthy consideration respect accorded rightfully so "
+            "universally recognized acknowledged respected embraced warmly welcomed openly "
+            "accepted unconditionally lovingly cared for protected nurtured guided towards "
+            "paths righteousness goodness integrity honor dignity worthy emulation emulated "
+            "perpetuated sustained indefinitely ad infinitum永恒不变。"
+        )
+        trimmed = trim_runaway_generation(answer)
+        self.assertIn("In conclusion", trimmed)
+        self.assertNotIn("This approach ensures", trimmed)
+        self.assertNotIn("永恒", trimmed)
+        self.assertTrue(generation_should_stop(answer))
+        self.assertFalse(generation_should_stop(
+            "In conclusion, love them well."
+        ))
 
 
 class ScopeGateParserTests(unittest.TestCase):
