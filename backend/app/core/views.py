@@ -35,6 +35,7 @@ from .chat_retrieval import (
     extract_used_verse_refs,
     format_reference_notes,
     is_bible_source,
+    looks_like_followup,
     search_queries_on_store,
     select_diverse_docs,
     uniqueness_instruction,
@@ -338,21 +339,32 @@ def _immediate_sse(payload: dict):
 
 
 def _client_fingerprint(request) -> str:
-    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else request.META.get("REMOTE_ADDR", "")
-    user_agent = request.headers.get("User-Agent", "")
-    return f"{client_ip}|{user_agent}"
+    """Stable-ish anon fingerprint.
+
+    Prefer User-Agent over client IP so mobile IP churn does not orphan an
+    in-progress chat's server history mid-thread.
+    """
+    user_agent = (request.headers.get("User-Agent") or "")[:240]
+    return f"ua:{user_agent}"
 
 
 def _scoped_session_id(request, provided_session_id: str) -> str:
     """
-    Scope client-provided session IDs to request fingerprint.
-    This reduces cross-user session guessing on public endpoints.
+    Isolate each Flutter chat UUID under a stable identity key.
+
+    Authenticated users are scoped by user id so chats never cross accounts.
+    Guests are scoped by User-Agent + chat UUID (not IP) so each New Chat stays
+    separate without losing history when the phone IP changes.
     """
     raw_session = (provided_session_id or "default_user").strip()[:256]
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        identity = f"u:{user.pk}"
+    else:
+        identity = f"a:{_client_fingerprint(request)}"
     digest = hmac.new(
         SESSION_SCOPE_SALT.encode("utf-8"),
-        f"{_client_fingerprint(request)}|{raw_session}".encode("utf-8"),
+        f"{identity}|{raw_session}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
     return f"s:{digest}"
@@ -560,12 +572,20 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            search_queries = expand_search_queries(user_query_llm, prior_user_queries)
+            search_queries = expand_search_queries(
+                user_query_llm,
+                prior_user_queries,
+                prior_ai_texts=prior_ai_texts,
+                limit=5,
+            )
+            is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
             candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
             logger.debug(
-                "Searching Qdrant with %s queries (k=%s each): %s",
+                "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
                 len(search_queries),
                 candidate_k,
+                is_followup,
+                session_id[:18],
                 search_queries,
             )
             scored_hits = search_queries_on_store(
@@ -624,7 +644,12 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + uniqueness_instruction(used_quotes, used_verses)
+                + uniqueness_instruction(
+                    used_quotes,
+                    used_verses,
+                    is_followup=is_followup,
+                    prior_user_query=(prior_user_queries[-1] if prior_user_queries else ""),
+                )
                 + language_reply_instruction(chat_language)
                 + "\nREFERENCE NOTES:\n{context}"
             )
