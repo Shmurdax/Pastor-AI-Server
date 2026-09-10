@@ -149,4 +149,5 @@ chat_apply_config() {
   vllm_upsert_config "$config" RETRIEVAL_MAX_PER_SOURCE 4
   vllm_upsert_config "$config" RETRIEVAL_MAX_PER_BIBLE_BOOK 2
   vllm_upsert_config "$config" RETRIEVAL_BIBLE_RATIO 0.40
+  vllm_upsert_config "$config" RETRIEVAL_VIDEO_RATIO 0.45
 }

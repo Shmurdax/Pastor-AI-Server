@@ -4,11 +4,13 @@ from unittest.mock import Mock
 
 from core.chat_retrieval import (
     bible_book_key,
+    ensure_source_media_mix,
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
     format_reference_notes,
     is_bible_source,
+    is_video_chunk,
     looks_like_followup,
     merge_scored_hits,
     search_queries_on_store,
@@ -17,14 +19,21 @@ from core.chat_retrieval import (
 )
 
 
-def _doc(text, *, source, file_hash=None, title=None):
+def _doc(text, *, source, file_hash=None, title=None, content_type=None, media_type=None, timestamp=None):
+    metadata = {
+        "source": source,
+        "file_hash": file_hash or source,
+        "title": title or source,
+    }
+    if content_type:
+        metadata["content_type"] = content_type
+    if media_type:
+        metadata["media_type"] = media_type
+    if timestamp:
+        metadata["timestamp"] = timestamp
     return SimpleNamespace(
         page_content=text,
-        metadata={
-            "source": source,
-            "file_hash": file_hash or source,
-            "title": title or source,
-        },
+        metadata=metadata,
     )
 
 
@@ -121,6 +130,72 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("sermon-c.pdf", sources)
         books = [bible_book_key(doc.page_content) for doc in selected if is_bible_source(doc.metadata["source"])]
         self.assertEqual(len(books), len(set(books)))
+
+    def test_select_diverse_docs_mixes_notes_and_videos(self):
+        scored = [
+            (_doc("elders must be above reproach teaching " * 6, source="elders.pdf", content_type="document"), 0.95),
+            (_doc("more elders notes about character " * 6, source="elders.pdf", content_type="document"), 0.94),
+            (_doc("boundaries in ministry notes " * 6, source="boundaries.pdf", content_type="document"), 0.93),
+            (
+                _doc(
+                    "video teaching on pastoral leadership " * 6,
+                    source="may_23.mp4",
+                    content_type="video_transcript",
+                    media_type="video",
+                    timestamp="10:45–12:43",
+                ),
+                0.80,
+            ),
+            (
+                _doc(
+                    "another video clip about shepherds " * 6,
+                    source="june_30.mp4",
+                    content_type="video_transcript",
+                    media_type="video",
+                    timestamp="01:00–02:00",
+                ),
+                0.78,
+            ),
+            (_doc("Titus 1:6 if a man is blameless", source="nkjv-bible.pdf"), 0.88),
+            (_doc("Ephesians 5:23 husband is head of the wife", source="nkjv-bible.pdf"), 0.70),
+        ]
+        selected = select_diverse_docs(
+            scored,
+            k=6,
+            bible_ratio=0.35,
+            video_ratio=0.45,
+            max_per_source=2,
+            max_per_bible_book=1,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            is_video=is_video_chunk,
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = [doc.metadata["source"] for doc in selected]
+        self.assertTrue(any(src.endswith(".pdf") and "bible" not in src for src in sources), sources)
+        self.assertTrue(any(src.endswith(".mp4") for src in sources), sources)
+        self.assertTrue(any(is_bible_source(src) for src in sources), sources)
+
+    def test_ensure_source_media_mix_adds_missing_video(self):
+        docs = [
+            _doc("notes", source="elders.pdf", title="Elders Charge", content_type="document"),
+            _doc(
+                "clip",
+                source="may_23.mp4",
+                title="May 23",
+                content_type="video_transcript",
+                timestamp="10:45–12:43",
+            ),
+        ]
+
+        def label(doc):
+            meta = doc.metadata
+            name = meta.get("title") or meta["source"]
+            ts = meta.get("timestamp")
+            return f"{name} [{ts}]" if ts else name
+
+        mixed = ensure_source_media_mix(["Elders Charge"], docs, label, limit=5)
+        self.assertIn("Elders Charge", mixed)
+        self.assertTrue(any("May 23" in item for item in mixed), mixed)
 
     def test_novelty_skips_already_quoted_chunk_when_alternatives_exist(self):
         used_quote = "I am not sure how the term Gay became part of the lexicon"

@@ -69,6 +69,7 @@ grep -q '^CHAT_MAX_TOKENS=1024$' "$TMP" || fail "max tokens should be upserted t
 grep -q '^RETRIEVAL_THRESHOLD=0.8$' "$TMP" || fail "retrieval threshold should be upserted for diverse RAG"
 grep -q '^RETRIEVAL_MAX_PER_SOURCE=4$' "$TMP" || fail "max per source should be upserted"
 grep -q '^RETRIEVAL_K=24$' "$TMP" || fail "retrieval k should be upserted"
+grep -q '^RETRIEVAL_VIDEO_RATIO=0.45$' "$TMP" || fail "video ratio should be upserted"
 grep -q 'RETRIEVAL_CANDIDATE_MULTIPLIER' "$ROOT/start.sh" || fail "start.sh must export retrieval candidate multiplier"
 grep -q 'CHAT_MAX_HISTORY_TURNS' "$ROOT/start.sh" || fail "start.sh must export history turns"
 grep -q 'chat_apply_config' "$ROOT/start.sh" || fail "start.sh must apply chat budget to config.env"

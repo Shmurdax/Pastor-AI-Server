@@ -31,11 +31,13 @@ from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_retrieval import (
     apply_retrieval_threshold,
+    ensure_source_media_mix,
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
     format_reference_notes,
     is_bible_source,
+    is_video_chunk,
     looks_like_followup,
     search_queries_on_store,
     select_diverse_docs,
@@ -66,6 +68,7 @@ PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.40"))
+RETRIEVAL_VIDEO_RATIO = float(os.getenv("RETRIEVAL_VIDEO_RATIO", "0.45"))
 RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.8"))
 RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "5"))
 RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "4"))
@@ -651,11 +654,13 @@ class ChatAPIView(APIView):
                     scored_hits,
                     k=RETRIEVAL_K,
                     bible_ratio=RETRIEVAL_BIBLE_RATIO,
+                    video_ratio=RETRIEVAL_VIDEO_RATIO,
                     max_per_source=RETRIEVAL_MAX_PER_SOURCE,
                     max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
                     used_quotes=used_quotes,
                     used_verses=used_verses,
                     is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    is_video=is_video_chunk,
                     source_key=lambda doc: (
                         str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
                         or _doc_source_name(doc)
@@ -668,10 +673,13 @@ class ChatAPIView(APIView):
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
+            video_count = sum(1 for doc in docs if is_video_chunk(doc))
+            note_count = max(0, len(docs) - bible_count - video_count)
             logger.debug(
-                "Selected retrieval chunks: total=%s default=%s bible=%s queries=%s",
+                "Selected retrieval chunks: total=%s notes=%s video=%s bible=%s queries=%s",
                 len(docs),
-                len(docs) - bible_count,
+                note_count,
+                video_count,
                 bible_count,
                 search_queries,
             )
@@ -755,13 +763,18 @@ class ChatAPIView(APIView):
             )
 
         def _response_sources(docs, answer: str):
-            """Prefer sources actually cited in the answer; fall back to retrieval set."""
+            """Prefer sources actually cited; keep a notes+video mix when both were retrieved."""
             if not docs:
                 return []
             cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=8)
-            if cited:
-                return cited
-            return _unique_sources(docs)
+            preferred = cited if cited else _unique_sources(docs)
+            return ensure_source_media_mix(
+                preferred,
+                docs,
+                _doc_source_label,
+                is_video=is_video_chunk,
+                limit=8,
+            )
 
         def _generate_tokens(prepared):
             bound = prepared["bound"]

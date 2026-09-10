@@ -57,6 +57,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("abortion", prompt.lower())
         self.assertIn("Do not say you must redirect", prompt)
         self.assertIn("Prefer notes that clearly address the user's topic", prompt)
+        self.assertIn("MEDIA MIX", prompt)
+        self.assertIn("at least one written note and at least one video note", prompt)
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("LENGTH (teaching answers):", prompt)

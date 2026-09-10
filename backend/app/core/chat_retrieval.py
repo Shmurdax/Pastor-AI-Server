@@ -187,6 +187,48 @@ def is_bible_source(source_name: str, markers: Optional[Iterable[str]] = None) -
     return any(marker in normalized for marker in used)
 
 
+_VIDEO_SOURCE_EXTS = (
+    ".mp4",
+    ".m4v",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
+    ".wmv",
+    ".flv",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".ogv",
+    ".ts",
+    ".mts",
+    ".m2ts",
+    ".m4a",
+    ".mp3",
+    ".wav",
+    ".aac",
+    ".flac",
+    ".ogg",
+    ".opus",
+)
+
+
+def is_video_chunk(doc: Any) -> bool:
+    """True for Whisper/video transcript chunks (not PDF sermon notes)."""
+    metadata = getattr(doc, "metadata", None) or {}
+    content_type = str(
+        metadata.get("content_type") or metadata.get("media_type") or ""
+    ).lower()
+    chunk_kind = str(metadata.get("chunk_kind") or "").lower()
+    if "video" in content_type or chunk_kind.startswith("video"):
+        return True
+    for key in ("source", "source_name", "file_name", "filename"):
+        raw = str(metadata.get(key) or "").lower()
+        if any(raw.endswith(ext) for ext in _VIDEO_SOURCE_EXTS):
+            return True
+    return False
+
+
 def metadata_source_hint(doc: Any) -> str:
     metadata = getattr(doc, "metadata", None) or {}
     parts = [
@@ -394,6 +436,7 @@ class ScoredChunk:
     tokens: frozenset[str] = field(default_factory=frozenset)
     book_key: str = ""
     novelty: float = 0.0
+    is_video: bool = False
 
 
 def merge_scored_hits(
@@ -468,10 +511,12 @@ def _as_scored_chunks(
     source_key: Callable[[Any], str],
     used_quotes: Iterable[str],
     used_verses: Iterable[str],
+    is_video: Optional[Callable[[Any], bool]] = None,
 ) -> list[ScoredChunk]:
     chunks: list[ScoredChunk] = []
     quotes = list(used_quotes)
     verses = list(used_verses)
+    video_fn = is_video or is_video_chunk
     for doc, score in scored_docs:
         text = chunk_text(doc)
         if not text:
@@ -488,6 +533,7 @@ def _as_scored_chunks(
                 tokens=_token_set(text),
                 book_key=bible_book_key(text) if bible else "",
                 novelty=_novelty_penalty(text, quotes, verses),
+                is_video=False if bible else bool(video_fn(doc)),
             )
         )
     return chunks
@@ -581,18 +627,25 @@ def select_diverse_docs(
     *,
     k: int,
     bible_ratio: float = 0.40,
+    video_ratio: float = 0.45,
     max_per_source: int = 4,
     max_per_bible_book: int = 2,
     used_quotes: Optional[Iterable[str]] = None,
     used_verses: Optional[Iterable[str]] = None,
     is_bible: Optional[Callable[[Any], bool]] = None,
+    is_video: Optional[Callable[[Any], bool]] = None,
     source_key: Optional[Callable[[Any], str]] = None,
     relevance: float = 0.72,
 ) -> list[Any]:
-    """Pick ``k`` chunks that stay relevant while spreading across sermons and books."""
+    """Pick ``k`` chunks that stay relevant while spreading across sermons, videos, and books.
+
+    Non-Bible sermon slots are split between written notes and video transcripts whenever
+    both media types are available in the candidate pool (informational teaching mix).
+    """
     if k <= 0:
         return []
     bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
+    video_fn = is_video or is_video_chunk
     source_fn = source_key or chunk_source_key
     chunks = _as_scored_chunks(
         scored_docs,
@@ -600,6 +653,7 @@ def select_diverse_docs(
         source_key=source_fn,
         used_quotes=used_quotes or (),
         used_verses=used_verses or (),
+        is_video=video_fn,
     )
     if not chunks:
         return []
@@ -610,13 +664,31 @@ def select_diverse_docs(
         bible_target = max(1, min(k - 1, int(round(k * bible_ratio))))
     sermon_target = k - bible_target
 
+    has_video = any(not item.is_bible and item.is_video for item in chunks)
+    has_document = any(not item.is_bible and not item.is_video for item in chunks)
+    if sermon_target <= 1 or not (has_video and has_document):
+        video_target = sermon_target if has_video and not has_document else 0
+        document_target = sermon_target - video_target
+    else:
+        # Keep at least one written note and one video among sermon slots.
+        video_target = max(1, min(sermon_target - 1, int(round(sermon_target * video_ratio))))
+        document_target = sermon_target - video_target
+        if document_target < 1:
+            document_target = 1
+            video_target = max(1, sermon_target - document_target)
+
     selected: list[ScoredChunk] = []
     selected_fps: set[str] = set()
     per_source: dict[str, int] = {}
     per_book: dict[str, int] = {}
     selected_tokens: list[frozenset[str]] = []
 
-    def can_take(chunk: ScoredChunk, *, prefer_bible: Optional[bool]) -> bool:
+    def can_take(
+        chunk: ScoredChunk,
+        *,
+        prefer_bible: Optional[bool],
+        prefer_video: Optional[bool] = None,
+    ) -> bool:
         if chunk.fingerprint in selected_fps:
             return False
         if per_source.get(chunk.source_key, 0) >= max_per_source:
@@ -624,6 +696,10 @@ def select_diverse_docs(
         if prefer_bible is True and not chunk.is_bible:
             return False
         if prefer_bible is False and chunk.is_bible:
+            return False
+        if prefer_video is True and (chunk.is_bible or not chunk.is_video):
+            return False
+        if prefer_video is False and (chunk.is_bible or chunk.is_video):
             return False
         if chunk.is_bible and chunk.book_key:
             if per_book.get(chunk.book_key, 0) >= max_per_bible_book and any(
@@ -650,11 +726,15 @@ def select_diverse_docs(
                 return False
         return True
 
-    def best_candidate(prefer_bible: Optional[bool]) -> Optional[ScoredChunk]:
+    def best_candidate(
+        prefer_bible: Optional[bool],
+        *,
+        prefer_video: Optional[bool] = None,
+    ) -> Optional[ScoredChunk]:
         best: Optional[ScoredChunk] = None
         best_value = float("-inf")
         for chunk in chunks:
-            if not can_take(chunk, prefer_bible=prefer_bible):
+            if not can_take(chunk, prefer_bible=prefer_bible, prefer_video=prefer_video):
                 continue
             overlap = max((_jaccard(chunk.tokens, tokens) for tokens in selected_tokens), default=0.0)
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
@@ -672,22 +752,99 @@ def select_diverse_docs(
             per_book[chunk.book_key] = per_book.get(chunk.book_key, 0) + 1
         selected_tokens.append(chunk.tokens)
 
+    def fill(count: int, *, prefer_bible: Optional[bool], prefer_video: Optional[bool] = None) -> None:
+        while len(selected) < k and count > 0:
+            picked = best_candidate(prefer_bible, prefer_video=prefer_video)
+            if picked is None:
+                break
+            take(picked)
+            count -= 1
+
+    # Written sermon notes and video transcripts first, then Bible, then leftovers.
+    fill(document_target, prefer_bible=False, prefer_video=False)
+    fill(video_target, prefer_bible=False, prefer_video=True)
     while len(selected) < sermon_target:
         picked = best_candidate(prefer_bible=False)
         if picked is None:
             break
         take(picked)
-    while sum(1 for item in selected if item.is_bible) < bible_target and len(selected) < k:
-        picked = best_candidate(prefer_bible=True)
-        if picked is None:
-            break
-        take(picked)
+    fill(bible_target, prefer_bible=True)
     while len(selected) < k:
         picked = best_candidate(prefer_bible=None)
         if picked is None:
             break
         take(picked)
     return [item.doc for item in selected]
+
+
+def ensure_source_media_mix(
+    preferred_labels: Iterable[str],
+    docs: Iterable[Any],
+    source_label: Callable[[Any], str],
+    *,
+    is_video: Optional[Callable[[Any], bool]] = None,
+    limit: int = 8,
+) -> list[str]:
+    """Keep preferred citations, but ensure both a note and a video appear when available."""
+    video_fn = is_video or is_video_chunk
+    labels: list[str] = []
+    seen: set[str] = set()
+    for label in preferred_labels:
+        cleaned = (label or "").strip()
+        if not cleaned or cleaned == "Unknown":
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(cleaned)
+        if len(labels) >= limit:
+            break
+
+    doc_list = list(docs or [])
+    labeled = [(doc, (source_label(doc) or "").strip()) for doc in doc_list]
+    labeled = [(doc, label) for doc, label in labeled if label and label != "Unknown"]
+
+    def _has_video(items: list[str]) -> bool:
+        item_set = {item.lower() for item in items}
+        return any(
+            video_fn(doc) and label.lower() in item_set
+            for doc, label in labeled
+        )
+
+    def _has_document(items: list[str]) -> bool:
+        item_set = {item.lower() for item in items}
+        return any(
+            (not video_fn(doc))
+            and (not is_bible_source(metadata_source_hint(doc)))
+            and label.lower() in item_set
+            for doc, label in labeled
+        )
+
+    def _append_first(predicate: Callable[[Any], bool]) -> None:
+        nonlocal labels
+        if len(labels) >= limit:
+            # Replace the weakest (last) slot if needed to keep the mix.
+            for doc, label in labeled:
+                if predicate(doc) and label.lower() not in seen:
+                    labels[-1] = label
+                    seen.add(label.lower())
+                    return
+            return
+        for doc, label in labeled:
+            if predicate(doc) and label.lower() not in seen:
+                seen.add(label.lower())
+                labels.append(label)
+                return
+
+    if labeled:
+        if not _has_document(labels):
+            _append_first(
+                lambda doc: (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))
+            )
+        if not _has_video(labels):
+            _append_first(video_fn)
+    return labels[:limit]
 
 
 def format_reference_notes(
