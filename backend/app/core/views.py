@@ -59,7 +59,7 @@ from .chat_system_prompt import (
     query_expects_long_answer,
     trim_runaway_generation,
 )
-from .chat_translate import translate_texts
+from .chat_translate import display_reply, english_search_query, translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
 from .storage_paths import ingested_media_path
@@ -550,7 +550,8 @@ class ChatAPIView(APIView):
             return Response({"error": "No query provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         user_query_stored = str(raw_query).strip()
-        user_query_llm = user_query_stored
+        # Search and generate in English; translate the displayed answer after.
+        user_query_llm = english_search_query(user_query_stored, chat_language)
 
         def prepare_chat():
             llm = get_chat_llm(
@@ -573,7 +574,7 @@ class ChatAPIView(APIView):
 
             if not query_in_scope(llm, user_query_llm):
                 out_of_scope_reply = generate_out_of_scope_reply(
-                    llm, user_query_llm, language=chat_language
+                    llm, user_query_llm, language="en"
                 )
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
@@ -585,7 +586,7 @@ class ChatAPIView(APIView):
                     allow_create=not regenerate,
                 )
                 payload = _chat_payload(
-                    out_of_scope_reply,
+                    display_reply(out_of_scope_reply, chat_language),
                     message_id=None if saved_message is None else saved_message.id,
                 )
                 return {"kind": "final", "payload": payload}
@@ -720,7 +721,7 @@ class ChatAPIView(APIView):
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + uniqueness
-                + language_reply_instruction(chat_language)
+                + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
             system_filled = system_content.replace(
@@ -827,6 +828,7 @@ class ChatAPIView(APIView):
 
         if want_stream:
             def produce_events():
+                emit_live = chat_language == "en"
                 yield _sse({"type": "status", "phase": "started"})
                 prepared = prepare_chat()
                 if prepared["kind"] == "final":
@@ -836,7 +838,8 @@ class ChatAPIView(APIView):
                 for text in _generate_tokens(prepared):
                     assembled.append(text)
                     joined = "".join(assembled)
-                    yield _sse({"type": "delta", "text": text})
+                    if emit_live:
+                        yield _sse({"type": "delta", "text": text})
                     if generation_should_stop(joined):
                         logger.info("Stopping chat stream after conclusion runaway detected")
                         break
@@ -859,11 +862,12 @@ class ChatAPIView(APIView):
                     separator_sent = False
                     try:
                         for text in _iter_continuation_tokens(prepared, answer):
-                            if not separator_sent:
+                            if emit_live and not separator_sent:
                                 yield _sse({"type": "delta", "text": "\n\n"})
                                 separator_sent = True
                             extra_parts.append(text)
-                            yield _sse({"type": "delta", "text": text})
+                            if emit_live:
+                                yield _sse({"type": "delta", "text": text})
                             tentative = trim_runaway_generation(
                                 _join_continuation(answer, "".join(extra_parts))
                             )
@@ -886,9 +890,12 @@ class ChatAPIView(APIView):
                     user_query_stored=user_query_stored,
                     answer=answer,
                 )
+                display = display_reply(answer, chat_language)
+                if not emit_live:
+                    yield _sse({"type": "delta", "text": display})
                 done = {
                     "type": "done",
-                    "answer": answer,
+                    "answer": display,
                     "sources": _response_sources(
                         prepared["docs"],
                         answer,
@@ -965,7 +972,7 @@ class ChatAPIView(APIView):
             logger.debug("Chat response generated successfully.")
             return Response(
                 _chat_payload(
-                    answer,
+                    display_reply(answer, chat_language),
                     sources=_response_sources(
                         prepared["docs"],
                         answer,
