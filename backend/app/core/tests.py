@@ -10,6 +10,7 @@ from .chat_system_prompt import (
     biblical_characters_instruction,
     build_chat_system_prompt,
     find_biblical_character_names,
+    looks_like_brief_social,
     query_expects_long_answer,
 )
 from .document_cleanup import (
@@ -58,7 +59,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("USE WHATEVER NOTES YOU HAVE", prompt)
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
-        self.assertIn("LENGTH:", prompt)
+        self.assertIn("LENGTH (teaching answers):", prompt)
         self.assertIn("connected paragraphs", prompt)
         self.assertIn("never open with a Scripture citation", prompt)
         self.assertIn("Weave NKJV", prompt)
@@ -78,6 +79,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never pad afterward", prompt)
         self.assertIn("In conclusion", prompt)
         self.assertIn("stop. Do not keep writing to fill space", prompt)
+        self.assertIn("DEFAULT MODE IS INFORMATIONAL TEACHING", prompt)
+        self.assertIn("CASUAL CONVERSATION EXCEPTION", prompt)
+        self.assertIn("Do not pull sermon quotes", prompt)
+        self.assertIn("Do not volunteer phone/email on ordinary greetings", prompt)
         self.assertEqual(TARGET_TEACHING_CHARS, 2000)
         self.assertEqual(MIN_TEACHING_CHARS, 1500)
         self.assertEqual(MIN_TEACHING_WORDS, 250)
@@ -89,6 +94,12 @@ class ChatSystemPromptTests(unittest.TestCase):
             "Summarize his view of the Holy Spirit's work in conversion."
         ))
         self.assertFalse(query_expects_long_answer("Thanks!"))
+        self.assertTrue(looks_like_brief_social("Hello how are you today?"))
+        self.assertTrue(looks_like_brief_social("Hi"))
+        self.assertFalse(looks_like_brief_social(
+            "According to Pastor Don's sermons, what is the main purpose of the church?"
+        ))
+        self.assertFalse(query_expects_long_answer("Hello how are you today?"))
         short = (
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."

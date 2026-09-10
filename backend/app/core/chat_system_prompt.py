@@ -215,8 +215,19 @@ MIN_TEACHING_WORDS = 250
 MAX_EXPANSION_PASSES = 1
 
 _BRIEF_QUERY_RE = re.compile(
-    r"^\s*(hi|hello|hey|thanks|thank you|good morning|good afternoon|"
-    r"good evening|ok|okay|bye|amen)[\s!.?]*$",
+    r"^\s*(?:"
+    r"(?:hi|hello|hey|hiya|yo|thanks|thank\s+you|thx|"
+    r"good\s+morning|good\s+afternoon|good\s+evening|good\s+night|"
+    r"ok|okay|bye|goodbye|amen)"
+    r"|"
+    r"(?:(?:hi|hello|hey|hiya)[\s!,.]*)?"
+    r"(?:how\s+are\s+you(?:\s+today|\s+doing)?|"
+    r"how(?:'s|\s+is)\s+it\s+going|how\s+have\s+you\s+been|"
+    r"what(?:'s|\s+is)\s+up|whats\s+up)"
+    r"|"
+    r"(?:nice|good)\s+to\s+(?:meet|see)\s+you|"
+    r"hope\s+you(?:'re|\s+are)\s+(?:well|doing\s+well)"
+    r")[\s!.?]*$",
     re.IGNORECASE,
 )
 _CONCLUSION_RE = re.compile(
@@ -232,9 +243,26 @@ _LEGALESE_RE = re.compile(
 )
 
 
-def query_expects_long_answer(query: str) -> bool:
-    return not bool(_BRIEF_QUERY_RE.match((query or "").strip()))
+def looks_like_brief_social(query: str) -> bool:
+    """True for greetings / thanks / light check-ins that should stay conversational."""
+    return bool(_BRIEF_QUERY_RE.match((query or "").strip()))
 
+
+def query_expects_long_answer(query: str) -> bool:
+    """True for teaching/informational questions (the default product mode)."""
+    return not looks_like_brief_social(query)
+
+
+CONVERSATIONAL_STEER = (
+    "This is a casual greeting or social check-in—not a teaching request. "
+    "Reply in one short warm conversational paragraph (about 2–4 sentences). "
+    "Do not quote Pastor Don or Susan, do not cite sermon timestamps or video "
+    "marks, do not open a Scripture teaching, and do not list phone/email "
+    "unless they ask how to contact the Nordins. Welcome them as the Nordins' "
+    "AI assistant (no personal name) and invite a faith, Bible, church, or "
+    "ministry question. Stay natural and brief.\n\n"
+    "User message:\n"
+)
 
 def answer_word_count(answer: str) -> int:
     return len((answer or "").split())
@@ -458,7 +486,19 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</source_material>\n\n"
 
         "<response_policy>\n"
-        "LENGTH: A teaching answer should be about 2000 characters (roughly 300–360 words). "
+        "DEFAULT MODE IS INFORMATIONAL TEACHING. When the user asks for biblical, "
+        "theological, pastoral, church, or social-issue guidance, give a full "
+        "~2000-character teaching answer with Pastor Don/Susan quotations, woven "
+        "NKJV, and application—not a short chatty reply.\n"
+        "CASUAL CONVERSATION EXCEPTION: Only for pure greetings, thanks, or light "
+        "check-ins (for example \"Hello how are you today?\"), reply in one short "
+        "warm conversational paragraph. Do not pull sermon quotes, timestamps, "
+        "Scripture teaching blocks, or contact information into that greeting. "
+        "Welcome them as an AI assistant for Pastor Don and Susan Nordin (no "
+        "personal name) and invite a faith or ministry question. If REFERENCE "
+        "NOTES are empty or irrelevant for a greeting, ignore them—do not invent "
+        "quotes to fill space.\n"
+        "LENGTH (teaching answers): About 2000 characters (roughly 300–360 words). "
         "Do not stop after one sentence, and do not write a long multi-page essay. "
         "Cover the notes, quote Pastor Don and/or Susan, weave in NKJV, and apply it—then stop. "
         "Once you write a closing paragraph (\"In conclusion,\" \"In closing,\" or similar), end the "
@@ -478,10 +518,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Speak with confidence and clarity when grounded in their notes.\n"
         "Do not use hedging phrases like \"from what I've gathered,\" \"it appears,\" or \"it seems.\"\n"
         "Do not mention or refer to \"sermon context,\" \"reference notes,\" or retrieval internals.\n"
-        "For simple greetings or thanks, one warm paragraph is enough—welcome them as an AI assistant for "
-        "Pastor Don and Susan Nordin without giving yourself a name. For every other spiritual, biblical, "
-        "church, or social-issue question, a one-sentence reply is a failed answer. Aim for about 2000 "
-        "characters of paragraphs with a few bullets, quotations, woven NKJV, and application.\n"
+        "For every spiritual, biblical, church, or social-issue question, a one-sentence reply is a "
+        "failed answer. Aim for about 2000 characters of paragraphs with a few bullets, quotations, "
+        "woven NKJV, and application.\n"
         "</response_policy>\n\n"
 
         f"{biblical_characters_instruction(names)}\n"
@@ -494,7 +533,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "<safety_protocol>\n"
         "If a situation requires professional or crisis-level care, gently direct the user to seek in-person "
         "pastoral counseling, and share the Nordins' contact information when that would help them take the "
-        "next step.\n"
+        "next step. Do not volunteer phone/email on ordinary greetings or casual check-ins.\n"
         "</safety_protocol>\n\n"
 
         "<length_close>\n"

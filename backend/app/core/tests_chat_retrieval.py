@@ -67,6 +67,8 @@ class ChatRetrievalTests(unittest.TestCase):
     def test_looks_like_followup(self):
         self.assertTrue(looks_like_followup("Can you further clarify that guidance?"))
         self.assertTrue(looks_like_followup("What do you mean?"))
+        self.assertFalse(looks_like_followup("Hello how are you today?"))
+        self.assertFalse(looks_like_followup("Hi"))
         self.assertFalse(looks_like_followup(
             "If a teenager in the youth group comes out, what would this pastor say to the student?"
         ))

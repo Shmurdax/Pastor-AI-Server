@@ -222,6 +222,11 @@ def looks_like_followup(query: str) -> bool:
     text = (query or "").strip()
     if not text:
         return False
+    # Greetings are not follow-ups even when short / after prior turns.
+    from .chat_system_prompt import looks_like_brief_social
+
+    if looks_like_brief_social(text):
+        return False
     if _FOLLOWUP_RE.search(text):
         return True
     return len(text.split()) <= 8
