@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_session_store.dart';
 import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
@@ -130,7 +131,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _chatFocusNode = FocusNode();
   final _inputAreaKey = GlobalKey();
   final stt.SpeechToText _speechToText = stt.SpeechToText();
-  String sessionId = const Uuid().v4();
+  late final ChatSessionStore _sessions =
+      ChatSessionStore(initialSessionId: const Uuid().v4());
   bool _authInitialized = false;
   _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
   bool _eventsNavPanelOpen = false;
@@ -142,38 +144,33 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _translatingThread = false;
   LocaleController? _localeListener;
 
-  // State
-  final List<Map<String, dynamic>> _messages = [];
-  List<String> _librarySermons = [];
-  List<String> _previousSermons = [];
-  bool _isLoading = false;
-  bool _isFirstMessage = true;
+  // Visible chat view — always the current session's runtime lists/flags.
+  String get sessionId => _sessions.currentSessionId;
+  set sessionId(String value) => _sessions.currentSessionId = value;
+  List<Map<String, dynamic>> get _messages => _sessions.current.messages;
+  List<String> get _librarySermons => _sessions.current.librarySermons;
+  set _librarySermons(List<String> value) =>
+      _sessions.current.librarySermons = value;
+  List<String> get _previousSermons => _sessions.current.previousSermons;
+  set _previousSermons(List<String> value) =>
+      _sessions.current.previousSermons = value;
+  bool get _isLoading => _sessions.current.isLoading;
+  bool get _isFirstMessage => _sessions.current.isFirstMessage;
+  set _isFirstMessage(bool value) => _sessions.current.isFirstMessage = value;
   bool _isButtonTapped = false;
   bool _showBackToBottomButton = false;
   bool _speechAvailable = false;
   bool _isListening = false;
   String _textBeforeSpeech = '';
-  String _streamRaw = '';
-  bool _streamCancelled = false;
-  int _streamEpoch = 0;
   /// True for the rest of the pointer that just pressed Stop, so a rebuilt
   /// send button cannot start a new reply on the same click.
   bool _absorbComposerTap = false;
   /// True while the latest AI bubble is still receiving generated tokens.
-  bool get _isStreamingReply {
-    if (_messages.isEmpty) return false;
-    return isStreamingAiMessage(_messages.last);
-  }
+  bool get _isStreamingReply => _sessions.current.isStreamingReply;
 
-  bool get _showThinkingLogo {
-    if (!_isLoading) return false;
-    if (!_isStreamingReply) return true;
-    final text = (_messages.last['text'] as String?) ?? '';
-    return text.trim().isEmpty;
-  }
+  bool get _showThinkingLogo => _sessions.current.showThinkingLogo;
   /// Full [_buildInputArea] height including bottom inset; grows with multiline input.
   double _inputAreaHeight = _layoutBottomInsetDesktop + _chatInputBarBlockHeight;
-  http.Client? _activeClient;
 
   // Prayer request panel
   bool _prayerPanelExpanded = false;
@@ -495,31 +492,13 @@ final bibleRefRegex = RegExp(
   Future<void> _restoreMessagesForCurrentSession(String userId) async {
     for (final entry in _chatHistoryEntries) {
       if (entry['sessionId'] == sessionId) {
-        final rawMessages = entry['messages'];
-        if (rawMessages is! List || rawMessages.isEmpty) {
-          if (!mounted) return;
-          setState(() {
-            _messages.clear();
-            _librarySermons.clear();
-            _previousSermons.clear();
-            _isFirstMessage = true;
-          });
-          return;
-        }
         if (!mounted) return;
         setState(() {
-          _messages
-            ..clear()
-            ..addAll(
-              rawMessages
-                  .whereType<Map>()
-                  .map((m) => Map<String, dynamic>.from(m)),
-            );
-          _librarySermons = withoutVideoSermonSources(
-              List<String>.from(entry['librarySermons'] ?? const []));
-          _previousSermons = withoutVideoSermonSources(
-              List<String>.from(entry['previousSermons'] ?? const []));
-          _isFirstMessage = _messages.isEmpty;
+          final runtime = _sessions.switchTo(sessionId, historyEntry: entry);
+          // Force hydrate on cold restore even if an empty runtime shell existed.
+          if (runtime.messages.isEmpty) {
+            runtime.loadFromHistoryEntry(entry);
+          }
         });
         return;
       }
@@ -528,10 +507,7 @@ final bibleRefRegex = RegExp(
     // bubbles cannot bleed into this one after sign-in / sign-out.
     if (!mounted) return;
     setState(() {
-      _messages.clear();
-      _librarySermons.clear();
-      _previousSermons.clear();
-      _isFirstMessage = true;
+      _sessions.current.clearContent();
     });
   }
 
@@ -539,8 +515,16 @@ final bibleRefRegex = RegExp(
     await _tokenStorage.saveChatSessionId(_historyStorageId, sessionId);
   }
 
-  String _chatHistoryTitle() {
-    for (final msg in _messages) {
+  Map<String, dynamic> _currentChatSnapshot([ChatSessionRuntime? runtime]) {
+    final session = runtime ?? _sessions.current;
+    return session.toHistorySnapshot(
+      title: _chatHistoryTitleFor(session),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  String _chatHistoryTitleFor(ChatSessionRuntime session) {
+    for (final msg in session.messages) {
       if (msg['role'] == 'user') {
         final text = (msg['text'] as String? ?? '').trim();
         if (text.isNotEmpty) {
@@ -551,21 +535,15 @@ final bibleRefRegex = RegExp(
     return _s.newConversation;
   }
 
-  Map<String, dynamic> _currentChatSnapshot() => {
-        'sessionId': sessionId,
-        'title': _chatHistoryTitle(),
-        'updatedAt': DateTime.now().millisecondsSinceEpoch,
-        'messages': _messages.map((m) => Map<String, dynamic>.from(m)).toList(),
-        'librarySermons': withoutVideoSermonSources(_librarySermons),
-        'previousSermons': withoutVideoSermonSources(_previousSermons),
-      };
+  String _chatHistoryTitle() => _chatHistoryTitleFor(_sessions.current);
 
-  Future<void> _persistChatHistory() async {
-    if (_messages.isEmpty) return;
+  Future<void> _persistChatHistory([ChatSessionRuntime? runtime]) async {
+    final session = runtime ?? _sessions.current;
+    if (session.messages.isEmpty) return;
 
     final storageId = _historyStorageId;
-    final snapshot = _currentChatSnapshot();
-    final sid = sessionId;
+    final snapshot = _currentChatSnapshot(session);
+    final sid = session.sessionId;
     final updated = <Map<String, dynamic>>[
       snapshot,
       ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
@@ -574,7 +552,28 @@ final bibleRefRegex = RegExp(
     // Free/guest: only the most recent chat is kept; Premium keeps many.
     final trimmed = updated.take(_maxHistoryEntries).toList();
     await _tokenStorage.saveChatHistory(storageId, trimmed);
-    if (mounted) setState(() => _chatHistoryEntries = trimmed);
+    if (mounted) {
+      setState(() => _chatHistoryEntries = _withGeneratingSessionsVisible(trimmed, updated));
+    }
+  }
+
+  /// Keep chats that are still generating in the sidebar even if the free
+  /// history cap dropped them from persisted storage.
+  List<Map<String, dynamic>> _withGeneratingSessionsVisible(
+    List<Map<String, dynamic>> trimmed,
+    List<Map<String, dynamic>> allCandidates,
+  ) {
+    final display = List<Map<String, dynamic>>.from(trimmed);
+    for (final entry in allCandidates) {
+      final entrySid = entry['sessionId'] as String?;
+      if (entrySid == null) continue;
+      if (!_sessions.isGenerating(entrySid)) continue;
+      if (display.any((e) => e['sessionId'] == entrySid)) continue;
+      display.add(entry);
+    }
+    display.sort((a, b) =>
+        (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
+    return display;
   }
 
   Future<void> _reloadChatHistory() async {
@@ -583,7 +582,22 @@ final bibleRefRegex = RegExp(
     if (trimmed.length != history.length) {
       await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
     }
-    if (mounted) setState(() => _chatHistoryEntries = trimmed);
+    if (mounted) {
+      setState(() {
+        _chatHistoryEntries = _withGeneratingSessionsVisible(
+          trimmed,
+          [
+            ...trimmed,
+            ..._chatHistoryEntries,
+            for (final runtime in [
+              if (_sessions.peek(_sessions.currentSessionId) != null)
+                _sessions.current,
+            ])
+              if (runtime.isGenerating) _currentChatSnapshot(runtime),
+          ],
+        );
+      });
+    }
   }
 
   Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
@@ -619,17 +633,16 @@ final bibleRefRegex = RegExp(
 
     final updated = _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList();
     await _saveChatHistoryEntries(updated);
+    _sessions.disposeSession(sid, cancelledText: _s.responseCancelled);
 
     if (sid == sessionId && mounted) {
       setState(() {
-        sessionId = const Uuid().v4();
-        _messages.clear();
-        _librarySermons.clear();
-        _previousSermons.clear();
-        _isFirstMessage = true;
+        _sessions.startNewChat(const Uuid().v4());
         _showBackToBottomButton = false;
       });
       await _persistSessionId();
+    } else if (mounted) {
+      setState(() {});
     }
 
     if (mounted) {
@@ -648,6 +661,7 @@ final bibleRefRegex = RegExp(
     if (_speechToText.isListening) {
       _speechToText.stop();
     }
+    _sessions.disposeAll(cancelledText: '');
     _pulseController.dispose();
     _scrollController.dispose();
     _controller.dispose();
@@ -928,12 +942,9 @@ Future<void> _launchSermonDoc(String sermonName) async {
   Future<void> _clearChat() async {
     await _persistChatHistory();
     if (!mounted) return;
+    // Leave any in-flight reply on the previous session running in the background.
     setState(() {
-      sessionId = const Uuid().v4();
-      _messages.clear();
-      _librarySermons.clear();
-      _previousSermons.clear();
-      _isFirstMessage = true;
+      _sessions.startNewChat(const Uuid().v4());
       _showBackToBottomButton = false;
     });
     _persistSessionId();
@@ -1051,20 +1062,10 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _loadChatFromHistory(Map<String, dynamic> entry) {
+    final sid = entry['sessionId'] as String? ?? sessionId;
     setState(() {
-      sessionId = entry['sessionId'] as String? ?? sessionId;
-      _messages
-        ..clear()
-        ..addAll(
-          (entry['messages'] as List<dynamic>? ?? const [])
-              .whereType<Map>()
-              .map((m) => Map<String, dynamic>.from(m)),
-        );
-      _librarySermons = withoutVideoSermonSources(
-          List<String>.from(entry['librarySermons'] ?? const []));
-      _previousSermons = withoutVideoSermonSources(
-          List<String>.from(entry['previousSermons'] ?? const []));
-      _isFirstMessage = _messages.isEmpty;
+      // View switch only — do not cancel streams on other chats.
+      _sessions.switchTo(sid, historyEntry: entry);
       _showBackToBottomButton = false;
     });
     _persistSessionId();
@@ -1081,14 +1082,12 @@ Future<void> _launchSermonDoc(String sermonName) async {
       onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
         if (!mounted) return;
+        _sessions.disposeAll(cancelledText: _s.responseCancelled);
         setState(() {
-          sessionId = const Uuid().v4();
+          _sessions.startNewChat(const Uuid().v4());
           _chatHistoryEntries = [];
-          _messages.clear();
-          _librarySermons.clear();
-          _previousSermons.clear();
-          _isFirstMessage = true;
           _sidebarPanel = _SidebarPanel.sermonLibrary;
+          _showBackToBottomButton = false;
         });
         _persistSessionId();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1098,15 +1097,12 @@ Future<void> _launchSermonDoc(String sermonName) async {
     );
   }
 
-  bool _isCurrentStream(int epoch) {
-    return !_streamCancelled &&
-        _isLoading &&
-        _activeClient != null &&
-        epoch == _streamEpoch;
+  bool _isCurrentStream(ChatSessionRuntime runtime, int epoch) {
+    return runtime.isCurrentStream(epoch);
   }
 
   void _onComposerPrimaryTap() {
-    if (_isLoading || _activeClient != null || _isStreamingReply) {
+    if (_isLoading || _isStreamingReply) {
       _stopResponse();
       return;
     }
@@ -1115,21 +1111,17 @@ Future<void> _launchSermonDoc(String sermonName) async {
   }
 
   void _stopResponse() {
-    if (!_isLoading && _activeClient == null && !_isStreamingReply) return;
+    final runtime = _sessions.current;
+    if (!runtime.isLoading &&
+        runtime.activeClient == null &&
+        !runtime.isStreamingReply) {
+      return;
+    }
     _absorbComposerTap = true;
-    _streamCancelled = true;
-    _streamEpoch += 1;
-    _activeClient?.close();
     setState(() {
-      _isLoading = false;
-      _activeClient = null;
-      finalizeChatStreamOnStop(
-        _messages,
-        cancelledText: _s.responseCancelled,
-        raw: _streamRaw,
-      );
-      _streamRaw = '';
+      runtime.stopStream(cancelledText: _s.responseCancelled);
     });
+    unawaited(_persistChatHistory(runtime));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _absorbComposerTap = false;
@@ -1137,14 +1129,19 @@ Future<void> _launchSermonDoc(String sermonName) async {
     });
   }
 
-  void _appendStreamDelta(String delta, int epoch) {
+  void _appendStreamDelta(String delta, int epoch, String boundSessionId) {
     if (delta.isEmpty) return;
-    if (!_isCurrentStream(epoch)) return;
-    _streamRaw += delta;
-    final display = _boldBibleReferences(_streamRaw);
-    if (!mounted || !_isCurrentStream(epoch)) return;
-    setState(() => applyChatStreamDelta(_messages, display));
-    _scrollToBottom(followStream: true);
+    final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
+    if (!_isCurrentStream(runtime, epoch)) return;
+    runtime.streamRaw += delta;
+    final display = _boldBibleReferences(runtime.streamRaw);
+    if (!mounted || !_isCurrentStream(runtime, epoch)) return;
+    applyChatStreamDelta(runtime.messages, display);
+    // Refresh the visible thread and/or sidebar generating indicators.
+    setState(() {});
+    if (boundSessionId == _sessions.currentSessionId) {
+      _scrollToBottom(followStream: true);
+    }
   }
 
 Future<void> _sendMessage() async {
@@ -1165,6 +1162,7 @@ Future<void> _sendMessage() async {
   void _regenerateResponse(int index) {
     if (index <= 0 || index >= _messages.length) return;
     if (_messages[index]['localKey'] is String) return;
+    if (_isLoading || _isStreamingReply) return;
     final userMessage = _messages[index - 1];
     if (userMessage["role"] != "user") return;
     final prompt = userMessage["text"] as String;
@@ -1173,53 +1171,66 @@ Future<void> _sendMessage() async {
   }
 
 Future<void> _submitMessage(String userText, {required bool addUserMessage, bool regenerate = false}) async {
-  _streamRaw = '';
-  _streamCancelled = false;
-  final epoch = ++_streamEpoch;
+  final runtime = _sessions.current;
+  final boundSessionId = runtime.sessionId;
+  // Only one in-flight reply per chat; other chats may still stream.
+  if (runtime.isGenerating) return;
+
+  final client = http.Client();
+  final epoch = runtime.beginStream(client: client);
+  if (epoch == null) {
+    client.close();
+    return;
+  }
+
   setState(() {
     if (addUserMessage) {
-      _messages.add({"role": "user", "text": userText});
-      _isFirstMessage = false;
+      runtime.messages.add({"role": "user", "text": userText});
+      runtime.isFirstMessage = false;
     }
-    _isLoading = true;
-    _activeClient = http.Client();
   });
   _scrollToBottom();
+  // Persist early so the chat appears in the sidebar with a loading indicator.
+  unawaited(_persistChatHistory(runtime));
 
   try {
     final data = await _apiService.streamMessage(
       userText,
-      sessionId,
+      boundSessionId,
       regenerate: regenerate,
       language: _languageCode,
-      client: _activeClient,
-      onDelta: (delta) => _appendStreamDelta(delta, epoch),
-      isCancelled: () => _streamCancelled || epoch != _streamEpoch,
+      client: client,
+      onDelta: (delta) => _appendStreamDelta(delta, epoch, boundSessionId),
+      isCancelled: () =>
+          runtime.streamCancelled || epoch != runtime.streamEpoch,
     );
-    if (!mounted || !_isCurrentStream(epoch)) return;
+    if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     await _persistSessionId();
-    if (!mounted || !_isCurrentStream(epoch)) return;
+    if (!mounted || !_isCurrentStream(runtime, epoch)) return;
 
-    final answer = _boldBibleReferences((data['answer'] as String?) ?? _streamRaw);
+    final answer = _boldBibleReferences(
+      (data['answer'] as String?) ?? runtime.streamRaw,
+    );
     final messageId = data['message_id'];
     setState(() {
-      if (!mounted || !_isCurrentStream(epoch)) return;
-      if (_librarySermons.isNotEmpty) {
-        _previousSermons = withoutVideoSermonSources(
-          [..._librarySermons, ..._previousSermons],
+      if (!mounted || !_isCurrentStream(runtime, epoch)) return;
+      if (runtime.librarySermons.isNotEmpty) {
+        runtime.previousSermons = withoutVideoSermonSources(
+          [...runtime.librarySermons, ...runtime.previousSermons],
         ).toSet().take(25).toList();
       }
 
       final sources = List<String>.from(data['sources'] ?? []);
       var completed = completeChatStreamAnswer(
-        _messages,
+        runtime.messages,
         answer: answer,
         sources: sources,
         messageId: messageId,
       );
       if (!completed &&
-          (_messages.isEmpty || _messages.last['role'] != 'ai')) {
-        _messages.add({
+          (runtime.messages.isEmpty ||
+              runtime.messages.last['role'] != 'ai')) {
+        runtime.messages.add({
           'role': 'ai',
           'text': answer,
           'sources': sources,
@@ -1232,38 +1243,37 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
 
       final newSources = librarySermonSources(data['sources']);
       if (newSources.isNotEmpty) {
-        _librarySermons = newSources;
-        _previousSermons.removeWhere((s) => _librarySermons.contains(s));
+        runtime.librarySermons = newSources;
+        runtime.previousSermons
+            .removeWhere((s) => runtime.librarySermons.contains(s));
       }
     });
-    if (!_isCurrentStream(epoch)) return;
-    _scrollToBottom(followStream: true);
-    await _persistChatHistory();
+    if (!_isCurrentStream(runtime, epoch)) return;
+    if (boundSessionId == _sessions.currentSessionId) {
+      _scrollToBottom(followStream: true);
+    }
+    await _persistChatHistory(runtime);
   } on http.ClientException {
     if (!mounted) return;
   } catch (e) {
-    if (_isCurrentStream(epoch)) {
+    if (_isCurrentStream(runtime, epoch)) {
       setState(() {
-        if (_isStreamingReply) {
-          _messages.last['streaming'] = false;
-          if (_streamRaw.trim().isEmpty) {
-            _messages.last['localKey'] = 'serverError';
-            _messages.last['text'] = _s.serverError;
+        if (runtime.isStreamingReply) {
+          runtime.messages.last['streaming'] = false;
+          if (runtime.streamRaw.trim().isEmpty) {
+            runtime.messages.last['localKey'] = 'serverError';
+            runtime.messages.last['text'] = _s.serverError;
           }
         }
       });
+      unawaited(_persistChatHistory(runtime));
     }
   } finally {
-    if (epoch == _streamEpoch) {
-      _streamRaw = '';
+    if (epoch == runtime.streamEpoch) {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _activeClient = null;
-          if (_isStreamingReply) {
-            _messages.last['streaming'] = false;
-          }
-        });
+        setState(() => runtime.finishStreamCleanup(epoch));
+      } else {
+        runtime.finishStreamCleanup(epoch);
       }
     }
   }
@@ -1370,14 +1380,12 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               onOpenResponseReports: _openResponseReportsInbox,
               onSignedOut: () {
                 if (!mounted) return;
+                _sessions.disposeAll(cancelledText: _s.responseCancelled);
                 setState(() {
-                  sessionId = const Uuid().v4();
+                  _sessions.startNewChat(const Uuid().v4());
                   _chatHistoryEntries = [];
-                  _messages.clear();
-                  _librarySermons.clear();
-                  _previousSermons.clear();
-                  _isFirstMessage = true;
                   _sidebarPanel = _SidebarPanel.sermonLibrary;
+                  _showBackToBottomButton = false;
                 });
                 _persistSessionId();
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1546,7 +1554,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   Widget _buildChatHistoryLink(Map<String, dynamic> entry) {
     final title = (entry['title'] as String? ?? _s.conversation).trim();
     final updatedAt = entry['updatedAt'] as int?;
-    final isActive = entry['sessionId'] == sessionId;
+    final sid = entry['sessionId'] as String? ?? '';
+    final isActive = sid == sessionId;
+    final isGenerating = sid.isNotEmpty && _sessions.isGenerating(sid);
     String subtitle = '';
     if (updatedAt != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(updatedAt);
@@ -1589,11 +1599,30 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                    color: _gold,
-                    size: 18,
-                  ),
+                  if (isGenerating)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (_, __) => Opacity(
+                          opacity: _fadeAnimation.value,
+                          child: Transform.scale(
+                            scale: _wobbleAnimation.value,
+                            child: Image.asset(
+                              'assets/images/nordins_transparent_logo.png',
+                              height: 18,
+                              width: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Icon(
+                      isActive ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                      color: _gold,
+                      size: 18,
+                    ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Padding(
