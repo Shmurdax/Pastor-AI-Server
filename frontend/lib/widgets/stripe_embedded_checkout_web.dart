@@ -34,6 +34,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
 
   late final String _viewType;
   late final String _elementId;
+  final Completer<void> _domReady = Completer<void>();
   String? _error;
   bool _loading = true;
   JSObject? _checkout;
@@ -49,7 +50,10 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       final div = web.HTMLDivElement()
         ..id = _elementId
         ..style.width = '100%'
-        ..style.minHeight = '${widget.height.toInt()}px';
+        ..style.minHeight = '${widget.height.toInt()}px'
+        ..style.border = 'none';
+      // Ensure payment iframes can use Payment Request / Link where supported.
+      div.setAttribute('allow', 'payment *');
       return div;
     });
 
@@ -71,7 +75,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     }
 
     if (web.document.querySelector('script[data-pastor-stripe="1"]') != null) {
-      for (var i = 0; i < 50; i++) {
+      for (var i = 0; i < 100; i++) {
         if (ready()) return;
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
@@ -99,7 +103,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       ),
     );
 
-    for (var i = 0; i < 50; i++) {
+    for (var i = 0; i < 100; i++) {
       if (ready()) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
@@ -108,10 +112,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     }
   }
 
-  /// Current Stripe.js uses [createEmbeddedCheckoutPage]; older builds used
-  /// [initEmbeddedCheckout]. Calling a missing method can hang forever when
-  /// the null result is awaited as a Promise — prefer the new name and fail
-  /// fast if neither exists.
+  /// Prefer current Stripe.js API; fall back for older bundles.
   Future<JSObject> _createEmbeddedCheckout(
     JSObject stripe,
     JSObject options,
@@ -140,9 +141,11 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     }
 
     final result = await (raw as JSPromise<JSAny?>).toDart.timeout(
-      const Duration(seconds: 30),
+      const Duration(seconds: 45),
       onTimeout: () => throw TimeoutException(
-        'Stripe checkout form timed out while initializing.',
+        'Stripe checkout form timed out while initializing. '
+        'Check that your publishable key matches the secret key mode '
+        '(both test or both live), then hard-refresh and try again.',
       ),
     );
     if (result == null) {
@@ -151,25 +154,52 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     return result as JSObject;
   }
 
+  Future<void> _waitForDom() async {
+    // Prefer the platform-view callback; also poll in case it already landed.
+    for (var i = 0; i < 80; i++) {
+      if (web.document.getElementById(_elementId) != null) return;
+      if (_domReady.isCompleted) return;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    await _domReady.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {},
+    );
+    if (web.document.getElementById(_elementId) == null) {
+      throw StateError(
+        'Payment form container failed to mount in the page. '
+        'Hard-refresh and try again.',
+      );
+    }
+  }
+
   Future<void> _mountCheckout() async {
     try {
-      await _ensureStripeJs();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      for (var i = 0; i < 40; i++) {
-        if (web.document.getElementById(_elementId) != null) break;
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (widget.publishableKey.isEmpty || widget.clientSecret.isEmpty) {
+        throw StateError('Missing Stripe publishable key or client secret.');
       }
+      if (widget.clientSecret.contains('paste_here') ||
+          widget.publishableKey.contains('paste_here')) {
+        throw StateError('Stripe keys still look like placeholders.');
+      }
+
+      await _ensureStripeJs();
+      await _waitForDom();
 
       final stripeFactory = web.window.getProperty('Stripe'.toJS) as JSFunction;
       final stripe =
           stripeFactory.callAsConstructor(widget.publishableKey.toJS) as JSObject;
 
-      // fetchClientSecret must return a Promise<string>
-      JSPromise<JSString> fetchClientSecret(JSAny? _) {
-        return Future<JSString>.value(widget.clientSecret.toJS).toJS;
+      // Dart→JS Promise interop for fetchClientSecret is fragile on Flutter web
+      // and can hang forever. Pass clientSecret directly (still supported) and
+      // also provide a carefully typed fetchClientSecret fallback.
+      JSPromise<JSString> fetchClientSecret() {
+        final secret = widget.clientSecret;
+        return Future<JSString>.microtask(() => secret.toJS).toJS;
       }
 
       final options = JSObject();
+      options['clientSecret'] = widget.clientSecret.toJS;
       options['fetchClientSecret'] = fetchClientSecret.toJS;
       final onComplete = widget.onComplete;
       if (onComplete != null) {
@@ -220,7 +250,12 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
         SizedBox(
           height: widget.height,
           width: double.infinity,
-          child: HtmlElementView(viewType: _viewType),
+          child: HtmlElementView(
+            viewType: _viewType,
+            onPlatformViewCreated: (_) {
+              if (!_domReady.isCompleted) _domReady.complete();
+            },
+          ),
         ),
         if (_loading)
           Positioned.fill(
