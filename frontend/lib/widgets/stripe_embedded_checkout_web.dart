@@ -216,13 +216,13 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
       // Stripe injects its iframe asynchronously — retry scroll setup briefly.
       _ensureHostScrollable();
-      unawaited(Future<void>(() async {
+      unawaited(() async {
         for (final ms in [200, 500, 1000, 2000]) {
           await Future<void>.delayed(Duration(milliseconds: ms));
           if (!mounted) return;
           _ensureHostScrollable();
         }
-      }()));
+      }());
 
       if (mounted) setState(() => _loading = false);
     } catch (e) {
@@ -236,8 +236,9 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
   }
 
   void _ensureHostScrollable() {
-    final host = web.document.getElementById(_elementId);
-    if (host == null) return;
+    final el = web.document.getElementById(_elementId);
+    if (el == null) return;
+    final host = el as web.HTMLElement;
     host.style.overflowY = 'auto';
     host.style.overflowX = 'hidden';
     host.style.height = '100%';
@@ -248,10 +249,10 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     for (var i = 0; i < frames.length; i++) {
       final frame = frames.item(i);
       if (frame == null) continue;
-      final el = frame as web.HTMLElement;
-      el.style.width = '100%';
-      el.style.border = '0';
-      el.style.display = 'block';
+      final iframe = frame as web.HTMLElement;
+      iframe.style.width = '100%';
+      iframe.style.border = '0';
+      iframe.style.display = 'block';
     }
   }
 
