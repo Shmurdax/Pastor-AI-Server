@@ -2,6 +2,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from core.chat_llm import (
+    CHAT_FREQUENCY_PENALTY,
+    CHAT_PRESENCE_PENALTY,
+    CHAT_TEMPERATURE,
+    CHAT_TOP_P,
+    CHAT_VLLM_EXTRA_BODY,
     estimate_chat_tokens,
     fit_chat_budget,
     get_chat_llm,
@@ -185,11 +190,15 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("answer_needs_expansion", source)
         self.assertIn("CONTINUE_STEER", source)
         self.assertIn("MAX_EXPANSION_PASSES", source)
-        self.assertIn("presence_penalty=0.3", source)
-        self.assertIn("frequency_penalty=0.5", source)
-        self.assertIn("trim_runaway_generation", source)
-        self.assertIn("generation_should_stop", source)
-        self.assertIn("next_stream_payload", source)
+        self.assertIn("CHAT_TEMPERATURE", source)
+        self.assertIn("CHAT_TOP_P", source)
+        self.assertIn("CHAT_VLLM_EXTRA_BODY", source)
+        self.assertIn("frequency_penalty=CHAT_FREQUENCY_PENALTY", source)
+        self.assertNotIn("frequency_penalty=0.5", source)
+        self.assertNotIn("presence_penalty=0.3", source)
+        self.assertNotIn("trim_runaway_generation", source)
+        self.assertNotIn("generation_should_stop", source)
+        self.assertNotIn("next_stream_payload", source)
         self.assertIn("expand_search_queries", source)
         self.assertIn("prior_ai_texts=", source)
         self.assertIn("is_followup=", source)
@@ -252,3 +261,8 @@ class GetChatLlmTests(unittest.TestCase):
         self.assertEqual(kwargs["api_key"], "not-needed")
         self.assertNotIn("Authorization", kwargs["default_headers"])
         self.assertEqual(kwargs["max_retries"], 2)
+        self.assertEqual(kwargs["temperature"], CHAT_TEMPERATURE)
+        self.assertEqual(kwargs["top_p"], CHAT_TOP_P)
+        self.assertEqual(kwargs["presence_penalty"], CHAT_PRESENCE_PENALTY)
+        self.assertEqual(kwargs["frequency_penalty"], CHAT_FREQUENCY_PENALTY)
+        self.assertEqual(kwargs["extra_body"], CHAT_VLLM_EXTRA_BODY)

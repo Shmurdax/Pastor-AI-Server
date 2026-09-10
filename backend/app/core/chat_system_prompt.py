@@ -277,16 +277,21 @@ def answer_has_conclusion(answer: str) -> bool:
 
 
 def _clause_looks_degenerate(clause: str) -> bool:
+    """True for CJK, legalese loops, or a wall of low-variety tokens.
+
+    Ordinary pastoral sentences often run 40–80 words. Those must not be
+    treated as runaway text or the stream cuts off mid-teaching.
+    """
     words = [w for w in re.findall(r"[A-Za-z']+", clause)]
     if _CJK_RE.search(clause):
         return True
-    if len(words) >= 55:
+    if len(_LEGALESE_RE.findall(clause)) >= 3:
         return True
-    if len(words) >= 28:
+    if len(words) >= 120:
+        return True
+    if len(words) >= 50:
         unique = {w.lower() for w in words}
-        if len(unique) / max(len(words), 1) < 0.58:
-            return True
-        if len(_LEGALESE_RE.findall(clause)) >= 3:
+        if len(unique) / max(len(words), 1) < 0.35:
             return True
     return False
 
@@ -305,137 +310,6 @@ def text_looks_degenerate(text: str) -> bool:
     return False
 
 
-def generation_tail_is_runaway(text: str) -> bool:
-    """True when the latest tokens look like a synonym loop, legalese, or another script.
-
-    Long pastoral sentences are allowed; this is for the \"random words then snap back\"
-    failure where the model keeps emitting filler after a good draft.
-    """
-    tail = (text or "")[-500:]
-    if not tail.strip():
-        return False
-    if _CJK_RE.search(tail):
-        return True
-    if len(_LEGALESE_RE.findall(tail)) >= 3:
-        return True
-    compact = re.sub(r"\s+", " ", tail.lower()).strip()
-    collapsed = re.sub(r"[^a-z]+", "", compact)
-    window = 12
-    if len(collapsed) >= window * 4:
-        prev = ""
-        run = 0
-        for index in range(0, len(collapsed) - window + 1, window):
-            gram = collapsed[index : index + window]
-            if gram == prev:
-                run += 1
-                if run >= 4:
-                    return True
-            else:
-                prev = gram
-                run = 1
-    return False
-
-
-def generation_should_stop(answer: str) -> bool:
-    """True when streaming should halt: conclusion runaway, CJK, or a degenerate tail."""
-    text = (answer or "").strip()
-    if not text:
-        return False
-    if _CJK_RE.search(text) and answer_char_count(text) >= 200:
-        return True
-    if generation_tail_is_runaway(text) and answer_char_count(text) >= 600:
-        return True
-    if not answer_has_conclusion(text):
-        return False
-    if answer_char_count(text) < 900:
-        return False
-    tail = text[-500:]
-    return text_looks_degenerate(tail) or bool(_CJK_RE.search(tail))
-
-
-def next_stream_payload(published: str, joined: str) -> tuple[str, str, bool]:
-    """Decide what to paint for the latest assembled draft.
-
-    Returns ``(event_type, text, should_stop)`` where event_type is
-    ``delta``, ``replace``, or empty when nothing new should be shown.
-    Hidden junk is not emitted; the UI therefore never paints the runaway
-    tail that used to appear before ``done`` snapped back to the trim.
-    """
-    trimmed = trim_runaway_generation(joined)
-    hidden = max(0, len(joined.rstrip()) - len(trimmed))
-    should_stop = generation_should_stop(joined) or hidden >= 60
-    if trimmed == published:
-        return ("", "", should_stop)
-    if published and trimmed.startswith(published):
-        extra = trimmed[len(published) :]
-        if not extra:
-            return ("", "", should_stop)
-        return ("delta", extra, should_stop)
-    if not published:
-        return ("delta", trimmed, should_stop)
-    return ("replace", trimmed, should_stop)
-
-
-def trim_runaway_generation(answer: str) -> str:
-    """
-    Cut filler after a natural close, and strip synonym-loop / CJK degeneration.
-
-    Length-steering sometimes makes the model keep writing after \"In conclusion,\"
-    drifting into repetitive legalese or another script. Keep the pastoral close.
-    """
-    text = (answer or "").rstrip()
-    if not text:
-        return ""
-
-    cjk = _CJK_RE.search(text)
-    if cjk:
-        text = text[: cjk.start()].rstrip(" \n\t,;:.-")
-
-    match = None
-    for match in _CONCLUSION_RE.finditer(text):
-        pass
-    if match is not None:
-        head = text[: match.start()].rstrip()
-        # Regex may consume leading newlines; start the closing at the keyword.
-        rest = text[match.start() :].lstrip("\n").lstrip()
-        paragraphs = re.split(r"\n\s*\n", rest, maxsplit=1)
-        closing = paragraphs[0].strip()
-        leftover = paragraphs[1].strip() if len(paragraphs) > 1 else ""
-        # If the closing paragraph itself ran away, keep the first sane sentences.
-        if text_looks_degenerate(closing):
-            sentences = re.split(r"(?<=[.!?])\s+", closing)
-            keep: list[str] = []
-            for sentence in sentences:
-                if keep and _clause_looks_degenerate(sentence):
-                    break
-                keep.append(sentence)
-                if len(keep) >= 3:
-                    break
-            closing = " ".join(keep).strip()
-        if leftover and (
-            text_looks_degenerate(leftover)
-            or leftover.lower().startswith("this approach ensures")
-            or len(leftover.split()) > 80
-        ):
-            text = f"{head}\n\n{closing}".strip() if head else closing
-        else:
-            body = closing
-            if leftover:
-                body = f"{closing}\n\n{leftover}"
-            text = f"{head}\n\n{body}".strip() if head else body
-
-    if text_looks_degenerate(text[-700:] if len(text) > 700 else text):
-        # Fall back: cut at the last clean sentence boundary before the mess.
-        cut = text
-        for match in re.finditer(r"[.!?]\s+", text):
-            prefix = text[: match.end()]
-            if not text_looks_degenerate(prefix[-400:]):
-                cut = prefix.rstrip()
-        text = cut
-
-    return text.strip()
-
-
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
     """True when a teaching question got a short brush-off instead of a full reply."""
     if not query_expects_long_answer(query):
@@ -445,9 +319,16 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
         return False
     if text_looks_degenerate(answer):
         return False
-    if generation_tail_is_runaway(answer):
-        return False
     return answer_char_count(answer) < MIN_TEACHING_CHARS
+
+
+def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
+    """Cap a continue-pass so leftover max_tokens cannot dump Chinese or filler."""
+    remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
+    if remaining_chars <= 120 or int(completion_tokens) <= 0:
+        return 0
+    guessed = max(96, remaining_chars // 3)
+    return min(int(completion_tokens), guessed)
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:

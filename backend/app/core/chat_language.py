@@ -66,7 +66,8 @@ def language_reply_instruction(code: str) -> str:
         return (
             "<language>\n"
             "Write your entire reply in English.\n"
-            "Do not switch into another language mid-response.\n"
+            "Do not switch into Chinese or any other language mid-response.\n"
+            "Do not insert Chinese, Japanese, or Korean characters.\n"
             "Scripture quotations remain NKJV English as required elsewhere.\n"
             "</language>\n"
         )

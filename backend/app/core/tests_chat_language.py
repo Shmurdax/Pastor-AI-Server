@@ -32,6 +32,7 @@ class ChatLanguageTests(unittest.TestCase):
         text = language_reply_instruction("en")
         self.assertIn("English", text)
         self.assertIn("<language>", text)
+        self.assertIn("Chinese", text)
 
     def test_spanish_instruction(self):
         text = language_reply_instruction("es")
