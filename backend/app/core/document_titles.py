@@ -60,10 +60,36 @@ _COPY_SUFFIX_RE = re.compile(
             | [\s_\-]+final
             | [\s_\-]+draft
             # Single-digit copy markers only (Promise 1). Keep multi-digit
-            # dates / series numbers (June 30, Sermon 12).
+            # dates / series numbers (June 30, Sermon 12). Month+day
+            # endings (January 1) are protected in _strip_copy_suffixes.
             | [\s_\-]+[1-9](?!\d)
         )
         \s*$
+    """
+)
+
+# Explicit / parenthetical / draft markers — safe even after a month name.
+_COPY_SUFFIX_SAFE_RE = re.compile(
+    r"""(?ix)
+        (?:
+            [\s_\-]*\(\s*\d+\s*\)
+            | [\s_\-]+copy(?:\s*\d+)?
+            | [\s_\-]+final
+            | [\s_\-]+draft
+        )
+        \s*$
+    """
+)
+
+# "January 1" / "Jan 9" — do not treat the day as a copy number.
+_MONTH_DAY_END_RE = re.compile(
+    r"""(?ix)
+        \b(?:
+            january|february|march|april|may|june|july|august|
+            september|october|november|december|
+            jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec
+        )
+        \s+[1-9](?!\d)\s*$
     """
 )
 
@@ -154,7 +180,11 @@ def _strip_copy_suffixes(text: str) -> str:
     current = text.strip()
     while previous != current:
         previous = current
-        current = _COPY_SUFFIX_RE.sub("", current).strip()
+        if _MONTH_DAY_END_RE.search(current):
+            # Keep sermon-date days 1–9; still drop (1) / copy / draft.
+            current = _COPY_SUFFIX_SAFE_RE.sub("", current).strip()
+        else:
+            current = _COPY_SUFFIX_RE.sub("", current).strip()
     return current
 
 

@@ -56,3 +56,12 @@ class DocumentTitlesTests(SimpleTestCase):
         )
         self.assertEqual(prettify_title("Childhood Faith.pdf"), "Childhood Faith")
         self.assertEqual(prettify_title("Sermon 12.pdf"), "Sermon 12")
+
+    def test_prettify_keeps_single_digit_month_days(self):
+        self.assertEqual(prettify_title("January_1_V1_240p.mp4"), "January 1")
+        self.assertEqual(prettify_title("January 1.mp4"), "January 1")
+        self.assertEqual(prettify_title("Jan 9.mp4"), "Jan 9")
+        self.assertEqual(prettify_title("May_3_v1_720p.mp4"), "May 3")
+        self.assertEqual(prettify_title("March 4.pdf"), "March 4")
+        # Non-date trailing copy digit still drops.
+        self.assertEqual(prettify_title("Hope Rising 1.pdf"), "Hope Rising")
