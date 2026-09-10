@@ -29,6 +29,29 @@ _TAG_PHRASES = (
     "leader guide",
 )
 
+# Video/audio export tokens that should not appear in sermon library titles.
+# Matched as whole tokens between separators (so "Child" keeps "hd" letters).
+_VIDEO_EXPORT_TOKEN_RE = re.compile(
+    r"""(?ix)
+        (?:^|[\s_\-]+)
+        (?:
+            v\d+                          # V1, V2
+            | ver(?:sion)?\s*\d+          # ver 1, version2
+            | \d{3,4}p                    # 240p, 720p, 1080p
+            | 4k | 8k | uhd | fhd | hd | sd
+            | \d{3,4}\s*x\s*\d{3,4}       # 1920x1080
+            | \d{2,3}\s*fps
+            | h\.?264 | h\.?265 | hevc | x264 | x265 | avc | prores
+            | export(?:ed)?
+            | proxy
+            | screener
+            | webrip | web-?dl
+            | raw\s*export
+        )
+        (?=$|[\s_\-]+)
+    """
+)
+
 _COPY_SUFFIX_RE = re.compile(
     r"""(?ix)
         (?:
@@ -36,7 +59,9 @@ _COPY_SUFFIX_RE = re.compile(
             | [\s_\-]+copy(?:\s*\d+)?     # copy, copy 2
             | [\s_\-]+final
             | [\s_\-]+draft
-            | [\s_\-]+\d+                 # trailing 1 / 2
+            # Single-digit copy markers only (Promise 1). Keep multi-digit
+            # dates / series numbers (June 30, Sermon 12).
+            | [\s_\-]+[1-9](?!\d)
         )
         \s*$
     """
@@ -133,6 +158,17 @@ def _strip_copy_suffixes(text: str) -> str:
     return current
 
 
+def _strip_video_export_tokens(text: str) -> str:
+    """Remove resolution / version / codec tags from video export filenames."""
+    previous = None
+    current = text.strip()
+    while previous != current:
+        previous = current
+        current = _VIDEO_EXPORT_TOKEN_RE.sub(" ", current)
+        current = _SEPARATOR_RE.sub(" ", current).strip()
+    return current
+
+
 def _title_case_word(word: str, *, first: bool, last: bool) -> str:
     if not word:
         return word
@@ -174,6 +210,7 @@ def prettify_title(name: str) -> str:
       ``USA MISSIONS NKJV.pdf`` → ``USA Missions NKJV``
       ``Faith_That_Moves_Mountains_Sermon_Notes.docx``
         → ``Faith That Moves Mountains``
+      ``June_30_V1_240p.mp4`` → ``June 30``
     """
     stem = filename_stem(name)
     # Normalize unicode and drop odd control chars.
@@ -182,10 +219,12 @@ def prettify_title(name: str) -> str:
     # Normalize separators early so multi-word tags match across `_` / `-`.
     stem = _SEPARATOR_RE.sub(" ", stem).strip()
     stem = _strip_tag_phrases(stem)
+    stem = _strip_video_export_tokens(stem)
     stem = _strip_copy_suffixes(stem)
     # Treat pipes / brackets leftovers as separators.
     stem = re.sub(r"[\[\]\{\}\(\)\|]+", " ", stem)
     stem = _SEPARATOR_RE.sub(" ", stem).strip(" -_")
+    stem = _strip_video_export_tokens(stem)
     stem = _strip_copy_suffixes(stem)
     pretty = title_case(stem)
     return pretty or "Untitled"

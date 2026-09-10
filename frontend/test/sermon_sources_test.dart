@@ -56,4 +56,38 @@ void main() {
       'Pregnant With a Promise',
     ]);
   });
+
+  test('parseSermonSourceRef extracts stem and seek seconds', () {
+    final ref = parseSermonSourceRef('June 30 [08:50–09:30]');
+    expect(ref.displayStem, 'June 30');
+    expect(ref.seekSeconds, 8 * 60 + 50);
+
+    final long = parseSermonSourceRef('Sunday Gathering [01:01:01-01:02:10]');
+    expect(long.displayStem, 'Sunday Gathering');
+    expect(long.seekSeconds, 1 * 3600 + 1 * 60 + 1);
+
+    final doc = parseSermonSourceRef('Pregnant With a Promise.pdf');
+    expect(doc.displayStem, 'Pregnant With a Promise');
+    expect(doc.seekSeconds, isNull);
+  });
+
+  test('appendMediaSeekFragment adds HTML5 media fragment', () {
+    expect(
+      appendMediaSeekFragment('https://example.com/a.mp4', 530),
+      'https://example.com/a.mp4#t=530',
+    );
+    expect(
+      appendMediaSeekFragment('https://example.com/a.mp4', null),
+      'https://example.com/a.mp4',
+    );
+  });
+
+  test('isVideoFileUrl uses source_kind and extension', () {
+    expect(
+      isVideoFileUrl('https://x/file.bin', sourceKind: 'video'),
+      isTrue,
+    );
+    expect(isVideoFileUrl('https://x/clip.MP4'), isTrue);
+    expect(isVideoFileUrl('https://x/notes.pdf'), isFalse);
+  });
 }

@@ -46,3 +46,13 @@ class DocumentTitlesTests(SimpleTestCase):
             prettify_title("reading the nkjv.pdf"),
             "Reading the NKJV",
         )
+
+    def test_prettify_strips_video_export_junk_keeps_date(self):
+        self.assertEqual(prettify_title("June_30_V1_240p.mp4"), "June 30")
+        self.assertEqual(prettify_title("April_10_v1_240p.mp4"), "April 10")
+        self.assertEqual(
+            prettify_title("Sunday Service HD 720p.mp4"),
+            "Sunday Service",
+        )
+        self.assertEqual(prettify_title("Childhood Faith.pdf"), "Childhood Faith")
+        self.assertEqual(prettify_title("Sermon 12.pdf"), "Sermon 12")

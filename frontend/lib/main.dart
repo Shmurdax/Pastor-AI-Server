@@ -853,39 +853,21 @@ final bibleRefRegex = RegExp(
   }
 
 Future<void> _launchSermonDoc(String sermonName) async {
-  var stem = sermonName.trim();
-  stem = stem.replaceFirst(RegExp(r'\s*\[[0-9:]{4,8}[–-][0-9:]{4,8}\]\s*$'), '').trim();
-  final lower = stem.toLowerCase();
-  for (final ext in const [
-    '.pdf',
-    '.md',
-    '.docx',
-    '.mp4',
-    '.m4v',
-    '.mov',
-    '.avi',
-    '.mkv',
-    '.webm',
-    '.wmv',
-    '.flv',
-    '.mpeg',
-    '.mpg',
-    '.3gp',
-    '.ogv',
-  ]) {
-    if (lower.endsWith(ext)) {
-      stem = stem.substring(0, stem.length - ext.length).trim();
-      break;
-    }
-  }
+  final ref = parseSermonSourceRef(sermonName);
+  final stem = ref.displayStem;
   if (stem.isEmpty) return;
 
   try {
     final data = await _apiService.getIngestedDocuments(limit: 5, match: stem);
     final docs = List<Map<String, dynamic>>.from(data['documents'] ?? const []);
     if (docs.isNotEmpty) {
-      final fileUrl = (docs.first['file_url'] ?? docs.first['file_path'] ?? '').toString();
+      var fileUrl =
+          (docs.first['file_url'] ?? docs.first['file_path'] ?? '').toString();
+      final sourceKind = (docs.first['source_kind'] ?? '').toString();
       if (fileUrl.isNotEmpty) {
+        if (isVideoFileUrl(fileUrl, sourceKind: sourceKind)) {
+          fileUrl = appendMediaSeekFragment(fileUrl, ref.seekSeconds);
+        }
         final launched = await launchUrl(
           Uri.parse(fileUrl),
           mode: LaunchMode.externalApplication,
