@@ -156,4 +156,18 @@ class ApiService {
     final rows = await _apiClient.listMediaVideos();
     return rows.map(MediaItem.fromApiJson).toList();
   }
+
+  Future<Map<String, dynamic>> getChatHistory() => _apiClient.getChatHistory();
+
+  Future<Map<String, dynamic>> putChatHistory({
+    required List<Map<String, dynamic>> entries,
+    required String activeSessionId,
+    int schemaVersion = 1,
+  }) {
+    return _apiClient.putChatHistory(
+      entries: entries,
+      activeSessionId: activeSessionId,
+      schemaVersion: schemaVersion,
+    );
+  }
 }

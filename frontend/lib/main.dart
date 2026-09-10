@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/chat_history_merge.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
 import 'package:flutter_application_1/chat_session_store.dart';
 import 'package:flutter_application_1/chat_stream.dart';
@@ -471,22 +472,64 @@ final bibleRefRegex = RegExp(
     final savedSession = await _tokenStorage.loadChatSessionId(storageId);
     var history = await _tokenStorage.loadChatHistory(storageId);
 
+    // Signed-in users: merge local cache with durable server backup so history
+    // survives rebuilds, deploys, and device switches.
+    if (auth.isAuthenticated) {
+      try {
+        final remote = await _apiService.getChatHistory();
+        final remoteEntries = (remote['entries'] as List<dynamic>? ?? const [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        history = mergeChatHistoryEntries(history, remoteEntries);
+        final active = preferActiveSessionId(
+          savedSession,
+          remote['active_session_id']?.toString(),
+        );
+        if (active.isNotEmpty) {
+          await _tokenStorage.saveChatSessionId(storageId, active);
+        }
+      } catch (e) {
+        debugPrint('Chat history server sync failed: $e');
+      }
+    }
+
     // Free / guest: keep only the most recent chat history entry.
     final maxEntries = auth.hasPremiumAccess ? _premiumHistoryCap : _freeHistoryCap;
     if (history.length > maxEntries) {
       history = history.take(maxEntries).toList();
-      await _tokenStorage.saveChatHistory(storageId, history);
+    }
+    await _tokenStorage.saveChatHistory(storageId, history);
+    if (auth.isAuthenticated) {
+      unawaited(_pushChatHistoryToServer(history));
     }
 
     if (mounted) {
       setState(() {
         _chatHistoryEntries = history;
         if (savedSession != null) sessionId = savedSession;
+        final preferred = preferActiveSessionId(savedSession, null);
+        if (preferred.isNotEmpty) sessionId = preferred;
       });
       await _restoreMessagesForCurrentSession(storageId);
     }
 
     if (mounted) setState(() => _authInitialized = true);
+  }
+
+  Future<void> _pushChatHistoryToServer(List<Map<String, dynamic>> entries) async {
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+    try {
+      _apiService.setAccessToken(auth.token);
+      await _apiService.putChatHistory(
+        entries: entries,
+        activeSessionId: sessionId,
+        schemaVersion: TokenStorage.chatHistorySchemaVersion,
+      );
+    } catch (e) {
+      debugPrint('Chat history server save failed: $e');
+    }
   }
 
   Future<void> _restoreMessagesForCurrentSession(String userId) async {
@@ -555,6 +598,8 @@ final bibleRefRegex = RegExp(
     if (mounted) {
       setState(() => _chatHistoryEntries = _withGeneratingSessionsVisible(trimmed, updated));
     }
+    // Always mirror signed-in history to the server so deploys cannot wipe it.
+    unawaited(_pushChatHistoryToServer(trimmed));
   }
 
   /// Keep chats that are still generating in the sidebar even if the free
@@ -604,6 +649,7 @@ final bibleRefRegex = RegExp(
     final trimmed = entries.take(_maxHistoryEntries).toList();
     await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
     if (mounted) setState(() => _chatHistoryEntries = trimmed);
+    unawaited(_pushChatHistoryToServer(trimmed));
   }
 
   Future<void> _confirmDeleteChatHistoryEntry(Map<String, dynamic> entry) async {

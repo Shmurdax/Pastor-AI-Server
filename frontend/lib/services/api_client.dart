@@ -466,6 +466,34 @@ class ApiClient {
     return results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  /// Durable sidebar history for the signed-in account (server backup).
+  Future<Map<String, dynamic>> getChatHistory() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/chat/history/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> putChatHistory({
+    required List<Map<String, dynamic>> entries,
+    required String activeSessionId,
+    int schemaVersion = 1,
+  }) async {
+    final res = await _client.put(
+      Uri.parse(_resolveUrl('/api/chat/history/')),
+      headers: _headers(json: true),
+      body: jsonEncode({
+        'entries': entries,
+        'active_session_id': activeSessionId,
+        'schema_version': schemaVersion,
+      }),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     throw Exception('HTTP ${res.statusCode}: ${res.body}');

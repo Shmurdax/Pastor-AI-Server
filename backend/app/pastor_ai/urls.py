@@ -32,6 +32,7 @@ from api.views import (
     PrayerRequestDetailAPI,
     ResponseReportDetailAPI,
 )
+from core.chat_history_views import ChatHistoryAPIView
 from core.views import (
     ChatAPIView,
     ChatWarmupAPIView,
@@ -84,6 +85,7 @@ urlpatterns = [
 
     # Chat + prayer + ingested docs
     path('api/chat/warmup/', ChatWarmupAPIView.as_view(), name='chat_warmup_api'),
+    path('api/chat/history/', ChatHistoryAPIView.as_view(), name='chat_history_api'),
     path('api/chat/', ChatAPIView.as_view(), name='chat_api'),
     path('api/translate/', TranslateAPIView.as_view(), name='translate_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),

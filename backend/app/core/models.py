@@ -278,3 +278,28 @@ class ChurchEvent(models.Model):
     def __str__(self):
         return f"{self.title} ({self.starts_at:%Y-%m-%d})"
 
+
+class UserChatHistory(models.Model):
+    """Durable sidebar chat history for a signed-in account.
+
+    Survives Flutter rebuilds, browser cache clears on other devices once
+    synced, and frontend storage-key refactors — the server copy is source of
+    truth for authenticated users. Local SharedPreferences remains a cache.
+    """
+
+    user = models.OneToOneField(
+        "auth.User",
+        on_delete=models.CASCADE,
+        related_name="chat_history_backup",
+    )
+    entries = models.JSONField(default=list, blank=True)
+    active_session_id = models.CharField(max_length=64, blank=True, default="")
+    schema_version = models.PositiveSmallIntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User chat history"
+        verbose_name_plural = "User chat histories"
+
+    def __str__(self):
+        return f"chat history for {self.user_id} ({len(self.entries or [])} chats)"

@@ -29,6 +29,7 @@ from .models import (
     PrayerRequest,
     ChurchEvent,
     ResponseReport,
+    UserChatHistory,
 )
 from .storage_paths import admin_ingestion_dir, admin_video_ingestion_dir
 from .embedded_videos import get_embedded_video, list_embedded_videos
@@ -101,6 +102,18 @@ class ChatMessageAdmin(admin.ModelAdmin):
             return '—'
         # Prefer the account email; fall back to username (often the email).
         return (obj.user.email or obj.user.get_username() or '—').strip() or '—'
+
+
+@admin.register(UserChatHistory)
+class UserChatHistoryAdmin(admin.ModelAdmin):
+    list_display = ('user', 'entry_count', 'active_session_id', 'schema_version', 'updated_at')
+    search_fields = ('user__email', 'user__username', 'active_session_id')
+    readonly_fields = ('updated_at',)
+    raw_id_fields = ('user',)
+
+    @admin.display(description='Chats')
+    def entry_count(self, obj):
+        return len(obj.entries or [])
 
 
 @admin.register(IngestedDocument)

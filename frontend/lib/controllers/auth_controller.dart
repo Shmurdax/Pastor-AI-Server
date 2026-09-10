@@ -7,10 +7,13 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class TokenStorage {
+  // Stable forever — never rename these prefixes or signed-in users lose local
+  // cache. Server backup at /api/chat/history/ is the durable source of truth.
   static const _tokenKey = 'auth_token';
   static const _userKey = 'auth_user';
   static const _sessionPrefix = 'chat_session_';
   static const _historyPrefix = 'chat_history_';
+  static const chatHistorySchemaVersion = 1;
 
   const TokenStorage();
 
