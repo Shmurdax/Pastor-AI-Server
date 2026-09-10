@@ -60,6 +60,11 @@ class IngestedDocument(models.Model):
         default="document",
         db_index=True,
     )
+    topic_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Searchable topic title/topics/keywords/summary for video (and optional doc) RAG.",
+    )
     chunk_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

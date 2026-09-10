@@ -493,13 +493,96 @@ def _as_scored_chunks(
     return chunks
 
 
+def apply_retrieval_threshold(
+    scored_hits: list[tuple[Any, float]],
+    *,
+    threshold: float,
+    retrieval_k: int,
+) -> list[tuple[Any, float]]:
+    """Keep only strong matches when the threshold is high enough to be useful.
+
+    Soft escape: if almost nothing clears a high threshold, keep the ranked list
+    so the model still has *some* context. At >=0.7 we only need one strong hit.
+    """
+    if threshold <= 0 or not scored_hits:
+        return scored_hits
+    if len(scored_hits) <= retrieval_k and threshold < 0.7:
+        return scored_hits
+    above = [pair for pair in scored_hits if pair[1] >= threshold]
+    min_keep = 1 if threshold >= 0.7 else max(6, retrieval_k // 2)
+    if len(above) >= min_keep:
+        return above
+    return scored_hits
+
+
+def sources_cited_in_answer(
+    docs: Iterable[Any],
+    answer: str,
+    source_label: Callable[[Any], str],
+    *,
+    limit: int = 8,
+) -> list[str]:
+    """Prefer source labels the model actually referenced in the answer text."""
+    text = answer or ""
+    text_l = text.lower()
+    if not text.strip():
+        return []
+
+    cited: list[str] = []
+    seen: set[str] = set()
+    for index, doc in enumerate(docs, start=1):
+        label = (source_label(doc) or "").strip()
+        if not label or label == "Unknown":
+            continue
+        key = label.lower()
+        if key in seen:
+            continue
+        matched = False
+        if re.search(rf"\bnote\s*{index}\b", text_l):
+            matched = True
+        else:
+            # Strip timestamp suffix for stem matching.
+            stem = re.sub(
+                r"\s*\[[0-9:]{4,8}[–-][0-9:]{4,8}\]\s*$",
+                "",
+                label,
+            ).strip()
+            # Drop parenthetical date: "Faith (May 23)" -> "Faith"
+            stem_core = re.sub(r"\s*\([^)]*\)\s*$", "", stem).strip()
+            candidates = [stem, stem_core]
+            meta = getattr(doc, "metadata", {}) or {}
+            for extra in (
+                meta.get("topic_title"),
+                meta.get("title"),
+                meta.get("original_title"),
+            ):
+                if extra:
+                    candidates.append(str(extra).strip())
+            ts = str(meta.get("timestamp") or "").strip()
+            if ts and ts in text:
+                matched = True
+            if not matched:
+                for candidate in candidates:
+                    if len(candidate) < 4:
+                        continue
+                    if candidate.lower() in text_l:
+                        matched = True
+                        break
+        if matched:
+            seen.add(key)
+            cited.append(label)
+            if len(cited) >= limit:
+                break
+    return cited
+
+
 def select_diverse_docs(
     scored_docs: Iterable[tuple[Any, float]],
     *,
     k: int,
-    bible_ratio: float = 0.45,
-    max_per_source: int = 2,
-    max_per_bible_book: int = 1,
+    bible_ratio: float = 0.40,
+    max_per_source: int = 4,
+    max_per_bible_book: int = 2,
     used_quotes: Optional[Iterable[str]] = None,
     used_verses: Optional[Iterable[str]] = None,
     is_bible: Optional[Callable[[Any], bool]] = None,

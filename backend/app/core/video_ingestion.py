@@ -44,6 +44,15 @@ from .transcript_normalize import (
     format_timestamp_range,
     normalize_transcript_segments,
 )
+from .video_topic_metadata import (
+    VideoTopicMetadata,
+    build_topic_overview_chunk,
+    build_video_topic_metadata,
+    display_title_for_document,
+    format_searchable_header,
+    prepend_searchable_header,
+    qdrant_metadata_from_topic,
+)
 from .whisper_transcribe import transcribe_video_file
 
 logger = logging.getLogger(__name__)
@@ -197,12 +206,14 @@ def _write_transcript_sidecar(
     raw_segments: Sequence[TranscriptSegment],
     normalized: Sequence[TranscriptSegment],
     stats: dict,
+    topic_metadata: Optional[dict] = None,
 ) -> None:
     payload = {
         "title": title,
         "source_name": source_name,
         "whisper_model": os.getenv("WHISPER_MODEL") or "base",
         "stats": stats,
+        "topic_metadata": topic_metadata or {},
         "segments_raw": [
             {"start": seg.start, "end": seg.end, "text": seg.text} for seg in raw_segments
         ],
@@ -212,6 +223,70 @@ def _write_transcript_sidecar(
     }
     sidecar = _transcript_sidecar_path(video_path)
     sidecar.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def build_video_chunks_with_topic_metadata(
+    *,
+    original_title: str,
+    normalized_segments: Sequence[TranscriptSegment],
+    normalized_text: str,
+    chunk_size: int,
+    overlap_segments: int = 1,
+    topic_metadata: Optional[VideoTopicMetadata] = None,
+) -> tuple[VideoTopicMetadata, str, List[str], List[dict]]:
+    """Build embeddable chunks + per-chunk metadata with a searchable topic header."""
+    meta = topic_metadata or build_video_topic_metadata(
+        normalized_text,
+        original_title=original_title,
+    )
+    display_title = display_title_for_document(meta, original_title)
+    header = format_searchable_header(meta, display_title=display_title)
+
+    groups = group_segments_into_chunks(
+        normalized_segments,
+        chunk_size=chunk_size,
+        overlap_segments=overlap_segments,
+    )
+    chunks = [
+        _clean_text(prepend_searchable_header(_chunk_text_from_group(display_title, group), header))
+        for group in groups
+    ]
+    chunks = [chunk for chunk in chunks if chunk]
+    if not chunks:
+        splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
+        markdown_text = prepend_searchable_header(_to_markdown(display_title, normalized_text), header)
+        chunks = [_clean_text(c) for c in splitter.split_text(markdown_text) if _clean_text(c)]
+        groups = [list(normalized_segments) for _ in chunks]
+
+    per_chunk_metadata: List[dict] = []
+    for group in groups:
+        start_s = group[0].start if group else 0.0
+        end_s = group[-1].end if group else start_s
+        per_chunk_metadata.append(
+            {
+                "start_s": start_s,
+                "end_s": end_s,
+                "timestamp": format_timestamp_range(start_s, end_s),
+                "chunk_kind": "video_transcript",
+            }
+        )
+
+    overview = _clean_text(build_topic_overview_chunk(meta))
+    if overview:
+        # Put the overview first so topic-only queries can hit it strongly.
+        chunks.insert(0, overview)
+        end_s = normalized_segments[-1].end if normalized_segments else 0.0
+        per_chunk_metadata.insert(
+            0,
+            {
+                "start_s": 0.0,
+                "end_s": end_s,
+                "timestamp": format_timestamp_range(0.0, end_s),
+                "chunk_kind": "video_topic_overview",
+            },
+        )
+
+    return meta, display_title, chunks, per_chunk_metadata
 
 
 def ingest_video_files(
@@ -339,42 +414,30 @@ def ingest_video_files(
                 _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
+            if log_fn:
+                log_fn(f"Building topic metadata for {source_name}…")
+            topic_meta, display_title, chunks, per_chunk_metadata = build_video_chunks_with_topic_metadata(
+                original_title=title,
+                normalized_segments=normalized.segments,
+                normalized_text=normalized.text,
+                chunk_size=chunk_size,
+                overlap_segments=overlap_segments,
+            )
+            topic_payload = topic_meta.as_dict()
             _write_transcript_sidecar(
                 video_path,
-                title=title,
+                title=display_title,
                 source_name=source_name,
                 raw_segments=raw_segments,
                 normalized=normalized.segments,
                 stats=normalized.stats.as_dict(),
+                topic_metadata=topic_payload,
             )
 
-            groups = group_segments_into_chunks(
-                normalized.segments,
-                chunk_size=chunk_size,
-                overlap_segments=overlap_segments,
-            )
-            chunks = [_clean_text(_chunk_text_from_group(title, group)) for group in groups]
-            chunks = [chunk for chunk in chunks if chunk]
-            if not chunks:
-                splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-                markdown_text = _to_markdown(title, normalized.text)
-                chunks = [_clean_text(c) for c in splitter.split_text(markdown_text) if _clean_text(c)]
-                groups = [normalized.segments for _ in chunks]
-
-            per_chunk_metadata = []
-            for group in groups:
-                start_s = group[0].start if group else 0.0
-                end_s = group[-1].end if group else start_s
-                per_chunk_metadata.append(
-                    {
-                        "start_s": start_s,
-                        "end_s": end_s,
-                        "timestamp": format_timestamp_range(start_s, end_s),
-                    }
-                )
             extra_metadata = {
                 "content_type": "video_transcript",
                 "media_type": "video",
+                **qdrant_metadata_from_topic(topic_meta),
             }
             named = extra_metadata_by_name.get(upload.name) or extra_metadata_by_name.get(source_name)
             if named:
@@ -382,18 +445,19 @@ def ingest_video_files(
 
             doc = IngestedDocument.objects.create(
                 source_name=source_name,
-                title=title,
+                title=display_title,
                 normalized_title=normalized_title,
                 file_hash=file_hash,
                 content_hash=content_hash,
                 original_extension=extension,
                 source_kind="video",
+                topic_metadata=topic_payload,
             )
 
             try:
                 created, skipped = _upsert_chunks(
                     source_name,
-                    title,
+                    display_title,
                     chunks,
                     file_hash,
                     document=doc,
@@ -416,8 +480,8 @@ def ingest_video_files(
             if log_fn:
                 log_fn(
                     f"Ingested video {upload.name} as {source_name} "
-                    f"(title “{title}”): created {created} timestamped chunks, "
-                    f"skipped {skipped} duplicates."
+                    f"(title “{display_title}”, topics={topic_meta.topics[:4]}): "
+                    f"created {created} timestamped chunks, skipped {skipped} duplicates."
                 )
             _persist_job_progress(job, result, current_file=upload.name)
         except Exception as exc:

@@ -143,8 +143,10 @@ chat_apply_config() {
   vllm_upsert_config "$config" CHAT_MAX_HISTORY_TURNS 10
   vllm_upsert_config "$config" CHAT_MAX_TOKENS 1024
   vllm_upsert_config "$config" CHAT_CONTEXT_WINDOW 32768
-  vllm_upsert_config "$config" RETRIEVAL_THRESHOLD 0.45
-  vllm_upsert_config "$config" RETRIEVAL_CANDIDATE_MULTIPLIER 4
-  vllm_upsert_config "$config" RETRIEVAL_MAX_PER_SOURCE 2
-  vllm_upsert_config "$config" RETRIEVAL_MAX_PER_BIBLE_BOOK 1
+  vllm_upsert_config "$config" RETRIEVAL_K 24
+  vllm_upsert_config "$config" RETRIEVAL_THRESHOLD 0.8
+  vllm_upsert_config "$config" RETRIEVAL_CANDIDATE_MULTIPLIER 5
+  vllm_upsert_config "$config" RETRIEVAL_MAX_PER_SOURCE 4
+  vllm_upsert_config "$config" RETRIEVAL_MAX_PER_BIBLE_BOOK 2
+  vllm_upsert_config "$config" RETRIEVAL_BIBLE_RATIO 0.40
 }

@@ -128,6 +128,7 @@ class IngestedDocumentAdmin(admin.ModelAdmin):
         "content_hash",
         "original_extension",
         "source_kind",
+        "topic_metadata",
         "chunk_count",
         "created_at",
         "updated_at",

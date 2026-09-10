@@ -157,7 +157,9 @@ class VideoIngestPipelineTests(TestCase):
         fake_qdrant = MagicMock()
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)), patch(
+            with patch.dict(os.environ, {"VIDEO_TOPIC_METADATA_LLM": "0"}), patch(
+                "core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)
+            ), patch(
                 "core.video_ingestion.get_embeddings", return_value=fake_embeddings
             ), patch("core.video_ingestion.QdrantClient", return_value=fake_qdrant), patch(
                 "core.video_ingestion.ensure_sermon_collection"
@@ -199,7 +201,9 @@ class VideoIngestPipelineTests(TestCase):
         fake_qdrant = MagicMock()
 
         with tempfile.TemporaryDirectory() as tmp:
-            with patch("core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)), patch(
+            with patch.dict(os.environ, {"VIDEO_TOPIC_METADATA_LLM": "0"}), patch(
+                "core.video_ingestion.admin_video_ingestion_dir", return_value=Path(tmp)
+            ), patch(
                 "core.video_ingestion.get_embeddings", return_value=fake_embeddings
             ), patch("core.video_ingestion.QdrantClient", return_value=fake_qdrant), patch(
                 "core.video_ingestion.ensure_sermon_collection"

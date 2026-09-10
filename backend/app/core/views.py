@@ -30,6 +30,7 @@ from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import EMPTY_REFERENCE_NOTES, NOTES_MARKER, fit_chat_budget, get_chat_llm
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_retrieval import (
+    apply_retrieval_threshold,
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
@@ -38,6 +39,7 @@ from .chat_retrieval import (
     looks_like_followup,
     search_queries_on_store,
     select_diverse_docs,
+    sources_cited_in_answer,
     uniqueness_instruction,
 )
 from .chat_system_prompt import (
@@ -62,12 +64,12 @@ from .storage_paths import ingested_media_path
 logger = logging.getLogger(__name__)
 PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
-RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "16"))
-RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.45"))
-RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.45"))
-RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "4"))
-RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "2"))
-RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "1"))
+RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
+RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.40"))
+RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.8"))
+RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "5"))
+RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "4"))
+RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "2"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
@@ -174,9 +176,18 @@ def _doc_source_name(doc) -> str:
 def _doc_source_label(doc) -> str:
     name = _doc_source_name(doc)
     metadata = getattr(doc, "metadata", {}) or {}
+    topic_title = str(metadata.get("topic_title") or "").strip()
+    if topic_title and topic_title.lower() not in name.lower():
+        # Prefer topical label when payload still has a date-only DB title.
+        original = str(metadata.get("original_title") or "").strip()
+        if original and original.lower() == name.lower():
+            name = topic_title
+        elif not name or name == "Unknown":
+            name = topic_title
     timestamp = metadata.get("timestamp")
     content_type = str(metadata.get("content_type") or metadata.get("media_type") or "")
-    if timestamp and ("video" in content_type):
+    chunk_kind = str(metadata.get("chunk_kind") or "")
+    if timestamp and ("video" in content_type or chunk_kind.startswith("video")):
         return f"{name} [{timestamp}]"
     return name
 
@@ -449,6 +460,7 @@ class IngestedDocumentsAPIView(APIView):
                     "vimeo_id": vimeo_id,
                     "privacy_hash": privacy_hash,
                     "media_title": media_title,
+                    "topic_metadata": document.topic_metadata or {},
                 }
             )
         return Response({"documents": documents}, status=status.HTTP_200_OK)
@@ -630,10 +642,11 @@ class ChatAPIView(APIView):
                     search_queries,
                     k_per_query=candidate_k,
                 )
-                if RETRIEVAL_THRESHOLD > 0 and len(scored_hits) > RETRIEVAL_K:
-                    above = [pair for pair in scored_hits if pair[1] >= RETRIEVAL_THRESHOLD]
-                    if len(above) >= max(6, RETRIEVAL_K // 2):
-                        scored_hits = above
+                scored_hits = apply_retrieval_threshold(
+                    scored_hits,
+                    threshold=RETRIEVAL_THRESHOLD,
+                    retrieval_k=RETRIEVAL_K,
+                )
                 docs = select_diverse_docs(
                     scored_hits,
                     k=RETRIEVAL_K,
@@ -741,6 +754,15 @@ class ChatAPIView(APIView):
                 }
             )
 
+        def _response_sources(docs, answer: str):
+            """Prefer sources actually cited in the answer; fall back to retrieval set."""
+            if not docs:
+                return []
+            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=8)
+            if cited:
+                return cited
+            return _unique_sources(docs)
+
         def _generate_tokens(prepared):
             bound = prepared["bound"]
             messages = prepared["messages"]
@@ -843,7 +865,7 @@ class ChatAPIView(APIView):
                 done = {
                     "type": "done",
                     "answer": answer,
-                    "sources": _unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                    "sources": _response_sources(prepared["docs"], answer),
                 }
                 if saved_message is not None:
                     done["message_id"] = saved_message.id
@@ -916,7 +938,7 @@ class ChatAPIView(APIView):
             return Response(
                 _chat_payload(
                     answer,
-                    sources=_unique_sources(prepared["docs"]) if prepared["docs"] else [],
+                    sources=_response_sources(prepared["docs"], answer),
                     message_id=None if saved_message is None else saved_message.id,
                 ),
                 status=status.HTTP_200_OK,
