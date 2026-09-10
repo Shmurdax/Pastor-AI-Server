@@ -16,7 +16,7 @@ class StripeEmbeddedCheckout extends StatefulWidget {
     super.key,
     required this.publishableKey,
     required this.clientSecret,
-    this.height = 520,
+    this.height = 1100,
     this.onComplete,
   });
 
@@ -50,8 +50,15 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       final div = web.HTMLDivElement()
         ..id = _elementId
         ..style.width = '100%'
+        ..style.height = '100%'
         ..style.minHeight = '${widget.height.toInt()}px'
-        ..style.border = 'none';
+        ..style.border = 'none'
+        // Flutter's outer scroll does not move HtmlElementView contents —
+        // keep Stripe's form scrollable inside this host element.
+        ..style.overflowY = 'auto'
+        ..style.overflowX = 'hidden'
+        ..style.boxSizing = 'border-box';
+      div.style.setProperty('-webkit-overflow-scrolling', 'touch');
       // Ensure payment iframes can use Payment Request / Link where supported.
       div.setAttribute('allow', 'payment *');
       return div;
@@ -207,6 +214,15 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       final checkout = await _createEmbeddedCheckout(stripe, options);
       _checkout = checkout;
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
+      // Stripe injects its iframe asynchronously — retry scroll setup briefly.
+      _ensureHostScrollable();
+      unawaited(Future<void>(() async {
+        for (final ms in [200, 500, 1000, 2000]) {
+          await Future<void>.delayed(Duration(milliseconds: ms));
+          if (!mounted) return;
+          _ensureHostScrollable();
+        }
+      }()));
 
       if (mounted) setState(() => _loading = false);
     } catch (e) {
@@ -216,6 +232,26 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
           _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
         });
       }
+    }
+  }
+
+  void _ensureHostScrollable() {
+    final host = web.document.getElementById(_elementId);
+    if (host == null) return;
+    host.style.overflowY = 'auto';
+    host.style.overflowX = 'hidden';
+    host.style.height = '100%';
+    host.style.maxHeight = '100%';
+    host.style.setProperty('-webkit-overflow-scrolling', 'touch');
+    // Stripe injects an iframe; keep the host as the scroll container.
+    final frames = host.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+      final frame = frames.item(i);
+      if (frame == null) continue;
+      final el = frame as web.HTMLElement;
+      el.style.width = '100%';
+      el.style.border = '0';
+      el.style.display = 'block';
     }
   }
 
