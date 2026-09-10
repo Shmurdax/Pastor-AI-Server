@@ -120,6 +120,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> cancelSubscription() => _apiClient.cancelSubscription();
 
+  Future<Map<String, dynamic>> syncSubscription() => _apiClient.syncSubscription();
+
   Future<Map<String, dynamic>> submitResponseReport({
     required int messageId,
     required String reason,

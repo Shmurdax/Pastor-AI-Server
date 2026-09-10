@@ -486,6 +486,88 @@ class CancelSubscriptionView(APIView):
         )
 
 
+class SyncSubscriptionView(APIView):
+    """Pull an active Stripe subscription onto the local profile.
+
+    Covers cases where Checkout paid in Stripe but the web client never called
+    session-status (common on Flutter web), and after an admin reset while
+    Stripe still has an active test subscription.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not _stripe_configured():
+            return Response(
+                {"detail": "Stripe is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        profile = _get_or_create_profile(request.user)
+        customer_id = (profile.stripe_customer_id or "").strip()
+        if not customer_id:
+            user = User.objects.select_related("profile").get(pk=request.user.pk)
+            return Response(
+                {
+                    "ok": True,
+                    "synced": False,
+                    "detail": "No Stripe customer on this account yet.",
+                    "user": UserSerializer(user).data,
+                }
+            )
+
+        _ensure_stripe()
+        try:
+            subscriptions = stripe.Subscription.list(
+                customer=customer_id,
+                status="all",
+                limit=20,
+            )
+        except stripe.error.StripeError as exc:
+            logger.exception("Stripe subscription list failed during sync")
+            return Response(
+                {"detail": str(exc.user_message or exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        active = None
+        for sub in subscriptions.data:
+            if _stripe_get(sub, "status") in {"active", "trialing"}:
+                active = sub
+                break
+
+        if active is None:
+            user = User.objects.select_related("profile").get(pk=request.user.pk)
+            return Response(
+                {
+                    "ok": True,
+                    "synced": False,
+                    "detail": "No active Stripe subscription found.",
+                    "user": UserSerializer(user).data,
+                }
+            )
+
+        _apply_subscription_to_profile(
+            profile,
+            status_value=Profile.SubscriptionStatus.ACTIVE,
+            customer_id=customer_id,
+            subscription_id=_stripe_get(active, "id") or "",
+            billing_period=_billing_period_from_subscription(active),
+            cancel_at_period_end=bool(_stripe_get(active, "cancel_at_period_end")),
+            current_period_end=_datetime_from_stripe_ts(
+                _stripe_get(active, "current_period_end")
+            ),
+        )
+        user = User.objects.select_related("profile").get(pk=request.user.pk)
+        return Response(
+            {
+                "ok": True,
+                "synced": True,
+                "user": UserSerializer(user).data,
+            }
+        )
+
+
 class StripeWebhookView(APIView):
     """Stripe webhook — keep STRIPE_WEBHOOK_SECRET in sync with the Dashboard endpoint."""
 

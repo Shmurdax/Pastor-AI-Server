@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
@@ -44,6 +46,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _publishableKey;
   String? _clientSecret;
   String? _sessionId;
+  bool _confirmingPurchase = false;
+  bool _purchaseHandled = false;
+  Timer? _statusPollTimer;
 
   String get _periodLabel =>
       widget.billingPeriod == BillingPeriod.monthly ? 'Monthly' : 'Yearly';
@@ -65,6 +70,62 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _api.setAccessToken(auth.token);
       _loadConfigAndStart();
     });
+  }
+
+  @override
+  void dispose() {
+    _stopStatusPolling();
+    super.dispose();
+  }
+
+  void _stopStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+  }
+
+  void _startStatusPolling() {
+    _stopStatusPolling();
+    // Stripe's onComplete / return_url often miss on Flutter web (especially with
+    // the body overlay). Poll session-status so Premium still syncs after pay.
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      unawaited(_pollSessionStatus());
+    });
+  }
+
+  Future<void> _pollSessionStatus() async {
+    if (!mounted || _purchaseHandled || _confirmingPurchase) return;
+    final sessionId = _sessionId;
+    if (sessionId == null || sessionId.isEmpty) return;
+    try {
+      final auth = context.read<AuthController>();
+      _api.setAccessToken(auth.token);
+      final status = await _api.getCheckoutSessionStatus(sessionId);
+      final userJson = status['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      }
+      if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+        await _handlePurchaseSuccess();
+      }
+    } catch (_) {
+      // Keep polling; transient API blips are common right after payment.
+    }
+  }
+
+  Future<void> _handlePurchaseSuccess() async {
+    if (!mounted || _purchaseHandled) return;
+    _purchaseHandled = true;
+    _stopStatusPolling();
+    if (mounted) setState(() => _confirmingPurchase = true);
+    final complete = await _confirmSessionIfNeeded();
+    if (!mounted) return;
+    if (!complete) {
+      _purchaseHandled = false;
+      if (mounted) setState(() => _confirmingPurchase = false);
+      _startStatusPolling();
+      return;
+    }
+    await _showPurchaseCompleteAndReturn();
   }
 
   Future<void> _loadConfigAndStart() async {
@@ -115,7 +176,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ? session['publishable_key'] as String
                 : _publishableKey;
         _startingCheckout = false;
+        _purchaseHandled = false;
       });
+      if (_sessionId != null && _sessionId!.isNotEmpty) {
+        _startStatusPolling();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -166,6 +231,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       await context.read<AuthController>().refreshMe();
       if (context.read<AuthController>().hasPremiumAccess) return true;
     } catch (_) {}
+    // Fallback: payment may have completed in Stripe even if this session
+    // status poll raced; sync any active Stripe subscription onto the profile.
+    try {
+      final auth = context.read<AuthController>();
+      _api.setAccessToken(auth.token);
+      final sync = await _api.syncSubscription();
+      final userJson = sync['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      }
+      if (sync['synced'] == true || auth.hasPremiumAccess) return true;
+    } catch (e) {
+      lastError ??= e;
+    }
     if (lastError != null && mounted) {
       setState(() {
         _error =
@@ -178,13 +257,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _onStripeCheckoutComplete() async {
-    final complete = await _confirmSessionIfNeeded();
-    if (!mounted) return;
-    if (!complete) {
-      // Keep checkout screen visible with error/guidance from confirm helper.
-      return;
-    }
-    await _showPurchaseCompleteAndReturn();
+    await _handlePurchaseSuccess();
   }
 
   Future<void> _onMockCheckoutSuccess(AuthUser user) async {
