@@ -62,14 +62,16 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("LENGTH (teaching answers):", prompt)
-        self.assertIn("connected paragraphs", prompt)
+        self.assertIn("**bold heading**", prompt)
+        self.assertIn("bullet points", prompt.lower())
         self.assertIn("never open with a Scripture citation", prompt)
         self.assertIn("Weave NKJV", prompt)
         self.assertIn("a one-sentence reply is a failed answer", prompt)
         self.assertIn("<length_close>", prompt)
         self.assertIn("2000 characters", LENGTH_STEER)
-        self.assertIn("Open with a pastoral paragraph", LENGTH_STEER)
-        self.assertIn("never make the whole reply an outline", LENGTH_STEER)
+        self.assertIn("**bold headings**", LENGTH_STEER)
+        self.assertIn("bullet points", LENGTH_STEER)
+        self.assertIn("Open with a bold heading", LENGTH_STEER)
         self.assertIn("summarize", LENGTH_STEER)
         self.assertIn("User question:", LENGTH_STEER)
         self.assertIn("summarize", prompt.lower())
@@ -162,6 +164,50 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
         self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)
         self.assertEqual(continuation_token_budget("x" * 2300, completion_tokens=1024), 0)
+
+    def test_join_continuation_strips_restarted_opening(self):
+        from .chat_system_prompt import CONTINUE_STEER, join_continuation
+
+        first = (
+            "According to Pastor Don Nordin, the main purpose of the church is to provide "
+            "a place where believers can receive ministry and reach out to the world. He "
+            "illustrates this through a story about visiting a member of his congregation "
+            "who had stopped attending church. During his visit, Pastor Don noticed a fire "
+            "burning in the fireplace and used it as a metaphor for the church's role in "
+            "nurturing spiritual growth. Just as the lone ember needed to be placed back "
+            "into the midst of the other burning coals to reignite its flame, believers "
+            "need the warmth and encouragement of the church community to thrive spiritually. "
+            "This underscores the importance of fellowship and mutual support within the "
+            "local church. As Pastor Don emphasizes, \"We cannot very well reach the world "
+            "if we are not receiving ministry from others.\" Therefore, the church serves "
+            "as a vital hub for both receiving and distributing divine ministry among its "
+            "members and beyond."
+        )
+        extra = (
+            "According to Pastor Don Nordin, the main purpose of the church is to provide "
+            "a place where believers can receive ministry and reach out to the world. He "
+            "illustrates this through a story about visiting a member of his congregation "
+            "who had stopped attending church. During his visit, Pastor Don noticed a fire "
+            "burning in the fireplace and used it as a metaphor for the church's role in "
+            "nurturing spiritual growth. Just as the lone ember needed to be placed back "
+            "into the midst of the other burning coals to reignite its flame, believers "
+            "need the warmth and encouragement of the church community to thrive spiritually. "
+            "This underscores the importance of fellowship and mutual support within the "
+            "local church.\n\n"
+            "Moreover, Pastor Don emphasizes the significance of the church as a place "
+            "where believers can find authentic connection and support."
+        )
+        joined = join_continuation(first, extra)
+        self.assertTrue(joined.startswith(first))
+        self.assertIn("Moreover, Pastor Don emphasizes", joined)
+        self.assertEqual(joined.count("the main purpose of the church is to provide"), 1)
+        self.assertEqual(join_continuation(first, first), first)
+        self.assertEqual(
+            join_continuation(first, "Serve one another in the local church body."),
+            first + "\n\nServe one another in the local church body.",
+        )
+        self.assertIn("Do not repeat any sentence already written", CONTINUE_STEER)
+        self.assertIn("**bold heading**", CONTINUE_STEER)
 
 
 class ScopeGateParserTests(unittest.TestCase):

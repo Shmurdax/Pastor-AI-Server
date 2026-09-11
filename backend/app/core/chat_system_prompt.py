@@ -184,26 +184,28 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 LENGTH_STEER = (
     "Write a complete teaching answer of about 2000 characters (roughly 320 "
-    "words). Open with a pastoral paragraph, not a Scripture dump. Weave NKJV "
-    "verses into the sentences where they help. Mix short paragraphs with a "
-    "few bullet points only where a list actually helps—never make the whole "
-    "reply an outline. Quote Pastor Don and/or Susan Nordin word-for-word from "
-    "the notes—choose lines that have not already been quoted in this chat—and "
-    "apply them pastorally. Do not stop after one sentence. When you reach a "
-    "clear closing paragraph (for example \"In conclusion\"), stop there—do not "
-    "pad with filler, synonym lists, or extra languages. If the "
-    "question says summarize, compare, distinguish, or asks for one "
-    "illustration, still cover the notes in this ~2000-character teaching.\n\n"
+    "words). Format it in Markdown with **bold headings**, short sections, and "
+    "bullet points for steps, distinctions, verses, and application. Open with "
+    "a bold heading and a pastoral paragraph, not a Scripture dump. Weave NKJV "
+    "verses into the teaching where they help. Quote Pastor Don and/or Susan "
+    "Nordin word-for-word from the notes—choose lines that have not already "
+    "been quoted in this chat—and apply them pastorally. Do not stop after one "
+    "sentence. When you reach a clear closing paragraph (for example "
+    "\"In conclusion\"), stop there—do not pad with filler, synonym lists, or "
+    "extra languages. If the question says summarize, compare, distinguish, or "
+    "asks for one illustration, still cover the notes in this formatted "
+    "~2000-character teaching.\n\n"
     "User question:\n"
 )
 
 CONTINUE_STEER = (
     "Your previous reply was too short. Continue the same teaching without "
-    "restarting or apologizing. Add flowing paragraphs, weave in more NKJV "
-    "where it belongs (not as a block at the top), add at most a short bullet "
-    "list if it helps, more word-for-word quotations from Pastor Don and/or "
-    "Susan Nordin that appear in the notes and were not used earlier in this "
-    "chat, and pastoral application until the "
+    "restarting or apologizing. Do not repeat any sentence already written—"
+    "the previous text is already on screen. Start with a new **bold heading** "
+    "or paragraph that adds new material. Add **bold headings**, bullet points, "
+    "more NKJV where it belongs (not as a block at the top), more word-for-word "
+    "quotations from Pastor Don and/or Susan Nordin that appear in the notes "
+    "and were not used earlier in this chat, and pastoral application until the "
     "answer is about 2000 characters. Then stop at a clear closing—do not append "
     "filler after \"In conclusion.\" If the question said summarize or asked "
     "for one story, that is not permission to stop after a short add-on."
@@ -331,6 +333,85 @@ def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
     return min(int(completion_tokens), guessed)
 
 
+_OVERLAP_SPLIT_RE = re.compile(r"\n{2,}|(?<=[.!?])[\"']?\s+")
+_OVERLAP_MARKUP_RE = re.compile(r"[*_`>#]+")
+_OVERLAP_PUNCT_RE = re.compile(r"[^a-z0-9' ]+")
+_OVERLAP_SPACE_RE = re.compile(r"\s+")
+
+
+def _fold_for_overlap(text: str) -> str:
+    folded = (text or "").lower().replace("\u2019", "'")
+    folded = _OVERLAP_MARKUP_RE.sub(" ", folded)
+    folded = _OVERLAP_PUNCT_RE.sub(" ", folded)
+    return _OVERLAP_SPACE_RE.sub(" ", folded).strip()
+
+
+def _clause_spans(text: str) -> list[tuple[int, str]]:
+    spans: list[tuple[int, str]] = []
+    start = 0
+    for match in _OVERLAP_SPLIT_RE.finditer(text):
+        chunk = text[start : match.start()]
+        if chunk.strip():
+            spans.append((start, chunk.strip()))
+        start = match.end()
+    tail = text[start:]
+    if tail.strip():
+        spans.append((start, tail.strip()))
+    return spans
+
+
+def _clause_restates_answer(clause: str, answer_folded: str, answer_clauses: list[str]) -> bool:
+    folded = _fold_for_overlap(clause)
+    if len(folded) < 24:
+        return False
+    if folded in answer_folded:
+        return True
+    words = folded.split()
+    probe = " ".join(words[:12])
+    if len(probe) >= 24 and probe in answer_folded:
+        return True
+    from difflib import SequenceMatcher
+
+    for other in answer_clauses:
+        if len(other) < 24:
+            continue
+        if SequenceMatcher(None, folded, other).ratio() >= 0.82:
+            return True
+    return False
+
+
+def strip_restarted_continuation(answer: str, extra: str) -> str:
+    """Drop a continuation prefix that restates the first answer's opening."""
+    extra = (extra or "").strip()
+    answer = (answer or "").strip()
+    if not extra or not answer:
+        return extra
+    answer_folded = _fold_for_overlap(answer)
+    extra_folded = _fold_for_overlap(extra)
+    if not extra_folded:
+        return extra
+    if extra_folded in answer_folded:
+        return ""
+    answer_clauses = [_fold_for_overlap(part) for _, part in _clause_spans(answer)]
+    kept_at: int | None = None
+    for start, clause in _clause_spans(extra):
+        if _clause_restates_answer(clause, answer_folded, answer_clauses):
+            continue
+        kept_at = start
+        break
+    if kept_at is None:
+        return ""
+    return extra[kept_at:].strip()
+
+
+def join_continuation(answer: str, extra: str) -> str:
+    """Append expansion text, stripping a restarted copy of the opening."""
+    extra = strip_restarted_continuation(answer, extra)
+    if not extra:
+        return (answer or "").rstrip()
+    return (answer or "").rstrip() + "\n\n" + extra
+
+
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
     """
     Full chat SYSTEM prompt (without language block or REFERENCE NOTES).
@@ -431,7 +512,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "the notes without fabricating quotation marks.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
         "REFERENCE NOTES are empty should you rely on Scripture and the Nordin teaching in this prompt, "
-        "still in about 2000 characters of mixed paragraphs and a few bullets.\n"
+        "still in a formatted ~2000-character teaching with headings and bullets.\n"
         "</source_material>\n\n"
 
         "<response_policy>\n"
@@ -452,15 +533,14 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Cover the notes, quote Pastor Don and/or Susan, weave in NKJV, and apply it—then stop. "
         "Once you write a closing paragraph (\"In conclusion,\" \"In closing,\" or similar), end the "
         "reply immediately. Never pad afterward with filler, synonym chains, legalese, or another language.\n"
-        "FORMAT: Write mostly in connected paragraphs. Open with a pastoral answer in prose—never open "
-        "with a Scripture citation, a verse block, or an outline heading. Weave NKJV quotations into the "
-        "sentences where they support the point (for example: As John 1:14 (NKJV) says, \"...\"). "
-        "Use a short bullet list only for a few distinct steps, audiences, or takeaways—then return to "
-        "paragraphs. Do not format the entire reply as headings and bullets. Light Markdown is fine "
-        "(occasional **bold** on a phrase), but do not stack bold headers on every section. "
-        "Follow-up questions keep this same ~2000-character mixed-prose length even when an earlier "
-        "reply in the thread was already complete. Words like summarize, compare, distinguish, or "
-        "\"what story does he use\" still get this teaching—not a one-liner and not an outline.\n"
+        "FORMAT: Use Markdown in every teaching answer. Lead with a **bold heading** that states the pastoral "
+        "answer, then a short pastoral paragraph—never open with a Scripture citation or a stacked verse dump. "
+        "Use additional **bold subheadings** for Scripture, the Nordins' teaching, and application. "
+        "Use bullet points for steps, distinctions, listed verses, and takeaways. Short paragraphs between "
+        "those sections are fine. Weave NKJV quotations into the teaching (for example: As John 1:14 (NKJV) "
+        "says, \"...\"). Follow-up questions keep this same formatted ~2000-character length even when an "
+        "earlier reply in the thread was already complete. Words like summarize, compare, distinguish, or "
+        "\"what story does he use\" still get this formatted teaching—not a one-liner.\n"
         "Prefer more than one short quote when REFERENCE NOTES offer several strong lines from different "
         "sermons; one substantial quote is the minimum for an in-depth answer when quotable text is available. "
         "Follow-up turns must use new quotations and new NKJV passages—not the same lines as the last reply.\n"
@@ -468,7 +548,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Do not use hedging phrases like \"from what I've gathered,\" \"it appears,\" or \"it seems.\"\n"
         "Do not mention or refer to \"sermon context,\" \"reference notes,\" or retrieval internals.\n"
         "For every spiritual, biblical, church, or social-issue question, a one-sentence reply is a "
-        "failed answer. Aim for about 2000 characters of paragraphs with a few bullets, quotations, "
+        "failed answer. Aim for about 2000 characters with headings, bullets, quotations, "
         "woven NKJV, and application.\n"
         "</response_policy>\n\n"
 
@@ -486,10 +566,10 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</safety_protocol>\n\n"
 
         "<length_close>\n"
-        "Aim for about 2000 characters of mixed paragraphs (with at most a short bullet list), "
-        "Scripture woven into the prose (not stacked at the top), word-for-word quotes from Pastor "
-        "Don and/or Susan when the notes allow, and pastoral application. A one-sentence finish or "
-        "an all-bullet outline is incomplete, including on follow-up turns and questions that say "
+        "Aim for about 2000 characters of Markdown teaching: **bold headings**, short sections, "
+        "bullet points, Scripture woven into the teaching (not stacked at the top), word-for-word "
+        "quotes from Pastor Don and/or Susan when the notes allow, and pastoral application. A "
+        "one-sentence finish is incomplete, including on follow-up turns and questions that say "
         "summarize. When the teaching is complete—especially after an \"In conclusion\" paragraph—"
         "stop. Do not keep writing to fill space.\n"
         "</length_close>\n"
