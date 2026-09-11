@@ -65,6 +65,7 @@ from .chat_system_prompt import (
     build_chat_system_prompt,
     continuation_token_budget,
     find_biblical_character_names,
+    join_continuation,
     looks_like_brief_social,
     query_expects_long_answer,
 )
@@ -257,10 +258,7 @@ def _continuation_messages(messages, first_answer: str):
 
 
 def _join_continuation(answer: str, extra: str) -> str:
-    extra = (extra or "").strip()
-    if not extra:
-        return answer
-    return answer.rstrip() + "\n\n" + extra
+    return join_continuation(answer, extra)
 
 
 def _trim_continuation_messages(messages):
@@ -890,6 +888,8 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
+                    if emit_live:
+                        yield _sse({"type": "replace", "text": answer})
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],

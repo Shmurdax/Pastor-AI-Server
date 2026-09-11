@@ -148,8 +148,8 @@ REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
 EMPTY_REFERENCE_NOTES = (
     "No sermon excerpts were attached for this turn. "
     "Answer from Scripture (NKJV) and Pastor Don and Susan Nordin's teaching "
-    "in about 2000 characters of mixed paragraphs with a few bullets. "
-    "Weave Scripture into the prose; do not open with a verse dump. "
+    "in a formatted ~2000-character teaching with **bold headings** and bullets. "
+    "Weave Scripture into the teaching; do not open with a verse dump. "
     "Do not claim that sermon notes were missing or irrelevant."
 )
 

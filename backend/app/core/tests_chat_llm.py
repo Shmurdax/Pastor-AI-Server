@@ -209,6 +209,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("uniqueness_instruction", source)
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
+        self.assertIn("join_continuation", source)
+        self.assertIn('{"type": "replace", "text": answer}', source)
         self.assertIn("keeping the first answer", source)
         self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
         self.assertIn("looks_like_brief_social", source)
