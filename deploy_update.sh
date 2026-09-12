@@ -27,13 +27,13 @@ set -a
 source "$CONFIG_ENV"
 set +a
 
-# Git channel: PASTOR_GIT_BRANCH, REPO_BRANCH, or $WS/.git_channel (latest|stable).
+# Git channel: PASTOR_GIT_BRANCH, REPO_BRANCH, or $WS/.git_channel (development|master).
 # shellcheck source=/dev/null
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
 CHANNEL="$(pastor_git_channel "$WS")"
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
-  log "Pulling Git channel '$CHANNEL' (latest = all new work, stable = production)"
+  log "Pulling Git channel '$CHANNEL' (development = all new work, master = production)"
   # Pod remotes often fetch only master. `git fetch origin <branch>` still
   # updates FETCH_HEAD even when origin/<branch> is not a remote-tracking ref.
   if git -C "$WS" fetch origin "$CHANNEL" 2>/dev/null; then

@@ -3,10 +3,10 @@
 # Pastor-AI full install — matches the production RunPod network-volume stack
 #
 # One-liner (from a GPU machine with /workspace or set WORKSPACE_ROOT):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/Shmurdax/Pastor-AI-Server/latest/install.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/Shmurdax/Pastor-AI-Server/development/install.sh)
 #
-# Or after cloning this repo (latest = all new work; use -b stable for production):
-#   git clone -b latest https://github.com/Shmurdax/Pastor-AI-Server.git
+# Or after cloning this repo (development = all new work; use -b master for production):
+#   git clone -b development https://github.com/Shmurdax/Pastor-AI-Server.git
 #   cd Pastor-AI-Server && bash install.sh
 #
 # Required:
@@ -34,7 +34,7 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 REPO_URL="${REPO_URL:-https://github.com/Shmurdax/Pastor-AI-Server.git}"
-REPO_BRANCH="${REPO_BRANCH:-latest}"
+REPO_BRANCH="${REPO_BRANCH:-development}"
 
 # Resolve script / repo root (supports curl|bash where BASH_SOURCE is missing)
 SCRIPT_PATH="${BASH_SOURCE[0]:-}"
@@ -276,7 +276,7 @@ mkdir -p "$WS/scripts" "$WS/serverless"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
 [[ -f "$REPO_ROOT/scripts/check_whisper.sh" ]] && cp -a "$REPO_ROOT/scripts/check_whisper.sh" "$WS/scripts/check_whisper.sh"
 [[ -f "$REPO_ROOT/scripts/git_channel.sh" ]] && cp -a "$REPO_ROOT/scripts/git_channel.sh" "$WS/scripts/git_channel.sh"
-[[ -f "$REPO_ROOT/scripts/promote_to_stable.sh" ]] && cp -a "$REPO_ROOT/scripts/promote_to_stable.sh" "$WS/scripts/promote_to_stable.sh"
+[[ -f "$REPO_ROOT/scripts/promote_to_master.sh" ]] && cp -a "$REPO_ROOT/scripts/promote_to_master.sh" "$WS/scripts/promote_to_master.sh"
 [[ -f "$REPO_ROOT/serverless/create_runpod_endpoints.sh" ]] && cp -a "$REPO_ROOT/serverless/create_runpod_endpoints.sh" "$WS/serverless/create_runpod_endpoints.sh"
 [[ -f "$REPO_ROOT/serverless/vllm.env.example" ]] && cp -a "$REPO_ROOT/serverless/vllm.env.example" "$WS/serverless/vllm.env.example"
 [[ -f "$REPO_ROOT/serverless/whisper.env.example" ]] && cp -a "$REPO_ROOT/serverless/whisper.env.example" "$WS/serverless/whisper.env.example"
