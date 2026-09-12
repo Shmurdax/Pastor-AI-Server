@@ -34,15 +34,11 @@ CHANNEL="$(pastor_git_channel "$WS")"
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
   log "Pulling Git channel '$CHANNEL' (latest = all new work, stable = production)"
-  git -C "$WS" fetch origin "$CHANNEL" 2>/dev/null || true
-  if git -C "$WS" rev-parse --verify -q "origin/$CHANNEL" >/dev/null; then
-    current="$(git -C "$WS" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [[ "$current" != "$CHANNEL" ]]; then
-      git -C "$WS" checkout -B "$CHANNEL" "origin/$CHANNEL" 2>/dev/null \
-        || warn "could not checkout $CHANNEL (staying on $current)"
-    fi
-    git -C "$WS" pull --ff-only origin "$CHANNEL" 2>/dev/null \
-      || warn "git pull origin $CHANNEL skipped or failed"
+  # Pod remotes often fetch only master. `git fetch origin <branch>` still
+  # updates FETCH_HEAD even when origin/<branch> is not a remote-tracking ref.
+  if git -C "$WS" fetch origin "$CHANNEL" 2>/dev/null; then
+    git -C "$WS" checkout -B "$CHANNEL" FETCH_HEAD 2>/dev/null \
+      || warn "could not checkout $CHANNEL"
   else
     warn "origin/$CHANNEL not found — skipped git pull"
   fi
