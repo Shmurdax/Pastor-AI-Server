@@ -4,17 +4,41 @@ Christian theology chat: **Flutter web UI** + **Django** + **Qdrant RAG** + **vL
 
 **Working with the live site (users, sermons, subscriptions, prayer, events)?** Start with the [Operator and Staff Guide](docs/STAFF_AND_OPERATOR_GUIDE.md). This README is the install / restart path.
 
+## Git channels (`latest` vs `stable`)
+
+All new work goes on **`latest`**. **`stable`** is the production pin (what `christian-ai-prd` runs). `master` stays aligned with `stable` so older install URLs keep working.
+
+| Branch | Use |
+|--------|-----|
+| `latest` | Default. PRs, Cursor agents, and `christian-ai-dev` |
+| `stable` | Production. Promote only after `latest` is tested on the dev pod |
+| `master` | Mirror of `stable` (legacy clone/install URLs) |
+
+```bash
+# Everyday development
+git clone -b latest https://github.com/Shmurdax/Pastor-AI-Server.git
+git checkout latest
+
+# Production pin
+git checkout stable
+
+# After testing latest on christian-ai-dev, promote:
+bash scripts/promote_to_stable.sh
+```
+
+On a RunPod host, `deploy_update.sh` pulls the channel in `PASTOR_GIT_BRANCH` or `/workspace/pastor-ai/.git_channel` (default `latest`). Set `.git_channel` to `stable` on `christian-ai-prd`.
+
 ## One-command install (RunPod / Ubuntu GPU host)
 
 ```bash
 export HF_TOKEN=hf_your_token_here   # needs access to apophaticai/qwen2.5-14b-christianai-v1
-bash <(curl -fsSL https://raw.githubusercontent.com/GavWrecker/Pastor-AI-Server/master/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Shmurdax/Pastor-AI-Server/latest/install.sh)
 ```
 
 Or clone first:
 
 ```bash
-git clone https://github.com/GavWrecker/Pastor-AI-Server.git
+git clone -b latest https://github.com/Shmurdax/Pastor-AI-Server.git
 cd Pastor-AI-Server
 cp tokens.env.example tokens.env   # paste HF_TOKEN (and optional ngrok/github)
 bash install.sh

@@ -27,10 +27,25 @@ set -a
 source "$CONFIG_ENV"
 set +a
 
+# Git channel: PASTOR_GIT_BRANCH, REPO_BRANCH, or $WS/.git_channel (latest|stable).
+# shellcheck source=/dev/null
+source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
+CHANNEL="$(pastor_git_channel "$WS")"
+pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
-  log "Pulling latest master"
-  git -C "$WS" fetch origin master 2>/dev/null || true
-  git -C "$WS" pull --ff-only origin master 2>/dev/null || warn "git pull skipped or failed"
+  log "Pulling Git channel '$CHANNEL' (latest = all new work, stable = production)"
+  git -C "$WS" fetch origin "$CHANNEL" 2>/dev/null || true
+  if git -C "$WS" rev-parse --verify -q "origin/$CHANNEL" >/dev/null; then
+    current="$(git -C "$WS" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ "$current" != "$CHANNEL" ]]; then
+      git -C "$WS" checkout -B "$CHANNEL" "origin/$CHANNEL" 2>/dev/null \
+        || warn "could not checkout $CHANNEL (staying on $current)"
+    fi
+    git -C "$WS" pull --ff-only origin "$CHANNEL" 2>/dev/null \
+      || warn "git pull origin $CHANNEL skipped or failed"
+  else
+    warn "origin/$CHANNEL not found — skipped git pull"
+  fi
 fi
 
 [[ -x "$VENV_DIR/bin/python" ]] || die "Python venv missing at $VENV_DIR"

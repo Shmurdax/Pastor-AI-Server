@@ -208,10 +208,13 @@ Production is a CPU-only Secure Cloud pod on the same network volume
 | | |
 |--|--|
 | Pod id | `rv1ttmvj5xy02k` |
-| Name | `christian-ai-prd-cpu` |
+| Name | `christian-ai-prd` |
+| Git channel | `stable` (`/workspace/pastor-ai/.git_channel`) |
 | Flavor | `cpu3g` (2 vCPU / 8 GB, **no GPU**) |
 | Cost | **$0.08/hr** (the old GPU pod was $0.59/hr) |
 | SSH | `ssh rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+
+Dev replica (`christian-ai-dev`, pod `msu5t1sxykgvpj`, volume `7rrkr3iexe` in US-IL-1) tracks Git **`latest`**. All new code lands there first. Promote with `bash scripts/promote_to_stable.sh`, then `bash deploy_update.sh` on production.
 
 The SSH username is `{podHostId}@ssh.runpod.io`, not `{podId}-644122c4`.
 If proxy SSH says `container not found`, read `machine.podHostId` from the
