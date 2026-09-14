@@ -76,6 +76,14 @@ RunPod host nginx often binds **8001**. vLLM uses **8010**.
 ### Docker
 Some RunPod images cannot run a Docker daemon (iptables/netfilter). `install.sh` still installs Docker when possible, then uses the **native** path that matches production.
 
+### Dev site “server not found” (dead `*.trycloudflare.com`)
+`christian-ai-dev` uses a Cloudflare **quick** tunnel, not the production named tunnel. That hostname dies when `cloudflared` or the pod dies, so browsers show “server not found” even though the volume is fine.
+
+1. Hit `https://<pod-id>-8000.proxy.runpod.net/` first. If that returns the Flutter HTML, Django is up and only the public name changed.
+2. Read the live quick-tunnel URL from `/workspace/pastor-ai/logs/cloudflared.log`.
+3. If `stat /workspace` hangs and PID 1 is stuck in `onboot.sh`, **Stop/Start will not remount**. Terminate the pod and recreate it on the **same** volume (`7rrkr3iexe`). Recreating as the same flavor (`cpu3g`) can land back on the dead host; `cpu3m` moved the replacement off `64411c38`.
+4. Do **not** activate `/workspace/persistent/.cloudflared/tunnel.token.prd-copy`. That token is production’s named tunnel and would steal `christianaiapophatictestdomain.com`.
+
 ### Chat “Could not connect”
 The Flutter UI maps **any** `/api/chat/` exception to `Error: Could not connect to the server.` The homepage can still load. Usual causes on the CPU web pod:
 
@@ -213,8 +221,26 @@ Production is a CPU-only Secure Cloud pod on the same network volume
 | Flavor | `cpu3g` (2 vCPU / 8 GB, **no GPU**) |
 | Cost | **$0.08/hr** (the old GPU pod was $0.59/hr) |
 | SSH | `ssh rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+| Public URL | `https://christianaiapophatictestdomain.com` (named Cloudflare tunnel) |
 
-Dev replica (`christian-ai-dev`, pod `msu5t1sxykgvpj`, volume `7rrkr3iexe` in US-IL-1) tracks Git **`development`**. All new code lands there first. Promote with `bash scripts/promote_to_master.sh`, then `bash deploy_update.sh` on production.
+## Development CPU pod
+
+`christian-ai-dev` is a clone of production on its own network volume. It tracks Git **`development`**. All new code lands there first. Promote with `bash scripts/promote_to_master.sh`, then `bash deploy_update.sh` on production.
+
+| | |
+|--|--|
+| Pod id | `qi07ik353chwrt` |
+| Name | `christian-ai-dev` |
+| Git channel | `development` (`/workspace/pastor-ai/.git_channel`) |
+| Flavor | `cpu3m` (2 vCPU / 16 GB, **no GPU**) |
+| Cost | **$0.11/hr** |
+| Volume | `7rrkr3iexe` at `/workspace` (US-IL-1) |
+| Image | `runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404` |
+| SSH | `ssh qi07ik353chwrt-64411c37@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+| RunPod proxy | `https://qi07ik353chwrt-8000.proxy.runpod.net/` |
+| Public URL | Cloudflare **quick** tunnel (name changes when `cloudflared` restarts). Current: `https://washing-association-imports-philip.trycloudflare.com` |
+
+The previous pod `msu5t1sxykgvpj` died on host `64411c38` (`/workspace` NFS hung). Recreating as `cpu3g` landed on the same dead host; `cpu3m` moved it to `64411c37`. Keep `CLOUDFLARE_TUNNEL_TOKEN_FILE` unset on this clone so it does not steal the production hostname.
 
 The SSH username is `{podHostId}@ssh.runpod.io`, not `{podId}-644122c4`.
 If proxy SSH says `container not found`, read `machine.podHostId` from the
