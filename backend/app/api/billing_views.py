@@ -56,35 +56,119 @@ def _get_or_create_profile(user: User) -> Profile:
     return profile
 
 
-def _line_item_for_period(period: str) -> dict:
-    """Prefer configured Price IDs; otherwise create one-off price_data."""
-    period = (period or "monthly").lower()
-    if period == "yearly":
-        price_id = getattr(settings, "STRIPE_PRICE_YEARLY", "") or ""
-        if price_id:
-            return {"price": price_id, "quantity": 1}
-        return {
-            "price_data": {
-                "currency": "usd",
-                "unit_amount": 15000,
-                "recurring": {"interval": "year"},
-                "product_data": {"name": "Nordin's AI Premium (Yearly)"},
-            },
-            "quantity": 1,
-        }
+_PERIOD_PRICE_CATALOG = {
+    Profile.BillingPeriod.YEARLY: {
+        "lookup_key": "pastor_ai_premium_yearly",
+        "unit_amount": 15000,
+        "interval": "year",
+        "name": "Nordin's AI Premium (Yearly)",
+    },
+    Profile.BillingPeriod.MONTHLY: {
+        "lookup_key": "pastor_ai_premium_monthly",
+        "unit_amount": 1500,
+        "interval": "month",
+        "name": "Nordin's AI Premium (Monthly)",
+    },
+}
 
-    price_id = getattr(settings, "STRIPE_PRICE_MONTHLY", "") or ""
+
+def _configured_price_id(period: str) -> str:
+    period = (period or "monthly").lower()
+    if period == Profile.BillingPeriod.YEARLY:
+        return (getattr(settings, "STRIPE_PRICE_YEARLY", "") or "").strip()
+    return (getattr(settings, "STRIPE_PRICE_MONTHLY", "") or "").strip()
+
+
+def _line_item_for_period(period: str) -> dict:
+    """Prefer configured Price IDs; otherwise create one-off price_data.
+
+    Checkout Sessions accept ``price_data``. Subscription Schedules do not —
+    use :func:`_schedule_item_for_period` for plan changes.
+    """
+    period = (period or "monthly").lower()
+    price_id = _configured_price_id(period)
     if price_id:
         return {"price": price_id, "quantity": 1}
+    catalog = _PERIOD_PRICE_CATALOG.get(period) or _PERIOD_PRICE_CATALOG[Profile.BillingPeriod.MONTHLY]
     return {
         "price_data": {
             "currency": "usd",
-            "unit_amount": 1500,
-            "recurring": {"interval": "month"},
-            "product_data": {"name": "Nordin's AI Premium (Monthly)"},
+            "unit_amount": catalog["unit_amount"],
+            "recurring": {"interval": catalog["interval"]},
+            "product_data": {"name": catalog["name"]},
         },
         "quantity": 1,
     }
+
+
+def _price_id_for_period(period: str) -> str:
+    """Return a reusable Stripe Price ID for monthly/yearly plan changes.
+
+    Subscription Schedule phases reject ``price_data``. If the operator has not
+    set ``STRIPE_PRICE_*``, look up (or create) a catalog price by lookup_key.
+    """
+    configured = _configured_price_id(period)
+    if configured:
+        return configured
+    return _get_or_create_recurring_price_id(period)
+
+
+def _get_or_create_recurring_price_id(period: str) -> str:
+    period = (period or "monthly").lower()
+    catalog = _PERIOD_PRICE_CATALOG.get(period) or _PERIOD_PRICE_CATALOG[Profile.BillingPeriod.MONTHLY]
+    lookup_key = catalog["lookup_key"]
+    existing = stripe.Price.list(lookup_keys=[lookup_key], active=True, limit=1)
+    data = _stripe_get(existing, "data") or []
+    if data:
+        price_id = _id_or_value(data[0])
+        if price_id:
+            return price_id
+    product = stripe.Product.create(
+        name=catalog["name"],
+        metadata={"pastor_ai_billing_period": period},
+    )
+    try:
+        price = stripe.Price.create(
+            currency="usd",
+            unit_amount=catalog["unit_amount"],
+            recurring={"interval": catalog["interval"]},
+            product=_id_or_value(product),
+            lookup_key=lookup_key,
+            metadata={"pastor_ai_billing_period": period},
+        )
+    except stripe.error.StripeError:
+        # A concurrent request may have created the lookup_key first.
+        existing = stripe.Price.list(lookup_keys=[lookup_key], limit=1)
+        data = _stripe_get(existing, "data") or []
+        if data:
+            price_id = _id_or_value(data[0])
+            if price_id:
+                return price_id
+        raise
+    price_id = _id_or_value(price)
+    if not price_id:
+        raise ValueError("Could not create a Stripe price for the selected plan.")
+    return price_id
+
+
+def _schedule_item_for_period(period: str) -> dict:
+    return {"price": _price_id_for_period(period), "quantity": 1}
+
+
+def _stripe_error_response(exc) -> Response:
+    """Map Stripe failures to JSON 400/503 — never HTTP 502.
+
+    RunPod's proxy replaces origin 502 bodies with its HTML waiting page, which
+    the Flutter client then showed as a popup after monthly→yearly updates.
+    """
+    logger.exception("Stripe request failed")
+    detail = getattr(exc, "user_message", None) or str(exc) or "Stripe request failed."
+    name = type(exc).__name__
+    if name in {"APIConnectionError", "RateLimitError", "APIError", "TryAgain"}:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE
+    else:
+        code = status.HTTP_400_BAD_REQUEST
+    return Response({"detail": str(detail)}, status=code)
 
 
 def _public_app_url(request) -> str:
@@ -302,14 +386,16 @@ def _schedule_subscription_plan_change(subscription, new_period: str) -> int:
             _billing_period_from_subscription(subscription)
             or Profile.BillingPeriod.MONTHLY
         )
-        current_items = [_line_item_for_period(current_period)]
-    new_items = [_line_item_for_period(new_period)]
+        current_items = [_schedule_item_for_period(current_period)]
+    new_items = [_schedule_item_for_period(new_period)]
 
+    created_schedule = False
     schedule_id = _id_or_value(_stripe_get(subscription, "schedule"))
     if schedule_id:
         schedule = stripe.SubscriptionSchedule.retrieve(schedule_id)
     else:
         schedule = stripe.SubscriptionSchedule.create(from_subscription=sub_id)
+        created_schedule = True
 
     phases = _stripe_get(schedule, "phases") or []
     current_phase = phases[0] if phases else None
@@ -317,26 +403,43 @@ def _schedule_subscription_plan_change(subscription, new_period: str) -> int:
     if not start_date:
         start_date = _stripe_get(subscription, "start_date")
     if not start_date:
+        if created_schedule:
+            _release_created_schedule(schedule)
         raise ValueError("Stripe subscription schedule is missing start_date.")
 
-    stripe.SubscriptionSchedule.modify(
-        _id_or_value(_stripe_get(schedule, "id") or schedule),
-        end_behavior="release",
-        proration_behavior="none",
-        phases=[
-            {
-                "items": current_items,
-                "start_date": start_date,
-                "end_date": period_end_ts,
-                "proration_behavior": "none",
-            },
-            {
-                "items": new_items,
-                "proration_behavior": "none",
-            },
-        ],
-    )
+    try:
+        stripe.SubscriptionSchedule.modify(
+            _id_or_value(_stripe_get(schedule, "id") or schedule),
+            end_behavior="release",
+            proration_behavior="none",
+            phases=[
+                {
+                    "items": current_items,
+                    "start_date": start_date,
+                    "end_date": period_end_ts,
+                    "proration_behavior": "none",
+                },
+                {
+                    "items": new_items,
+                    "proration_behavior": "none",
+                },
+            ],
+        )
+    except Exception:
+        if created_schedule:
+            _release_created_schedule(schedule)
+        raise
     return period_end_ts
+
+
+def _release_created_schedule(schedule) -> None:
+    schedule_id = _id_or_value(_stripe_get(schedule, "id") or schedule)
+    if not schedule_id:
+        return
+    try:
+        stripe.SubscriptionSchedule.release(schedule_id)
+    except stripe.error.StripeError:
+        logger.exception("Failed to release Stripe schedule %s after plan change error", schedule_id)
 
 
 def _release_subscription_schedule(subscription) -> None:
@@ -483,11 +586,7 @@ class CreateCheckoutSessionView(APIView):
                 },
             )
         except stripe.error.StripeError as exc:
-            logger.exception("Stripe checkout session create failed")
-            return Response(
-                {"detail": str(exc.user_message or exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            return _stripe_error_response(exc)
 
         return Response(
             {
@@ -521,10 +620,7 @@ class CheckoutSessionStatusView(APIView):
         try:
             session = stripe.checkout.Session.retrieve(session_id)
         except stripe.error.StripeError as exc:
-            return Response(
-                {"detail": str(exc.user_message or exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            return _stripe_error_response(exc)
 
         ref = str(_stripe_get(session, "client_reference_id") or "")
         if ref and ref != str(request.user.id):
@@ -610,11 +706,7 @@ class CancelSubscriptionView(APIView):
                     cancel_at_period_end=True,
                 )
             except stripe.error.StripeError as exc:
-                logger.exception("Stripe subscription cancel failed")
-                return Response(
-                    {"detail": str(exc.user_message or exc)},
-                    status=status.HTTP_502_BAD_GATEWAY,
-                )
+                return _stripe_error_response(exc)
             period_end = _datetime_from_stripe_ts(
                 _stripe_get(subscription, "current_period_end")
             )
@@ -697,7 +789,8 @@ class ChangePlanView(APIView):
             _ensure_stripe()
             try:
                 subscription = stripe.Subscription.retrieve(
-                    profile.stripe_subscription_id
+                    profile.stripe_subscription_id,
+                    expand=["items.data.price"],
                 )
                 if reverting:
                     _release_subscription_schedule(subscription)
@@ -720,11 +813,7 @@ class ChangePlanView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             except stripe.error.StripeError as exc:
-                logger.exception("Stripe plan change failed")
-                return Response(
-                    {"detail": str(exc.user_message or exc)},
-                    status=status.HTTP_502_BAD_GATEWAY,
-                )
+                return _stripe_error_response(exc)
 
         if period_end is None:
             period_end = _period_end_from_now(
@@ -782,11 +871,7 @@ class SyncSubscriptionView(APIView):
                 limit=20,
             )
         except stripe.error.StripeError as exc:
-            logger.exception("Stripe subscription list failed during sync")
-            return Response(
-                {"detail": str(exc.user_message or exc)},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+            return _stripe_error_response(exc)
 
         active = None
         for sub in subscriptions.data:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_application_1/chat_stream.dart';
@@ -9,6 +10,41 @@ import 'package:http/http.dart' as http;
 /// When false, POSTs to Django `POST /api/prayer-requests/` with body:
 /// `{ name, email, phone, prayer_text, is_anonymous }` -> `{ success, id, message }`
 const kUseMockPrayer = bool.fromEnvironment('USE_MOCK_PRAYER', defaultValue: false);
+
+/// Human-readable API error. Never return HTML (RunPod 502 pages, Django
+/// debug pages) to the UI — the subscriptions snackbar used to dump it.
+String describeHttpError(http.Response res) {
+  final body = res.body.trim();
+  final contentType = (res.headers['content-type'] ?? '').toLowerCase();
+  final looksLikeHtml = contentType.contains('text/html') ||
+      body.startsWith('<!') ||
+      body.startsWith('<html') ||
+      body.contains('<html') ||
+      body.contains('Waiting for server to respond');
+
+  if (!looksLikeHtml) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        final detail = decoded['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (res.statusCode == 502 ||
+      res.statusCode == 503 ||
+      res.statusCode == 504 ||
+      looksLikeHtml) {
+    return 'The server did not respond in time. Please try again.';
+  }
+  if (body.isEmpty || body.length > 160) {
+    return 'Request failed (${res.statusCode}). Please try again.';
+  }
+  return body;
+}
 
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
@@ -332,15 +368,25 @@ class ApiClient {
     _ensureOk(res);
   }
 
-  static const _billingTimeout = Duration(seconds: 30);
+  static const _billingTimeout = Duration(seconds: 45);
+
+  Future<http.Response> _withBillingTimeout(Future<http.Response> future) async {
+    try {
+      return await future.timeout(_billingTimeout);
+    } on TimeoutException {
+      throw Exception(
+        'The billing server timed out. Please try again in a moment.',
+      );
+    }
+  }
 
   Future<Map<String, dynamic>> getBillingConfig() async {
-    final res = await _client
-        .get(
-          Uri.parse(_resolveUrl('/api/billing/config/')),
-          headers: _headers(),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.get(
+        Uri.parse(_resolveUrl('/api/billing/config/')),
+        headers: _headers(),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -348,13 +394,13 @@ class ApiClient {
   Future<Map<String, dynamic>> createCheckoutSession({
     required String billingPeriod,
   }) async {
-    final res = await _client
-        .post(
-          Uri.parse(_resolveUrl('/api/billing/create-checkout-session/')),
-          headers: _headers(json: true),
-          body: jsonEncode({'billing_period': billingPeriod}),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/create-checkout-session/')),
+        headers: _headers(json: true),
+        body: jsonEncode({'billing_period': billingPeriod}),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -363,7 +409,9 @@ class ApiClient {
     final uri = Uri.parse(_resolveUrl('/api/billing/session-status/')).replace(
       queryParameters: {'session_id': sessionId},
     );
-    final res = await _client.get(uri, headers: _headers()).timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.get(uri, headers: _headers()),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -372,25 +420,25 @@ class ApiClient {
   Future<Map<String, dynamic>> mockActivatePremium({
     required String billingPeriod,
   }) async {
-    final res = await _client
-        .post(
-          Uri.parse(_resolveUrl('/api/billing/mock-activate/')),
-          headers: _headers(json: true),
-          body: jsonEncode({'billing_period': billingPeriod}),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/mock-activate/')),
+        headers: _headers(json: true),
+        body: jsonEncode({'billing_period': billingPeriod}),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> cancelSubscription() async {
-    final res = await _client
-        .post(
-          Uri.parse(_resolveUrl('/api/billing/cancel-subscription/')),
-          headers: _headers(json: true),
-          body: jsonEncode(const {}),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/cancel-subscription/')),
+        headers: _headers(json: true),
+        body: jsonEncode(const {}),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -398,25 +446,25 @@ class ApiClient {
   Future<Map<String, dynamic>> changeSubscriptionPlan({
     required String billingPeriod,
   }) async {
-    final res = await _client
-        .post(
-          Uri.parse(_resolveUrl('/api/billing/change-plan/')),
-          headers: _headers(json: true),
-          body: jsonEncode({'billing_period': billingPeriod}),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/change-plan/')),
+        headers: _headers(json: true),
+        body: jsonEncode({'billing_period': billingPeriod}),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> syncSubscription() async {
-    final res = await _client
-        .post(
-          Uri.parse(_resolveUrl('/api/billing/sync-subscription/')),
-          headers: _headers(json: true),
-          body: jsonEncode(const {}),
-        )
-        .timeout(_billingTimeout);
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/sync-subscription/')),
+        headers: _headers(json: true),
+        body: jsonEncode(const {}),
+      ),
+    );
     _ensureOk(res);
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -515,6 +563,6 @@ class ApiClient {
 
   void _ensureOk(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
-    throw Exception('HTTP ${res.statusCode}: ${res.body}');
+    throw Exception(describeHttpError(res));
   }
 }

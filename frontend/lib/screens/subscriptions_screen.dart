@@ -248,7 +248,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _changingPlan = false);
@@ -345,7 +351,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       );
     }
   }
