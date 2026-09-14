@@ -234,8 +234,15 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertGreaterEqual(len(cut_off), 1500)
         self.assertTrue(answer_looks_incomplete(cut_off))
         self.assertTrue(answer_needs_expansion(cut_off, query=query))
-        self.assertEqual(continuation_token_budget(cut_off, completion_tokens=2048), 384)
-        self.assertIn("cut off mid-sentence", FINISH_STEER)
+        self.assertGreater(continuation_token_budget(cut_off, completion_tokens=1024), 0)
+        self.assertIn("do not replace the draft with a shorter answer", FINISH_STEER)
+        complete_bullets = (
+            cut_off.rsplit("Moreover, in John 1", 1)[0]
+            + "Welcome every guest as Christ welcomed us.\n\n"
+            "- Inclusive attitude: greet regulars and newcomers.\n"
+            "- Model Christ's love"
+        )
+        self.assertFalse(answer_looks_incomplete(complete_bullets))
         joined = join_continuation(cut_off, "1:14 the Word became flesh and dwelt among us.")
         self.assertTrue(joined.startswith(cut_off))
         self.assertIn("1:14 the Word became flesh", joined)

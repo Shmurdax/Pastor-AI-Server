@@ -213,9 +213,11 @@ CONTINUE_STEER = (
 
 FINISH_STEER = (
     "Your previous reply was cut off mid-sentence. Continue from the exact "
-    "words where you stopped. Finish that sentence and the thought, then write "
-    "a brief closing paragraph. Do not restart the answer, do not apologize, "
-    "and do not repeat what is already on screen."
+    "words where you stopped. Finish that sentence, then keep the same "
+    "Markdown teaching already on screen: **bold headings**, bullet points, "
+    "NKJV where it belongs, and word-for-word Pastor Don / Susan quotes from "
+    "the notes. Do not restart, do not summarize, do not apologize, and do "
+    "not replace the draft with a shorter answer."
 )
 
 TARGET_TEACHING_CHARS = 2000
@@ -245,7 +247,11 @@ _CONCLUSION_RE = re.compile(
 )
 _TERMINAL_END_RE = re.compile(r'[.!?…]["\')\]]*\s*$')
 _TRAILING_MARKUP_RE = re.compile(r"[\s*_`>#-]+$")
-_FINISH_TOKENS = 384
+_CUT_OFF_TAIL_RE = re.compile(
+    r"(?i)(?:moreover|furthermore|for instance|for example|in|"
+    r"(?:matthew|mark|luke|john|acts|romans|genesis|psalm|psalms)"
+    r"(?:\s+\d+)?)\s*$"
+)
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]")
 _LEGALESE_RE = re.compile(
     r"\b(respective|pertaining|thereof|herein|aforementioned|constituencies|"
@@ -289,11 +295,22 @@ def answer_has_conclusion(answer: str) -> bool:
 
 
 def answer_looks_incomplete(answer: str) -> bool:
-    """True when generation stopped mid-sentence (token cap), not at a close."""
+    """True only for a token-cap cut (dangling clause), not a finished teaching."""
     text = _TRAILING_MARKUP_RE.sub("", (answer or "").rstrip())
-    if not text:
+    if not text or _TERMINAL_END_RE.search(text):
         return False
-    return not bool(_TERMINAL_END_RE.search(text))
+    last_line = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
+    last_line = _TRAILING_MARKUP_RE.sub("", last_line)
+    if not last_line or _TERMINAL_END_RE.search(last_line):
+        return False
+    words = last_line.split()
+    if _CUT_OFF_TAIL_RE.search(last_line):
+        return True
+    last_word = words[-1] if words else ""
+    # Chapter-only citation ("John 1") or a 1–2 letter mid-word cut.
+    if last_word.isdigit() and len(words) <= 8:
+        return True
+    return bool(last_word.isalpha() and len(last_word) <= 2 and len(words) <= 6)
 
 
 def _clause_looks_degenerate(clause: str) -> bool:
@@ -331,7 +348,7 @@ def text_looks_degenerate(text: str) -> bool:
 
 
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
-    """True when a teaching reply is too short or was cut off mid-sentence."""
+    """True when a teaching question got a short brush-off or a mid-sentence cut."""
     if not query_expects_long_answer(query):
         return False
     if text_looks_degenerate(answer):
@@ -349,10 +366,10 @@ def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
     completion = int(completion_tokens)
     if completion <= 0:
         return 0
-    if answer_looks_incomplete(answer):
-        return min(completion, _FINISH_TOKENS)
     remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
-    if remaining_chars <= 120:
+    if answer_looks_incomplete(answer):
+        remaining_chars = max(remaining_chars, 400)
+    elif remaining_chars <= 120:
         return 0
     guessed = max(96, remaining_chars // 3)
     return min(completion, guessed)

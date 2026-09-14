@@ -186,7 +186,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("CHAT_MAX_HISTORY_TURNS", source)
         self.assertIn("answer_char_count", source)
         self.assertIn('os.getenv("CHAT_MAX_HISTORY_CHARS", "20000")', source)
-        self.assertIn('os.getenv("CHAT_MAX_TOKENS", "2048")', source)
+        self.assertIn('os.getenv("CHAT_MAX_TOKENS", "1024")', source)
         self.assertIn("answer_needs_expansion", source)
         self.assertIn("answer_looks_incomplete", source)
         self.assertIn("CONTINUE_STEER", source)

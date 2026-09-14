@@ -91,7 +91,7 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1024"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
