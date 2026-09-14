@@ -16,6 +16,7 @@ class AuthUser {
     this.isPremium = false,
     this.subscriptionStatus = 'free',
     this.billingPeriod = '',
+    this.pendingBillingPeriod = '',
     this.cancelAtPeriodEnd = false,
     this.currentPeriodEnd,
   });
@@ -28,6 +29,7 @@ class AuthUser {
   final bool isPremium;
   final String subscriptionStatus;
   final String billingPeriod;
+  final String pendingBillingPeriod;
   final bool cancelAtPeriodEnd;
   final DateTime? currentPeriodEnd;
 
@@ -42,6 +44,7 @@ class AuthUser {
         isPremium: json['is_premium'] as bool? ?? false,
         subscriptionStatus: json['subscription_status'] as String? ?? 'free',
         billingPeriod: json['billing_period'] as String? ?? '',
+        pendingBillingPeriod: json['pending_billing_period'] as String? ?? '',
         cancelAtPeriodEnd: json['cancel_at_period_end'] as bool? ?? false,
         currentPeriodEnd: _parseDate(json['current_period_end']),
       );
@@ -55,6 +58,7 @@ class AuthUser {
         'is_premium': isPremium,
         'subscription_status': subscriptionStatus,
         'billing_period': billingPeriod,
+        'pending_billing_period': pendingBillingPeriod,
         'cancel_at_period_end': cancelAtPeriodEnd,
         if (currentPeriodEnd != null) 'current_period_end': currentPeriodEnd!.toIso8601String(),
       };
@@ -68,6 +72,7 @@ class AuthUser {
     bool? isPremium,
     String? subscriptionStatus,
     String? billingPeriod,
+    String? pendingBillingPeriod,
     bool? cancelAtPeriodEnd,
     DateTime? currentPeriodEnd,
   }) {
@@ -80,6 +85,7 @@ class AuthUser {
       isPremium: isPremium ?? this.isPremium,
       subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
       billingPeriod: billingPeriod ?? this.billingPeriod,
+      pendingBillingPeriod: pendingBillingPeriod ?? this.pendingBillingPeriod,
       cancelAtPeriodEnd: cancelAtPeriodEnd ?? this.cancelAtPeriodEnd,
       currentPeriodEnd: currentPeriodEnd ?? this.currentPeriodEnd,
     );

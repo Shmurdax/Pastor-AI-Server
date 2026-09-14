@@ -395,6 +395,20 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> changeSubscriptionPlan({
+    required String billingPeriod,
+  }) async {
+    final res = await _client
+        .post(
+          Uri.parse(_resolveUrl('/api/billing/change-plan/')),
+          headers: _headers(json: true),
+          body: jsonEncode({'billing_period': billingPeriod}),
+        )
+        .timeout(_billingTimeout);
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> syncSubscription() async {
     final res = await _client
         .post(

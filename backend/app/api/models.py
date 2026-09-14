@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -41,6 +43,13 @@ class Profile(models.Model):
     )
     cancel_at_period_end = models.BooleanField(default=False)
     current_period_end = models.DateTimeField(blank=True, null=True)
+    pending_billing_period = models.CharField(
+        max_length=16,
+        choices=BillingPeriod.choices,
+        blank=True,
+        default="",
+        help_text="Scheduled monthly/yearly switch that takes effect at current_period_end.",
+    )
 
     def expire_canceled_subscription_if_needed(self) -> None:
         """Drop Premium after a scheduled cancel once the paid period ends."""
@@ -52,11 +61,67 @@ class Profile(models.Model):
             return
         self.subscription_status = self.SubscriptionStatus.CANCELED
         self.cancel_at_period_end = False
-        self.save(update_fields=["subscription_status", "cancel_at_period_end"])
+        self.pending_billing_period = ""
+        self.save(
+            update_fields=[
+                "subscription_status",
+                "cancel_at_period_end",
+                "pending_billing_period",
+            ]
+        )
+
+    def apply_pending_plan_change_if_needed(self) -> None:
+        """Apply a scheduled monthly/yearly switch after the current period.
+
+        Stripe-backed subscriptions are updated by webhooks when the schedule
+        rolls. This covers mock checkout and admin-granted Premium.
+        """
+        if self.stripe_subscription_id:
+            return
+        if self.subscription_status != self.SubscriptionStatus.ACTIVE:
+            return
+        if self.cancel_at_period_end:
+            return
+        pending = (self.pending_billing_period or "").strip().lower()
+        if pending not in {self.BillingPeriod.MONTHLY, self.BillingPeriod.YEARLY}:
+            return
+        if pending == (self.billing_period or "").strip().lower():
+            self.pending_billing_period = ""
+            self.save(update_fields=["pending_billing_period"])
+            return
+        if self.current_period_end is None or timezone.now() < self.current_period_end:
+            return
+        now = timezone.now()
+        if pending == self.BillingPeriod.YEARLY:
+            try:
+                next_end = now.replace(year=now.year + 1)
+            except ValueError:
+                next_end = now + timedelta(days=365)
+        else:
+            month = now.month + 1
+            year = now.year
+            if month > 12:
+                month = 1
+                year += 1
+            try:
+                next_end = now.replace(year=year, month=month)
+            except ValueError:
+                next_end = now + timedelta(days=30)
+        self.billing_period = pending
+        self.pending_billing_period = ""
+        self.current_period_end = next_end
+        self.save(
+            update_fields=[
+                "billing_period",
+                "pending_billing_period",
+                "current_period_end",
+            ]
+        )
 
     @property
     def is_premium(self) -> bool:
         self.expire_canceled_subscription_if_needed()
+        self.apply_pending_plan_change_if_needed()
         return self.subscription_status == self.SubscriptionStatus.ACTIVE
 
     @property

@@ -134,7 +134,10 @@ Future<void> showAccountProfileSheet(
                   Text(
                     user.cancelAtPeriodEnd
                         ? 'Premium stays active until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. Auto-renewal is off.'
-                        : 'Premium member${user.billingPeriod.isNotEmpty ? ' · ${user.billingPeriod}' : ''}.',
+                        : user.pendingBillingPeriod.isNotEmpty
+                            ? 'Premium member · ${user.billingPeriod.isNotEmpty ? user.billingPeriod : 'active'}. '
+                                'Switching to ${user.pendingBillingPeriod} on ${formatPremiumAccessUntil(user.currentPeriodEnd)}.'
+                            : 'Premium member${user.billingPeriod.isNotEmpty ? ' · ${user.billingPeriod}' : ''}.',
                     style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54, height: 1.35),
                   ),
                 ],
