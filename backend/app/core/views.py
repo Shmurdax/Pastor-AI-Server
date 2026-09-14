@@ -58,9 +58,11 @@ from .chat_retrieval import (
 from .chat_system_prompt import (
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
+    FINISH_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
     answer_char_count,
+    answer_looks_incomplete,
     answer_needs_expansion,
     build_chat_system_prompt,
     continuation_token_budget,
@@ -89,7 +91,7 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1024"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
@@ -251,9 +253,10 @@ def _iter_chat_tokens(bound_llm, messages):
 
 
 def _continuation_messages(messages, first_answer: str):
+    steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
     return list(messages) + [
         AIMessage(content=first_answer),
-        HumanMessage(content=CONTINUE_STEER),
+        HumanMessage(content=steer),
     ]
 
 

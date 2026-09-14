@@ -113,9 +113,13 @@ class ChatSystemPromptTests(unittest.TestCase):
             for index in range(40)
         ]
         mid = " ".join(filler)[:1200]
-        long_enough = " ".join(filler)[:1500]
+        long_enough = (" ".join(filler) + " This is the closing sentence.")[:1500]
+        if not long_enough.endswith("."):
+            long_enough = long_enough.rsplit(" ", 1)[0] + "."
+        while len(long_enough) < 1500:
+            long_enough = "Pastoral counsel for the church. " + long_enough
         self.assertEqual(len(mid), 1200)
-        self.assertEqual(len(long_enough), 1500)
+        self.assertGreaterEqual(len(long_enough), 1500)
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
         self.assertTrue(answer_needs_expansion(short, query=query))
         self.assertTrue(answer_needs_expansion(mid, query=query))
@@ -163,7 +167,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         from .chat_system_prompt import continuation_token_budget
         self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
         self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)
-        self.assertEqual(continuation_token_budget("x" * 2300, completion_tokens=1024), 0)
+        self.assertEqual(continuation_token_budget(("x" * 2299) + ".", completion_tokens=1024), 0)
 
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation
@@ -208,6 +212,37 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertIn("Do not repeat any sentence already written", CONTINUE_STEER)
         self.assertIn("**bold heading**", CONTINUE_STEER)
+
+    def test_cut_off_mid_sentence_still_requests_expansion(self):
+        from .chat_system_prompt import (
+            FINISH_STEER,
+            answer_looks_incomplete,
+            continuation_token_budget,
+            join_continuation,
+        )
+
+        query = (
+            "If Jesus came to our Wednesday potluck, would he sit with the regulars "
+            "or the visitors who leave before the closing prayer?"
+        )
+        cut_off = (
+            ("Hospitality reflects God's heart of love and acceptance. " * 40)
+            + "The Bible provides numerous examples of Jesus' inclusive behavior. "
+            "For instance, in Mark 2:16, Jesus defends His decision to dine with "
+            "tax collectors and sinners. Moreover, in John 1"
+        )
+        self.assertGreaterEqual(len(cut_off), 1500)
+        self.assertTrue(answer_looks_incomplete(cut_off))
+        self.assertTrue(answer_needs_expansion(cut_off, query=query))
+        self.assertEqual(continuation_token_budget(cut_off, completion_tokens=2048), 384)
+        self.assertIn("cut off mid-sentence", FINISH_STEER)
+        joined = join_continuation(cut_off, "1:14 the Word became flesh and dwelt among us.")
+        self.assertTrue(joined.startswith(cut_off))
+        self.assertIn("1:14 the Word became flesh", joined)
+        self.assertNotIn("\n\n", joined[len(cut_off):])
+        self.assertFalse(answer_looks_incomplete(
+            "In conclusion, welcome every guest as Christ welcomed us."
+        ))
 
 
 class ScopeGateParserTests(unittest.TestCase):

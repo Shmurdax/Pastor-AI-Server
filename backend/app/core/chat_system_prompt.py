@@ -211,6 +211,13 @@ CONTINUE_STEER = (
     "for one story, that is not permission to stop after a short add-on."
 )
 
+FINISH_STEER = (
+    "Your previous reply was cut off mid-sentence. Continue from the exact "
+    "words where you stopped. Finish that sentence and the thought, then write "
+    "a brief closing paragraph. Do not restart the answer, do not apologize, "
+    "and do not repeat what is already on screen."
+)
+
 TARGET_TEACHING_CHARS = 2000
 MIN_TEACHING_CHARS = 1500
 MIN_TEACHING_WORDS = 250
@@ -236,6 +243,9 @@ _CONCLUSION_RE = re.compile(
     r"(?im)(?:^|\n)\s*(?:\*\*)?(?:in conclusion|in closing|to conclude|to sum up|"
     r"in summary|finally)[,:]?\s+"
 )
+_TERMINAL_END_RE = re.compile(r'[.!?…]["\')\]]*\s*$')
+_TRAILING_MARKUP_RE = re.compile(r"[\s*_`>#-]+$")
+_FINISH_TOKENS = 384
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]")
 _LEGALESE_RE = re.compile(
     r"\b(respective|pertaining|thereof|herein|aforementioned|constituencies|"
@@ -278,6 +288,14 @@ def answer_has_conclusion(answer: str) -> bool:
     return bool(_CONCLUSION_RE.search(answer or ""))
 
 
+def answer_looks_incomplete(answer: str) -> bool:
+    """True when generation stopped mid-sentence (token cap), not at a close."""
+    text = _TRAILING_MARKUP_RE.sub("", (answer or "").rstrip())
+    if not text:
+        return False
+    return not bool(_TERMINAL_END_RE.search(text))
+
+
 def _clause_looks_degenerate(clause: str) -> bool:
     """True for CJK, legalese loops, or a wall of low-variety tokens.
 
@@ -313,24 +331,31 @@ def text_looks_degenerate(text: str) -> bool:
 
 
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
-    """True when a teaching question got a short brush-off instead of a full reply."""
+    """True when a teaching reply is too short or was cut off mid-sentence."""
     if not query_expects_long_answer(query):
         return False
+    if text_looks_degenerate(answer):
+        return False
+    if answer_looks_incomplete(answer):
+        return True
     # Already closed cleanly—do not force more tokens (that causes filler after the close).
     if answer_has_conclusion(answer) and answer_char_count(answer) >= 1000:
-        return False
-    if text_looks_degenerate(answer):
         return False
     return answer_char_count(answer) < MIN_TEACHING_CHARS
 
 
 def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
     """Cap a continue-pass so leftover max_tokens cannot dump Chinese or filler."""
+    completion = int(completion_tokens)
+    if completion <= 0:
+        return 0
+    if answer_looks_incomplete(answer):
+        return min(completion, _FINISH_TOKENS)
     remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
-    if remaining_chars <= 120 or int(completion_tokens) <= 0:
+    if remaining_chars <= 120:
         return 0
     guessed = max(96, remaining_chars // 3)
-    return min(int(completion_tokens), guessed)
+    return min(completion, guessed)
 
 
 _OVERLAP_SPLIT_RE = re.compile(r"\n{2,}|(?<=[.!?])[\"']?\s+")
@@ -406,10 +431,15 @@ def strip_restarted_continuation(answer: str, extra: str) -> str:
 
 def join_continuation(answer: str, extra: str) -> str:
     """Append expansion text, stripping a restarted copy of the opening."""
+    answer = (answer or "").rstrip()
     extra = strip_restarted_continuation(answer, extra)
     if not extra:
-        return (answer or "").rstrip()
-    return (answer or "").rstrip() + "\n\n" + extra
+        return answer
+    if answer_looks_incomplete(answer):
+        if extra[:1] in ",.;:!?":
+            return answer + extra
+        return answer + " " + extra
+    return answer + "\n\n" + extra
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:

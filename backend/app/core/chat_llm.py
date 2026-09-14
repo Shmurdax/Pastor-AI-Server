@@ -313,8 +313,8 @@ def fit_chat_budget(
     # stay grounded in this chat's context.
     drop_oldest_history(2)
 
-    while over_budget(sys_text) and completion > 128:
-        completion = max(128, completion - 64)
+    while over_budget(sys_text) and completion > _MIN_COMPLETION_TOKENS:
+        completion = max(_MIN_COMPLETION_TOKENS, completion - 64)
     if over_budget(sys_text):
         prefix, notes = split_reference_notes(sys_text)
         if notes_are_usable(notes):
@@ -373,7 +373,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="1024"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="2048"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
