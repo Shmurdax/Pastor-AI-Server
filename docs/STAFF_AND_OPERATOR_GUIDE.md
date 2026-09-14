@@ -102,6 +102,8 @@ Email is the username. Each account automatically gets a **Profile**, which hold
 
 Checkout requires a signed-in account. If Stripe keys are configured, payment goes through Stripe Embedded Checkout. If Stripe is not configured yet, the site uses a **temporary mock checkout** that grants Premium without charging. Treat mock checkout as a test/demo path, not live billing.
 
+Paid members can switch between monthly and yearly from the same plans page. The current price stays in effect until the end of the paid period; the new price is billed at the next renewal. A monthly member who switches to yearly keeps paying $15 until that month ends, then is billed $150/year.
+
 Staff can also grant or revoke Premium in Django admin without a payment (see [Managing subscriptions](#managing-subscriptions)).
 
 **Note:** The Media page currently shows a placeholder catalog and does not yet unlock full videos from a live Premium flag. Chat-history limits *do* follow Premium status.
@@ -202,7 +204,8 @@ Every user has one Profile. This is the membership record.
 
 Also on the profile:
 
-- **Billing period** — monthly or yearly (informational)
+- **Billing period** — monthly or yearly
+- **Pending billing period** — scheduled switch (for example monthly → yearly) that takes effect at the current period end
 - **Stripe customer / subscription IDs** — filled by Stripe; leave them unless engineering asks
 - **Premium** column — a yes/no view of whether status is Active
 

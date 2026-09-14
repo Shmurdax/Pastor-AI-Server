@@ -10,13 +10,14 @@ from .models import MediaVideo
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
     { id, email, name, avatar_url, is_staff, is_premium, subscription_status,
-      billing_period, cancel_at_period_end, current_period_end }
+      billing_period, pending_billing_period, cancel_at_period_end, current_period_end }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     is_premium = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
+    pending_billing_period = serializers.SerializerMethodField()
     cancel_at_period_end = serializers.SerializerMethodField()
     current_period_end = serializers.SerializerMethodField()
 
@@ -31,6 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_premium",
             "subscription_status",
             "billing_period",
+            "pending_billing_period",
             "cancel_at_period_end",
             "current_period_end",
         ]
@@ -47,6 +49,7 @@ class UserSerializer(serializers.ModelSerializer):
         profile = getattr(obj, "profile", None)
         if profile is not None:
             profile.expire_canceled_subscription_if_needed()
+            profile.apply_pending_plan_change_if_needed()
         return profile
 
     def get_is_premium(self, obj):
@@ -63,6 +66,10 @@ class UserSerializer(serializers.ModelSerializer):
     def get_billing_period(self, obj):
         profile = self._profile(obj)
         return profile.billing_period if profile else ""
+
+    def get_pending_billing_period(self, obj):
+        profile = self._profile(obj)
+        return profile.pending_billing_period if profile else ""
 
     def get_cancel_at_period_end(self, obj):
         profile = self._profile(obj)

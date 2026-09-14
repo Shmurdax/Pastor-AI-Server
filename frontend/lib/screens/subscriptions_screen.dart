@@ -33,6 +33,67 @@ const _premiumPerks = [
   'Daily Bible reading assignment.',
 ];
 
+String billingPeriodApiValue(BillingPeriod period) =>
+    period == BillingPeriod.yearly ? 'yearly' : 'monthly';
+
+BillingPeriod billingPeriodFromApi(String value) =>
+    value == 'yearly' ? BillingPeriod.yearly : BillingPeriod.monthly;
+
+String billingPeriodLabel(BillingPeriod period) =>
+    period == BillingPeriod.yearly ? 'yearly' : 'monthly';
+
+String billingPeriodPriceLabel(BillingPeriod period) =>
+    period == BillingPeriod.yearly ? r'$150/year' : r'$15/month';
+
+enum PremiumPlanAction { checkout, none, changePlan, revertPending }
+
+PremiumPlanAction premiumPlanAction({
+  required bool paid,
+  required bool cancelScheduled,
+  required BillingPeriod selected,
+  required String currentPeriod,
+  required String pendingPeriod,
+}) {
+  if (!paid) return PremiumPlanAction.checkout;
+  final selectedValue = billingPeriodApiValue(selected);
+  if (pendingPeriod == selectedValue) return PremiumPlanAction.none;
+  if (currentPeriod == selectedValue && pendingPeriod.isEmpty) {
+    return PremiumPlanAction.none;
+  }
+  if (currentPeriod == selectedValue && pendingPeriod.isNotEmpty) {
+    return PremiumPlanAction.revertPending;
+  }
+  if (cancelScheduled && currentPeriod == selectedValue) {
+    return PremiumPlanAction.none;
+  }
+  return PremiumPlanAction.changePlan;
+}
+
+String premiumPlanCtaLabel({
+  required bool paid,
+  required bool cancelScheduled,
+  required BillingPeriod selected,
+  required String currentPeriod,
+  required String pendingPeriod,
+  DateTime? periodEnd,
+}) {
+  if (!paid) return 'Select plan →';
+  final selectedValue = billingPeriodApiValue(selected);
+  if (cancelScheduled && currentPeriod == selectedValue && pendingPeriod.isEmpty) {
+    return 'Current plan · ends ${formatPremiumAccessUntil(periodEnd)}';
+  }
+  if (pendingPeriod == selectedValue) {
+    return 'Switching on ${formatPremiumAccessUntil(periodEnd)}';
+  }
+  if (currentPeriod == selectedValue && pendingPeriod.isEmpty) {
+    return 'Your current plan';
+  }
+  if (currentPeriod == selectedValue && pendingPeriod.isNotEmpty) {
+    return 'Keep ${billingPeriodLabel(selected)}';
+  }
+  return 'Switch to ${billingPeriodLabel(selected)} →';
+}
+
 /// Pricing / plans page styled after the Sermon Library sidebar.
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
@@ -46,6 +107,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   bool _eventsOpen = false;
   BillingPeriod _billingPeriod = BillingPeriod.monthly;
   bool _syncing = false;
+  bool _changingPlan = false;
+  bool _didInitPeriod = false;
 
   @override
   void initState() {
@@ -58,6 +121,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   Future<void> _syncSubscriptionIfNeeded() async {
     if (!mounted || _syncing) return;
     final auth = context.read<AuthController>();
+    _syncBillingPeriodFromUser(auth.user);
     if (!auth.isAuthenticated || auth.hasPremiumAccess) return;
     setState(() => _syncing = true);
     try {
@@ -81,6 +145,15 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
+  }
+
+  void _syncBillingPeriodFromUser(AuthUser? user) {
+    if (_didInitPeriod || user == null) return;
+    if (user.billingPeriod != 'yearly' && user.billingPeriod != 'monthly') return;
+    _didInitPeriod = true;
+    final next = billingPeriodFromApi(user.billingPeriod);
+    if (next == _billingPeriod) return;
+    setState(() => _billingPeriod = next);
   }
 
   void _goToAiHome() {
@@ -115,7 +188,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   Future<void> _onPremiumSelected() async {
     final auth = context.read<AuthController>();
-    if (auth.user?.isPaidPremium == true) return;
+    final user = auth.user;
+    if (user?.isPaidPremium == true) {
+      await _onPaidPlanSelected(user!);
+      return;
+    }
     if (auth.isAuthenticated) {
       _openCheckout();
       return;
@@ -128,6 +205,94 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     if (signedIn == true && context.read<AuthController>().isAuthenticated) {
       _openCheckout();
     }
+  }
+
+  Future<void> _onPaidPlanSelected(AuthUser user) async {
+    if (_changingPlan) return;
+    final action = premiumPlanAction(
+      paid: true,
+      cancelScheduled: user.cancelAtPeriodEnd,
+      selected: _billingPeriod,
+      currentPeriod: user.billingPeriod,
+      pendingPeriod: user.pendingBillingPeriod,
+    );
+    if (action == PremiumPlanAction.none) return;
+
+    final target = billingPeriodApiValue(_billingPeriod);
+    final confirmed = await _confirmPlanChange(
+      user: user,
+      action: action,
+      targetPeriod: _billingPeriod,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _changingPlan = true);
+    final auth = context.read<AuthController>();
+    try {
+      _apiService.setAccessToken(auth.token);
+      final result = await _apiService.changeSubscriptionPlan(billingPeriod: target);
+      final userJson = result['user'];
+      if (userJson is Map<String, dynamic>) {
+        await auth.applyUser(AuthUser.fromJson(userJson));
+      } else {
+        await auth.refreshMe();
+      }
+      if (!mounted) return;
+      final updated = auth.user;
+      final snack = action == PremiumPlanAction.revertPending
+          ? 'You will stay on ${billingPeriodLabel(_billingPeriod)} Premium.'
+          : 'You will switch to ${billingPeriodLabel(_billingPeriod)} '
+              '(${billingPeriodPriceLabel(_billingPeriod)}) on '
+              '${formatPremiumAccessUntil(updated?.currentPeriodEnd)}.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(snack)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _changingPlan = false);
+    }
+  }
+
+  Future<bool?> _confirmPlanChange({
+    required AuthUser user,
+    required PremiumPlanAction action,
+    required BillingPeriod targetPeriod,
+  }) {
+    final when = formatPremiumAccessUntil(user.currentPeriodEnd);
+    final title = action == PremiumPlanAction.revertPending
+        ? 'Keep ${billingPeriodLabel(targetPeriod)} Premium?'
+        : 'Switch to ${billingPeriodLabel(targetPeriod)}?';
+    final body = action == PremiumPlanAction.revertPending
+        ? 'Cancel the scheduled switch. You will stay on '
+            '${billingPeriodLabel(targetPeriod)} Premium '
+            '(${billingPeriodPriceLabel(targetPeriod)}).'
+        : 'You keep your current ${user.billingPeriod.isEmpty ? 'Premium' : user.billingPeriod} '
+            'plan until $when. Starting then, you will be billed '
+            '${billingPeriodPriceLabel(targetPeriod)} instead. Premium access does not stop.';
+    final confirmLabel =
+        action == PremiumPlanAction.revertPending ? 'Keep this plan' : 'Switch plan';
+
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(title, style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+        content: Text(body, style: GoogleFonts.figtree(height: 1.45)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: Text('Not now', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w600)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _navy),
+            child: Text(confirmLabel, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _unsubscribe() async {
@@ -202,11 +367,28 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final s = context.watch<LocaleController>().strings;
     final paid = auth.user?.isPaidPremium == true;
     final cancelScheduled = paid && (auth.user?.cancelAtPeriodEnd ?? false);
-    final premiumCta = paid
-        ? (cancelScheduled
-            ? 'Current plan · ends ${formatPremiumAccessUntil(auth.user?.currentPeriodEnd)}'
-            : 'Your current plan')
-        : 'Select plan →';
+    final currentPeriod = auth.user?.billingPeriod ?? '';
+    final pendingPeriod = auth.user?.pendingBillingPeriod ?? '';
+    final planAction = premiumPlanAction(
+      paid: paid,
+      cancelScheduled: cancelScheduled,
+      selected: _billingPeriod,
+      currentPeriod: currentPeriod,
+      pendingPeriod: pendingPeriod,
+    );
+    final premiumCta = _changingPlan
+        ? 'Updating plan…'
+        : premiumPlanCtaLabel(
+            paid: paid,
+            cancelScheduled: cancelScheduled,
+            selected: _billingPeriod,
+            currentPeriod: currentPeriod,
+            pendingPeriod: pendingPeriod,
+            periodEnd: auth.user?.currentPeriodEnd,
+          );
+    final premiumTap = planAction == PremiumPlanAction.none || _changingPlan
+        ? null
+        : _onPremiumSelected;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -367,7 +549,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                               perks: _premiumPerks,
                               style: _TierVisualStyle.filled,
                               ctaLabel: premiumCta,
-                              onTap: paid ? null : _onPremiumSelected,
+                              onTap: premiumTap,
                             ),
                           ],
                         )
@@ -396,12 +578,22 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                                   perks: _premiumPerks,
                                   style: _TierVisualStyle.filled,
                                   ctaLabel: premiumCta,
-                                  onTap: paid ? null : _onPremiumSelected,
+                                  onTap: premiumTap,
                                 ),
                               ),
                             ],
                           ),
                         ),
+                      if (pendingPeriod.isNotEmpty) ...[
+                        const SizedBox(height: 24),
+                        Text(
+                          'Your plan switches to ${pendingPeriod == 'yearly' ? 'yearly (\$150/year)' : 'monthly (\$15/month)'} '
+                          'on ${formatPremiumAccessUntil(auth.user?.currentPeriodEnd)}. '
+                          'Until then you stay on ${currentPeriod.isEmpty ? 'your current plan' : currentPeriod}.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(fontSize: 14, color: _navy, height: 1.45),
+                        ),
+                      ],
                       if (paid && !cancelScheduled) ...[
                         const SizedBox(height: 28),
                         Center(

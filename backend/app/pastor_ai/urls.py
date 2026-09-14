@@ -19,6 +19,7 @@ from api.auth_views import (
 from api.billing_views import (
     BillingConfigView,
     CancelSubscriptionView,
+    ChangePlanView,
     CheckoutSessionStatusView,
     CreateCheckoutSessionView,
     MockActivatePremiumView,
@@ -80,6 +81,7 @@ urlpatterns = [
     path('api/billing/session-status/', CheckoutSessionStatusView.as_view()),
     path('api/billing/mock-activate/', MockActivatePremiumView.as_view()),
     path('api/billing/cancel-subscription/', CancelSubscriptionView.as_view()),
+    path('api/billing/change-plan/', ChangePlanView.as_view()),
     path('api/billing/sync-subscription/', SyncSubscriptionView.as_view()),
     path('api/billing/webhook/', StripeWebhookView.as_view()),
 

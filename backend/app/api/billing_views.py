@@ -154,6 +154,7 @@ def _apply_subscription_to_profile(
     customer_id: str = "",
     subscription_id: str = "",
     billing_period: str = "",
+    pending_billing_period: str | None = None,
     cancel_at_period_end: bool | None = None,
     current_period_end: datetime | None = None,
 ) -> None:
@@ -177,6 +178,27 @@ def _apply_subscription_to_profile(
     elif status_value == Profile.SubscriptionStatus.CANCELED:
         profile.cancel_at_period_end = False
         update_fields.append("cancel_at_period_end")
+    if pending_billing_period is not None:
+        if pending_billing_period not in {
+            Profile.BillingPeriod.MONTHLY,
+            Profile.BillingPeriod.YEARLY,
+            "",
+        }:
+            pending_billing_period = ""
+        if pending_billing_period == (profile.billing_period or ""):
+            pending_billing_period = ""
+        profile.pending_billing_period = pending_billing_period
+        update_fields.append("pending_billing_period")
+    elif billing_period in {Profile.BillingPeriod.MONTHLY, Profile.BillingPeriod.YEARLY}:
+        if profile.pending_billing_period == billing_period:
+            profile.pending_billing_period = ""
+            update_fields.append("pending_billing_period")
+    if (
+        status_value == Profile.SubscriptionStatus.CANCELED
+        and "pending_billing_period" not in update_fields
+    ):
+        profile.pending_billing_period = ""
+        update_fields.append("pending_billing_period")
     if current_period_end is not None:
         profile.current_period_end = current_period_end
         update_fields.append("current_period_end")
@@ -188,16 +210,153 @@ def _billing_period_from_subscription(subscription: dict | stripe.Subscription) 
         items = _stripe_get(_stripe_get(subscription, "items"), "data") or []
         if not items:
             return ""
-        price = _stripe_get(items[0], "price")
-        recurring = _stripe_get(price, "recurring")
-        interval = _stripe_get(recurring, "interval")
-        return (
-            Profile.BillingPeriod.YEARLY
-            if interval == "year"
-            else Profile.BillingPeriod.MONTHLY
-        )
+        return _billing_period_from_price(_stripe_get(items[0], "price"))
     except Exception:
         return ""
+
+
+def _id_or_value(value) -> str:
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(_stripe_get(value, "id") or "")
+
+
+def _subscription_current_period_end_ts(subscription) -> int | None:
+    ts = _stripe_get(subscription, "current_period_end")
+    if ts:
+        try:
+            return int(ts)
+        except (TypeError, ValueError):
+            pass
+    items = _stripe_get(_stripe_get(subscription, "items"), "data") or []
+    if not items:
+        return None
+    ts = _stripe_get(items[0], "current_period_end")
+    if not ts:
+        return None
+    try:
+        return int(ts)
+    except (TypeError, ValueError):
+        return None
+
+
+def _billing_period_from_price(price) -> str:
+    if isinstance(price, str):
+        yearly = getattr(settings, "STRIPE_PRICE_YEARLY", "") or ""
+        monthly = getattr(settings, "STRIPE_PRICE_MONTHLY", "") or ""
+        if yearly and price == yearly:
+            return Profile.BillingPeriod.YEARLY
+        if monthly and price == monthly:
+            return Profile.BillingPeriod.MONTHLY
+        return ""
+    recurring = _stripe_get(price, "recurring")
+    interval = _stripe_get(recurring, "interval")
+    if interval == "year":
+        return Profile.BillingPeriod.YEARLY
+    if interval == "month":
+        return Profile.BillingPeriod.MONTHLY
+    return ""
+
+
+def _billing_period_from_phase(phase) -> str:
+    items = _stripe_get(phase, "items") or []
+    if not items:
+        return ""
+    return _billing_period_from_price(_stripe_get(items[0], "price"))
+
+
+def _current_phase_items_from_subscription(subscription) -> list[dict]:
+    items = _stripe_get(_stripe_get(subscription, "items"), "data") or []
+    result = []
+    for item in items:
+        price = _stripe_get(item, "price")
+        price_id = price if isinstance(price, str) else _stripe_get(price, "id")
+        qty = _stripe_get(item, "quantity") or 1
+        if price_id:
+            result.append({"price": price_id, "quantity": qty})
+    return result
+
+
+def _pending_billing_period_from_schedule(schedule, current_period: str) -> str:
+    phases = _stripe_get(schedule, "phases") or []
+    if len(phases) < 2:
+        return ""
+    future = _billing_period_from_phase(phases[-1])
+    if future and future != current_period:
+        return future
+    return ""
+
+
+def _schedule_subscription_plan_change(subscription, new_period: str) -> int:
+    """Keep the current price until period end, then bill the new interval."""
+    sub_id = _id_or_value(_stripe_get(subscription, "id") or subscription)
+    period_end_ts = _subscription_current_period_end_ts(subscription)
+    if not period_end_ts:
+        raise ValueError("Stripe subscription is missing the current period end.")
+
+    current_items = _current_phase_items_from_subscription(subscription)
+    if not current_items:
+        current_period = (
+            _billing_period_from_subscription(subscription)
+            or Profile.BillingPeriod.MONTHLY
+        )
+        current_items = [_line_item_for_period(current_period)]
+    new_items = [_line_item_for_period(new_period)]
+
+    schedule_id = _id_or_value(_stripe_get(subscription, "schedule"))
+    if schedule_id:
+        schedule = stripe.SubscriptionSchedule.retrieve(schedule_id)
+    else:
+        schedule = stripe.SubscriptionSchedule.create(from_subscription=sub_id)
+
+    phases = _stripe_get(schedule, "phases") or []
+    current_phase = phases[0] if phases else None
+    start_date = _stripe_get(current_phase, "start_date") if current_phase else None
+    if not start_date:
+        start_date = _stripe_get(subscription, "start_date")
+    if not start_date:
+        raise ValueError("Stripe subscription schedule is missing start_date.")
+
+    stripe.SubscriptionSchedule.modify(
+        _id_or_value(_stripe_get(schedule, "id") or schedule),
+        end_behavior="release",
+        proration_behavior="none",
+        phases=[
+            {
+                "items": current_items,
+                "start_date": start_date,
+                "end_date": period_end_ts,
+                "proration_behavior": "none",
+            },
+            {
+                "items": new_items,
+                "proration_behavior": "none",
+            },
+        ],
+    )
+    return period_end_ts
+
+
+def _release_subscription_schedule(subscription) -> None:
+    schedule_id = _id_or_value(_stripe_get(subscription, "schedule"))
+    if not schedule_id:
+        return
+    stripe.SubscriptionSchedule.release(schedule_id)
+
+
+def _pending_from_stripe_subscription(subscription, current_period: str) -> str | None:
+    """Read a scheduled plan change from Stripe, or None if it cannot be determined."""
+    schedule_id = _id_or_value(_stripe_get(subscription, "schedule"))
+    if not schedule_id:
+        return ""
+    try:
+        schedule = stripe.SubscriptionSchedule.retrieve(schedule_id)
+    except stripe.error.StripeError:
+        logger.exception("Failed to retrieve Stripe subscription schedule")
+        return None
+    return _pending_billing_period_from_schedule(schedule, current_period)
 
 
 class BillingConfigView(APIView):
@@ -250,6 +409,7 @@ class MockActivatePremiumView(APIView):
             profile,
             status_value=Profile.SubscriptionStatus.ACTIVE,
             billing_period=period,
+            pending_billing_period="",
             cancel_at_period_end=False,
             current_period_end=_period_end_from_now(period),
         )
@@ -408,6 +568,7 @@ class CheckoutSessionStatusView(APIView):
                 customer_id=customer_id or "",
                 subscription_id=sub_id or "",
                 billing_period=period,
+                pending_billing_period="",
                 current_period_end=period_end,
             )
 
@@ -442,6 +603,8 @@ class CancelSubscriptionView(APIView):
         if profile.stripe_subscription_id and _stripe_configured():
             _ensure_stripe()
             try:
+                existing = stripe.Subscription.retrieve(profile.stripe_subscription_id)
+                _release_subscription_schedule(existing)
                 subscription = stripe.Subscription.modify(
                     profile.stripe_subscription_id,
                     cancel_at_period_end=True,
@@ -462,6 +625,7 @@ class CancelSubscriptionView(APIView):
                 or profile.stripe_subscription_id,
                 billing_period=_billing_period_from_subscription(subscription)
                 or profile.billing_period,
+                pending_billing_period="",
                 cancel_at_period_end=True,
                 current_period_end=period_end or profile.current_period_end,
             )
@@ -473,6 +637,7 @@ class CancelSubscriptionView(APIView):
                 profile,
                 status_value=Profile.SubscriptionStatus.ACTIVE,
                 billing_period=profile.billing_period,
+                pending_billing_period="",
                 cancel_at_period_end=True,
                 current_period_end=period_end,
             )
@@ -484,6 +649,99 @@ class CancelSubscriptionView(APIView):
                 "user": UserSerializer(user).data,
             }
         )
+
+
+class ChangePlanView(APIView):
+    """Schedule a monthly/yearly switch for the next billing period.
+
+    The current period stays at the current price. Stripe (or mock checkout)
+    bills the new price starting at ``current_period_end``.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        period = (request.data.get("billing_period") or "").strip().lower()
+        if period not in {Profile.BillingPeriod.MONTHLY, Profile.BillingPeriod.YEARLY}:
+            return Response(
+                {"detail": "billing_period must be 'monthly' or 'yearly'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = _get_or_create_profile(request.user)
+        profile.expire_canceled_subscription_if_needed()
+        profile.apply_pending_plan_change_if_needed()
+        if profile.subscription_status != Profile.SubscriptionStatus.ACTIVE:
+            return Response(
+                {"detail": "You need an active Premium subscription to change plans."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current = (profile.billing_period or "").strip().lower()
+        pending = (profile.pending_billing_period or "").strip().lower()
+
+        if period == current and not pending:
+            return Response(
+                {"detail": f"You are already on the {period} plan."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if period == pending:
+            user = User.objects.select_related("profile").get(pk=request.user.pk)
+            return Response({"ok": True, "user": UserSerializer(user).data})
+
+        reverting = period == current and bool(pending)
+        next_pending = "" if reverting else period
+        period_end = profile.current_period_end
+
+        if profile.stripe_subscription_id and _stripe_configured():
+            _ensure_stripe()
+            try:
+                subscription = stripe.Subscription.retrieve(
+                    profile.stripe_subscription_id
+                )
+                if reverting:
+                    _release_subscription_schedule(subscription)
+                    period_end_ts = _subscription_current_period_end_ts(subscription)
+                else:
+                    period_end_ts = _schedule_subscription_plan_change(
+                        subscription, period
+                    )
+                    if _stripe_get(subscription, "cancel_at_period_end"):
+                        stripe.Subscription.modify(
+                            profile.stripe_subscription_id,
+                            cancel_at_period_end=False,
+                        )
+                period_end = (
+                    _datetime_from_stripe_ts(period_end_ts) or period_end
+                )
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except stripe.error.StripeError as exc:
+                logger.exception("Stripe plan change failed")
+                return Response(
+                    {"detail": str(exc.user_message or exc)},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+        if period_end is None:
+            period_end = _period_end_from_now(
+                current or Profile.BillingPeriod.MONTHLY
+            )
+
+        _apply_subscription_to_profile(
+            profile,
+            status_value=Profile.SubscriptionStatus.ACTIVE,
+            subscription_id=profile.stripe_subscription_id,
+            billing_period=current or profile.billing_period,
+            pending_billing_period=next_pending,
+            cancel_at_period_end=False,
+            current_period_end=period_end,
+        )
+        user = User.objects.select_related("profile").get(pk=request.user.pk)
+        return Response({"ok": True, "user": UserSerializer(user).data})
 
 
 class SyncSubscriptionView(APIView):
@@ -547,15 +805,20 @@ class SyncSubscriptionView(APIView):
                 }
             )
 
+        actual_period = _billing_period_from_subscription(active)
+        pending = _pending_from_stripe_subscription(active, actual_period)
+        if pending is None:
+            pending = profile.pending_billing_period
         _apply_subscription_to_profile(
             profile,
             status_value=Profile.SubscriptionStatus.ACTIVE,
             customer_id=customer_id,
             subscription_id=_stripe_get(active, "id") or "",
-            billing_period=_billing_period_from_subscription(active),
+            billing_period=actual_period,
+            pending_billing_period=pending,
             cancel_at_period_end=bool(_stripe_get(active, "cancel_at_period_end")),
             current_period_end=_datetime_from_stripe_ts(
-                _stripe_get(active, "current_period_end")
+                _subscription_current_period_end_ts(active)
             ),
         )
         user = User.objects.select_related("profile").get(pk=request.user.pk)
@@ -659,6 +922,7 @@ class StripeWebhookView(APIView):
             customer_id=customer_id or "",
             subscription_id=sub_id or "",
             billing_period=period,
+            pending_billing_period="",
             cancel_at_period_end=False,
         )
 
@@ -683,19 +947,29 @@ class StripeWebhookView(APIView):
         customer_id = _stripe_get(subscription, "customer") or ""
         if not isinstance(customer_id, str):
             customer_id = _stripe_get(customer_id, "id") or ""
-        _apply_subscription_to_profile(
-            profile,
-            status_value=status_value,
-            customer_id=customer_id or "",
-            subscription_id=_stripe_get(subscription, "id") or "",
-            billing_period=_billing_period_from_subscription(subscription),
-            cancel_at_period_end=bool(
+        actual_period = _billing_period_from_subscription(subscription)
+        pending = _pending_from_stripe_subscription(
+            subscription, actual_period or profile.billing_period
+        )
+        if pending is None:
+            if actual_period and actual_period == profile.pending_billing_period:
+                pending = ""
+        period_end = _datetime_from_stripe_ts(
+            _subscription_current_period_end_ts(subscription)
+        )
+        apply_kwargs = {
+            "status_value": status_value,
+            "customer_id": customer_id or "",
+            "subscription_id": _stripe_get(subscription, "id") or "",
+            "billing_period": actual_period,
+            "cancel_at_period_end": bool(
                 _stripe_get(subscription, "cancel_at_period_end")
             ),
-            current_period_end=_datetime_from_stripe_ts(
-                _stripe_get(subscription, "current_period_end")
-            ),
-        )
+            "current_period_end": period_end,
+        }
+        if pending is not None:
+            apply_kwargs["pending_billing_period"] = pending
+        _apply_subscription_to_profile(profile, **apply_kwargs)
 
     def _on_subscription_deleted(self, subscription) -> None:
         profile = self._profile_for_stripe_object(subscription)

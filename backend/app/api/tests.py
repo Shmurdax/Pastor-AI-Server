@@ -1,7 +1,9 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
@@ -334,8 +336,6 @@ class CancelSubscriptionTests(TestCase):
         self.assertTrue(self.premium.profile.cancel_at_period_end)
 
     def test_premium_access_ends_after_canceled_period(self):
-        from datetime import timedelta
-
         from django.utils import timezone
 
         profile = self.premium.profile
@@ -350,3 +350,242 @@ class CancelSubscriptionTests(TestCase):
         self.assertFalse(res.data["user"]["is_premium"])
         self.assertEqual(res.data["user"]["subscription_status"], "canceled")
         self.assertFalse(res.data["user"]["cancel_at_period_end"])
+
+
+@override_settings(BILLING_MOCK_CHECKOUT="true")
+class ChangePlanTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/billing/change-plan/"
+        self.member = User.objects.create_user(
+            username="free@church.org",
+            email="free@church.org",
+            password="MemberPass123!",
+            first_name="Free",
+            last_name="Member",
+        )
+        self.premium = User.objects.create_user(
+            username="premium@church.org",
+            email="premium@church.org",
+            password="PremiumPass123!",
+            first_name="Paid",
+            last_name="Member",
+        )
+        from django.utils import timezone
+
+        self.period_end = timezone.now() + timedelta(days=20)
+        profile = self.premium.profile
+        profile.subscription_status = "active"
+        profile.billing_period = "monthly"
+        profile.current_period_end = self.period_end
+        profile.save(
+            update_fields=[
+                "subscription_status",
+                "billing_period",
+                "current_period_end",
+            ]
+        )
+        self.member_token = Token.objects.create(user=self.member).key
+        self.premium_token = Token.objects.create(user=self.premium).key
+
+    def test_free_member_cannot_change_plan(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_requires_billing_period(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_monthly_premium_can_schedule_yearly(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        user = res.data["user"]
+        self.assertTrue(user["is_premium"])
+        self.assertEqual(user["billing_period"], "monthly")
+        self.assertEqual(user["pending_billing_period"], "yearly")
+        self.assertFalse(user["cancel_at_period_end"])
+        self.assertIsNotNone(user["current_period_end"])
+
+        self.premium.profile.refresh_from_db()
+        self.assertEqual(self.premium.profile.billing_period, "monthly")
+        self.assertEqual(self.premium.profile.pending_billing_period, "yearly")
+        self.assertEqual(self.premium.profile.current_period_end, self.period_end)
+
+    def test_already_on_plan_is_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.url, {"billing_period": "monthly"}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_scheduling_the_same_pending_plan_is_idempotent(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        first = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        self.assertEqual(first.status_code, 200)
+        second = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.data["user"]["pending_billing_period"], "yearly")
+
+    def test_can_revert_pending_yearly_switch(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        res = self.client.post(self.url, {"billing_period": "monthly"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        user = res.data["user"]
+        self.assertEqual(user["billing_period"], "monthly")
+        self.assertEqual(user["pending_billing_period"], "")
+
+    def test_unsubscribe_clears_pending_plan_change(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        res = self.client.post("/api/billing/cancel-subscription/", {}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["user"]["cancel_at_period_end"])
+        self.assertEqual(res.data["user"]["pending_billing_period"], "")
+
+    def test_yearly_price_applies_after_current_period(self):
+        from django.utils import timezone
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+
+        profile = self.premium.profile
+        profile.refresh_from_db()
+        profile.current_period_end = timezone.now() - timedelta(minutes=1)
+        profile.save(update_fields=["current_period_end"])
+
+        res = self.client.get("/api/auth/me/")
+        self.assertEqual(res.status_code, 200)
+        user = res.data["user"]
+        self.assertTrue(user["is_premium"])
+        self.assertEqual(user["billing_period"], "yearly")
+        self.assertEqual(user["pending_billing_period"], "")
+        self.assertIsNotNone(user["current_period_end"])
+        self.premium.profile.refresh_from_db()
+        self.assertGreater(
+            self.premium.profile.current_period_end, timezone.now()
+        )
+
+    def test_changing_plan_resumes_a_scheduled_cancel(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        self.client.post("/api/billing/cancel-subscription/", {}, format="json")
+        res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        user = res.data["user"]
+        self.assertFalse(user["cancel_at_period_end"])
+        self.assertEqual(user["pending_billing_period"], "yearly")
+        self.assertEqual(user["billing_period"], "monthly")
+
+
+@override_settings(
+    BILLING_MOCK_CHECKOUT="false",
+    STRIPE_SECRET_KEY="sk_test_change_plan",
+    STRIPE_PUBLISHABLE_KEY="pk_test_change_plan",
+    STRIPE_PRICE_MONTHLY="price_month",
+    STRIPE_PRICE_YEARLY="price_year",
+)
+class ChangePlanStripeTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/billing/change-plan/"
+        self.premium = User.objects.create_user(
+            username="stripe@church.org",
+            email="stripe@church.org",
+            password="PremiumPass123!",
+            first_name="Stripe",
+            last_name="Member",
+        )
+        from django.utils import timezone
+
+        profile = self.premium.profile
+        profile.subscription_status = "active"
+        profile.billing_period = "monthly"
+        profile.stripe_customer_id = "cus_test"
+        profile.stripe_subscription_id = "sub_test"
+        profile.current_period_end = timezone.now() + timedelta(days=12)
+        profile.save()
+        self.token = Token.objects.create(user=self.premium).key
+
+    def _subscription(self, *, schedule=None, cancel_at_period_end=False):
+        import time
+
+        period_end = int(time.time()) + 86400 * 12
+        start = int(time.time()) - 86400 * 18
+        return {
+            "id": "sub_test",
+            "status": "active",
+            "cancel_at_period_end": cancel_at_period_end,
+            "current_period_end": period_end,
+            "start_date": start,
+            "schedule": schedule,
+            "customer": "cus_test",
+            "items": {
+                "data": [
+                    {
+                        "id": "si_1",
+                        "quantity": 1,
+                        "price": {
+                            "id": "price_month",
+                            "recurring": {"interval": "month"},
+                        },
+                    }
+                ]
+            },
+        }
+
+    def test_monthly_to_yearly_creates_stripe_schedule(self):
+        from unittest.mock import patch
+
+        subscription = self._subscription()
+        schedule = {
+            "id": "sub_sched_1",
+            "phases": [
+                {
+                    "start_date": subscription["start_date"],
+                    "items": [{"price": "price_month", "quantity": 1}],
+                }
+            ],
+        }
+        with (
+            patch("api.billing_views.stripe.Subscription.retrieve", return_value=subscription),
+            patch(
+                "api.billing_views.stripe.SubscriptionSchedule.create",
+                return_value=schedule,
+            ) as create_sched,
+            patch("api.billing_views.stripe.SubscriptionSchedule.modify") as modify_sched,
+            patch("api.billing_views.stripe.Subscription.modify"),
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+
+        self.assertEqual(res.status_code, 200)
+        create_sched.assert_called_once_with(from_subscription="sub_test")
+        modify_sched.assert_called_once()
+        kwargs = modify_sched.call_args.kwargs
+        self.assertEqual(kwargs["end_behavior"], "release")
+        self.assertEqual(kwargs["proration_behavior"], "none")
+        self.assertEqual(len(kwargs["phases"]), 2)
+        self.assertEqual(kwargs["phases"][0]["end_date"], subscription["current_period_end"])
+        self.assertEqual(kwargs["phases"][1]["items"][0]["price"], "price_year")
+        self.assertEqual(res.data["user"]["billing_period"], "monthly")
+        self.assertEqual(res.data["user"]["pending_billing_period"], "yearly")
+
+    def test_reverting_pending_change_releases_stripe_schedule(self):
+        from unittest.mock import patch
+
+        profile = self.premium.profile
+        profile.pending_billing_period = "yearly"
+        profile.save(update_fields=["pending_billing_period"])
+        subscription = self._subscription(schedule="sub_sched_1")
+        with (
+            patch("api.billing_views.stripe.Subscription.retrieve", return_value=subscription),
+            patch("api.billing_views.stripe.SubscriptionSchedule.release") as release,
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(self.url, {"billing_period": "monthly"}, format="json")
+
+        self.assertEqual(res.status_code, 200)
+        release.assert_called_once_with("sub_sched_1")
+        self.assertEqual(res.data["user"]["pending_billing_period"], "")
+        self.assertEqual(res.data["user"]["billing_period"], "monthly")
