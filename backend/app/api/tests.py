@@ -589,3 +589,141 @@ class ChangePlanStripeTests(TestCase):
         release.assert_called_once_with("sub_sched_1")
         self.assertEqual(res.data["user"]["pending_billing_period"], "")
         self.assertEqual(res.data["user"]["billing_period"], "monthly")
+
+    def test_stripe_invalid_request_returns_400_json_not_502(self):
+        import stripe
+
+        subscription = self._subscription()
+        schedule = {
+            "id": "sub_sched_1",
+            "phases": [
+                {
+                    "start_date": subscription["start_date"],
+                    "items": [{"price": "price_month", "quantity": 1}],
+                }
+            ],
+        }
+        error = stripe.error.InvalidRequestError(
+            "Received unknown parameter: phases[1][items][0][price_data]",
+            "phases",
+        )
+        with (
+            patch("api.billing_views.stripe.Subscription.retrieve", return_value=subscription),
+            patch(
+                "api.billing_views.stripe.SubscriptionSchedule.create",
+                return_value=schedule,
+            ),
+            patch(
+                "api.billing_views.stripe.SubscriptionSchedule.modify",
+                side_effect=error,
+            ),
+            patch("api.billing_views.stripe.SubscriptionSchedule.release") as release,
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("detail", res.data)
+        self.assertIn("price_data", str(res.data["detail"]))
+        self.assertNotEqual(res.status_code, 502)
+        self.premium.profile.refresh_from_db()
+        self.assertEqual(self.premium.profile.pending_billing_period, "")
+        release.assert_called_once_with("sub_sched_1")
+
+
+@override_settings(
+    BILLING_MOCK_CHECKOUT="false",
+    STRIPE_SECRET_KEY="sk_test_change_plan",
+    STRIPE_PUBLISHABLE_KEY="pk_test_change_plan",
+    STRIPE_PRICE_MONTHLY="",
+    STRIPE_PRICE_YEARLY="",
+)
+class ChangePlanCreatesCatalogPriceTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/billing/change-plan/"
+        self.premium = User.objects.create_user(
+            username="inline@church.org",
+            email="inline@church.org",
+            password="PremiumPass123!",
+            first_name="Inline",
+            last_name="Member",
+        )
+        profile = self.premium.profile
+        profile.subscription_status = "active"
+        profile.billing_period = "monthly"
+        profile.stripe_customer_id = "cus_test"
+        profile.stripe_subscription_id = "sub_test"
+        profile.current_period_end = timezone.now() + timedelta(days=12)
+        profile.save()
+        self.token = Token.objects.create(user=self.premium).key
+
+    def test_yearly_schedule_uses_catalog_price_id_not_price_data(self):
+        import time
+
+        period_end = int(time.time()) + 86400 * 12
+        start = int(time.time()) - 86400 * 18
+        subscription = {
+            "id": "sub_test",
+            "status": "active",
+            "cancel_at_period_end": False,
+            "current_period_end": period_end,
+            "start_date": start,
+            "schedule": None,
+            "customer": "cus_test",
+            "items": {
+                "data": [
+                    {
+                        "id": "si_1",
+                        "quantity": 1,
+                        "price": {
+                            "id": "price_adhoc_month",
+                            "recurring": {"interval": "month"},
+                        },
+                    }
+                ]
+            },
+        }
+        schedule = {
+            "id": "sub_sched_1",
+            "phases": [
+                {
+                    "start_date": start,
+                    "items": [{"price": "price_adhoc_month", "quantity": 1}],
+                }
+            ],
+        }
+        with (
+            patch("api.billing_views.stripe.Subscription.retrieve", return_value=subscription),
+            patch(
+                "api.billing_views.stripe.Price.list",
+                return_value={"data": []},
+            ) as price_list,
+            patch(
+                "api.billing_views.stripe.Product.create",
+                return_value={"id": "prod_year"},
+            ),
+            patch(
+                "api.billing_views.stripe.Price.create",
+                return_value={"id": "price_created_year"},
+            ) as price_create,
+            patch(
+                "api.billing_views.stripe.SubscriptionSchedule.create",
+                return_value=schedule,
+            ),
+            patch("api.billing_views.stripe.SubscriptionSchedule.modify") as modify_sched,
+            patch("api.billing_views.stripe.Subscription.modify"),
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(self.url, {"billing_period": "yearly"}, format="json")
+
+        self.assertEqual(res.status_code, 200, res.data)
+        price_list.assert_called()
+        self.assertEqual(price_create.call_args.kwargs["lookup_key"], "pastor_ai_premium_yearly")
+        kwargs = modify_sched.call_args.kwargs
+        new_item = kwargs["phases"][1]["items"][0]
+        self.assertEqual(new_item["price"], "price_created_year")
+        self.assertNotIn("price_data", new_item)
+        self.assertEqual(kwargs["phases"][0]["items"][0]["price"], "price_adhoc_month")
+        self.assertEqual(res.data["user"]["billing_period"], "monthly")
+        self.assertEqual(res.data["user"]["pending_billing_period"], "yearly")
