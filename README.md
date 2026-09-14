@@ -10,7 +10,7 @@ These are two different GitHub branches. All new work goes on **`development`**.
 
 | Branch | Use |
 |--------|-----|
-| `development` | All new work. PRs, Cursor agents, and `christian-ai-dev` |
+| `development` | All new work. PRs, Cursor agents, and `christian-ai-dev` (see [RUNPOD.md](RUNPOD.md) for the current pod id and public URL) |
 | `master` | Production pin. Promote only after `development` is tested on the dev pod |
 
 ```bash
