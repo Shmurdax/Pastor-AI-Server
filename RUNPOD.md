@@ -96,6 +96,23 @@ The Flutter UI maps **any** `/api/chat/` exception to `Error: Could not connect 
 ### Account create / Google Sign-In fails (403 or disabled button)
 1. **403 on Create account / Google.** Auth APIs must not use Django session CSRF. After pulling a fix that sets `authentication_classes = []` on register/login/google, restart Django (`bash start.sh` or `deploy_update.sh`).
 2. **Google button disabled / “not configured”.** Set `GOOGLE_CLIENT_ID` in `tokens.env`, run `bash apply-tokens.sh`, then rebuild Flutter (`bash deploy_update.sh` or `flutter build web --release --dart-define=API_BASE_URL=`). The web UI also loads the client ID from `GET /api/auth/config/` at runtime once rebuilt.
+
+### Flutter rebuild: `fatal: detected dubious ownership ... /.flutter-sdk`
+
+Git 2.35+ refuses to run in a checkout whose directory owner is not the current user. The Flutter SDK at `/workspace/pastor-ai/.flutter-sdk` is itself a git repo, and RunPod network volumes often look “dubious” after a remigration or UID change.
+
+`deploy_update.sh` marks that path (and the pastor-ai tree) as a Git `safe.directory` before `flutter build web`. If you invoke Flutter by hand and still see the error:
+
+```bash
+git config --global --add safe.directory /workspace/pastor-ai/.flutter-sdk
+git config --global --add safe.directory '*'
+```
+
+Then rebuild:
+
+```bash
+bash /workspace/pastor-ai/deploy_update.sh
+```
 3. **Google popup / origin errors.** In Google Cloud Console → Credentials → your OAuth **Web** client, add the public site origin (Cloudflare tunnel or custom domain) under **Authorized JavaScript origins** (scheme + host only, no path). COOP is already `same-origin-allow-popups` for GIS.
 
 ### Private LoRA 404

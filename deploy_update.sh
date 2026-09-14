@@ -30,6 +30,9 @@ set +a
 # Git channel: PASTOR_GIT_BRANCH, REPO_BRANCH, or $WS/.git_channel (development|master).
 # shellcheck source=/dev/null
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
+# shellcheck source=/dev/null
+source "$WS/scripts/git_safe_directory.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_safe_directory.sh"
+pastor_allow_git_on_runpod_volume "$WS"
 CHANNEL="$(pastor_git_channel "$WS")"
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
@@ -76,6 +79,7 @@ fi
 
 if [[ -x "$WS/.flutter-sdk/bin/flutter" ]]; then
   export PATH="$WS/.flutter-sdk/bin:$PATH"
+  log "Using $WS/.flutter-sdk (git safe.directory already set for this volume)"
 fi
 if command -v flutter >/dev/null 2>&1; then
   log "Building Flutter web"
