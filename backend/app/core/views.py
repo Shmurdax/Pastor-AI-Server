@@ -47,15 +47,23 @@ from .chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
+    INTENT_APPLY,
+    INTENT_CLARIFY,
+    INTENT_NEW_ANGLE,
+    INTENT_NEW_TOPIC,
+    classify_followup_intent,
+    extract_used_headings,
     is_bible_source,
     is_video_chunk,
-    looks_like_followup,
     search_queries_on_store,
     select_diverse_docs,
     sources_cited_in_answer,
     uniqueness_instruction,
 )
 from .chat_system_prompt import (
+    ANGLE_STEER,
+    APPLY_STEER,
+    CLARIFY_STEER,
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
@@ -620,6 +628,7 @@ class ChatAPIView(APIView):
                 prior_ai_texts.append(target_message.ai_response)
             used_quotes = extract_used_quotes(prior_ai_texts)
             used_verses = extract_used_verse_refs(prior_ai_texts)
+            used_headings = extract_used_headings(prior_ai_texts)
 
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
@@ -636,6 +645,7 @@ class ChatAPIView(APIView):
             brief_social = looks_like_brief_social(user_query_llm)
             # Pure greetings should not pull sermon notes—those notes trigger
             # quote/timestamp dumps. Informational questions keep full RAG.
+            followup_intent = INTENT_NEW_TOPIC
             if brief_social:
                 search_queries = [user_query_llm]
                 is_followup = False
@@ -652,7 +662,16 @@ class ChatAPIView(APIView):
                     prior_ai_texts=prior_ai_texts,
                     limit=7,
                 )
-                is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
+                followup_intent = classify_followup_intent(
+                    user_query_llm,
+                    prior_user_queries,
+                    prior_ai_texts,
+                )
+                is_followup = followup_intent in {
+                    INTENT_NEW_ANGLE,
+                    INTENT_CLARIFY,
+                    INTENT_APPLY,
+                }
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
                 logger.debug(
                     "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
@@ -732,11 +751,21 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             uniqueness = ""
             if not brief_social:
+                banned_titles = []
+                seen_titles: set[str] = set()
+                for d in docs:
+                    title = _doc_source_label(d)
+                    if title and title.lower() not in seen_titles:
+                        seen_titles.add(title.lower())
+                        banned_titles.append(title)
                 uniqueness = uniqueness_instruction(
                     used_quotes,
                     used_verses,
                     is_followup=is_followup,
                     prior_user_query=(prior_user_queries[-1] if prior_user_queries else ""),
+                    intent=followup_intent,
+                    used_headings=used_headings,
+                    banned_titles=banned_titles,
                 )
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
@@ -763,10 +792,17 @@ class ChatAPIView(APIView):
             )
 
             human_content = user_query_llm
+            extra_steer = ""
+            if followup_intent == INTENT_CLARIFY:
+                extra_steer = CLARIFY_STEER
+            elif followup_intent == INTENT_APPLY:
+                extra_steer = APPLY_STEER
+            elif followup_intent == INTENT_NEW_ANGLE:
+                extra_steer = ANGLE_STEER
             if brief_social:
                 human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
             elif query_expects_long_answer(user_query_llm):
-                human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"
+                human_content = f"{LENGTH_STEER}{extra_steer}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages

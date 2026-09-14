@@ -4,10 +4,16 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from core.chat_retrieval import (
+    INTENT_APPLY,
+    INTENT_CLARIFY,
+    INTENT_NEW_ANGLE,
+    INTENT_NEW_TOPIC,
     apply_retrieval_threshold,
     bible_book_key,
+    classify_followup_intent,
     ensure_source_media_mix,
     expand_search_queries,
+    extract_used_headings,
     extract_used_quotes,
     extract_used_verse_refs,
     filter_hits_by_topic,
@@ -53,7 +59,7 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(any("clarify" in item.lower() for item in queries))
         self.assertGreaterEqual(len(queries), 2)
 
-    def test_followup_query_uses_prior_ai_steps(self):
+    def test_followup_query_does_not_embed_prior_ai_headings(self):
         queries = expand_search_queries(
             "Can you further clarify those steps?",
             ["What should I say to someone who is gay?"],
@@ -68,8 +74,12 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         joined = " | ".join(queries).lower()
         self.assertIn("gay", joined)
-        self.assertTrue(
+        self.assertFalse(
             any("affirm" in item.lower() or "worth" in item.lower() for item in queries),
+            queries,
+        )
+        self.assertFalse(
+            any("express care" in item.lower() or "offer truth" in item.lower() for item in queries),
             queries,
         )
 
@@ -320,12 +330,77 @@ class ChatRetrievalTests(unittest.TestCase):
             ['We love and accept the sinner but refuse to accept a sinful lifestyle.'],
             ["Genesis 1:27"],
             is_followup=True,
+            intent=INTENT_CLARIFY,
             prior_user_query="What should I say to someone who is gay?",
+            used_headings=["Affirm Their Worth"],
+            banned_titles=["He Is God"],
         )
         self.assertIn("SAME chat", text)
         self.assertIn("gay", text.lower())
-        self.assertIn("do not switch to an unrelated sermon theme", text.lower())
+        self.assertIn("do not reprint the previous heading", text.lower())
+        self.assertIn("Affirm Their Worth", text)
+        self.assertIn("He Is God", text)
         self.assertIn("Genesis 1:27", text)
+
+    def test_uniqueness_new_angle_bans_prior_outline(self):
+        text = uniqueness_instruction(
+            [],
+            [],
+            is_followup=True,
+            intent=INTENT_NEW_ANGLE,
+            prior_user_query="My kid saw a dog get hit by a car near the kitchen.",
+            used_headings=["He Is God"],
+            banned_titles=["He Is God"],
+        )
+        self.assertIn("Answer THIS new question", text)
+        self.assertIn("Do not reuse the previous heading", text)
+        self.assertIn("He Is God", text)
+        self.assertIn("kitchen", text.lower())
+
+    def test_classify_followup_intent_new_angle_and_topic_break(self):
+        prior = ["My kid saw a dog get hit by a car near the kitchen. What should I say?"]
+        prior_ai = [
+            "**He Is God**\n\n"
+            "- Acknowledge the Pain: sit with them.\n"
+            "- Stay Present: do not rush the moment.\n"
+        ]
+        self.assertEqual(
+            classify_followup_intent(
+                "How do I reassure my kid even if I am overwhelmed?",
+                prior,
+                prior_ai,
+            ),
+            INTENT_NEW_ANGLE,
+        )
+        self.assertEqual(
+            classify_followup_intent("What is communion?", prior, prior_ai),
+            INTENT_NEW_TOPIC,
+        )
+        self.assertEqual(
+            classify_followup_intent("What should I say tonight in the kitchen?", prior, prior_ai),
+            INTENT_APPLY,
+        )
+        self.assertEqual(
+            classify_followup_intent("Can you further clarify that guidance?", prior, prior_ai),
+            INTENT_CLARIFY,
+        )
+        self.assertEqual(
+            classify_followup_intent("How do I reassure my kid even if I am overwhelmed?", []),
+            INTENT_NEW_TOPIC,
+        )
+
+    def test_extract_used_headings_from_markdown(self):
+        headings = extract_used_headings(
+            [
+                "**He Is God**\n\n"
+                "Pastor Don teaches compassion.\n\n"
+                "- Acknowledge the Pain: sit with them.\n"
+                "- Stay Present: stay in the room.\n"
+            ]
+        )
+        lowered = [item.lower() for item in headings]
+        self.assertTrue(any("he is god" in item for item in lowered), headings)
+        self.assertTrue(any("acknowledge the pain" in item for item in lowered), headings)
 
     def test_extracts_quotes_and_ezekiel_verse(self):
         answer = (

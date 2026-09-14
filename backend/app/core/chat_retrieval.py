@@ -37,6 +37,31 @@ _FOLLOWUP_RE = re.compile(
     re.IGNORECASE,
 )
 
+_APPLY_RE = re.compile(
+    r"\b("
+    r"what (?:do|should|would) i say|"
+    r"how do i (?:say|tell|respond|talk|put|phrase)|"
+    r"in the kitchen|tonight|give me (?:the )?words|a script"
+    r")\b",
+    re.IGNORECASE,
+)
+
+INTENT_NEW_TOPIC = "new_topic"
+INTENT_NEW_ANGLE = "same_topic_new_angle"
+INTENT_CLARIFY = "clarify"
+INTENT_APPLY = "apply"
+INTENT_SOCIAL = "social"
+_CONTINUING_INTENTS = frozenset({INTENT_NEW_ANGLE, INTENT_CLARIFY, INTENT_APPLY})
+
+_HEADING_LINE_RE = re.compile(
+    r"^\s*(?:#{1,3}\s+|\*\*)([^*#\n]{3,80}?)(?:\*\*)?\s*$",
+    re.MULTILINE,
+)
+_HEADING_BULLET_RE = re.compile(
+    r"^\s*[-*]\s+(?:\*\*)?([A-Z][A-Za-z' /]{2,40})(?:\*\*)?:",
+    re.MULTILINE,
+)
+
 _QUESTION_STOPWORDS = frozenset(
     {
         "a",
@@ -351,6 +376,7 @@ def chunk_fingerprint(text: str) -> str:
 
 
 def looks_like_followup(query: str) -> bool:
+    """True for short / clarify-style prompts (not the only follow-up gate)."""
     text = (query or "").strip()
     if not text:
         return False
@@ -362,6 +388,80 @@ def looks_like_followup(query: str) -> bool:
     if _FOLLOWUP_RE.search(text):
         return True
     return len(text.split()) <= 8
+
+
+def _last_prior_user(current_q: str, prior_user_queries: Optional[Iterable[str]]) -> str:
+    current_key = (current_q or "").strip().lower()
+    for item in reversed(list(prior_user_queries or [])):
+        text = str(item or "").strip()
+        if text and text.lower() != current_key:
+            return text
+    return ""
+
+
+def classify_followup_intent(
+    current: str,
+    prior_user_queries: Optional[Iterable[str]] = None,
+    prior_ai_texts: Optional[Iterable[str]] = None,
+) -> str:
+    """Classify a turn so retrieval and steers are not regex-only.
+
+    With chat history, a new question on the same pastoral situation is a
+    new-angle follow-up unless it looks like clarify, apply, or a topic break.
+    """
+    from .chat_system_prompt import looks_like_brief_social
+
+    current_q = (current or "").strip()
+    if looks_like_brief_social(current_q):
+        return INTENT_SOCIAL
+    last_prior = _last_prior_user(current_q, prior_user_queries)
+    if not last_prior:
+        return INTENT_NEW_TOPIC
+    if _APPLY_RE.search(current_q):
+        return INTENT_APPLY
+    # Explicit clarify words stay on-topic even when they share no keywords
+    # ("What do you mean?"). Short new questions do not — check topic-break
+    # first so "What is communion?" is not treated as a follow-up.
+    if _FOLLOWUP_RE.search(current_q):
+        return INTENT_CLARIFY
+    current_tokens = set(keyword_search_query(current_q).lower().split())
+    prior_blob = last_prior
+    for item in reversed(list(prior_ai_texts or [])):
+        text = str(item or "").strip()
+        if text:
+            prior_blob = f"{last_prior} {keyword_search_query(text[:900])}"
+            break
+    prior_tokens = set(keyword_search_query(prior_blob).lower().split())
+    if current_tokens and prior_tokens and not (current_tokens & prior_tokens):
+        return INTENT_NEW_TOPIC
+    if looks_like_followup(current_q):
+        return INTENT_CLARIFY
+    return INTENT_NEW_ANGLE
+
+
+def extract_used_headings(texts: Iterable[str], *, limit: int = 8) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for text in texts or []:
+        for match in _HEADING_LINE_RE.finditer(text or ""):
+            heading = " ".join(match.group(1).split()).strip(" #")
+            key = heading.lower()
+            if len(heading) < 3 or key in seen:
+                continue
+            seen.add(key)
+            found.append(heading)
+            if len(found) >= limit:
+                return found
+        for match in _HEADING_BULLET_RE.finditer(text or ""):
+            heading = " ".join(match.group(1).split()).strip()
+            key = heading.lower()
+            if len(heading) < 3 or key in seen:
+                continue
+            seen.add(key)
+            found.append(heading)
+            if len(found) >= limit:
+                return found
+    return found
 
 
 def keyword_search_query(text: str) -> str:
@@ -620,12 +720,9 @@ def expand_search_queries(
 
     current_q = (current or "").strip()
     prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
-    last_prior = ""
-    for item in reversed(prior):
-        if item.lower() != current_q.lower():
-            last_prior = item
-            break
-    followup = bool(last_prior) and looks_like_followup(current_q)
+    last_prior = _last_prior_user(current_q, prior)
+    intent = classify_followup_intent(current_q, prior, prior_ai_texts)
+    followup = intent in _CONTINUING_INTENTS
 
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
@@ -649,41 +746,17 @@ def expand_search_queries(
         add(focus)
         add(f"Pastor Don Nordin {focus}")
 
-    # For follow-ups, lead with topic-carrying rewrites so retrieval stays on
-    # the prior pastoral question instead of a vague "clarify those steps".
+    # Follow-ups: blend THIS question with the prior USER question only.
+    # Do not embed the previous AI headings — those reprint the last outline.
     if followup and last_prior:
-        prior_focus = keyword_search_query(f"{last_prior} {current_q}") or focus
-        add(prior_focus)
-        last_ai = ""
-        for item in reversed(list(prior_ai_texts or [])):
-            text = str(item or "").strip()
-            if text:
-                last_ai = text
-                break
-        if last_ai:
-            # Prefer headings / bold step labels from the prior answer.
-            step_bits = re.findall(
-                r"\*\*([^*]{3,60})\*\*|^(?:[-*]\s+)?([A-Z][A-Za-z' ]{2,40}):",
-                last_ai,
-                flags=re.MULTILINE,
-            )
-            step_text = " ".join(part for pair in step_bits for part in pair if part)
-            ai_keywords = keyword_search_query((step_text + " " + last_ai[:900]).strip())
-            if ai_keywords:
-                add(f"{ai_keywords} {focus or current_q}")
-                add(f"{keyword_search_query(last_prior)} {ai_keywords}".strip())
+        add(keyword_search_query(f"{last_prior} {current_q}") or focus)
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
         add(current_q)
-    if last_prior and not followup:
-        add(keyword_search_query(f"{last_prior} {current_q}"))
 
     if focus and focus.lower() != current_q.lower():
         add(focus)
-
-    if last_prior and looks_like_followup(current_q):
-        add(keyword_search_query(f"{last_prior} {current_q}"))
 
     if not last_prior and focus:
         add(f"Pastor Don Nordin {focus}")
@@ -1319,23 +1392,39 @@ def uniqueness_instruction(
     *,
     is_followup: bool = False,
     prior_user_query: str = "",
+    intent: Optional[str] = None,
+    used_headings: Optional[Iterable[str]] = None,
+    banned_titles: Optional[Iterable[str]] = None,
 ) -> str:
     quotes = [item.strip() for item in used_quotes if item and item.strip()]
     verses = [item.strip() for item in used_verses if item and item.strip()]
+    headings = [item.strip() for item in (used_headings or []) if item and item.strip()]
+    titles = [item.strip() for item in (banned_titles or []) if item and item.strip()]
+    resolved = intent or (INTENT_NEW_ANGLE if is_followup else INTENT_NEW_TOPIC)
     lines = ["<uniqueness>"]
-    if is_followup:
-        topic = " ".join((prior_user_query or "").split())
-        if len(topic) > 160:
-            topic = topic[:157] + "..."
+    topic = " ".join((prior_user_query or "").split())
+    if len(topic) > 160:
+        topic = topic[:157] + "..."
+    if resolved == INTENT_CLARIFY:
         lines.extend(
             [
-                "This is a follow-up in the SAME chat. Stay on the same pastoral topic as the prior turn.",
-                "Clarify or expand the previous answer's steps; do not switch to an unrelated sermon theme.",
+                "This is a clarifying follow-up in the SAME chat. Stay on the same pastoral topic.",
+                "Only develop the part they asked about. Do not reprint the previous heading or step list.",
                 "You may use fresh quotations and different NKJV verses, but they must serve THIS same topic.",
             ]
         )
         if topic:
             lines.append(f'Prior user question to stay anchored to: "{topic}"')
+    elif resolved in {INTENT_NEW_ANGLE, INTENT_APPLY}:
+        lines.extend(
+            [
+                "This is a follow-up in the SAME pastoral situation. Answer THIS new question.",
+                "Do not reuse the previous heading, outline, or step list. Write a new teaching.",
+                "Use fresh quotations and different NKJV verses that serve THIS question.",
+            ]
+        )
+        if topic:
+            lines.append(f'Prior user question (situation only, not the outline to copy): "{topic}"')
     else:
         lines.extend(
             [
@@ -1345,10 +1434,15 @@ def uniqueness_instruction(
                 "than earlier turns. Quote from more than one labeled source in REFERENCE NOTES when they fit.",
             ]
         )
-    lines.append(
-        "If a follow-up asks to clarify or apply the last answer, deepen those same steps with new wording—"
-        "do not abandon them for a different subject."
-    )
+    if headings:
+        lines.append("Already-used headings / step labels (do not reuse):")
+        for heading in headings[:8]:
+            lines.append(f"- {heading}")
+    if titles:
+        lines.append(
+            "Do not use these sermon titles or REFERENCE NOTES labels as the answer heading: "
+            + ", ".join(titles[:8])
+        )
     if quotes:
         lines.append("Already-used quotations (do not repeat):")
         for quote in quotes[:8]:

@@ -186,16 +186,36 @@ LENGTH_STEER = (
     "Write a complete teaching answer of about 2000 characters (roughly 320 "
     "words). Format it in Markdown with **bold headings**, short sections, and "
     "bullet points for steps, distinctions, verses, and application. Open with "
-    "a bold heading and a pastoral paragraph, not a Scripture dump. Weave NKJV "
-    "verses into the teaching where they help. Quote Pastor Don and/or Susan "
-    "Nordin word-for-word from the notes—choose lines that have not already "
-    "been quoted in this chat—and apply them pastorally. Do not stop after one "
-    "sentence. When you reach a clear closing paragraph (for example "
-    "\"In conclusion\"), stop there—do not pad with filler, synonym lists, or "
-    "extra languages. If the question says summarize, compare, distinguish, or "
-    "asks for one illustration, still cover the notes in this formatted "
-    "~2000-character teaching.\n\n"
+    "a bold heading that answers THIS user question—never use a REFERENCE NOTES "
+    "label, sermon title, or filename as that heading—and a pastoral paragraph, "
+    "not a Scripture dump. Weave NKJV verses into the teaching where they help. "
+    "Quote Pastor Don and/or Susan Nordin word-for-word from the notes—choose "
+    "lines that have not already been quoted in this chat—and apply them "
+    "pastorally. Do not stop after one sentence. When the teaching is complete, "
+    "end with a short pastoral close in your own words. Do not start that close "
+    "with \"In conclusion,\" \"In closing,\" or \"To sum up,\" and do not pad "
+    "with filler, synonym lists, or extra languages. If the question says "
+    "summarize, compare, distinguish, or asks for one illustration, still cover "
+    "the notes in this formatted ~2000-character teaching.\n\n"
     "User question:\n"
+)
+
+ANGLE_STEER = (
+    "This is a follow-up on the same pastoral situation with a new angle. Write "
+    "a new ~2000-character teaching for THIS question. Use a new heading, new "
+    "steps, and new quotes. Do not reprint the previous outline.\n\n"
+)
+
+CLARIFY_STEER = (
+    "This is a clarifying follow-up. Stay at about 2000 characters. Only develop "
+    "the part they asked about. You may refer to the last answer; do not reprint "
+    "its heading or step list.\n\n"
+)
+
+APPLY_STEER = (
+    "This is an application follow-up. Write about 2000 characters of "
+    "kitchen-ready words and 3–5 steps, still grounded in the notes with new "
+    "quotes. Use a new heading. Do not reprint the previous outline.\n\n"
 )
 
 CONTINUE_STEER = (
@@ -206,9 +226,10 @@ CONTINUE_STEER = (
     "more NKJV where it belongs (not as a block at the top), more word-for-word "
     "quotations from Pastor Don and/or Susan Nordin that appear in the notes "
     "and were not used earlier in this chat, and pastoral application until the "
-    "answer is about 2000 characters. Then stop at a clear closing—do not append "
-    "filler after \"In conclusion.\" If the question said summarize or asked "
-    "for one story, that is not permission to stop after a short add-on."
+    "answer is about 2000 characters. Then stop at a short pastoral close in "
+    "your own words—do not start that close with \"In conclusion.\" If the "
+    "question said summarize or asked for one story, that is not permission to "
+    "stop after a short add-on."
 )
 
 FINISH_STEER = (
@@ -578,10 +599,12 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "LENGTH (teaching answers): About 2000 characters (roughly 300–360 words). "
         "Do not stop after one sentence, and do not write a long multi-page essay. "
         "Cover the notes, quote Pastor Don and/or Susan, weave in NKJV, and apply it—then stop. "
-        "Once you write a closing paragraph (\"In conclusion,\" \"In closing,\" or similar), end the "
-        "reply immediately. Never pad afterward with filler, synonym chains, legalese, or another language.\n"
+        "End with a short pastoral close in your own words. Do not start that close with "
+        "\"In conclusion,\" \"In closing,\" or \"To sum up.\" Never pad afterward with filler, "
+        "synonym chains, legalese, or another language.\n"
         "FORMAT: Use Markdown in every teaching answer. Lead with a **bold heading** that states the pastoral "
-        "answer, then a short pastoral paragraph—never open with a Scripture citation or a stacked verse dump. "
+        "answer to THIS question—never a sermon title, REFERENCE NOTES label, or filename—"
+        "then a short pastoral paragraph—never open with a Scripture citation or a stacked verse dump. "
         "Use additional **bold subheadings** for Scripture, the Nordins' teaching, and application. "
         "Use bullet points for steps, distinctions, listed verses, and takeaways. Short paragraphs between "
         "those sections are fine. Weave NKJV quotations into the teaching (for example: As John 1:14 (NKJV) "
@@ -617,7 +640,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "bullet points, Scripture woven into the teaching (not stacked at the top), word-for-word "
         "quotes from Pastor Don and/or Susan when the notes allow, and pastoral application. A "
         "one-sentence finish is incomplete, including on follow-up turns and questions that say "
-        "summarize. When the teaching is complete—especially after an \"In conclusion\" paragraph—"
-        "stop. Do not keep writing to fill space.\n"
+        "summarize. When the teaching is complete, close in your own words and stop. Do not keep "
+        "writing to fill space.\n"
         "</length_close>\n"
     )

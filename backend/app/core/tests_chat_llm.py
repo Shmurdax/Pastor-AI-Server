@@ -204,7 +204,11 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("expand_search_queries", source)
         self.assertIn("prior_ai_texts=", source)
         self.assertIn("is_followup=", source)
-        self.assertIn("looks_like_followup", source)
+        self.assertIn("classify_followup_intent", source)
+        self.assertIn("used_headings", source)
+        self.assertIn("ANGLE_STEER", source)
+        self.assertIn("CLARIFY_STEER", source)
+        self.assertIn("APPLY_STEER", source)
         self.assertIn('identity = f"u:{user.pk}"', source)
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
         self.assertIn("select_diverse_docs", source)
@@ -214,7 +218,10 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("join_continuation", source)
         self.assertIn('{"type": "replace", "text": answer}', source)
         self.assertIn("keeping the first answer", source)
-        self.assertIn('human_content = f"{LENGTH_STEER}{user_query_llm.strip()}"', source)
+        self.assertIn(
+            'human_content = f"{LENGTH_STEER}{extra_steer}{user_query_llm.strip()}"',
+            source,
+        )
         self.assertIn("looks_like_brief_social", source)
         self.assertIn("CONVERSATIONAL_STEER", source)
         self.assertIn("Skipping Qdrant for brief social message", source)
