@@ -39,6 +39,7 @@ if grep -q 'pull --ff-only origin master' "$ROOT/deploy_update.sh"; then
   fail "deploy_update.sh must not hardcode origin master only"
 fi
 grep -q 'git_channel.sh' "$ROOT/install.sh" || fail "install.sh must copy git_channel.sh"
+grep -q 'git_safe_directory.sh' "$ROOT/install.sh" || fail "install.sh must copy git_safe_directory.sh"
 grep -q 'promote_to_master.sh' "$ROOT/install.sh" || fail "install.sh must copy promote_to_master.sh"
 grep -q 'REPO_BRANCH="${REPO_BRANCH:-development}"' "$ROOT/install.sh" || fail "install.sh default branch must be development"
 grep -q '## Git channels' "$ROOT/README.md" || fail "README must document development vs master"
