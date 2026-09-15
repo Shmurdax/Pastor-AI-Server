@@ -303,7 +303,7 @@ Future<void> _unsubscribeFromPremium({
       title: Text('Unsubscribe from Premium?', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
       content: Text(
         'You will keep Premium benefits until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. '
-        'After that, your account returns to the Free plan and auto-renewal stops.',
+        'After that, access to Nordin\'s AI ends and auto-renewal stops.',
         style: GoogleFonts.figtree(height: 1.45),
       ),
       actions: [

@@ -22,11 +22,7 @@ const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
 
-const _freePerks = [
-  'Access to most recent chat history',
-];
-
-const _premiumPerks = [
+const premiumPerks = [
   'Unlimited Chat history',
   'Access to daily 15-minute video devotional video',
   "the Nordin's study notes",
@@ -313,7 +309,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         title: Text('Unsubscribe from Premium?', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
         content: Text(
           'You will keep Premium benefits until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. '
-          'After that, your account returns to the Free plan and auto-renewal stops.',
+          'After that, access to Nordin\'s AI ends and auto-renewal stops.',
           style: GoogleFonts.figtree(height: 1.45),
         ),
         actions: [
@@ -524,7 +520,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Support the ministry and unlock more of Nordin\'s AI.',
+                        'Manage your Nordin\'s AI subscription.',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.figtree(
                           fontSize: 15,
@@ -542,58 +538,30 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                       ),
                       const SizedBox(height: 36),
                       if (isNarrow)
-                        Column(
-                          children: [
-                            _TierCard(
-                              title: 'Free',
-                              subtitle: 'Get Started',
-                              priceLabel: '\$0',
-                              pricePeriod: 'forever',
-                              perks: _freePerks,
-                              style: _TierVisualStyle.outlined,
-                            ),
-                            const SizedBox(height: 20),
-                            _TierCard(
+                        _TierCard(
+                          title: 'Premium',
+                          subtitle: premiumSubtitle,
+                          priceLabel: premiumPrice,
+                          pricePeriod: premiumPeriod,
+                          perks: premiumPerks,
+                          style: _TierVisualStyle.filled,
+                          ctaLabel: premiumCta,
+                          onTap: premiumTap,
+                        )
+                      else
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 420),
+                            child: _TierCard(
                               title: 'Premium',
                               subtitle: premiumSubtitle,
                               priceLabel: premiumPrice,
                               pricePeriod: premiumPeriod,
-                              perks: _premiumPerks,
+                              perks: premiumPerks,
                               style: _TierVisualStyle.filled,
                               ctaLabel: premiumCta,
                               onTap: premiumTap,
                             ),
-                          ],
-                        )
-                      else
-                        IntrinsicHeight(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                child: _TierCard(
-                                  title: 'Free',
-                                  subtitle: 'Get Started',
-                                  priceLabel: '\$0',
-                                  pricePeriod: 'forever',
-                                  perks: _freePerks,
-                                  style: _TierVisualStyle.outlined,
-                                ),
-                              ),
-                              const SizedBox(width: 24),
-                              Expanded(
-                                child: _TierCard(
-                                  title: 'Premium',
-                                  subtitle: premiumSubtitle,
-                                  priceLabel: premiumPrice,
-                                  pricePeriod: premiumPeriod,
-                                  perks: _premiumPerks,
-                                  style: _TierVisualStyle.filled,
-                                  ctaLabel: premiumCta,
-                                  onTap: premiumTap,
-                                ),
-                              ),
-                            ],
                           ),
                         ),
                       if (pendingPeriod.isNotEmpty) ...[

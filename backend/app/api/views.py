@@ -5,8 +5,11 @@ Chat / public prayer POST live in core.views (production vLLM + Qdrant stack).
 
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from api.permissions import HasPremiumAccess
 
 from core.models import PrayerRequest, ChurchEvent, ResponseReport
 
@@ -23,12 +26,14 @@ from .serializers import (
 
 
 class ChurchEventListCreateAPI(APIView):
-    """GET/POST /api/church-events/ — public list; staff create."""
+    """GET/POST /api/church-events/ — Premium list; staff create."""
+
+    authentication_classes = [TokenAuthentication]
 
     def get_permissions(self):
         if self.request.method == "POST":
             return [permissions.IsAdminUser()]
-        return [permissions.AllowAny()]
+        return [permissions.IsAuthenticated(), HasPremiumAccess()]
 
     def get(self, request):
         qs = ChurchEvent.objects.all().order_by('starts_at', 'title')
@@ -48,11 +53,13 @@ class ChurchEventListCreateAPI(APIView):
 
 
 class ChurchEventDetailAPI(APIView):
-    """GET/PATCH/DELETE /api/church-events/<id>/ — public read; staff write."""
+    """GET/PATCH/DELETE /api/church-events/<id>/ — Premium read; staff write."""
+
+    authentication_classes = [TokenAuthentication]
 
     def get_permissions(self):
         if self.request.method == "GET":
-            return [permissions.AllowAny()]
+            return [permissions.IsAuthenticated(), HasPremiumAccess()]
         return [permissions.IsAdminUser()]
 
     def get(self, request, pk):
@@ -127,9 +134,10 @@ class ResponseReportDetailAPI(APIView):
 
 
 class MediaVideoListAPI(APIView):
-    """GET /api/media/ — public list of published Daily Devotionals."""
+    """GET /api/media/ — Premium list of published Daily Devotionals."""
 
-    permission_classes = [permissions.AllowAny]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
 
     def get(self, request):
         qs = MediaVideo.objects.filter(is_published=True).order_by(

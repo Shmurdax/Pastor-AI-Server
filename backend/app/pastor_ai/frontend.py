@@ -1,28 +1,10 @@
 import mimetypes
-import re
 from pathlib import Path
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 
 from .admin_url import is_admin_request_path
-
-# Existing Flutter web builds do not call warmup; inject a fire-and-forget ping
-# so opening the homepage starts the serverless GPU while the user types.
-_WARMUP_MARKER = "__pastorVllmWarmup"
-_WARMUP_SCRIPT = (
-    "<script>"
-    "(function(){"
-    "try{"
-    f"if(window.{_WARMUP_MARKER})return;"
-    f"window.{_WARMUP_MARKER}=1;"
-    "fetch('/api/chat/warmup/',{method:'POST',"
-    "headers:{'Accept':'application/json','Content-Type':'application/json'},"
-    "body:'{}',credentials:'same-origin'}).catch(function(){});"
-    "}catch(e){}"
-    "})();"
-    "</script>"
-)
 
 VIMEO_EMBED_FILENAME = "vimeo_embed.html"
 _CACHE_HEADERS = {
@@ -168,16 +150,6 @@ def _resolve_frontend_dir(configured_dir: Path) -> Path:
     raise Http404("Frontend entrypoint not found.")
 
 
-def _index_html_with_warmup(file_path: Path) -> str:
-    text = file_path.read_text(encoding="utf-8")
-    if _WARMUP_MARKER in text:
-        return text
-    updated, count = re.subn(r"</body>", _WARMUP_SCRIPT + "</body>", text, count=1, flags=re.IGNORECASE)
-    if count:
-        return updated
-    return text + _WARMUP_SCRIPT
-
-
 def serve_frontend(request, path: str = ""):
     admin_path = getattr(settings, "ADMIN_URL_PATH", "") or ""
     if admin_path and is_admin_request_path(request.path, admin_path):
@@ -215,7 +187,7 @@ def serve_frontend(request, path: str = ""):
     content_type, _ = mimetypes.guess_type(str(file_path))
     if file_path.name.lower() == "index.html":
         response = HttpResponse(
-            _index_html_with_warmup(file_path),
+            file_path.read_text(encoding="utf-8"),
             content_type="text/html; charset=utf-8",
         )
         return _apply_cache_headers(response)

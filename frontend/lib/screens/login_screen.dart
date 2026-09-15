@@ -141,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Sign in to save your chat history across devices.',
+                    'Sign in to subscribe and open Nordin\'s AI.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                   ),
@@ -230,13 +230,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: auth.isLoading ? null : () => Navigator.of(context).pop(),
-                    child: Text('Continue as guest', style: GoogleFonts.figtree(color: Colors.black54)),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text("Don't have an account? ", style: GoogleFonts.figtree(color: Colors.black54)),
                       TextButton(
@@ -384,7 +380,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Join to save conversations and pick up where you left off.',
+                    'Create an account, then complete your subscription to get access.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                   ),
@@ -499,8 +495,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text('Already have an account? ', style: GoogleFonts.figtree(color: Colors.black54)),
                       TextButton(
