@@ -308,6 +308,9 @@ def _ground_generated_answer(prepared, answer: str) -> str:
     except Exception:
         logger.exception("Grounding repair pass failed")
     return grounded_fallback_answer(quotes, nkjv)
+
+
+def _compact_prior_ai(text: str) -> str:
     """Keep quote/verse bans without feeding the last teaching as a template."""
     quotes = extract_used_quotes([text])
     verses = extract_used_verse_refs([text])

@@ -1,3 +1,4 @@
+import ast
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -217,6 +218,13 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("_ground_generated_answer", source)
         self.assertIn("format_grounding_block", source)
         self.assertIn("_compact_prior_ai", source)
+        tree = ast.parse(source)
+        defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        self.assertIn(
+            "_compact_prior_ai",
+            defined,
+            "follow-up history calls _compact_prior_ai; a missing def raises NameError",
+        )
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("join_continuation", source)
