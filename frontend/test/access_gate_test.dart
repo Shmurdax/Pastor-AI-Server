@@ -68,6 +68,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('landing premium card uses the site pink-to-navy gradient', (tester) async {
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    const pink = Color(0xFFa1375a);
+    const navy = Color(0xFF1B264F);
+    final gradients = tester
+        .widgetList<Container>(find.byType(Container))
+        .map((widget) => widget.decoration)
+        .whereType<BoxDecoration>()
+        .map((decoration) => decoration.gradient)
+        .whereType<LinearGradient>()
+        .toList();
+
+    expect(gradients, isNotEmpty);
+    expect(
+      gradients.any(
+        (gradient) =>
+            gradient.colors.length == 2 &&
+            gradient.colors[0] == pink &&
+            gradient.colors[1] == navy,
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('Get started opens the create-account screen', (tester) async {
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
