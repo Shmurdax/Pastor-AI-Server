@@ -962,7 +962,13 @@ _original_get_urls = admin.site.get_urls
 admin.site.get_urls = _get_urls
 
 
-PASTORAL_OBJECT_NAMES = {"PrayerRequest", "ResponseReport", "ChurchEvent"}
+PASTORAL_OBJECT_NAMES = {
+    "User",
+    "Profile",
+    "PrayerRequest",
+    "ResponseReport",
+    "ChurchEvent",
+}
 CONTENT_TOOL_OBJECT_NAMES = {
     "CoreIngestionTool",
     "CoreVideoIngestionTool",

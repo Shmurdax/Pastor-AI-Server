@@ -228,6 +228,23 @@ _pg_doc_count() {
   su -s /bin/bash postgres -c "psql -d '${db}' -tAc \"SELECT count(*) FROM core_ingesteddocument\"" 2>/dev/null | tr -d '[:space:]'
 }
 
+_should_skip_empty_live_dump() {
+  # Return 0 (skip) only when an existing dump would be clobbered by an
+  # unrestored empty cluster. A restore marker means this container already
+  # loaded the dump (possibly with 0 sermons), so member signups must persist.
+  local live_count="${1:-0}"
+  if [[ ! -s "$PERSIST_PG_DUMP" ]]; then
+    return 1
+  fi
+  if [[ "${live_count:-0}" != "0" ]]; then
+    return 1
+  fi
+  if [[ -f "$PERSIST_RESTORE_MARKER" ]]; then
+    return 1
+  fi
+  return 0
+}
+
 _pg_dump_app_db() {
   local db="${POSTGRES_DB:-ai_db}"
   mkdir -p "$PERSIST_PG_ROOT"
@@ -242,11 +259,13 @@ _pg_dump_app_db() {
     rm -f "$tmp"
     return 1
   fi
-  # Never replace a real catalog dump with an empty-database dump.
+  # Never replace a real catalog dump with an unrestored empty cluster.
+  # After a successful restore (marker present), still dump when the sermon
+  # catalog is empty so new member accounts and subscriptions persist.
   local live_count
   live_count="$(_pg_doc_count || true)"
-  if [[ -s "$PERSIST_PG_DUMP" && "${live_count:-0}" == "0" ]]; then
-    warn "Skipping Postgres dump: live DB has 0 ingested documents but $PERSIST_PG_DUMP already exists"
+  if _should_skip_empty_live_dump "$live_count"; then
+    warn "Skipping Postgres dump: live DB has 0 ingested documents and restore has not completed"
     rm -f "$tmp"
     return 0
   fi
@@ -275,7 +294,7 @@ start_postgres_dump_loop() {
       if su -s /bin/bash postgres -c \"pg_dump -Fc --no-owner -d '${POSTGRES_DB:-ai_db}' -f '\$tmp'\" >/dev/null 2>&1 \\
          && [ -s \"\$tmp\" ]; then
         live=\$(su -s /bin/bash postgres -c \"psql -d '${POSTGRES_DB:-ai_db}' -tAc \\\"SELECT count(*) FROM core_ingesteddocument\\\"\" 2>/dev/null | tr -d '[:space:]')
-        if [ -s '${PERSIST_PG_DUMP}' ] && [ \"\${live:-0}\" = 0 ]; then
+        if [ -s '${PERSIST_PG_DUMP}' ] && [ \"\${live:-0}\" = 0 ] && [ ! -f '${PERSIST_RESTORE_MARKER}' ]; then
           rm -f \"\$tmp\"
           continue
         fi

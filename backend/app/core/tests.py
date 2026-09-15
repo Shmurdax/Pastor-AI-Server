@@ -440,6 +440,16 @@ class PersistDbTests(unittest.TestCase):
             else:
                 os.environ["POSTGRES_DB"] = previous
 
+    def test_dump_skips_when_django_uses_sqlite(self):
+        from django.conf import settings
+
+        from .persist_db import dump_persistent_postgres
+
+        engine = settings.DATABASES["default"]["ENGINE"]
+        if "sqlite" not in engine:
+            self.skipTest("this guard is for SQLite test runs")
+        self.assertFalse(dump_persistent_postgres())
+
 
 class DocxToPdfTests(unittest.TestCase):
     def test_fallback_writes_pdf_when_soffice_missing(self):

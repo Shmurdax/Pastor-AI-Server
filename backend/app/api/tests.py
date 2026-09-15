@@ -1,8 +1,9 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -816,3 +817,119 @@ class ChangePlanCreatesCatalogPriceTests(TestCase):
         self.assertEqual(kwargs["phases"][0]["items"][0]["price"], "price_adhoc_month")
         self.assertEqual(res.data["user"]["billing_period"], "monthly")
         self.assertEqual(res.data["user"]["pending_billing_period"], "yearly")
+
+
+_ADMIN_TEST_STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+    },
+}
+
+
+@override_settings(
+    BILLING_MOCK_CHECKOUT="true",
+    STORAGES=_ADMIN_TEST_STORAGES,
+)
+class PaidAccountAdminPersistenceTests(TestCase):
+    """Signup + pay must land on the admin Users list with an Active subscription."""
+
+    def setUp(self):
+        self.api = APIClient()
+
+    def test_register_then_pay_persists_profile_and_admin_users_list(self):
+        register = self.api.post(
+            "/api/auth/register/",
+            {
+                "name": "Paid Member",
+                "email": "paid.member@example.com",
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(register.status_code, 201, register.data)
+        token = register.data["token"]
+        user_id = register.data["user"]["id"]
+
+        self.api.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        pay = self.api.post(
+            "/api/billing/mock-activate/",
+            {"billing_period": "yearly"},
+            format="json",
+        )
+        self.assertEqual(pay.status_code, 200, pay.data)
+        self.assertTrue(pay.data["user"]["is_premium"])
+        self.assertEqual(pay.data["user"]["subscription_status"], "active")
+        self.assertEqual(pay.data["user"]["billing_period"], "yearly")
+
+        user = User.objects.select_related("profile").get(pk=user_id)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.email, "paid.member@example.com")
+        self.assertEqual(user.profile.subscription_status, "active")
+        self.assertEqual(user.profile.billing_period, "yearly")
+        self.assertTrue(user.profile.is_premium)
+
+        staff = User.objects.create_superuser(
+            username="admin@church.org",
+            email="admin@church.org",
+            password="AdminPass123!",
+        )
+        admin_client = Client()
+        admin_client.force_login(staff)
+        users_page = admin_client.get(f"/{settings.ADMIN_URL_PATH}/auth/user/")
+        self.assertEqual(users_page.status_code, 200)
+        self.assertContains(users_page, "paid.member@example.com")
+        self.assertContains(users_page, "Active")
+        self.assertContains(users_page, "Yearly")
+
+        change_page = admin_client.get(
+            f"/{settings.ADMIN_URL_PATH}/auth/user/{user_id}/change/"
+        )
+        self.assertEqual(change_page.status_code, 200)
+        self.assertContains(change_page, "Subscription status")
+        self.assertContains(change_page, 'value="active"', html=False)
+
+        profiles_page = admin_client.get(f"/{settings.ADMIN_URL_PATH}/api/profile/")
+        self.assertEqual(profiles_page.status_code, 200)
+        self.assertContains(profiles_page, "paid.member@example.com")
+
+    def test_mock_activate_with_admin_session_cookie_without_csrf(self):
+        staff = User.objects.create_user(
+            username="staff@church.org",
+            email="staff@church.org",
+            password="StaffPass123!",
+            is_staff=True,
+        )
+        member = User.objects.create_user(
+            username="buyer@church.org",
+            email="buyer@church.org",
+            password="MemberPass123!",
+        )
+        token = Token.objects.create(user=member).key
+        client = APIClient(enforce_csrf_checks=True)
+        self.assertTrue(client.login(username="staff@church.org", password="StaffPass123!"))
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        res = client.post(
+            "/api/billing/mock-activate/",
+            {"billing_period": "monthly"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        member.profile.refresh_from_db()
+        self.assertEqual(member.profile.subscription_status, "active")
+        self.assertNotEqual(res.data["user"]["email"], staff.email)
+
+    def test_users_and_profiles_are_in_pastoral_admin_nav(self):
+        from core.admin import _split_admin_navigation
+
+        staff = User.objects.create_superuser(
+            username="nav-admin@church.org",
+            email="nav-admin@church.org",
+            password="AdminPass123!",
+        )
+        request = RequestFactory().get(f"/{settings.ADMIN_URL_PATH}/")
+        request.user = staff
+        _content, pastoral, _advanced = _split_admin_navigation(request)
+        names = {model.get("object_name") for model in pastoral}
+        self.assertIn("User", names)
+        self.assertIn("Profile", names)
