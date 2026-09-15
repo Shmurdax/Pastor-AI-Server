@@ -109,6 +109,44 @@ void main() {
     );
   });
 
+  Future<void> _goBackFromRegister(WidgetTester tester) async {
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  testWidgets('back from Get started returns to the landing page', (tester) async {
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    await tester.tap(find.text('Get started'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Create your account'), findsOneWidget);
+
+    await _goBackFromRegister(tester);
+
+    expect(find.text("Nordin's AI"), findsOneWidget);
+    expect(find.text('Get started'), findsOneWidget);
+    expect(find.text('Please login to continue'), findsNothing);
+    expect(find.text('Create your account'), findsNothing);
+  });
+
+  testWidgets('back from Subscribe returns to the landing page', (tester) async {
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    await tester.tap(find.text('Subscribe · \$15/ month'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Create your account'), findsOneWidget);
+
+    await _goBackFromRegister(tester);
+
+    expect(find.text("Nordin's AI"), findsOneWidget);
+    expect(find.text('Please login to continue'), findsNothing);
+  });
+
   testWidgets('signed-in unpaid users see the paywall, not chat', (tester) async {
     final auth = _readyAuth(
       token: 'tok',
