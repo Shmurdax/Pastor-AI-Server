@@ -152,16 +152,18 @@ Go to `https://<your-public-url>/<DJANGO_ADMIN_URL>/` (the private path from `co
 
 The home page has **Core Admin Tools** cards for ingestion and PDF browsing, plus the usual Django app lists.
 
-You will mostly live in two groups:
+You will mostly live in two groups on the admin home page:
 
-- **Core** — chat logs, documents, ingestion, prayer, events
-- **Authentication and Authorization** + **Api** — users and subscription profiles
+- **Pastoral** — **Users** (accounts and subscriptions), **Profiles**, prayer requests, response reports, and events
+- **Content tools** — document/video ingestion and website scraping
+
+Paid signups show up immediately under **Pastoral → Users**. The list includes email, plan (monthly/yearly), subscription status, and a Premium column. Open the user to edit the membership fields on the same page (the Profile section under the login fields).
 
 ---
 
 ## Managing users
 
-**Authentication and Authorization → Users**
+**Pastoral → Users**
 
 Each row is one login. Useful fields:
 
@@ -170,10 +172,15 @@ Each row is one login. Useful fields:
 | **Username** | The email they signed up with |
 | **Email** | Same address, used for contact and Google accounts |
 | **First / last name** | Display name in the app |
+| **Plan** | Monthly or yearly after they subscribe |
+| **Subscription** | Free, Active, Past due, or Canceled |
+| **Premium** | Yes when subscription status is Active |
 | **Active** | Uncheck to disable login without deleting the account |
 | **Staff status** | Unlocks prayer inbox, event editing, and the private admin URL (if they have permissions) |
 | **Superuser** | Full admin, including other users |
 | **Password** | Set or reset from this page |
+
+When someone creates an account on the public site and pays, that User row is created right away. After checkout (Stripe or the temporary mock checkout), **Subscription** becomes **Active** and **Premium** is yes. If you only look at the old Users page fields (name/staff/active) you will miss the membership — use the Plan / Subscription / Premium columns.
 
 **Typical client-staff setup**
 
@@ -191,9 +198,9 @@ Google users are created on first Google sign-in. They look like normal Users; u
 
 ## Managing subscriptions
 
-**Api → Profiles**
+**Pastoral → Users** (preferred) or **Pastoral → Profiles**
 
-Every user has one Profile. This is the membership record.
+Every user has one Profile. This is the membership record, now also shown on the User page.
 
 | Status | Meaning | Premium in the app? |
 | --- | --- | --- |
@@ -209,7 +216,7 @@ Also on the profile:
 - **Stripe customer / subscription IDs** — filled by Stripe; leave them unless engineering asks
 - **Premium** column — a yes/no view of whether status is Active
 
-**Grant Premium by hand:** open the Profile, set **Subscription status** to `Active`, optionally set billing period, save. The member may need to refresh or sign in again to see longer chat history.
+**Grant Premium by hand:** open the User, set **Subscription status** to `Active` in the Profile section, optionally set billing period, save. The member may need to refresh or sign in again to see longer chat history.
 
 **Revoke Premium:** set status back to `Free` or `Canceled`.
 

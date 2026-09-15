@@ -24,10 +24,27 @@ def dump_path() -> Path:
     return Path(raw or DEFAULT_DUMP)
 
 
+def _django_uses_postgres() -> bool | None:
+    """True/False when Django is configured; None if settings are unavailable."""
+    try:
+        from django.conf import settings
+
+        if not settings.configured:
+            return None
+        engine = str(settings.DATABASES.get("default", {}).get("ENGINE", "")).lower()
+        if not engine:
+            return None
+        return "postgres" in engine
+    except Exception:
+        return None
+
+
 def dump_persistent_postgres() -> bool:
     db = (os.environ.get("POSTGRES_DB") or "ai_db").strip()
     if not _DB_NAME_RE.match(db):
         logger.warning("Postgres persist dump skipped: invalid POSTGRES_DB %r", db)
+        return False
+    if _django_uses_postgres() is False:
         return False
     dest = dump_path()
     tmp = Path(f"/tmp/pastor_ai_db.{os.getpid()}.dump")

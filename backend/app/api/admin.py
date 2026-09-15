@@ -1,6 +1,82 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import User
+
+from core.persist_db import dump_persistent_postgres
 
 from .models import MediaVideo, Profile
+
+
+class ProfileInline(admin.StackedInline):
+    model = Profile
+    can_delete = False
+    extra = 0
+    max_num = 1
+    fk_name = "user"
+    fields = (
+        "subscription_status",
+        "billing_period",
+        "pending_billing_period",
+        "cancel_at_period_end",
+        "current_period_end",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "avatar_url",
+    )
+    readonly_fields = ("stripe_customer_id", "stripe_subscription_id")
+
+
+class PastorUserAdmin(DjangoUserAdmin):
+    """Show membership on the Users list so paid signups are visible in admin."""
+
+    inlines = [ProfileInline]
+    list_display = (
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "is_staff",
+        "plan_tier",
+        "subscription_status_display",
+        "is_premium_display",
+        "is_active",
+    )
+    list_filter = (
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "profile__subscription_status",
+        "profile__billing_period",
+    )
+    list_select_related = ("profile",)
+    search_fields = ("username", "email", "first_name", "last_name")
+
+    @admin.display(description="Plan", ordering="profile__billing_period")
+    def plan_tier(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return "—"
+        return profile.get_billing_period_display() or "—"
+
+    @admin.display(description="Subscription", ordering="profile__subscription_status")
+    def subscription_status_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return "—"
+        return profile.get_subscription_status_display()
+
+    @admin.display(boolean=True, description="Premium")
+    def is_premium_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        return bool(profile and profile.is_premium)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        dump_persistent_postgres()
+
+    def save_formset(self, request, form, formset, change):
+        super().save_formset(request, form, formset, change)
+        dump_persistent_postgres()
 
 
 @admin.register(Profile)
@@ -30,6 +106,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "stripe_subscription_id",
     )
     readonly_fields = ("stripe_customer_id", "stripe_subscription_id")
+    list_select_related = ("user",)
 
     @admin.display(boolean=True, description="Premium")
     def is_premium_display(self, obj):
@@ -38,6 +115,10 @@ class ProfileAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Premium access")
     def has_premium_access_display(self, obj):
         return obj.has_premium_access
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        dump_persistent_postgres()
 
 
 @admin.register(MediaVideo)
@@ -60,3 +141,7 @@ class MediaVideoAdmin(admin.ModelAdmin):
         if change and "access_tier" in form.changed_data:
             obj.access_tier_manual = True
         super().save_model(request, obj, form, change)
+
+
+admin.site.unregister(User)
+admin.site.register(User, PastorUserAdmin)

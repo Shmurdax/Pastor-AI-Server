@@ -9,6 +9,8 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.persist_db import dump_persistent_postgres
+
 from .serializers import (
     GoogleAuthSerializer,
     LoginSerializer,
@@ -28,6 +30,7 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         token, _ = Token.objects.get_or_create(user=user)
+        dump_persistent_postgres()
         return Response(
             {"token": token.key, "user": UserSerializer(user).data},
             status=status.HTTP_201_CREATED,
@@ -165,6 +168,8 @@ class GoogleAuthView(APIView):
             profile.save(update_fields=["avatar_url"])
 
         token, _ = Token.objects.get_or_create(user=user)
+        if created:
+            dump_persistent_postgres()
         return Response(
             {"token": token.key, "user": UserSerializer(user).data},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,

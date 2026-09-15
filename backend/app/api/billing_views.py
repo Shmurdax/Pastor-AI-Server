@@ -19,8 +19,11 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import permissions, status
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from core.persist_db import dump_persistent_postgres
 
 from .models import Profile
 from .serializers import UserSerializer
@@ -287,6 +290,7 @@ def _apply_subscription_to_profile(
         profile.current_period_end = current_period_end
         update_fields.append("current_period_end")
     profile.save(update_fields=update_fields)
+    dump_persistent_postgres()
 
 
 def _billing_period_from_subscription(subscription: dict | stripe.Subscription) -> str:
@@ -479,14 +483,19 @@ class BillingConfigView(APIView):
         )
 
 
-class MockActivatePremiumView(APIView):
+class _AuthenticatedBillingView(APIView):
+    """Token only — SessionAuthentication CSRF-fails Flutter POSTs when an admin cookie is present."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class MockActivatePremiumView(_AuthenticatedBillingView):
     """TEMPORARY workaround — gifts Premium without charging.
 
     Remove this view (and BILLING_MOCK_CHECKOUT) once real Stripe credentials
     are configured. Card fields on the client are never sent here.
     """
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         if not _mock_checkout_enabled():
@@ -526,10 +535,8 @@ class MockActivatePremiumView(APIView):
         )
 
 
-class CreateCheckoutSessionView(APIView):
+class CreateCheckoutSessionView(_AuthenticatedBillingView):
     """Create an Embedded Stripe Checkout Session for Premium."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         if not _stripe_configured():
@@ -597,10 +604,8 @@ class CreateCheckoutSessionView(APIView):
         )
 
 
-class CheckoutSessionStatusView(APIView):
+class CheckoutSessionStatusView(_AuthenticatedBillingView):
     """Confirm a completed Checkout Session and sync Premium status."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         if not _stripe_configured():
@@ -678,10 +683,8 @@ class CheckoutSessionStatusView(APIView):
         )
 
 
-class CancelSubscriptionView(APIView):
+class CancelSubscriptionView(_AuthenticatedBillingView):
     """Stop auto-renewal. Premium stays until the current period ends."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         profile = _get_or_create_profile(request.user)
@@ -743,14 +746,12 @@ class CancelSubscriptionView(APIView):
         )
 
 
-class ChangePlanView(APIView):
+class ChangePlanView(_AuthenticatedBillingView):
     """Schedule a monthly/yearly switch for the next billing period.
 
     The current period stays at the current price. Stripe (or mock checkout)
     bills the new price starting at ``current_period_end``.
     """
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         period = (request.data.get("billing_period") or "").strip().lower()
@@ -833,15 +834,13 @@ class ChangePlanView(APIView):
         return Response({"ok": True, "user": UserSerializer(user).data})
 
 
-class SyncSubscriptionView(APIView):
+class SyncSubscriptionView(_AuthenticatedBillingView):
     """Pull an active Stripe subscription onto the local profile.
 
     Covers cases where Checkout paid in Stripe but the web client never called
     session-status (common on Flutter web), and after an admin reset while
     Stripe still has an active test subscription.
     """
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         if not _stripe_configured():
