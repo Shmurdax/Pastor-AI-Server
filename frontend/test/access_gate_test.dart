@@ -27,6 +27,13 @@ AuthController _readyAuth({AuthUser? user, String? token}) {
   return auth;
 }
 
+void _useWideSurface(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1400, 1000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -46,6 +53,19 @@ void main() {
     expect(find.text('Get started'), findsOneWidget);
     expect(find.text('Sign in'), findsWidgets);
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
+  });
+
+  testWidgets('landing fits a narrow phone viewport', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    expect(find.text('Get started'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Get started opens the create-account screen', (tester) async {
@@ -80,7 +100,29 @@ void main() {
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
   });
 
+  testWidgets('paywall fits a narrow phone viewport', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '2',
+        email: 'free@test.com',
+        name: 'Free User',
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    expect(find.text('Complete your subscription'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('premium members open chat', (tester) async {
+    _useWideSurface(tester);
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
@@ -100,6 +142,7 @@ void main() {
   });
 
   testWidgets('staff open chat without a paid subscription', (tester) async {
+    _useWideSurface(tester);
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
