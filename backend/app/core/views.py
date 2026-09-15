@@ -16,7 +16,9 @@ from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
+
+from api.permissions import HasPremiumAccess
 
 # RAG & Memory Imports
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -414,8 +416,8 @@ def _scoped_session_id(request, provided_session_id: str) -> str:
 
 
 class IngestedDocumentsAPIView(APIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
 
     def get(self, request):
         auth_error = _require_api_key(request)
@@ -497,8 +499,8 @@ class IngestedDocumentsAPIView(APIView):
 
 
 class IngestedDocumentFileAPIView(APIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
 
     def get(self, request, document_id: int):
         auth_error = _require_api_key(request)
@@ -512,8 +514,8 @@ class IngestedDocumentFileAPIView(APIView):
 
 
 class SermonPdfByNameAPIView(APIView):
-    authentication_classes = []
-    permission_classes = [AllowAny]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
 
     def get(self, request, sermon_name: str):
         auth_error = _require_api_key(request)
@@ -543,11 +545,10 @@ class SermonPdfByNameAPIView(APIView):
         return _file_response_for_document(document)
 
 class ChatAPIView(APIView):
-    # Token auth links messages to the signed-in account when Flutter sends Authorization.
-    # Do not enable SessionAuthentication: an active Django admin cookie would require CSRF
-    # on POST and Flutter fetch does not send one → 403. Anonymous chat remains allowed.
+    # Token auth only — SessionAuthentication would CSRF-fail Flutter POSTs when an
+    # admin cookie is present. Product chat requires a paid (or staff) account.
     authentication_classes = [TokenAuthentication]
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
     # No browsable API HTML — JSON only (clients must POST with Accept: application/json).
     renderer_classes = [JSONRenderer]
 
@@ -1043,7 +1044,7 @@ class ChatWarmupAPIView(APIView):
     """POST/GET /api/chat/warmup/ — start the serverless GPU while the user is still typing."""
 
     authentication_classes = [TokenAuthentication]
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
     renderer_classes = [JSONRenderer]
 
     def get(self, request):
@@ -1063,7 +1064,7 @@ class TranslateAPIView(APIView):
     """POST /api/translate/ — retranslate visible AI replies when the UI language changes."""
 
     authentication_classes = [TokenAuthentication]
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
     renderer_classes = [JSONRenderer]
 
     def get(self, request):
@@ -1106,22 +1107,17 @@ class TranslateAPIView(APIView):
 
 
 class PrayerRequestAPIView(APIView):
-    """GET/POST /api/prayer-requests/ — public submit + staff inbox list."""
+    """GET/POST /api/prayer-requests/ — Premium submit + staff inbox list."""
 
+    authentication_classes = [TokenAuthentication]
     renderer_classes = [JSONRenderer]
-
-    def get_authenticators(self):
-        # Public POST stays key/session-light; staff GET uses DRF Token auth.
-        if self.request.method == "GET":
-            return super().get_authenticators()
-        return []
 
     def get_permissions(self):
         from rest_framework.permissions import IsAdminUser
 
         if self.request.method == "GET":
             return [IsAdminUser()]
-        return [AllowAny()]
+        return [IsAuthenticated(), HasPremiumAccess()]
 
     def get(self, request):
         from api.serializers import PrayerRequestSerializer
@@ -1178,8 +1174,9 @@ class PrayerRequestAPIView(APIView):
 
 
 class ResponseReportAPIView(APIView):
-    """GET/POST /api/response-reports/ — public submit + staff inbox list."""
+    """GET/POST /api/response-reports/ — Premium submit + staff inbox list."""
 
+    authentication_classes = [TokenAuthentication]
     renderer_classes = [JSONRenderer]
 
     def get_permissions(self):
@@ -1187,7 +1184,7 @@ class ResponseReportAPIView(APIView):
 
         if self.request.method == "GET":
             return [IsAdminUser()]
-        return [AllowAny()]
+        return [IsAuthenticated(), HasPremiumAccess()]
 
     def get(self, request):
         from api.serializers import ResponseReportSerializer

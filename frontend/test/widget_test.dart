@@ -1,22 +1,39 @@
-
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
+import 'package:flutter_application_1/main.dart';
 import 'package:flutter_test/flutter_test.dart';
-// Ensure this matches your project name/file
-import 'package:flutter_application_1/main.dart'; 
+import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Sermon Brain UI loads test', (WidgetTester tester) async {
-    // 1. Build our app (Using the correct class name)
-    await tester.pumpWidget(const SermonBrainApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // 2. Verify the Disclaimer screen appears first
-    expect(find.text('Important Notice'), findsOneWidget);
-    expect(find.text('I Understand & Proceed'), findsOneWidget);
+  setUpAll(() {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  });
 
-    // 3. Tap the consent button
-    await tester.tap(find.text('I Understand & Proceed'));
-    await tester.pumpAndSettle(); // Wait for the transition
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
 
-    // 4. Verify we are now in the Chat Interface
-    expect(find.text('Ask about a sermon...'), findsOneWidget);
+  testWidgets('Sermon Brain landing loads for visitors', (tester) async {
+    final auth = AuthController(restoreSession: false);
+    auth.sessionReady = true;
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
+        child: const SermonBrainApp(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text("Nordin's AI"), findsOneWidget);
+    expect(find.text('Get started'), findsOneWidget);
   });
 }

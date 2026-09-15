@@ -55,18 +55,38 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         response = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
-    def test_warmup_route_starts_worker_without_running_chat(self):
+    def test_warmup_route_requires_premium_access(self):
         from unittest.mock import patch
+
+        from django.contrib.auth.models import User
+        from rest_framework.authtoken.models import Token
 
         with patch("core.vllm_warmup.warmup_vllm_worker", return_value={
             "ok": True,
             "warming": True,
             "skipped": False,
         }) as mock_warmup:
+            anon = self.client.post(
+                "/api/chat/warmup/",
+                data={},
+                content_type="application/json",
+            )
+            self.assertIn(anon.status_code, (401, 403))
+            mock_warmup.assert_not_called()
+
+            premium = User.objects.create_user(
+                username="premium@church.org",
+                email="premium@church.org",
+                password="PremiumPass123!",
+            )
+            premium.profile.subscription_status = "active"
+            premium.profile.save(update_fields=["subscription_status"])
+            token = Token.objects.create(user=premium).key
             response = self.client.post(
                 "/api/chat/warmup/",
                 data={},
                 content_type="application/json",
+                HTTP_AUTHORIZATION=f"Token {token}",
             )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["warming"])

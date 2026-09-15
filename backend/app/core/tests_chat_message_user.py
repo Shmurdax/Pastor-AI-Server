@@ -77,7 +77,10 @@ class ChatAPIUserLinkTests(TestCase):
             email="member@church.org",
             password="MemberPass123!",
         )
+        self.user.profile.subscription_status = "active"
+        self.user.profile.save(update_fields=["subscription_status"])
         self.token = Token.objects.create(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
 
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
@@ -101,7 +104,8 @@ class ChatAPIUserLinkTests(TestCase):
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)
     @patch("core.views.get_chat_llm", return_value=MagicMock())
-    def test_anonymous_chat_leaves_user_null(self, _mock_llm, _mock_oos, _mock_scope):
+    def test_anonymous_chat_is_rejected(self, _mock_llm, _mock_oos, _mock_scope):
+        self.client.credentials()
         res = self.client.post(
             self.url,
             {
@@ -110,9 +114,8 @@ class ChatAPIUserLinkTests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(res.status_code, 200)
-        msg = ChatMessage.objects.get()
-        self.assertIsNone(msg.user_id)
+        self.assertIn(res.status_code, (401, 403))
+        self.assertFalse(ChatMessage.objects.exists())
 
     @patch("core.views.query_in_scope", return_value=False)
     @patch("core.views.generate_out_of_scope_reply", return_value=OUT_OF_SCOPE_REPLY)

@@ -86,10 +86,17 @@ class TokenStorage {
 }
 
 class AuthController extends ChangeNotifier {
-  AuthController({AuthService? authService, TokenStorage? tokenStorage})
-      : _authService = authService ?? AuthService(),
+  AuthController({
+    AuthService? authService,
+    TokenStorage? tokenStorage,
+    bool restoreSession = true,
+  })  : _authService = authService ?? AuthService(),
         _tokenStorage = tokenStorage ?? const TokenStorage() {
-    _restoreSession();
+    if (restoreSession) {
+      _restoreSession();
+    } else {
+      sessionReady = true;
+    }
   }
 
   final AuthService _authService;
@@ -99,6 +106,7 @@ class AuthController extends ChangeNotifier {
   String? token;
   bool isLoading = false;
   String? error;
+  bool sessionReady = false;
 
   bool get isAuthenticated => token != null && user != null;
 
@@ -128,23 +136,28 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> _restoreSession() async {
-    final saved = await _tokenStorage.loadSession();
-    if (saved.token == null || saved.user == null) return;
-
-    if (kUseMockAuth) {
-      token = saved.token;
-      user = saved.user;
-      notifyListeners();
-      return;
-    }
-
     try {
-      final me = await _authService.getMe(saved.token!);
-      token = saved.token;
-      user = me;
+      final saved = await _tokenStorage.loadSession();
+      if (saved.token == null || saved.user == null) {
+        return;
+      }
+
+      if (kUseMockAuth) {
+        token = saved.token;
+        user = saved.user;
+        return;
+      }
+
+      try {
+        final me = await _authService.getMe(saved.token!);
+        token = saved.token;
+        user = me;
+      } catch (_) {
+        await _tokenStorage.clearSession();
+      }
+    } finally {
+      sessionReady = true;
       notifyListeners();
-    } catch (_) {
-      await _tokenStorage.clearSession();
     }
   }
 

@@ -52,10 +52,10 @@ There are four kinds of people. The same email account can be both a member and 
 
 | Role | How they get it | What they can do |
 | --- | --- | --- |
-| **Guest** | Opens the site, no sign-in | Chat, browse published events, submit a prayer request, view free media preview |
-| **Member** | Registers with email/password or Google | Same as guest, plus a saved account, profile, and checkout for Premium |
-| **Premium member** | Pays (or staff grants Premium) | Extra chat history and the Premium perks listed on the plans page |
-| **Staff** | A superuser checks **Staff status** on their User | Prayer inbox, create/edit church events, and (if they have the private admin URL) the Django control panel |
+| **Visitor** | Opens the site, no sign-in | Marketing landing page only. Must create an account and subscribe before any product access |
+| **Member (unpaid)** | Registers with email/password or Google | Completes checkout. Cannot use chat, media, prayer, events, or the sermon library until Premium is active |
+| **Premium member** | Pays (or staff grants Premium) | Chat, sermon library, prayer, events, media, and the Premium perks listed on the plans page |
+| **Staff** | A superuser checks **Staff status** on their User | Same product access as Premium (no payment required), plus prayer inbox, create/edit church events, and (if they have the private admin URL) the Django control panel |
 
 **Staff status** is the switch that unlocks ministry tools in the app. **Superuser** is the extra switch for full Django admin (users, documents, subscriptions). Typical client staff who manage the library and memberships should be **staff + superuser**, or staff with the specific admin permissions you want them to have.
 
@@ -65,15 +65,14 @@ The install creates a default admin account (`admin` / `admin123` unless overrid
 
 ## The public site
 
-Open the public URL (Cloudflare tunnel or custom domain). This is what guests and members use.
+Open the public URL (Cloudflare tunnel or custom domain). Visitors who are not signed in with an active Premium subscription (or staff) see the **marketing landing page**. They must create an account or sign in, then complete checkout before the app opens.
 
 ### Chat
 
-- Anyone can chat. Sign-in is optional.
-- Signed-in chats can be tied to the account; guests still get a session.
+- Chat is paid-only. Guests and unpaid accounts cannot send messages.
+- Signed-in Premium chats are tied to the account and sync history.
 - The sidebar has **Sermons** (the ingested PDF library) and **Chats** (saved conversations).
-- **Free / guest:** only the most recent chat is kept.
-- **Premium:** a much longer history list (dozens of conversations).
+- Premium keeps a longer history list (dozens of conversations).
 - Microphone input is available where the browser supports it.
 - Clicking a sermon title opens the stored PDF.
 
@@ -81,7 +80,7 @@ The assistant identifies itself as an AI for Pastor Don Nordin (it does not use 
 
 ### Accounts
 
-From the profile chip (after sign-in) or the login screen, people can:
+From the landing page, login screen, or profile chip (after sign-in), people can:
 
 - Create an account (name, email, password)
 - Sign in with email/password
@@ -92,15 +91,16 @@ Email is the username. Each account automatically gets a **Profile**, which hold
 
 ### Subscriptions
 
-**Nordin's AI → Subscribe** (or **View plans** from the profile).
+The landing page and checkout use the current Premium prices. There is no public Free plan.
+
+**Nordin's AI → Subscribe** (or **View plans** from the profile) is for **paid members** to switch monthly/yearly or cancel.
 
 | Plan | Price | What is advertised |
 | --- | --- | --- |
-| Free | $0 | Most recent chat history |
-| Premium monthly | $15 / month | Longer chat history, daily 15-minute video devotionals, the Nordins' study notes, daily Bible reading |
+| Premium monthly | $15 / month | Chat, longer history, daily 15-minute video devotionals, the Nordins' study notes, daily Bible reading |
 | Premium yearly | $150 / year | Same Premium perks |
 
-Checkout requires a signed-in account. If Stripe keys are configured, payment goes through Stripe Embedded Checkout. If Stripe is not configured yet, the site uses a **temporary mock checkout** that grants Premium without charging. Treat mock checkout as a test/demo path, not live billing.
+Checkout requires a signed-in account and happens immediately after signup/sign-in if the account is not Premium. If Stripe keys are configured, payment goes through Stripe Embedded Checkout. If Stripe is not configured yet, the site uses a **temporary mock checkout** that grants Premium without charging. Treat mock checkout as a test/demo path, not live billing.
 
 Paid members can switch between monthly and yearly from the same plans page. The current price stays in effect until the end of the paid period; the new price is billed at the next renewal. A monthly member who switches to yearly keeps paying $15 until that month ends, then is billed $150/year.
 
@@ -110,18 +110,18 @@ Staff can also grant or revoke Premium in Django admin without a payment (see [M
 
 ### Prayer requests
 
-Anyone can submit a prayer from the chat screen (the prayer button). They can include name, email, and phone, or submit anonymously. Staff follow up in the in-app **Prayer inbox** or in Django admin.
+Anyone with Premium (or staff) can submit a prayer from the chat screen (the prayer button). They can include name, email, and phone, or submit anonymously. Visitors on the landing page cannot submit prayers. Staff follow up in the in-app **Prayer inbox** or in Django admin.
 
 ### Church events
 
 **Events** in the top nav opens the calendar overlay.
 
-- Public visitors see **published** events only.
+- Premium members and staff see **published** events only (staff also see unpublished events they manage).
 - Staff who are signed in can add, edit, unpublish, and delete events from that same panel.
 
 ### Media
 
-**Nordin's AI → Media** is the Daily Devotionals library. Treat it as a front-end shell until real videos are wired in. Guests currently see the free preview item.
+**Nordin's AI → Media** is the Daily Devotionals library. Treat it as a front-end shell until real videos are wired in. The media API requires Premium (or staff).
 
 ---
 

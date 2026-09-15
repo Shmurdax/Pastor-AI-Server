@@ -12,8 +12,11 @@ import 'package:flutter_application_1/sermon_sources.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
+import 'package:flutter_application_1/screens/checkout_screen.dart';
+import 'package:flutter_application_1/screens/landing_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
+import 'package:flutter_application_1/screens/paywall_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
@@ -107,7 +110,136 @@ class SermonBrainApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         textTheme: GoogleFonts.figtreeTextTheme(),
       ),
-      home: const ChatScreen(),
+      home: const AppAccessGate(),
+    );
+  }
+}
+
+/// Root router: splash → landing / paywall / chat.
+class AppAccessGate extends StatefulWidget {
+  const AppAccessGate({super.key});
+
+  @override
+  State<AppAccessGate> createState() => _AppAccessGateState();
+}
+
+class _AppAccessGateState extends State<AppAccessGate> {
+  final _api = ApiService();
+  BillingPeriod _billingPeriod = BillingPeriod.monthly;
+  bool _launchCheckout = false;
+  bool _billingReturnScheduled = false;
+  bool _handlingBillingReturn = false;
+
+  void _scheduleBillingReturn(AuthController auth) {
+    if (_billingReturnScheduled || !auth.sessionReady) return;
+    _billingReturnScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_handleBillingReturnIfNeeded());
+    });
+  }
+
+  Future<void> _handleBillingReturnIfNeeded() async {
+    if (!kIsWeb || _handlingBillingReturn) return;
+    final uri = Uri.base;
+    if (uri.queryParameters['billing'] != 'success') return;
+    final sessionId = uri.queryParameters['session_id'];
+    if (sessionId == null || sessionId.isEmpty) return;
+
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+
+    _handlingBillingReturn = true;
+    _api.setAccessToken(auth.token);
+    try {
+      for (var attempt = 0; attempt < 6; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+        }
+        try {
+          final status = await _api.getCheckoutSessionStatus(sessionId);
+          final userJson = status['user'];
+          if (userJson is Map<String, dynamic>) {
+            await auth.applyUser(AuthUser.fromJson(userJson));
+          } else {
+            await auth.refreshMe();
+          }
+          if (auth.hasPremiumAccess) break;
+        } catch (_) {
+          if (attempt == 5) rethrow;
+        }
+      }
+      if (!auth.hasPremiumAccess) {
+        await auth.refreshMe();
+      }
+    } catch (_) {
+      await auth.refreshMe();
+    }
+  }
+
+  void _markCheckoutIntent() {
+    _launchCheckout = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthController>();
+    _scheduleBillingReturn(auth);
+
+    if (!auth.sessionReady) {
+      return const _SessionSplash();
+    }
+    if (auth.hasPremiumAccess) {
+      return const ChatScreen();
+    }
+    if (auth.isAuthenticated) {
+      return PaywallScreen(
+        billingPeriod: _billingPeriod,
+        autoStartCheckout: _launchCheckout,
+        onBillingPeriodChanged: (period) {
+          setState(() => _billingPeriod = period);
+        },
+      );
+    }
+    return LandingScreen(
+      billingPeriod: _billingPeriod,
+      onBillingPeriodChanged: (period) {
+        setState(() => _billingPeriod = period);
+      },
+      onStartCheckout: _markCheckoutIntent,
+    );
+  }
+}
+
+class _SessionSplash extends StatelessWidget {
+  const _SessionSplash();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/nordins_main_logo.png',
+              height: 88,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 24),
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: _navy),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Loading…',
+              style: GoogleFonts.figtree(color: _gold, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -241,8 +373,8 @@ final bibleRefRegex = RegExp(
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      unawaited(_apiService.warmupChat());
       await _syncAuthState();
+      unawaited(_apiService.warmupChat());
       await _handleBillingReturn();
       if (!mounted) return;
       _localeListener = context.read<LocaleController>();

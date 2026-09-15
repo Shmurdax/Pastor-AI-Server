@@ -7,6 +7,8 @@ from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from core.models import ChurchEvent
+
 
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class AuthConfigViewTests(TestCase):
@@ -171,23 +173,39 @@ class PrayerRequestAPITests(TestCase):
             password="MemberPass123!",
         )
         self.member_token = Token.objects.create(user=self.member).key
-
-    def test_public_can_submit_prayer_request(self):
-        res = self.client.post(
-            self.list_url,
-            {
-                "name": "Jane Doe",
-                "email": "jane@example.com",
-                "phone": "555-0100",
-                "prayer_text": "Please pray for my family during this season.",
-                "is_anonymous": False,
-            },
-            format="json",
+        self.premium = User.objects.create_user(
+            username="premium@church.org",
+            email="premium@church.org",
+            password="PremiumPass123!",
         )
+        self.premium.profile.subscription_status = "active"
+        self.premium.profile.save(update_fields=["subscription_status"])
+        self.premium_token = Token.objects.create(user=self.premium).key
+        self._prayer_payload = {
+            "name": "Jane Doe",
+            "email": "jane@example.com",
+            "phone": "555-0100",
+            "prayer_text": "Please pray for my family during this season.",
+            "is_anonymous": False,
+        }
+
+    def test_anonymous_cannot_submit_prayer_request(self):
+        res = self.client.post(self.list_url, self._prayer_payload, format="json")
+        self.assertIn(res.status_code, (401, 403))
+
+    def test_free_member_cannot_submit_prayer_request(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        res = self.client.post(self.list_url, self._prayer_payload, format="json")
+        self.assertEqual(res.status_code, 403)
+
+    def test_premium_can_submit_prayer_request(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.list_url, self._prayer_payload, format="json")
         self.assertEqual(res.status_code, 201)
         self.assertTrue(res.data["success"])
 
     def test_staff_can_list_prayer_requests(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
         self.client.post(
             self.list_url,
             {
@@ -210,6 +228,7 @@ class PrayerRequestAPITests(TestCase):
         self.assertEqual(res.status_code, 403)
 
     def test_staff_can_patch_follow_up_fields(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
         create = self.client.post(
             self.list_url,
             {
@@ -289,6 +308,76 @@ class PremiumAccessTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.data["user"]["is_staff"])
         self.assertTrue(res.data["user"]["is_premium"])
+
+
+class ProductPaywallTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.member = User.objects.create_user(
+            username="free@church.org",
+            email="free@church.org",
+            password="MemberPass123!",
+        )
+        self.premium = User.objects.create_user(
+            username="premium@church.org",
+            email="premium@church.org",
+            password="PremiumPass123!",
+        )
+        self.premium.profile.subscription_status = "active"
+        self.premium.profile.save(update_fields=["subscription_status"])
+        self.staff = User.objects.create_user(
+            username="staff@church.org",
+            email="staff@church.org",
+            password="StaffPass123!",
+            is_staff=True,
+        )
+        self.member_token = Token.objects.create(user=self.member).key
+        self.premium_token = Token.objects.create(user=self.premium).key
+        self.staff_token = Token.objects.create(user=self.staff).key
+        self.event = ChurchEvent.objects.create(
+            title="Sunday gathering",
+            location="Main campus",
+            host_name="Pastor Don",
+            starts_at=timezone.now(),
+            is_published=True,
+        )
+
+    def _assert_locked(self, method, path, **kwargs):
+        anon = getattr(self.client, method)(path, **kwargs)
+        self.assertIn(anon.status_code, (401, 403), path)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        free = getattr(self.client, method)(path, **kwargs)
+        self.assertEqual(free.status_code, 403, path)
+        self.client.credentials()
+
+    def test_anonymous_and_free_are_locked_out_of_product_apis(self):
+        self._assert_locked("get", "/api/church-events/")
+        self._assert_locked("get", f"/api/church-events/{self.event.pk}/")
+        self._assert_locked("get", "/api/media/")
+        self._assert_locked("get", "/api/ingested-documents/")
+        self._assert_locked("post", "/api/chat/", data={"query": "Hope in Scripture?"}, format="json")
+        self._assert_locked("post", "/api/chat/warmup/", data={}, format="json")
+        self._assert_locked(
+            "post",
+            "/api/translate/",
+            data={"texts": ["Hello"], "language": "es"},
+            format="json",
+        )
+
+    def test_premium_can_read_events_and_media(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        events = self.client.get("/api/church-events/")
+        self.assertEqual(events.status_code, 200)
+        self.assertEqual(len(events.data["results"]), 1)
+        media = self.client.get("/api/media/")
+        self.assertEqual(media.status_code, 200)
+        docs = self.client.get("/api/ingested-documents/")
+        self.assertEqual(docs.status_code, 200)
+
+    def test_staff_can_read_events_without_paying(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
+        res = self.client.get("/api/church-events/")
+        self.assertEqual(res.status_code, 200)
 
 
 @override_settings(BILLING_MOCK_CHECKOUT="true")
