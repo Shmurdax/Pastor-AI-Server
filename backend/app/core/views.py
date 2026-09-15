@@ -41,6 +41,16 @@ from .chat_llm import (
     get_chat_llm,
 )
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
+from .grounding import (
+    GROUNDING_REPAIR_STEER,
+    collect_allowed_nkjv,
+    collect_allowed_sermon_quotes,
+    format_grounding_block,
+    grounded_fallback_answer,
+    lookup_nkjv_verses,
+    verify_answer_grounding,
+    verse_refs_for_lookup,
+)
 from .chat_retrieval import (
     apply_retrieval_threshold,
     ensure_source_media_mix,
@@ -92,9 +102,9 @@ SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
 RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.40"))
 RETRIEVAL_VIDEO_RATIO = float(os.getenv("RETRIEVAL_VIDEO_RATIO", "0.45"))
-RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.8"))
+RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.72"))
 RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "8"))
-RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "4"))
+RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "2"))
 RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "2"))
 RETRIEVAL_SOURCE_MIN = int(os.getenv("RETRIEVAL_SOURCE_MIN", "3"))
 RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
@@ -260,6 +270,53 @@ def _sse_response(iterator):
 
 def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
+
+
+def _ground_generated_answer(prepared, answer: str) -> str:
+    quotes = prepared.get("allowed_quotes") or []
+    nkjv = prepared.get("allowed_nkjv") or []
+    docs = prepared.get("docs") or []
+    nkjv_docs = [doc for doc in docs if _is_bible_source(_doc_source_name(doc))]
+    sermon_docs = [doc for doc in docs if not _is_bible_source(_doc_source_name(doc))]
+    report = verify_answer_grounding(answer, sermon_docs=sermon_docs, nkjv_docs=nkjv_docs)
+    if report.ok:
+        return answer
+    logger.warning(
+        "Grounding failed invented_quotes=%s invented_scripture=%s missing_refs=%s",
+        len(report.invented_quotes),
+        len(report.invented_scripture),
+        len(report.missing_nkjv_refs),
+    )
+    try:
+        llm = prepared.get("llm")
+        messages = list(prepared.get("messages") or [])
+        if llm is not None and messages:
+            repair_messages = messages + [
+                AIMessage(content=answer),
+                HumanMessage(content=GROUNDING_REPAIR_STEER),
+            ]
+            extra = llm.bind(max_tokens=min(512, int(prepared.get("completion_tokens") or 512))).invoke(
+                repair_messages
+            )
+            repaired = (getattr(extra, "content", "") or "").strip()
+            if repaired:
+                second = verify_answer_grounding(
+                    repaired, sermon_docs=sermon_docs, nkjv_docs=nkjv_docs
+                )
+                if second.ok:
+                    return repaired
+    except Exception:
+        logger.exception("Grounding repair pass failed")
+    return grounded_fallback_answer(quotes, nkjv)
+    """Keep quote/verse bans without feeding the last teaching as a template."""
+    quotes = extract_used_quotes([text])
+    verses = extract_used_verse_refs([text])
+    parts = ["Previous teaching (do not copy its heading or outline)."]
+    if quotes:
+        parts.append("Already used quotations: " + " | ".join(quotes[:4]))
+    if verses:
+        parts.append("Already used NKJV refs: " + ", ".join(verses[:8]))
+    return " ".join(parts)
 
 
 def _continuation_messages(messages, first_answer: str):
@@ -652,6 +709,8 @@ class ChatAPIView(APIView):
                 is_followup = False
                 docs = []
                 context = ""
+                allowed_quotes = []
+                allowed_nkjv = []
                 logger.debug(
                     "Skipping Qdrant for brief social message (session=%s)",
                     session_id[:18],
@@ -716,11 +775,30 @@ class ChatAPIView(APIView):
                     ),
                     query=user_query_llm,
                 )
+                refs = verse_refs_for_lookup(user_query_llm, docs)
+                nkjv_docs = lookup_nkjv_verses(
+                    client,
+                    collection_name,
+                    refs,
+                    retrieved_docs=docs,
+                )
+                seen_nkjv = {
+                    (getattr(doc, "page_content", None) or "")[:120]
+                    for doc in docs
+                    if _is_bible_source(_doc_source_name(doc))
+                }
+                for extra in nkjv_docs:
+                    key = (getattr(extra, "page_content", None) or "")[:120]
+                    if key and key not in seen_nkjv:
+                        docs.append(extra)
+                        seen_nkjv.add(key)
                 context = format_reference_notes(
                     docs,
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
                 )
+                allowed_quotes = collect_allowed_sermon_quotes(docs)
+                allowed_nkjv = collect_allowed_nkjv(docs)
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -743,7 +821,7 @@ class ChatAPIView(APIView):
                 exchange = f"{msg.user_query} {msg.ai_response}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
-                history_messages.insert(0, AIMessage(content=msg.ai_response))
+                history_messages.insert(0, AIMessage(content=_compact_prior_ai(msg.ai_response)))
                 history_messages.insert(0, HumanMessage(content=msg.user_query))
                 current_chars += len(exchange)
 
@@ -768,9 +846,13 @@ class ChatAPIView(APIView):
                     used_headings=used_headings,
                     banned_titles=banned_titles,
                 )
+            grounding_block = ""
+            if not brief_social:
+                grounding_block = format_grounding_block(allowed_quotes, allowed_nkjv)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + uniqueness
+                + grounding_block
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -818,6 +900,8 @@ class ChatAPIView(APIView):
                 "docs": docs,
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
+                "allowed_quotes": allowed_quotes,
+                "allowed_nkjv": allowed_nkjv,
             }
 
         def _unique_sources(docs):
@@ -930,6 +1014,11 @@ class ChatAPIView(APIView):
                     answer = _join_continuation(answer, extra)
                     if emit_live:
                         yield _sse({"type": "replace", "text": answer})
+                grounded = _ground_generated_answer(prepared, answer)
+                if grounded != answer:
+                    answer = grounded
+                    if emit_live:
+                        yield _sse({"type": "replace", "text": answer})
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1013,6 +1102,7 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
+            answer = _ground_generated_answer(prepared, answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

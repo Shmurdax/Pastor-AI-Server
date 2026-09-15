@@ -582,7 +582,9 @@ def query_focus_tokens(text: str) -> frozenset[str]:
     return frozenset(
         token.lower()
         for token in keyword_search_query(text).split()
-        if len(token) >= 4 and token.lower() not in _GENERIC_FOCUS_STOPWORDS
+        if len(token) >= 3
+        and token.lower() not in _GENERIC_FOCUS_STOPWORDS
+        and token.lower() not in {"god", "man", "men", "son", "day", "way"}
     )
 
 
@@ -973,7 +975,7 @@ def apply_retrieval_threshold(
     if len(scored_hits) <= retrieval_k and threshold < 0.7:
         return scored_hits
     above = [pair for pair in scored_hits if pair[1] >= threshold]
-    min_keep = 1 if threshold >= 0.7 else max(6, retrieval_k // 2)
+    min_keep = max(6, retrieval_k // 4)
     if len(above) >= min_keep:
         return above
     return scored_hits

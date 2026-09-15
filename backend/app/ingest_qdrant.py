@@ -39,8 +39,8 @@ def run_ingestion():
 
     # Mode B: General Text (for sermons and long Bible chapters)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=int(os.environ.get("INGEST_CHUNK_SIZE", "1800")),
-        chunk_overlap=int(os.environ.get("INGEST_CHUNK_OVERLAP", "250")),
+        chunk_size=int(os.environ.get("INGEST_CHUNK_SIZE", "550")),
+        chunk_overlap=int(os.environ.get("INGEST_CHUNK_OVERLAP", "80")),
         separators=["\n\n", "\n", " ", ""]
     )
 

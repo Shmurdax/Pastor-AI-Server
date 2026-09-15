@@ -37,6 +37,7 @@ def ensure_sermon_collection(client: QdrantClient, collection_name: Optional[str
     """Create the vector collection if it was removed (e.g. empty ``qdrant_storage`` volume)."""
     name = collection_name or get_collection_name()
     if collection_exists(client, name):
+        ensure_payload_indexes(client, name)
         return
     size = get_vector_size()
     logger.warning(
@@ -57,6 +58,31 @@ def ensure_sermon_collection(client: QdrantClient, collection_name: Optional[str
             return
         logger.error("Failed to create Qdrant collection %r: %s", name, exc)
         raise
+    ensure_payload_indexes(client, name)
+
+
+def ensure_payload_indexes(client: QdrantClient, collection_name: Optional[str] = None) -> None:
+    """Keyword/integer indexes so NKJV verse lookup can filter without a full scan."""
+    name = collection_name or get_collection_name()
+    specs = (
+        ("chunk_kind", qdrant_models.PayloadSchemaType.KEYWORD),
+        ("book", qdrant_models.PayloadSchemaType.KEYWORD),
+        ("file_hash", qdrant_models.PayloadSchemaType.KEYWORD),
+        ("source", qdrant_models.PayloadSchemaType.KEYWORD),
+        ("chapter", qdrant_models.PayloadSchemaType.INTEGER),
+        ("verse_start", qdrant_models.PayloadSchemaType.INTEGER),
+        ("verse_end", qdrant_models.PayloadSchemaType.INTEGER),
+    )
+    for field_name, schema in specs:
+        try:
+            client.create_payload_index(
+                collection_name=name,
+                field_name=field_name,
+                field_schema=schema,
+                wait=False,
+            )
+        except Exception:
+            logger.debug("Payload index %s on %s already present or skipped", field_name, name)
 
 
 def delete_sermon_collection(client: QdrantClient, collection_name: Optional[str] = None) -> bool:

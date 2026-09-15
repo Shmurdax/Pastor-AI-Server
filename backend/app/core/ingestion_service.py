@@ -17,10 +17,11 @@ Ingestion pipeline (admin uploads):
    ``IngestedChunk`` metadata; the
    markdown string is what gets split into chunks (not stored as a single DB blob).
 
-5. **Chunk + embed + Qdrant** — ``RecursiveCharacterTextSplitter`` produces chunks; each new chunk
-   is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant with payload ``source`` (PDF filename),
-   ``file_hash``, ``chunk_hash``, ``text``, etc. Duplicate chunk hashes are skipped across the corpus.
-   Near-duplicates are also skipped by normalized title and cleaned-content hash.
+5. **Chunk + embed + Qdrant** — sermons split into quote-sized windows (~550 chars) with
+   ``quote_text`` payload; NKJV splits into verse-level chunks with book/chapter/verse payload.
+   Each chunk is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant. Duplicate chunk
+   hashes are skipped across the corpus. Near-duplicates are also skipped by normalized title
+   and cleaned-content hash. Reingest with ``python manage.py reingest_grounded_rag``.
 """
 import hashlib
 import logging
@@ -41,6 +42,7 @@ from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 
+from .bible_chunking import split_nkjv_document
 from .document_cleanup import (
     clean_extracted_document,
     clean_markdown_document,
@@ -49,7 +51,8 @@ from .document_cleanup import (
 from .document_titles import normalize_title_key, prettify_title
 from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
-from .qdrant_utils import collection_exists, ensure_sermon_collection
+from .qdrant_utils import collection_exists, ensure_payload_indexes, ensure_sermon_collection
+from .quote_chunking import split_sermon_quote_chunks
 from .storage_paths import admin_ingestion_dir
 
 try:
@@ -79,8 +82,8 @@ class DeletionResult:
 # Larger chunking for Bible documents keeps the corpus lighter-weight
 # (fewer embeddings/points) than sermon-sized uploads.
 DEFAULT_SPLITTER_KWARGS = {
-    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "1800")),
-    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "250")),
+    "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "550")),
+    "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "80")),
     "separators": ["\n\n", "\n", " ", ""],
 }
 BIBLE_SPLITTER_KWARGS = {
@@ -96,6 +99,26 @@ BIBLE_SOURCE_MARKERS = tuple(
     ).split(",")
     if marker.strip()
 )
+
+
+def split_text_for_ingest(markdown_text: str, *, is_bible: bool) -> tuple[List[str], List[dict]]:
+    """Quote-level sermon windows, or verse-level NKJV chunks when the parse is trusted."""
+    if is_bible:
+        chunks, metas = split_nkjv_document(markdown_text)
+        if chunks:
+            kept_chunks: List[str] = []
+            kept_metas: List[dict] = []
+            for chunk, meta in zip(chunks, metas):
+                cleaned = _clean_text(chunk)
+                if cleaned:
+                    kept_chunks.append(cleaned)
+                    kept_metas.append(meta)
+            if kept_chunks:
+                return kept_chunks, kept_metas
+        splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
+        fallback = [_clean_text(item) for item in splitter.split_text(markdown_text) if _clean_text(item)]
+        return fallback, [{"chunk_kind": "bible_passage", "content_type": "bible"} for _ in fallback]
+    return split_sermon_quote_chunks(markdown_text)
 
 
 def _clean_text(text: str) -> str:
@@ -426,13 +449,12 @@ def ingest_uploaded_files(
     upload_dir = admin_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
-    bible_splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
     # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
+    ensure_payload_indexes(qdrant_client, collection_name)
 
     for upload in uploaded_files:
         try:
@@ -534,14 +556,21 @@ def ingest_uploaded_files(
 
             markdown_text = _to_markdown(title, cleaned_text)
             use_bible_splitter = _is_bible_source(upload.name)
-            splitter = bible_splitter if use_bible_splitter else default_splitter
+            chunks, per_chunk_metadata = split_text_for_ingest(
+                markdown_text, is_bible=use_bible_splitter
+            )
             if log_fn and use_bible_splitter:
+                kinds = {str(meta.get("chunk_kind") or "") for meta in per_chunk_metadata}
                 log_fn(
-                    "Bible source detected; using Bible splitter "
-                    f"(chunk_size={BIBLE_SPLITTER_KWARGS['chunk_size']}, "
-                    f"overlap={BIBLE_SPLITTER_KWARGS['chunk_overlap']})."
+                    "Bible source detected; "
+                    + (
+                        "using verse-level NKJV chunks."
+                        if "bible_verse" in kinds
+                        else "verse parse was weak, falling back to passage chunks."
+                    )
                 )
-            chunks = [_clean_text(c) for c in splitter.split_text(markdown_text) if _clean_text(c)]
+            if log_fn and not use_bible_splitter:
+                log_fn(f"Quote-level sermon split: {len(chunks)} windows.")
 
             doc = IngestedDocument.objects.create(
                 source_name=pdf_name,
@@ -565,6 +594,7 @@ def ingest_uploaded_files(
                     collection_name=collection_name,
                     extra_metadata=extra_metadata_by_name.get(upload.name)
                     or extra_metadata_by_name.get(pdf_name),
+                    per_chunk_metadata=per_chunk_metadata,
                 )
             except Exception:
                 # Keep corpus consistent: if vector upsert fails, remove DB rows for this doc.
@@ -628,12 +658,12 @@ def ingest_markdown_documents(
     """
     result = IngestionResult(files_received=len(documents))
 
-    default_splitter = RecursiveCharacterTextSplitter(**DEFAULT_SPLITTER_KWARGS)
     # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
+    ensure_payload_indexes(qdrant_client, collection_name)
 
     for item in documents:
         source_name = str(item.get("source_name") or "").strip()
@@ -693,7 +723,7 @@ def ingest_markdown_documents(
                 _persist_job_progress(job, result, current_file=source_name)
                 continue
 
-            chunks = [_clean_text(c) for c in default_splitter.split_text(cleaned_text) if _clean_text(c)]
+            chunks, per_chunk_metadata = split_text_for_ingest(cleaned_text, is_bible=False)
             doc = IngestedDocument.objects.create(
                 source_name=source_name,
                 title=title,
@@ -724,6 +754,7 @@ def ingest_markdown_documents(
                     qdrant_client=qdrant_client,
                     collection_name=collection_name,
                     extra_metadata=extra_metadata,
+                    per_chunk_metadata=per_chunk_metadata,
                 )
             except Exception:
                 doc.delete()

@@ -35,7 +35,8 @@ from .ingestion_service import (
     _upsert_chunks,
 )
 from .models import IngestedDocument, IngestionJob, IngestionJobFileFailure
-from .qdrant_utils import ensure_sermon_collection
+from .qdrant_utils import ensure_payload_indexes, ensure_sermon_collection
+from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
 from .storage_paths import admin_video_ingestion_dir
 from .transcript_normalize import (
     TranscriptSegment,
@@ -262,12 +263,16 @@ def build_video_chunks_with_topic_metadata(
     for group in groups:
         start_s = group[0].start if group else 0.0
         end_s = group[-1].end if group else start_s
+        body = "\n".join(format_segment_line(segment) for segment in group)
+        quotes = extract_quote_spans(spoken_text_without_timestamps(body))
+        quote_text = " | ".join(quotes[:4]) if quotes else spoken_text_without_timestamps(body)
         per_chunk_metadata.append(
             {
                 "start_s": start_s,
                 "end_s": end_s,
                 "timestamp": format_timestamp_range(start_s, end_s),
                 "chunk_kind": "video_transcript",
+                "quote_text": quote_text[:1200],
             }
         )
 
@@ -309,12 +314,13 @@ def ingest_video_files(
     upload_dir = admin_video_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    chunk_size = int(os.environ.get("VIDEO_INGEST_CHUNK_SIZE", str(DEFAULT_SPLITTER_KWARGS["chunk_size"])))
+    chunk_size = int(os.environ.get("VIDEO_INGEST_CHUNK_SIZE", "500"))
     overlap_segments = int(os.environ.get("VIDEO_INGEST_CHUNK_OVERLAP_SEGMENTS", "1"))
     embeddings = get_embeddings()
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
+    ensure_payload_indexes(qdrant_client, collection_name)
 
     for upload in uploaded_files:
         video_path: Optional[Path] = None
