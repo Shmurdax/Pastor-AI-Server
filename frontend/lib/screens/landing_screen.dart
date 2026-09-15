@@ -8,6 +8,11 @@ import 'package:url_launcher/url_launcher.dart';
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
+const _brandGradient = LinearGradient(
+  colors: [_pink, _navy],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
 
 /// Public marketing homepage. Visitors cannot reach chat until they subscribe.
 class LandingScreen extends StatelessWidget {
@@ -120,24 +125,31 @@ class LandingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 28),
                 Center(
-                  child: FilledButton(
-                    onPressed: () => _openRegister(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _navy,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 28 : 36,
-                        vertical: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: _brandGradient,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      'Get started',
-                      style: GoogleFonts.figtree(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    child: FilledButton(
+                      onPressed: () => _openRegister(context),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 28 : 36,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Get started',
+                        style: GoogleFonts.figtree(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
@@ -164,7 +176,7 @@ class LandingScreen extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
                       decoration: BoxDecoration(
-                        color: _navy,
+                        gradient: _brandGradient,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -312,7 +324,8 @@ class _LandingPeriodToggle extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? _navy : Colors.transparent,
+            gradient: selected ? _brandGradient : null,
+            color: selected ? null : Colors.transparent,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Text(

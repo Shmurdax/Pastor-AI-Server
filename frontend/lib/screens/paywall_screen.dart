@@ -8,6 +8,11 @@ import 'package:provider/provider.dart';
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 const _pink = Color(0xFFa1375a);
+const _brandGradient = LinearGradient(
+  colors: [_pink, _navy],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
 
 /// Signed-in users without Premium see this instead of the app.
 class PaywallScreen extends StatefulWidget {
@@ -135,7 +140,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 26, 24, 26),
                   decoration: BoxDecoration(
-                    color: _navy,
+                    gradient: _brandGradient,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Column(
@@ -176,21 +181,28 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _openCheckout,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _navy,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: _brandGradient,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    'Continue to checkout',
-                    style: GoogleFonts.figtree(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                  child: FilledButton(
+                    onPressed: _openCheckout,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Continue to checkout',
+                      style: GoogleFonts.figtree(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -246,7 +258,8 @@ class _PaywallPeriodToggle extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? _navy : Colors.transparent,
+            gradient: selected ? _brandGradient : null,
+            color: selected ? null : Colors.transparent,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Text(
