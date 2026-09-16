@@ -8,11 +8,39 @@ from typing import Any, Iterable
 
 SLOT_RE = re.compile(r"\{\{\s*([QVqv])(\d+)\s*\}\}")
 INCOMPLETE_SLOT_RE = re.compile(r"\{\{[^}]*$")
+_QUOTE_REQUEST_RE = re.compile(
+    r"\b("
+    r"quotes?|quotation|verbatim|"
+    r"exact words|"
+    r"what did (?:pastor\s+)?(?:don|susan)|"
+    r"(?:pastor\s+)?(?:don|susan)(?:\s+nordin)?'?s?\s+"
+    r"(?:quote|quotes|said|says|taught|words)|"
+    r"from (?:pastor\s+)?(?:don|susan)|"
+    r"back up (?:each |every |the )?(?:point|points|that)"
+    r")\b",
+    re.IGNORECASE,
+)
+# Full attributed Don/Susan quotations the model typed instead of {{Q#}}.
 _ATTR_QUOTE_RE = re.compile(
-    r"((?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?)\s+"
+    r"(?:"
+    r"Quote\s+from\s+(?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?\s*:?\s*"
+    r"|(?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?\s+"
     r"(?:Nordin\s+)?"
-    r"(?:teaches|taught|says|said|preaches|preached|reminds|told|tells)"
-    r"[^\"“]{0,80}[\"“](.{12,400}?)[\"”]",
+    r"(?:teaches|taught|says|said|preaches|preached|reminds|told|tells)\s*[,:]?\s*"
+    r"|(?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?\s*:\s*"
+    r")"
+    r"[\"“](.{12,400}?)[\"”]",
+    re.IGNORECASE,
+)
+# Hold back an in-progress Don/Susan quotation so it never paints, then drop it
+# if it is not a catalog line.
+_INCOMPLETE_ATTR_RE = re.compile(
+    r"(?:"
+    r"Quote\s+from\s+(?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?\s*:?\s*(?:[\"“][^\"”]*)?"
+    r"|(?:Pastor\s+)?(?:Don|Susan)(?:\s+Nordin)?\s+"
+    r"(?:teaches|taught|says|said|preaches|preached|reminds|told|tells)\s*[,:]?\s*"
+    r"[\"“][^\"”]*"
+    r")$",
     re.IGNORECASE,
 )
 _MARKUP_RE = re.compile(r"[*_`>#]+")
@@ -120,15 +148,55 @@ def drop_unknown_slots(text: str) -> str:
     return SLOT_RE.sub("", text or "")
 
 
+def looks_like_quote_request(query: str) -> bool:
+    """True when the user asked for Pastor Don/Susan quotations (or backing quotes)."""
+    return bool(_QUOTE_REQUEST_RE.search(query or ""))
+
+
+def used_slot_ids(text: str) -> set[str]:
+    return {
+        f"{match.group(1).upper()}{match.group(2)}"
+        for match in SLOT_RE.finditer(text or "")
+    }
+
+
+def quote_request_fill(
+    raw: str,
+    catalog: dict[str, QuoteSlot],
+    *,
+    quote_request: bool,
+    limit: int = 3,
+) -> str:
+    """Text to *append* when a quote-ask produced no {{Q#}} tokens.
+
+    Additive only: callers must ingest this as new stream deltas, never replace.
+    """
+    if not quote_request:
+        return ""
+    sermon = [slot for slot in catalog.values() if slot.kind == "sermon"]
+    used = used_slot_ids(raw)
+    if any(key.startswith("Q") for key in used):
+        return ""
+    if not sermon:
+        return (
+            "\n\nI don't have a retrieved Pastor Don or Susan quotation for this question."
+        )
+    lines = [
+        "Pastor Don Nordin teaches, {{" + slot.slot_id + "}}"
+        for slot in sermon[: max(1, limit)]
+    ]
+    return "\n\n" + "\n\n".join(lines)
+
+
 def drop_ungrounded_attributed_quotes(text: str, catalog: dict[str, QuoteSlot]) -> str:
     """Remove Don/Susan quotations that the model typed instead of using an ID."""
     allowed = {_norm(slot.text) for slot in catalog.values() if slot.kind == "sermon"}
 
     def repl(match: re.Match[str]) -> str:
-        quoted = match.group(2)
+        quoted = match.group(1)
         if _norm(quoted) in allowed:
             return match.group(0)
-        return match.group(1)
+        return ""
 
     return _ATTR_QUOTE_RE.sub(repl, text or "")
 
@@ -136,17 +204,37 @@ def drop_ungrounded_attributed_quotes(text: str, catalog: dict[str, QuoteSlot]) 
 def finalize_quote_ids(text: str, catalog: dict[str, QuoteSlot]) -> str:
     expanded = expand_quote_ids(text, catalog)
     expanded = INCOMPLETE_SLOT_RE.sub("", expanded)
+    expanded = _INCOMPLETE_ATTR_RE.sub("", expanded)
     return drop_ungrounded_attributed_quotes(expanded, catalog)
 
 
-def flushable_expanded(raw: str, catalog: dict[str, QuoteSlot]) -> tuple[str, str]:
-    """Expand complete IDs; hold a trailing incomplete `{{...` so placeholders never paint."""
-    text = raw or ""
+def _hold_start(text: str) -> int | None:
+    starts: list[int] = []
     incomplete = INCOMPLETE_SLOT_RE.search(text)
     if incomplete:
-        head = text[: incomplete.start()]
-        return expand_quote_ids(head, catalog), text[incomplete.start() :]
-    return expand_quote_ids(text, catalog), ""
+        starts.append(incomplete.start())
+    attributed = _INCOMPLETE_ATTR_RE.search(text)
+    if attributed:
+        starts.append(attributed.start())
+    if not starts:
+        return None
+    return min(starts)
+
+
+def flushable_expanded(raw: str, catalog: dict[str, QuoteSlot]) -> tuple[str, str]:
+    """Expand complete IDs; hold a trailing incomplete `{{...` or Don quote.
+
+    Complete freehand Don/Susan quotations are stripped here so they never paint.
+    """
+    text = raw or ""
+    hold_at = _hold_start(text)
+    if hold_at is not None:
+        head = text[:hold_at]
+        held = text[hold_at:]
+        expanded = drop_ungrounded_attributed_quotes(expand_quote_ids(head, catalog), catalog)
+        return expanded, held
+    expanded = drop_ungrounded_attributed_quotes(expand_quote_ids(text, catalog), catalog)
+    return expanded, ""
 
 
 @dataclass

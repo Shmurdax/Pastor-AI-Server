@@ -222,7 +222,13 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("join_continuation", source)
-        self.assertIn('"type": "replace"', source)
+        self.assertIn("quote_request_fill", source)
+        self.assertIn("QUOTE_REQUEST_STEER", source)
+        self.assertIn("looks_like_quote_request", source)
+        self.assertNotIn(
+            'yield _sse({"type": "replace", "text": joined_visible})',
+            source,
+        )
         self.assertIn("quote_catalog", source)
         self.assertIn("keeping the first answer", source)
         self.assertIn("AIMessage(content=msg.ai_response or \"\")", source)

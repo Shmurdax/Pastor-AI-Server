@@ -53,6 +53,8 @@ from .quote_ids import (
     build_quote_catalog,
     catalog_to_json,
     finalize_quote_ids,
+    looks_like_quote_request,
+    quote_request_fill,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -73,6 +75,7 @@ from .chat_system_prompt import (
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
+    QUOTE_REQUEST_STEER,
     MAX_EXPANSION_PASSES,
     answer_char_count,
     answer_looks_incomplete,
@@ -660,6 +663,7 @@ class ChatAPIView(APIView):
             )
 
             brief_social = looks_like_brief_social(user_query_llm)
+            quote_request = (not brief_social) and looks_like_quote_request(user_query_llm)
             # Pure greetings should not pull sermon notes—those notes trigger
             # quote/timestamp dumps. Informational questions keep full RAG.
             if brief_social:
@@ -805,6 +809,8 @@ class ChatAPIView(APIView):
             human_content = user_query_llm
             if brief_social:
                 human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
+            elif quote_request:
+                human_content = f"{QUOTE_REQUEST_STEER}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -822,6 +828,7 @@ class ChatAPIView(APIView):
                 "allowed_quotes": allowed_quotes,
                 "allowed_nkjv": allowed_nkjv,
                 "quote_catalog": quote_catalog,
+                "quote_request": quote_request,
             }
 
         def _unique_sources(docs):
@@ -940,11 +947,17 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
-                    joined_visible = _apply_quote_ids(prepared, answer)
-                    if emit_live and joined_visible != streamer.visible:
-                        streamer.raw = answer
-                        streamer.visible = joined_visible
-                        yield _sse({"type": "replace", "text": joined_visible})
+                    # Keep streaming the continuation as deltas. Do not replace
+                    # the live draft when filling quote IDs.
+                fill = quote_request_fill(
+                    streamer.raw,
+                    catalog,
+                    quote_request=bool(prepared.get("quote_request")),
+                )
+                if fill:
+                    for event in streamer.ingest(fill):
+                        if emit_live:
+                            yield _sse(event)
                 answer, finish_events = streamer.finish()
                 if emit_live:
                     for event in finish_events:
@@ -1033,6 +1046,13 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
+            fill = quote_request_fill(
+                answer,
+                _quote_catalog(prepared),
+                quote_request=bool(prepared.get("quote_request")),
+            )
+            if fill:
+                answer = f"{answer}{fill}"
             answer = _apply_quote_ids(prepared, answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,

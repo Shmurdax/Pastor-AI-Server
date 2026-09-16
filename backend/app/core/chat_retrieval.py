@@ -742,6 +742,16 @@ def expand_search_queries(
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
 
+    from .quote_ids import looks_like_quote_request
+
+    quote_request = looks_like_quote_request(current_q)
+    if quote_request:
+        topic = prior_focus or focus
+        if topic:
+            add(f"Pastor Don Nordin {topic}")
+        if heading_focus:
+            add(f"Pastor Don Nordin {heading_focus}")
+
     # Follow-ups: search the prior user topic first so "expand week one"
     # still retrieves marriage notes instead of generic "week / point" clips.
     if prior_focus:

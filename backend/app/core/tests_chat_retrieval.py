@@ -109,6 +109,15 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("marriage", anchor.lower())
         self.assertIn("week one", anchor.lower())
 
+    def test_quote_request_embeds_pastor_don_and_prior_topic(self):
+        queries = expand_search_queries(
+            "Can you give me quotes from Pastor Don for week one?",
+            ["I'd like to develop a sermon series on marriage."],
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("marriage", joined)
+        self.assertTrue(any("pastor don" in item.lower() and "marriage" in item.lower() for item in queries), queries)
+
     def test_first_turn_embeds_topic_not_the_full_prompt(self):
         queries = expand_search_queries("What should I say to someone who is gay?")
         joined = " | ".join(queries).lower()

@@ -260,6 +260,14 @@ CONVERSATIONAL_STEER = (
     "User message:\n"
 )
 
+QUOTE_REQUEST_STEER = (
+    "The user asked for Pastor Don or Susan quotations. For every quotation "
+    "attributed to them, insert a listed {{Q#}} token such as {{Q1}}. Do not "
+    "type \"Quote from Pastor Don\" or freehand quotation marks for them. If "
+    "no sermon ID fits, teach without attributing a verbatim line.\n\n"
+    "User question:\n"
+)
+
 def answer_word_count(answer: str) -> int:
     return len((answer or "").split())
 

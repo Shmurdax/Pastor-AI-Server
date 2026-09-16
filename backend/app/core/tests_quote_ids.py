@@ -7,6 +7,8 @@ from core.quote_ids import (
     finalize_quote_ids,
     flushable_expanded,
     format_quote_id_block,
+    looks_like_quote_request,
+    quote_request_fill,
 )
 
 
@@ -64,6 +66,65 @@ class QuoteIdTests(unittest.TestCase):
             catalog,
         )
         self.assertIn("Comfort the child", text)
+
+    def test_detects_quote_requests(self):
+        self.assertTrue(looks_like_quote_request(
+            "Can you give me quotes from Pastor Don for week one?"
+        ))
+        self.assertTrue(looks_like_quote_request(
+            "Back up each point with Pastor Don quotes."
+        ))
+        self.assertFalse(looks_like_quote_request("Hello how are you today?"))
+        self.assertFalse(looks_like_quote_request("What is communion?"))
+
+    def test_holds_quote_from_pastor_don_and_never_paints_a_fake(self):
+        catalog = build_quote_catalog(["Comfort the child and stay in the kitchen with them."])
+        expanded, held = flushable_expanded('Week 1.\nQuote from Pastor Don: "Honesty is', catalog)
+        self.assertEqual(expanded, "Week 1.\n")
+        self.assertTrue(held.startswith("Quote from Pastor Don:"))
+
+        streamer = QuoteIdStreamer(catalog)
+        events = []
+        for token in [
+            "Week 1.\n",
+            "Quote from Pastor Don: ",
+            '"Honesty is the glue that holds a marriage together."',
+            " Stay close.",
+        ]:
+            events.extend(streamer.ingest(token))
+        painted = "".join(event["text"] for event in events if event["type"] == "delta")
+        self.assertNotIn("Honesty is the glue", painted)
+        self.assertNotIn("dog heaven", painted)
+        self.assertFalse(any(event["type"] == "replace" for event in events), events)
+        final, finish_events = streamer.finish()
+        self.assertFalse(any(event["type"] == "replace" for event in finish_events), finish_events)
+        self.assertNotIn("Honesty is the glue", final)
+        self.assertIn("Stay close.", final)
+
+    def test_quote_request_fill_appends_ids_as_deltas(self):
+        catalog = build_quote_catalog(["Comfort the child and stay in the kitchen with them."])
+        fill = quote_request_fill(
+            "Week 1 is about covenant.",
+            catalog,
+            quote_request=True,
+        )
+        self.assertIn("{{Q1}}", fill)
+        streamer = QuoteIdStreamer(catalog)
+        events = list(streamer.ingest("Week 1 is about covenant."))
+        events.extend(streamer.ingest(fill))
+        self.assertFalse(any(event["type"] == "replace" for event in events), events)
+        painted = "".join(event["text"] for event in events if event["type"] == "delta")
+        self.assertIn("Week 1 is about covenant.", painted)
+        self.assertIn("Comfort the child", painted)
+        self.assertNotIn("{{Q1}}", painted)
+        already_quoted = quote_request_fill(
+            "Pastor Don Nordin teaches, {{Q1}}",
+            catalog,
+            quote_request=True,
+        )
+        self.assertEqual(already_quoted, "")
+        empty = quote_request_fill("Week 1.", {}, quote_request=True)
+        self.assertIn("don't have a retrieved", empty)
 
     def test_block_lists_ids_not_copy_instructions(self):
         catalog = build_quote_catalog(
