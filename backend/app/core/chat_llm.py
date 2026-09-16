@@ -148,7 +148,7 @@ REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
 EMPTY_REFERENCE_NOTES = (
     "No sermon excerpts were attached for this turn. "
     "Do not invent Pastor Don or Susan quotations. "
-    "If ALLOWED NKJV verses are listed, you may quote only those. "
+    "If verse IDs such as {{V1}} are listed, you may insert those tokens only. "
     "Otherwise say you do not have retrieved notes for this question."
 )
 

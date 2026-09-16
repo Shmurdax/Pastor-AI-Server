@@ -1325,7 +1325,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw += delta;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      expandQuoteIds(runtime.streamRaw, runtime.quoteCatalog),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     // Refresh the visible thread and/or sidebar generating indicators.
@@ -1339,7 +1341,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw = text;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      expandQuoteIds(runtime.streamRaw, runtime.quoteCatalog),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     setState(() {});
@@ -1406,6 +1410,11 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       client: client,
       onDelta: (delta) => _appendStreamDelta(delta, epoch, boundSessionId),
       onReplace: (text) => _replaceStreamText(text, epoch, boundSessionId),
+      onQuoteCatalog: (quotes) {
+        final live = _sessions.peek(boundSessionId);
+        if (live == null) return;
+        live.quoteCatalog = quotes;
+      },
       isCancelled: () =>
           runtime.streamCancelled || epoch != runtime.streamEpoch,
     );
@@ -1414,7 +1423,10 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
 
     final answer = _boldBibleReferences(
-      (data['answer'] as String?) ?? runtime.streamRaw,
+      expandQuoteIds(
+        (data['answer'] as String?) ?? runtime.streamRaw,
+        runtime.quoteCatalog,
+      ),
     );
     final messageId = data['message_id'];
     setState(() {

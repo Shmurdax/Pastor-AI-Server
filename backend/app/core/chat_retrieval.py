@@ -1412,7 +1412,7 @@ def uniqueness_instruction(
             [
                 "This is a clarifying follow-up in the SAME chat. Stay on the same pastoral topic.",
                 "Only develop the part they asked about. Do not reprint the previous heading or step list.",
-                "You may use fresh quotations and different NKJV verses, but they must serve THIS same topic.",
+                "You may use fresh {{Q#}} / {{V#}} tokens, but they must serve THIS same topic.",
             ]
         )
         if topic:
@@ -1422,7 +1422,7 @@ def uniqueness_instruction(
             [
                 "This is a follow-up in the SAME pastoral situation. Answer THIS new question.",
                 "Do not reuse the previous heading, outline, or step list. Write a new teaching.",
-                "Use fresh quotations and different NKJV verses that serve THIS question.",
+                "Use fresh {{Q#}} / {{V#}} tokens that serve THIS question.",
             ]
         )
         if topic:
@@ -1431,9 +1431,9 @@ def uniqueness_instruction(
         lines.extend(
             [
                 "Each reply must be unique. Do not restate the previous answer, recycle the same outline, "
-                "or reuse the same Pastor Don/Susan quotation or the same NKJV verse across turns.",
-                "Answer THIS user question with different notes, a different quotation, and different Scripture "
-                "than earlier turns. Quote from more than one labeled source in REFERENCE NOTES when they fit.",
+                "or reuse the same Pastor Don/Susan quote ID or the same NKJV ID across turns.",
+                "Answer THIS user question with different notes, a different {{Q#}} token, and a different {{V#}} "
+                "than earlier turns. Draw from more than one labeled source in REFERENCE NOTES when they fit.",
             ]
         )
     if headings:

@@ -6,6 +6,7 @@ class ChatStreamEvent {
     this.text = '',
     this.answer = '',
     this.sources = const [],
+    this.quotes = const {},
     this.messageId,
     this.error = '',
   });
@@ -14,11 +15,13 @@ class ChatStreamEvent {
   final String text;
   final String answer;
   final List<String> sources;
+  final Map<String, Map<String, String>> quotes;
   final dynamic messageId;
   final String error;
 
   bool get isDelta => type == 'delta';
   bool get isReplace => type == 'replace';
+  bool get isQuoteCatalog => type == 'quote_catalog';
   bool get isDone => type == 'done';
   bool get isError => type == 'error';
 
@@ -36,10 +39,46 @@ class ChatStreamEvent {
       text: json['text']?.toString() ?? '',
       answer: json['answer']?.toString() ?? '',
       sources: sources,
+      quotes: parseQuoteCatalog(json['quotes']),
       messageId: json['message_id'],
       error: json['error']?.toString() ?? '',
     );
   }
+}
+
+final _quoteSlotRe = RegExp(r'\{\{\s*([QVqv])(\d+)\s*\}\}');
+
+Map<String, Map<String, String>> parseQuoteCatalog(dynamic raw) {
+  final out = <String, Map<String, String>>{};
+  if (raw is! Map) return out;
+  raw.forEach((key, value) {
+    if (value is! Map) return;
+    final slot = <String, String>{};
+    value.forEach((field, fieldValue) {
+      if (fieldValue == null) return;
+      slot[field.toString()] = fieldValue.toString();
+    });
+    if (slot.isEmpty) return;
+    out[key.toString()] = slot;
+  });
+  return out;
+}
+
+/// Replace {{Q1}} / {{V1}} with exact retrieved wording from [catalog].
+String expandQuoteIds(String text, Map<String, Map<String, String>> catalog) {
+  if (text.isEmpty || catalog.isEmpty) return text;
+  return text.replaceAllMapped(_quoteSlotRe, (match) {
+    final key = '${match.group(1)!.toUpperCase()}${match.group(2)}';
+    final slot = catalog[key];
+    if (slot == null) return '';
+    final wording = slot['text'] ?? '';
+    if ((slot['kind'] ?? '') == 'nkjv') {
+      final ref = (slot['ref'] ?? '').trim();
+      final label = ref.isEmpty ? 'NKJV' : ref;
+      return '$label (NKJV): "$wording"';
+    }
+    return '"$wording"';
+  });
 }
 
 /// Pull complete SSE `data:` blocks out of [carry] after appending [chunk].

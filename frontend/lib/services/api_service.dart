@@ -36,6 +36,7 @@ class ApiService {
     http.Client? client,
     required void Function(String delta) onDelta,
     void Function(String text)? onReplace,
+    void Function(Map<String, Map<String, String>> quotes)? onQuoteCatalog,
     bool Function()? isCancelled,
   }) {
     return _apiClient.chatStream(
@@ -46,6 +47,7 @@ class ApiService {
       client: client,
       onDelta: onDelta,
       onReplace: onReplace,
+      onQuoteCatalog: onQuoteCatalog,
       isCancelled: isCancelled,
     );
   }

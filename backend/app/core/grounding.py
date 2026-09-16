@@ -222,29 +222,9 @@ def verify_answer_grounding(
 
 
 def format_grounding_block(quotes: Iterable[str], nkjv_pairs: Iterable[tuple[str, str]]) -> str:
-    lines = ["<allowed_sources>"]
-    lines.append("SERMON QUOTES — copy word-for-word from this list only when quoting Pastor Don or Susan:")
-    quote_list = [item for item in quotes if item]
-    if quote_list:
-        for index, quote in enumerate(quote_list, start=1):
-            clipped = quote if len(quote) <= 400 else quote[:397] + "..."
-            lines.append(f'{index}. "{clipped}"')
-    else:
-        lines.append("(none retrieved — do not invent a Pastor Don or Susan quotation)")
-    lines.append("NKJV — copy word-for-word from this list only when quoting Scripture:")
-    nkjv_list = list(nkjv_pairs)
-    if nkjv_list:
-        for ref, wording in nkjv_list:
-            clipped = wording if len(wording) <= 400 else wording[:397] + "..."
-            lines.append(f'{ref}: "{clipped}"')
-    else:
-        lines.append("(none retrieved — do not quote Scripture)")
-    lines.append(
-        "Do not quote any other sermon line or any other verse. "
-        "If these lists cannot answer the question, say so and only use the lines above."
-    )
-    lines.append("</allowed_sources>")
-    return "\n".join(lines) + "\n"
+    from .quote_ids import build_quote_catalog, format_quote_id_block
+
+    return format_quote_id_block(build_quote_catalog(quotes, nkjv_pairs))
 
 
 def grounded_fallback_answer(

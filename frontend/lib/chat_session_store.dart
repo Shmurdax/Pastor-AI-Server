@@ -14,6 +14,7 @@ class ChatSessionRuntime {
 
   http.Client? activeClient;
   String streamRaw = '';
+  Map<String, Map<String, String>> quoteCatalog = {};
   bool streamCancelled = false;
   int streamEpoch = 0;
   bool isLoading = false;
@@ -83,6 +84,7 @@ class ChatSessionRuntime {
   int? beginStream({required http.Client client}) {
     if (isGenerating) return null;
     streamRaw = '';
+    quoteCatalog = {};
     streamCancelled = false;
     final epoch = ++streamEpoch;
     isLoading = true;

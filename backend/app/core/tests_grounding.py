@@ -116,7 +116,8 @@ class GroundingTests(unittest.TestCase):
             ["Comfort the child and stay in the kitchen with them."],
             [("Psalm 34:18", "The Lord is near to those who have a broken heart.")],
         )
-        self.assertIn("<allowed_sources>", block)
+        self.assertIn("<quote_ids>", block)
+        self.assertIn("{{Q1}}", block)
         self.assertIn("Comfort the child", block)
         self.assertIn("Psalm 34:18", block)
 

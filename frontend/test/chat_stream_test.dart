@@ -24,6 +24,37 @@ void main() {
     expect(second[1].messageId, 9);
   });
 
+  test('expandQuoteIds copies catalog wording and drops unknown IDs', () {
+    const catalog = {
+      'Q1': {'id': 'Q1', 'kind': 'sermon', 'text': 'Comfort the child and stay.'},
+      'V1': {
+        'id': 'V1',
+        'kind': 'nkjv',
+        'ref': 'Psalm 34:18',
+        'text': 'The Lord is near.',
+      },
+    };
+    final expanded = expandQuoteIds(
+      'Pastor Don teaches, {{Q1}} As David writes, {{V1}} Ignore {{Q9}}.',
+      catalog,
+    );
+    expect(expanded, contains('"Comfort the child and stay."'));
+    expect(expanded, contains('Psalm 34:18 (NKJV): "The Lord is near."'));
+    expect(expanded, isNot(contains('{{Q1}}')));
+    expect(expanded, isNot(contains('{{Q9}}')));
+  });
+
+  test('consumeSseChunk parses quote_catalog events', () {
+    final carry = StringBuffer();
+    final events = consumeSseChunk(
+      carry,
+      'data: {"type":"quote_catalog","quotes":{"Q1":{"id":"Q1","kind":"sermon","text":"Stay close"}}}\n\n',
+    );
+    expect(events, hasLength(1));
+    expect(events.first.isQuoteCatalog, isTrue);
+    expect(events.first.quotes['Q1']?['text'], 'Stay close');
+  });
+
   test('consumeSseChunk parses replace events', () {
     final carry = StringBuffer();
     final events = consumeSseChunk(

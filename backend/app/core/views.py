@@ -42,14 +42,17 @@ from .chat_llm import (
 )
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .grounding import (
-    GROUNDING_REPAIR_STEER,
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
     format_grounding_block,
-    grounded_fallback_answer,
     lookup_nkjv_verses,
-    verify_answer_grounding,
     verse_refs_for_lookup,
+)
+from .quote_ids import (
+    QuoteIdStreamer,
+    build_quote_catalog,
+    catalog_to_json,
+    finalize_quote_ids,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -272,42 +275,18 @@ def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
 
 
-def _ground_generated_answer(prepared, answer: str) -> str:
-    quotes = prepared.get("allowed_quotes") or []
-    nkjv = prepared.get("allowed_nkjv") or []
-    docs = prepared.get("docs") or []
-    nkjv_docs = [doc for doc in docs if _is_bible_source(_doc_source_name(doc))]
-    sermon_docs = [doc for doc in docs if not _is_bible_source(_doc_source_name(doc))]
-    report = verify_answer_grounding(answer, sermon_docs=sermon_docs, nkjv_docs=nkjv_docs)
-    if report.ok:
-        return answer
-    logger.warning(
-        "Grounding failed invented_quotes=%s invented_scripture=%s missing_refs=%s",
-        len(report.invented_quotes),
-        len(report.invented_scripture),
-        len(report.missing_nkjv_refs),
+def _quote_catalog(prepared) -> dict:
+    catalog = prepared.get("quote_catalog")
+    if catalog:
+        return catalog
+    return build_quote_catalog(
+        prepared.get("allowed_quotes") or [],
+        prepared.get("allowed_nkjv") or [],
     )
-    try:
-        llm = prepared.get("llm")
-        messages = list(prepared.get("messages") or [])
-        if llm is not None and messages:
-            repair_messages = messages + [
-                AIMessage(content=answer),
-                HumanMessage(content=GROUNDING_REPAIR_STEER),
-            ]
-            extra = llm.bind(max_tokens=min(512, int(prepared.get("completion_tokens") or 512))).invoke(
-                repair_messages
-            )
-            repaired = (getattr(extra, "content", "") or "").strip()
-            if repaired:
-                second = verify_answer_grounding(
-                    repaired, sermon_docs=sermon_docs, nkjv_docs=nkjv_docs
-                )
-                if second.ok:
-                    return repaired
-    except Exception:
-        logger.exception("Grounding repair pass failed")
-    return grounded_fallback_answer(quotes, nkjv)
+
+
+def _apply_quote_ids(prepared, answer: str) -> str:
+    return finalize_quote_ids(answer, _quote_catalog(prepared))
 
 
 def _compact_prior_ai(text: str) -> str:
@@ -849,6 +828,7 @@ class ChatAPIView(APIView):
                     used_headings=used_headings,
                     banned_titles=banned_titles,
                 )
+            quote_catalog = build_quote_catalog(allowed_quotes, allowed_nkjv)
             grounding_block = ""
             if not brief_social:
                 grounding_block = format_grounding_block(allowed_quotes, allowed_nkjv)
@@ -905,6 +885,7 @@ class ChatAPIView(APIView):
                 "target_message": target_message,
                 "allowed_quotes": allowed_quotes,
                 "allowed_nkjv": allowed_nkjv,
+                "quote_catalog": quote_catalog,
             }
 
         def _unique_sources(docs):
@@ -978,14 +959,20 @@ class ChatAPIView(APIView):
                 if prepared["kind"] == "final":
                     yield from _immediate_sse(prepared["payload"])
                     return
-                assembled = []
+                catalog = _quote_catalog(prepared)
+                if emit_live and catalog:
+                    yield _sse({"type": "quote_catalog", "quotes": catalog_to_json(catalog)})
+                streamer = QuoteIdStreamer(catalog)
+                first_raw_parts = []
                 for text in _generate_tokens(prepared):
-                    assembled.append(text)
+                    first_raw_parts.append(text)
                     if emit_live:
-                        yield _sse({"type": "delta", "text": text})
-                answer = "".join(assembled)
-                if not answer.strip():
+                        for event in streamer.ingest(text):
+                            yield _sse(event)
+                first_raw = "".join(first_raw_parts)
+                if not first_raw.strip():
                     raise ValueError("No generation chunks were returned")
+                answer = first_raw
                 expansion_pass = 0
                 while (
                     answer_needs_expansion(answer, query=user_query_llm)
@@ -1003,11 +990,13 @@ class ChatAPIView(APIView):
                     try:
                         for text in _iter_continuation_tokens(prepared, answer):
                             if emit_live and not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
+                                for event in streamer.ingest("\n\n"):
+                                    yield _sse(event)
                                 separator_sent = True
                             extra_parts.append(text)
                             if emit_live:
-                                yield _sse({"type": "delta", "text": text})
+                                for event in streamer.ingest(text):
+                                    yield _sse(event)
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
@@ -1015,13 +1004,16 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
-                    if emit_live:
-                        yield _sse({"type": "replace", "text": answer})
-                grounded = _ground_generated_answer(prepared, answer)
-                if grounded != answer:
-                    answer = grounded
-                    if emit_live:
-                        yield _sse({"type": "replace", "text": answer})
+                    joined_visible = _apply_quote_ids(prepared, answer)
+                    if emit_live and joined_visible != streamer.visible:
+                        streamer.raw = answer
+                        streamer.visible = joined_visible
+                        yield _sse({"type": "replace", "text": joined_visible})
+                answer, finish_events = streamer.finish()
+                if emit_live:
+                    for event in finish_events:
+                        yield _sse(event)
+                answer = _apply_quote_ids(prepared, answer)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1105,7 +1097,7 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
-            answer = _ground_generated_answer(prepared, answer)
+            answer = _apply_quote_ids(prepared, answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

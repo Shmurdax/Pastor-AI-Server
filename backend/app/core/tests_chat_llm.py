@@ -215,8 +215,10 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("select_diverse_docs", source)
         self.assertIn("uniqueness_instruction", source)
         self.assertIn("lookup_nkjv_verses", source)
-        self.assertIn("_ground_generated_answer", source)
+        self.assertIn("_apply_quote_ids", source)
+        self.assertIn("QuoteIdStreamer", source)
         self.assertIn("format_grounding_block", source)
+        self.assertIn("quote_catalog", source)
         self.assertIn("_compact_prior_ai", source)
         tree = ast.parse(source)
         defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
@@ -228,7 +230,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("join_continuation", source)
-        self.assertIn('{"type": "replace", "text": answer}', source)
+        self.assertIn('"type": "replace"', source)
+        self.assertIn("quote_catalog", source)
         self.assertIn("keeping the first answer", source)
         self.assertIn(
             'human_content = f"{LENGTH_STEER}{extra_steer}{user_query_llm.strip()}"',
