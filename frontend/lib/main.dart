@@ -1292,6 +1292,17 @@ final bibleRefRegex = RegExp(
     return runtime.isCurrentStream(epoch);
   }
 
+  void _paintChatStreamFailure(ChatSessionRuntime runtime, int epoch) {
+    if (!mounted || !_isCurrentStream(runtime, epoch)) return;
+    setState(() {
+      applyChatStreamFailure(
+        runtime.messages,
+        errorText: _s.serverError,
+      );
+    });
+    unawaited(_persistChatHistory(runtime));
+  }
+
   void _onComposerPrimaryTap() {
     if (_isLoading || _isStreamingReply) {
       _stopResponse();
@@ -1459,20 +1470,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     }
     await _persistChatHistory(runtime);
   } on http.ClientException {
-    if (!mounted) return;
+    _paintChatStreamFailure(runtime, epoch);
   } catch (e) {
-    if (_isCurrentStream(runtime, epoch)) {
-      setState(() {
-        if (runtime.isStreamingReply) {
-          runtime.messages.last['streaming'] = false;
-          if (runtime.streamRaw.trim().isEmpty) {
-            runtime.messages.last['localKey'] = 'serverError';
-            runtime.messages.last['text'] = _s.serverError;
-          }
-        }
-      });
-      unawaited(_persistChatHistory(runtime));
-    }
+    _paintChatStreamFailure(runtime, epoch);
   } finally {
     if (epoch == runtime.streamEpoch) {
       if (mounted) {

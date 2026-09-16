@@ -1,8 +1,23 @@
 """Server-sent event helpers for streaming chat tokens."""
 
 import json
+import logging
 import queue
 import threading
+import time
+
+logger = logging.getLogger(__name__)
+
+EMPTY_STREAM_ATTEMPTS = 3
+EMPTY_STREAM_WAIT_S = 4.0
+EMPTY_STREAM_USER_MESSAGE = (
+    "The GPU chat worker did not return a reply. "
+    "It may still be starting or unhealthy. Please retry in a moment."
+)
+
+
+class ChatGenerationError(RuntimeError):
+    """Raised when chat streaming fails after retries; safe to show to the user."""
 
 
 def wants_chat_stream(stream_flag, accept_header: str = "") -> bool:
@@ -112,3 +127,98 @@ def iter_chat_tokens(bound_llm, messages):
         text = chunk_text(chunk)
         for piece in split_stream_text(text):
             yield piece
+
+
+def is_empty_generation_error(exc) -> bool:
+    message = str(exc or "").lower()
+    return "no generation chunks were returned" in message
+
+
+def is_retryable_stream_error(exc) -> bool:
+    if is_empty_generation_error(exc):
+        return True
+    name = type(exc).__name__.lower()
+    message = str(exc or "").lower()
+    retryable_names = (
+        "timeout",
+        "connection",
+        "httpx",
+        "remoteprotocol",
+        "apiconnection",
+        "connecterror",
+    )
+    if any(part in name for part in retryable_names):
+        return True
+    retryable_text = (
+        "timeout",
+        "timed out",
+        "connection reset",
+        "connection aborted",
+        "temporarily unavailable",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "502",
+        "503",
+        "504",
+        "worker is not ready",
+        "no generation chunks were returned",
+    )
+    return any(part in message for part in retryable_text)
+
+
+def iter_tokens_with_retries(
+    stream_fn,
+    *,
+    attempts: int = EMPTY_STREAM_ATTEMPTS,
+    wait_s: float = EMPTY_STREAM_WAIT_S,
+    warmup=None,
+    sleep=time.sleep,
+):
+    """Yield tokens from stream_fn, retrying empty serverless cold-starts.
+
+    LangChain raises ValueError("No generation chunks were returned") when a
+    RunPod worker is still booting. Retry the same request after kicking
+    /models; do not replace a live draft that already started painting.
+    """
+    last_exc = None
+    total = max(1, int(attempts))
+    pause = max(0.0, float(wait_s))
+    for attempt in range(1, total + 1):
+        yielded = False
+        try:
+            for text in stream_fn():
+                yielded = True
+                yield text
+            if yielded:
+                return
+            last_exc = ValueError("No generation chunks were returned")
+        except Exception as exc:
+            if yielded:
+                raise
+            last_exc = exc
+            if not is_retryable_stream_error(exc):
+                raise
+            logger.warning(
+                "Retryable chat stream error on attempt %s/%s: %s",
+                attempt,
+                total,
+                exc,
+            )
+        else:
+            logger.warning(
+                "Empty chat stream on attempt %s/%s (no generation chunks)",
+                attempt,
+                total,
+            )
+        if attempt >= total:
+            break
+        if warmup is not None:
+            try:
+                warmup()
+            except Exception:
+                logger.info("vLLM warmup before empty-stream retry failed")
+        if pause:
+            sleep(pause)
+    if last_exc is not None:
+        raise last_exc

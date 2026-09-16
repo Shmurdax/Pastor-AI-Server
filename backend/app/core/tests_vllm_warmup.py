@@ -42,6 +42,20 @@ class VllmWarmupTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["warming"])
 
+    def test_force_bypasses_cooldown(self):
+        env = {"VLLM_URL": "http://127.0.0.1:8010/v1"}
+        with patch("urllib.request.urlopen") as mock_open:
+            mock_open.return_value.__enter__.return_value = MagicMock(status=200)
+            first = warmup_vllm_worker(env=env, wait=True, timeout_s=2.0, cooldown_s=45)
+            skipped = warmup_vllm_worker(env=env, wait=True, timeout_s=2.0, cooldown_s=45)
+            forced = warmup_vllm_worker(
+                env=env, wait=True, timeout_s=2.0, cooldown_s=45, force=True
+            )
+        self.assertFalse(first["skipped"])
+        self.assertTrue(skipped["skipped"])
+        self.assertFalse(forced["skipped"])
+        self.assertEqual(mock_open.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

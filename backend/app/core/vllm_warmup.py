@@ -31,6 +31,7 @@ def warmup_vllm_worker(
     timeout_s: float = 8.0,
     env: Optional[Mapping[str, str]] = None,
     wait: bool = False,
+    force: bool = False,
 ) -> dict:
     """Start (or no-op) a background GET to the OpenAI /models route.
 
@@ -50,7 +51,7 @@ def warmup_vllm_worker(
     now = time.monotonic()
     with _lock:
         remaining = gap - (now - _last_started)
-        if remaining > 0 and _last_started > 0:
+        if not force and remaining > 0 and _last_started > 0:
             return {"ok": True, "warming": False, "skipped": True, "retry_after_s": int(remaining)}
         _last_started = now
 

@@ -151,3 +151,31 @@ bool completeChatStreamAnswer(
   if (messageId != null) msg['message_id'] = messageId;
   return true;
 }
+
+/// Paints a visible server error when the stream drops before any tokens.
+/// Partial answers stay in place; late failures after stop are ignored.
+void applyChatStreamFailure(
+  List<Map<String, dynamic>> messages, {
+  required String errorText,
+}) {
+  final index = indexOfStreamingAi(messages);
+  if (index != null) {
+    final msg = messages[index];
+    msg['streaming'] = false;
+    final existing = (msg['text'] as String?)?.trim() ?? '';
+    if (existing.isEmpty) {
+      msg['localKey'] = 'serverError';
+      msg['text'] = errorText;
+    }
+    return;
+  }
+  if (messages.isNotEmpty && messages.last['role'] == 'ai') {
+    messages.last['streaming'] = false;
+    return;
+  }
+  messages.add({
+    'role': 'ai',
+    'localKey': 'serverError',
+    'text': errorText,
+  });
+}

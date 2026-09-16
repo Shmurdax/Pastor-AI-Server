@@ -130,4 +130,47 @@ void main() {
     expect(messages.last['text'], 'Faith');
     expect(messages.last.containsKey('message_id'), isFalse);
   });
+
+  test('dropped stream before tokens paints serverError', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamFailure(
+      messages,
+      errorText: 'Error: Could not connect to the server.',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['localKey'], 'serverError');
+    expect(messages.last['text'], 'Error: Could not connect to the server.');
+    expect(messages.last['streaming'], isNot(true));
+  });
+
+  test('dropped stream after tokens keeps the partial answer', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+    ];
+    applyChatStreamDelta(messages, 'Faith is');
+    applyChatStreamFailure(
+      messages,
+      errorText: 'Error: Could not connect to the server.',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['text'], 'Faith is');
+    expect(messages.last['streaming'], isFalse);
+    expect(messages.last.containsKey('localKey'), isFalse);
+  });
+
+  test('empty streaming bubble is replaced with serverError', () {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'user', 'text': 'What is faith?'},
+      {'role': 'ai', 'text': '', 'streaming': true, 'reported': false},
+    ];
+    applyChatStreamFailure(
+      messages,
+      errorText: 'Error: Could not connect to the server.',
+    );
+    expect(messages, hasLength(2));
+    expect(messages.last['localKey'], 'serverError');
+    expect(messages.last['streaming'], isFalse);
+  });
 }
