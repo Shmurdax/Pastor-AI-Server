@@ -60,6 +60,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("Let the user's question and the retrieved notes decide", prompt)
+        self.assertIn("generic Christian pastoral tone", prompt)
+        self.assertIn("REQUIRED TEACHING POINTS", prompt)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
         self.assertNotIn("2000 characters", prompt)
         self.assertNotIn("<length_close>", prompt)

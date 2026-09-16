@@ -45,6 +45,13 @@ from .grounding import (
     lookup_nkjv_verses,
     verse_refs_for_lookup,
 )
+from .teaching_claims import (
+    claim_repair_steer,
+    claim_repair_token_budget,
+    extract_teaching_claims,
+    format_teaching_claims_block,
+    uncovered_claims,
+)
 from .chat_retrieval import (
     apply_retrieval_threshold,
     ensure_source_media_mix,
@@ -255,8 +262,9 @@ def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
 
 
-def _continuation_messages(messages, first_answer: str):
-    steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
+def _continuation_messages(messages, first_answer: str, steer: str | None = None):
+    if not steer:
+        steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
     return list(messages) + [
         AIMessage(content=first_answer),
         HumanMessage(content=steer),
@@ -265,6 +273,19 @@ def _continuation_messages(messages, first_answer: str):
 
 def _join_continuation(answer: str, extra: str) -> str:
     return join_continuation(answer, extra)
+
+
+def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
+    missing = uncovered_claims(answer, prepared.get("teaching_claims") or [])
+    if not missing:
+        return None, 0
+    budget = claim_repair_token_budget(
+        completion_tokens=prepared.get("completion_tokens") or 0
+    )
+    if budget <= 0:
+        return None, 0
+    logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
+    return claim_repair_steer(missing), budget
 
 
 def _trim_continuation_messages(messages):
@@ -303,14 +324,18 @@ def _trim_continuation_messages(messages):
     return trimmed
 
 
-def _iter_continuation_tokens(prepared, answer: str):
-    budget = continuation_token_budget(
-        answer, completion_tokens=prepared["completion_tokens"]
+def _iter_continuation_tokens(prepared, answer: str, steer: str | None = None, *, token_budget: int | None = None):
+    budget = (
+        token_budget
+        if token_budget is not None
+        else continuation_token_budget(
+            answer, completion_tokens=prepared["completion_tokens"]
+        )
     )
     if budget <= 0:
         return
         yield
-    full = _continuation_messages(prepared["messages"], answer)
+    full = _continuation_messages(prepared["messages"], answer, steer=steer)
     trimmed = _trim_continuation_messages(full)
     bound = prepared["llm"].bind(max_tokens=budget)
     attempts = (
@@ -643,6 +668,7 @@ class ChatAPIView(APIView):
                 search_queries = [user_query_llm]
                 docs = []
                 context = ""
+                teaching_claims = []
                 logger.debug(
                     "Skipping Qdrant for brief social message (session=%s)",
                     session_id[:18],
@@ -718,6 +744,10 @@ class ChatAPIView(APIView):
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
                 )
+                teaching_claims = extract_teaching_claims(
+                    docs,
+                    query=topic_query,
+                )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -749,6 +779,7 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
+                + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -787,6 +818,7 @@ class ChatAPIView(APIView):
                 "docs": docs,
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
+                "teaching_claims": teaching_claims,
             }
 
         def _unique_sources(docs):
@@ -898,6 +930,28 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
+                repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+                if repair_steer:
+                    extra_parts = []
+                    separator_sent = False
+                    try:
+                        for text in _iter_continuation_tokens(
+                            prepared,
+                            answer,
+                            steer=repair_steer,
+                            token_budget=repair_budget,
+                        ):
+                            if emit_live and not separator_sent:
+                                yield _sse({"type": "delta", "text": "\n\n"})
+                                separator_sent = True
+                            extra_parts.append(text)
+                            if emit_live:
+                                yield _sse({"type": "delta", "text": text})
+                    except Exception:
+                        logger.exception("Claim-coverage repair failed; keeping the first answer")
+                    extra = "".join(extra_parts).strip()
+                    if extra:
+                        answer = _join_continuation(answer, extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -981,6 +1035,31 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
+            repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+            if repair_steer:
+                try:
+                    extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
+                        _continuation_messages(
+                            prepared["messages"], answer, steer=repair_steer
+                        )
+                    )
+                    extra_text = (getattr(extra, "content", "") or "").strip()
+                except Exception:
+                    logger.exception("Claim-coverage repair failed; retrying with a trimmed prompt")
+                    try:
+                        extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
+                            _trim_continuation_messages(
+                                _continuation_messages(
+                                    prepared["messages"], answer, steer=repair_steer
+                                )
+                            )
+                        )
+                        extra_text = (getattr(extra, "content", "") or "").strip()
+                    except Exception:
+                        logger.exception("Claim-coverage repair failed; keeping the first answer")
+                        extra_text = ""
+                if extra_text:
+                    answer = _join_continuation(answer, extra_text)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
