@@ -26,6 +26,18 @@ _SECRET_KEYS = {
     "WHISPER_API_KEY",
 }
 
+# Pod templates keep stale GPU routing. tokens.env / config.env on the volume
+# are the source of truth, so these keys must not lose to os.environ.
+_FILE_WINS_KEYS = {
+    "CPU_ONLY",
+    "RUNPOD_VLLM_ENDPOINT_ID",
+    "RUNPOD_WHISPER_ENDPOINT_ID",
+    "VLLM_MODE",
+    "VLLM_URL",
+    "WHISPER_MODE",
+    "WHISPER_URL",
+}
+
 
 def _placeholder(value: str) -> bool:
     lowered = value.replace("\x00", "").strip().lower()
@@ -98,15 +110,22 @@ def load_workspace_env(*, force: bool = False) -> None:
         if not value:
             continue
         current = (os.environ.get(key) or "").replace("\x00", "").strip()
-        if force or not current or _placeholder(current) or key in _SECRET_KEYS:
+        if (
+            force
+            or not current
+            or _placeholder(current)
+            or key in _SECRET_KEYS
+            or key in _FILE_WINS_KEYS
+        ):
             os.environ[key] = value
 
 
 def env_with_workspace(env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """os.environ overlay with file secrets winning.
+    """os.environ overlay with file secrets and GPU routing winning.
 
     RunPod CPU images can zero libc environ after gunicorn starts, so callers
-    that need RUNPOD_API_KEY must not trust os.environ alone.
+    that need RUNPOD_API_KEY must not trust os.environ alone. Stale pod-template
+    endpoint IDs also lose to tokens.env / config.env on the volume.
     """
     files = workspace_env_values()
     merged: dict[str, str] = dict(files)
@@ -117,8 +136,14 @@ def env_with_workspace(env: Mapping[str, str] | None = None) -> dict[str, str]:
             continue
         if key in _SECRET_KEYS and files.get(key) and not _placeholder(files[key]):
             continue
+        if key in _FILE_WINS_KEYS and files.get(key) and not _placeholder(files[key]):
+            continue
         merged[key] = value
     for key in _SECRET_KEYS:
+        file_val = files.get(key, "")
+        if file_val and not _placeholder(file_val):
+            merged[key] = file_val
+    for key in _FILE_WINS_KEYS:
         file_val = files.get(key, "")
         if file_val and not _placeholder(file_val):
             merged[key] = file_val

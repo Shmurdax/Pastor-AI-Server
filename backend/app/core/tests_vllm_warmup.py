@@ -21,6 +21,8 @@ class VllmWarmupTests(unittest.TestCase):
             result = warmup_vllm_worker(env=env, wait=True, timeout_s=2.0, cooldown_s=45)
         self.assertTrue(result["warming"])
         self.assertFalse(result["skipped"])
+        self.assertEqual(result["endpoint_id"], "ep1")
+        self.assertEqual(result["vllm_url"], "https://api.runpod.ai/v2/ep1/openai/v1")
         req = mock_open.call_args[0][0]
         self.assertEqual(req.full_url, "https://api.runpod.ai/v2/ep1/openai/v1/models")
         self.assertEqual(req.get_header("Authorization"), "Bearer rp_secret")

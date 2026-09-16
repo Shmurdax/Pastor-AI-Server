@@ -39,7 +39,7 @@ def warmup_vllm_worker(
     timeout still queues that request, so the GPU can boot while the user types.
     """
     global _last_started
-    from .chat_llm import resolve_vllm_api_key, resolve_vllm_url
+    from .chat_llm import _env_get, resolve_vllm_api_key, resolve_vllm_url
 
     if env is None:
         from pastor_ai.workspace_env import env_with_workspace, load_workspace_env
@@ -47,15 +47,27 @@ def warmup_vllm_worker(
         load_workspace_env()
         env = env_with_workspace()
 
+    base_url = resolve_vllm_url(env)
+    endpoint_id = _env_get(env, "RUNPOD_VLLM_ENDPOINT_ID")
+    target = {"vllm_url": base_url}
+    if endpoint_id:
+        target["endpoint_id"] = endpoint_id
+
     gap = _cooldown_s(env) if cooldown_s is None else max(5.0, float(cooldown_s))
     now = time.monotonic()
     with _lock:
         remaining = gap - (now - _last_started)
         if not force and remaining > 0 and _last_started > 0:
-            return {"ok": True, "warming": False, "skipped": True, "retry_after_s": int(remaining)}
+            return {
+                "ok": True,
+                "warming": False,
+                "skipped": True,
+                "retry_after_s": int(remaining),
+                **target,
+            }
         _last_started = now
 
-    url = resolve_vllm_url(env).rstrip("/") + "/models"
+    url = base_url.rstrip("/") + "/models"
     api_key = resolve_vllm_api_key(env)
 
     def _ping():
@@ -72,7 +84,7 @@ def warmup_vllm_worker(
     thread.start()
     if wait:
         thread.join(timeout=max(2.0, float(timeout_s)) + 1)
-    return {"ok": True, "warming": True, "skipped": False}
+    return {"ok": True, "warming": True, "skipped": False, **target}
 
 
 def reset_warmup_state_for_tests():
