@@ -133,10 +133,17 @@ void main() {
   });
 
   testWidgets('back from Subscribe returns to the landing page', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
-    await tester.tap(find.text('Subscribe · \$15/ month'));
+    final subscribe = find.text('Subscribe · \$15/ month');
+    await tester.ensureVisible(subscribe);
+    await tester.tap(subscribe);
     await tester.pump();
     await tester.pump();
     expect(find.text('Create your account'), findsOneWidget);

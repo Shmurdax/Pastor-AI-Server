@@ -112,24 +112,26 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       ..style.padding = '16px 16px 64px'
       ..style.boxSizing = 'border-box';
 
-    final header = web.HTMLDivElement()
-      ..style.display = 'flex'
-      ..style.alignItems = 'center'
-      ..style.gap = '12px'
-      ..style.marginBottom = '12px';
-
     final back = web.HTMLButtonElement()
       ..type = 'button'
-      ..textContent = '← Back'
-      ..style.border = '1px solid #d0d4e0'
-      ..style.backgroundColor = '#ffffff'
+      ..textContent = '←'
+      ..setAttribute('aria-label', 'Back')
+      ..style.position = 'absolute'
+      ..style.top = '8px'
+      ..style.left = '8px'
+      ..style.zIndex = '2'
+      ..style.width = '44px'
+      ..style.height = '44px'
+      ..style.border = 'none'
+      ..style.backgroundColor = 'transparent'
       ..style.color = '#1B264F'
-      ..style.borderRadius = '10px'
-      ..style.padding = '8px 14px'
+      ..style.borderRadius = '22px'
       ..style.cursor = 'pointer'
-      ..style.fontFamily = 'Figtree, system-ui, sans-serif'
-      ..style.fontSize = '14px'
-      ..style.fontWeight = '600';
+      ..style.fontFamily = 'system-ui, sans-serif'
+      ..style.fontSize = '22px'
+      ..style.lineHeight = '44px'
+      ..style.padding = '0'
+      ..style.textAlign = 'center';
     back.addEventListener(
       'click',
       (web.Event _) {
@@ -141,22 +143,30 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     final title = web.HTMLHeadingElement.h1()
       ..textContent = 'Complete your Premium plan'
       ..style.margin = '0'
-      ..style.fontSize = '20px'
+      ..style.padding = '8px 56px 0'
+      ..style.fontSize = '24px'
       ..style.fontWeight = '700'
       ..style.color = '#1B264F'
-      ..style.fontFamily = 'Figtree, system-ui, sans-serif';
+      ..style.fontFamily = 'Figtree, system-ui, sans-serif'
+      ..style.textAlign = 'center'
+      ..style.lineHeight = '1.25';
 
-    header.append(back);
-    header.append(title);
+    final rule = web.HTMLDivElement()
+      ..style.height = '2px'
+      ..style.width = '48px'
+      ..style.margin = '10px auto 0'
+      ..style.backgroundColor = '#D4AF37';
 
     final hint = web.HTMLParagraphElement()
       ..textContent =
           'Scroll this page to reach Confirm / Subscribe at the bottom of the form.'
-      ..style.margin = '0 0 16px'
+      ..style.margin = '10px 0 16px'
+      ..style.padding = '0 16px'
       ..style.fontSize = '13px'
       ..style.lineHeight = '1.4'
       ..style.color = '#667085'
-      ..style.fontFamily = 'Figtree, system-ui, sans-serif';
+      ..style.fontFamily = 'Figtree, system-ui, sans-serif'
+      ..style.textAlign = 'center';
 
     final mount = web.HTMLDivElement()
       ..id = _elementId
@@ -166,7 +176,9 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       ..style.boxSizing = 'border-box';
     mount.setAttribute('allow', 'payment *');
 
-    shell.append(header);
+    overlay.append(back);
+    shell.append(title);
+    shell.append(rule);
     shell.append(hint);
     shell.append(mount);
     overlay.append(shell);

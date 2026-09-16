@@ -276,15 +276,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: _navy),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Checkout',
+          'Complete your Premium plan',
           style: GoogleFonts.figtree(
             color: _navy,
             fontWeight: FontWeight.bold,
+            fontSize: isMobile ? 18 : 20,
           ),
         ),
       ),
@@ -304,16 +306,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      'Complete your Premium plan',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.figtree(
-                        fontSize: isMobile ? 22 : 28,
-                        fontWeight: FontWeight.bold,
-                        color: _navy,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
                     Center(
                       child: Container(height: 2, width: 48, color: _gold),
                     ),
