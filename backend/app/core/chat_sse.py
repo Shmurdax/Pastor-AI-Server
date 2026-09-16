@@ -8,8 +8,9 @@ import time
 
 logger = logging.getLogger(__name__)
 
-EMPTY_STREAM_ATTEMPTS = 3
-EMPTY_STREAM_WAIT_S = 4.0
+EMPTY_STREAM_ATTEMPTS = 2
+EMPTY_STREAM_WAIT_S = 2.0
+EMPTY_STREAM_RETRY_TIMEOUT_S = 90.0
 EMPTY_STREAM_USER_MESSAGE = (
     "The GPU chat worker did not return a reply. "
     "It may still be starting or unhealthy. Please retry in a moment."
@@ -186,6 +187,7 @@ def iter_tokens_with_retries(
     pause = max(0.0, float(wait_s))
     for attempt in range(1, total + 1):
         yielded = False
+        started = time.monotonic()
         try:
             for text in stream_fn():
                 yielded = True
@@ -200,16 +202,18 @@ def iter_tokens_with_retries(
             if not is_retryable_stream_error(exc):
                 raise
             logger.warning(
-                "Retryable chat stream error on attempt %s/%s: %s",
+                "Retryable chat stream error on attempt %s/%s after %.1fs: %s",
                 attempt,
                 total,
+                time.monotonic() - started,
                 exc,
             )
         else:
             logger.warning(
-                "Empty chat stream on attempt %s/%s (no generation chunks)",
+                "Empty chat stream on attempt %s/%s after %.1fs (no generation chunks)",
                 attempt,
                 total,
+                time.monotonic() - started,
             )
         if attempt >= total:
             break

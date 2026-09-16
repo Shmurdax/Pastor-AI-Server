@@ -375,7 +375,9 @@ def get_chat_llm(
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
-    default_retries = "6" if remote else "2"
+    # Keep HTTP retries low: each LangChain retry enqueues another serverless
+    # job. Empty/cold streams are retried once in chat_sse with a short timeout.
+    default_retries = "1" if remote else "2"
     max_retries = int(_env_get(env, "VLLM_MAX_RETRIES", default=default_retries))
     api_key = resolve_vllm_api_key(env)
     headers = {"ngrok-skip-browser-warning": "true"}

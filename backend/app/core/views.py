@@ -42,7 +42,9 @@ from .chat_llm import (
 )
 from .chat_sse import (
     ChatGenerationError,
+    EMPTY_STREAM_RETRY_TIMEOUT_S,
     EMPTY_STREAM_USER_MESSAGE,
+    is_empty_generation_error,
     iter_chat_tokens,
     iter_tokens_with_retries,
     iter_with_sse_heartbeats,
@@ -858,7 +860,20 @@ class ChatAPIView(APIView):
         def _kick_worker():
             from .vllm_warmup import warmup_vllm_worker
 
-            warmup_vllm_worker(wait=True, force=True, timeout_s=8.0)
+            warmup_vllm_worker(wait=False, force=True, timeout_s=3.0)
+
+        def _short_timeout_bound(max_tokens):
+            timeout_s = min(EMPTY_STREAM_RETRY_TIMEOUT_S, float(CHAT_TIMEOUT_S))
+            llm = get_chat_llm(
+                temperature=CHAT_TEMPERATURE,
+                max_tokens=max_tokens,
+                timeout=timeout_s,
+                top_p=CHAT_TOP_P,
+                presence_penalty=CHAT_PRESENCE_PENALTY,
+                frequency_penalty=CHAT_FREQUENCY_PENALTY,
+                extra_body=CHAT_VLLM_EXTRA_BODY,
+            )
+            return llm.bind(max_tokens=max_tokens)
 
         def _generate_tokens(prepared):
             bound = prepared["bound"]
@@ -867,14 +882,35 @@ class ChatAPIView(APIView):
             try:
                 for text in iter_tokens_with_retries(
                     lambda: _iter_chat_tokens(bound, messages),
-                    warmup=_kick_worker,
+                    attempts=1,
                 ):
                     yielded = True
                     yield text
                 return
-            except Exception:
+            except Exception as exc:
                 if yielded:
                     raise
+                logger.warning(
+                    "Chat stream failed before tokens (%s); retrying once with a %ss timeout",
+                    exc,
+                    int(min(EMPTY_STREAM_RETRY_TIMEOUT_S, float(CHAT_TIMEOUT_S))),
+                )
+            _kick_worker()
+            retry_bound = _short_timeout_bound(prepared["completion_tokens"])
+            try:
+                for text in iter_tokens_with_retries(
+                    lambda: _iter_chat_tokens(retry_bound, messages),
+                    attempts=1,
+                ):
+                    yielded = True
+                    yield text
+                if yielded:
+                    return
+            except Exception as exc:
+                if yielded:
+                    raise
+                if is_empty_generation_error(exc):
+                    raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE) from exc
                 logger.exception(
                     "Error while streaming chat tokens; retrying with a smaller budget"
                 )
@@ -898,15 +934,14 @@ class ChatAPIView(APIView):
                     trimmed.append(SystemMessage(content=content))
                 else:
                     trimmed.append(msg)
-            retry_bound = prepared["llm"].bind(max_tokens=smaller)
+            small_bound = _short_timeout_bound(smaller)
             prepared["messages"] = trimmed
-            prepared["bound"] = retry_bound
+            prepared["bound"] = small_bound
             try:
                 yielded = False
                 for text in iter_tokens_with_retries(
-                    lambda: _iter_chat_tokens(retry_bound, trimmed),
-                    attempts=2,
-                    warmup=_kick_worker,
+                    lambda: _iter_chat_tokens(small_bound, trimmed),
+                    attempts=1,
                 ):
                     yielded = True
                     yield text

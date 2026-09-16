@@ -251,6 +251,9 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("iter_tokens_with_retries", source)
         self.assertIn("ChatGenerationError", source)
         self.assertIn("EMPTY_STREAM_USER_MESSAGE", source)
+        self.assertIn("EMPTY_STREAM_RETRY_TIMEOUT_S", source)
+        self.assertIn("is_empty_generation_error", source)
+        self.assertIn("wait=False", source)
         self.assertIn("force=True", source)
         self.assertIn("ChatWarmupAPIView", source)
         self.assertNotIn("from langchain_openai import ChatOpenAI", source)
@@ -279,7 +282,7 @@ class GetChatLlmTests(unittest.TestCase):
         self.assertEqual(kwargs["default_headers"]["Authorization"], "Bearer rp_secret")
         self.assertEqual(kwargs["model"], "christianai")
         self.assertEqual(kwargs["timeout"], 600.0)
-        self.assertEqual(kwargs["max_retries"], 6)
+        self.assertEqual(kwargs["max_retries"], 1)
 
     @patch("langchain_openai.ChatOpenAI")
     def test_local_client_keeps_placeholder_key(self, mock_cls):
