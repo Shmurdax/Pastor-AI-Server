@@ -21,6 +21,8 @@ from core.chat_retrieval import (
     is_bible_source,
     is_video_chunk,
     looks_like_followup,
+    looks_like_library_pull,
+    restrict_docs_to_primary_source,
     merge_scored_hits,
     query_focus_tokens,
     search_queries_on_store,
@@ -125,6 +127,39 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("gay", joined)
         self.assertTrue(any("gay" in item.lower() and "pastor don" in item.lower() for item in queries))
         self.assertFalse(any("what should i say" in item.lower() for item in queries), queries)
+
+    def test_library_pull_embeds_topic_not_pull_up_a_sermon(self):
+        self.assertTrue(looks_like_library_pull("Pull up a sermon in the sermon library about faith"))
+        self.assertFalse(looks_like_library_pull("What does Pastor Don teach about faith?"))
+        queries = expand_search_queries(
+            "Pull up a sermon in the sermon library about faith",
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("faith", joined)
+        self.assertTrue(queries[0].lower() == "faith" or queries[0].lower().startswith("faith"), queries)
+        self.assertFalse(any("pull" in item.lower() for item in queries), queries)
+        self.assertFalse(any("library" in item.lower() for item in queries), queries)
+
+    def test_library_pull_keeps_one_sermon_source(self):
+        docs = [
+            _doc("Heart intro about summer and vacation.", source="heart.pdf"),
+            _doc(
+                "Faith and fire: the whistle should mean the train is coming because "
+                "the same power that blew the whistle will pull the train.",
+                source="fire.pdf",
+            ),
+            _doc("Nehemiah surveyed the difficulties.", source="preparing.pdf"),
+            _doc("NKJV Psalm 121:1", source="nkjv-bible.pdf"),
+        ]
+        kept = restrict_docs_to_primary_source(
+            docs,
+            topic="faith",
+            is_bible=lambda doc: "bible" in doc.metadata["source"],
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = {doc.metadata["source"] for doc in kept}
+        self.assertEqual(sources, {"fire.pdf", "nkjv-bible.pdf"})
 
     def test_generate_a_sermon_embeds_social_issue_not_template(self):
         queries = expand_search_queries(

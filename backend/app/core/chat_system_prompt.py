@@ -249,6 +249,16 @@ def query_expects_long_answer(query: str) -> bool:
     return not looks_like_brief_social(query)
 
 
+LIBRARY_PULL_STEER = (
+    "<library_pull>\n"
+    "The user asked to pull up one sermon from the library. Stay inside the single "
+    "retrieved sermon in REFERENCE NOTES. Do not mash other sermons into a new excerpt. "
+    "Keep that sermon's actual thesis when you paraphrase. Do not keep an illustration "
+    "and change what it teaches.\n"
+    "</library_pull>\n"
+)
+
+
 CONVERSATIONAL_STEER = (
     "This is a casual greeting or social check-in—not a teaching request. "
     "Reply in one short warm conversational paragraph (about 2–4 sentences). "
@@ -496,6 +506,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
         "Write in your own words, shaped by REFERENCE NOTES. Use a generic Christian pastoral tone; "
         "do not imitate Pastor Don's or Susan's speaking style. "
+        "In your own words means the same thesis with different wording. Keep the contrast. "
+        "Do not keep an illustration and teach a different point with it. "
         "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "
         "Paraphrase them. Do not replace them with generic Christian teaching that is absent from the points "
         "and notes. Represent Pastor Don's and Susan's positions faithfully. "

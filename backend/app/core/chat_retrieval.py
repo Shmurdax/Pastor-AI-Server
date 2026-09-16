@@ -46,6 +46,21 @@ _APPLY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_LIBRARY_PULL_RE = re.compile(
+    r"\b("
+    r"pull(?:\s+up)?\s+(?:a\s+)?sermon|"
+    r"(?:show|get|find|open|read)\s+(?:me\s+)?(?:a\s+)?sermon|"
+    r"sermon\s+(?:in\s+the\s+)?(?:library|notes)|"
+    r"from\s+the\s+sermon\s+library|"
+    r"sermon\s+excerpt|"
+    r"excerpt\s+(?:from|of|on)"
+    r")\b",
+    re.IGNORECASE,
+)
+_LIBRARY_FOCUS_STOP = frozenset(
+    {"excerpt", "excerpts", "find", "library", "open", "pull", "read", "show"}
+)
+
 INTENT_NEW_TOPIC = "new_topic"
 INTENT_NEW_ANGLE = "same_topic_new_angle"
 INTENT_CLARIFY = "clarify"
@@ -217,7 +232,10 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "homily",
         "lesson",
         "lessons",
+        "library",
         "like",
+        "excerpt",
+        "excerpts",
         "make",
         "message",
         "messages",
@@ -373,6 +391,50 @@ def chunk_text(doc: Any) -> str:
 def chunk_fingerprint(text: str) -> str:
     collapsed = re.sub(r"\s+", " ", (text or "").strip().lower())
     return collapsed[:400]
+
+
+def looks_like_library_pull(query: str) -> bool:
+    """True when the user asked to open one sermon from the library."""
+    return bool(_LIBRARY_PULL_RE.search(query or ""))
+
+
+def restrict_docs_to_primary_source(
+    docs: Optional[Iterable[Any]],
+    *,
+    topic: str = "",
+    is_bible: Optional[Callable[[Any], bool]] = None,
+    source_key: Optional[Callable[[Any], str]] = None,
+    limit: int = 8,
+) -> list[Any]:
+    """Keep chunks from one sermon plus any already-selected Bible verses."""
+    bible_fn = is_bible or (lambda _doc: False)
+    source_fn = source_key or chunk_source_key
+    topic_tokens = set(keyword_search_query(topic).lower().split())
+    scores: dict[str, int] = {}
+    counts: dict[str, int] = {}
+    ordered: list[Any] = list(docs or [])
+    for doc in ordered:
+        if bible_fn(doc):
+            continue
+        key = source_fn(doc)
+        counts[key] = counts.get(key, 0) + 1
+        blob = f"{metadata_source_hint(doc)} {chunk_text(doc)[:500]}".lower()
+        overlap = sum(1 for token in topic_tokens if token and token in blob)
+        scores[key] = scores.get(key, 0) + overlap
+    if not counts:
+        return ordered
+    primary = next((source_fn(doc) for doc in ordered if not bible_fn(doc)), None)
+    if max(scores.values(), default=0) > 0:
+        primary = max(counts, key=lambda key: (scores.get(key, 0), counts[key]))
+    kept: list[Any] = []
+    bible_docs: list[Any] = []
+    for doc in ordered:
+        if bible_fn(doc):
+            bible_docs.append(doc)
+            continue
+        if source_fn(doc) == primary and len(kept) < max(1, limit):
+            kept.append(doc)
+    return kept + bible_docs[:2]
 
 
 def looks_like_followup(query: str) -> bool:
@@ -741,6 +803,12 @@ def expand_search_queries(
 
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
+    if looks_like_library_pull(current_q):
+        focus = " ".join(
+            token
+            for token in focus.split()
+            if token.lower() not in _LIBRARY_FOCUS_STOP
+        )
 
     # Follow-ups: search the prior user topic first so "expand week one"
     # still retrieves marriage notes instead of generic "week / point" clips.

@@ -74,6 +74,41 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertTrue(claim_is_covered(claim, paraphrase))
         self.assertEqual(uncovered_claims(paraphrase, [claim]), [])
 
+    def test_illustration_only_rewrite_does_not_cover_thesis(self):
+        claim = (
+            "The whistle should mean the train is coming because the same power "
+            "that blew the whistle will pull the train."
+        )
+        generic = (
+            "Just as the whistle signals the arrival of a train, our faith should "
+            "signal our readiness to serve and work together for God."
+        )
+        kept = (
+            "The shout only counts if the same power that blew the whistle can "
+            "also pull the train up the hill."
+        )
+        self.assertFalse(claim_is_covered(claim, generic))
+        self.assertTrue(claim_is_covered(claim, kept))
+
+    def test_prefers_contrast_thesis(self):
+        docs = [
+            _doc(
+                "Faith is a powerful force that transforms lives and builds communities.",
+                source="generic.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "The shout is only indicative of the power. The whistle should mean "
+                "the train is coming because the same power that blew the whistle "
+                "will pull the train.",
+                source="fire.pdf",
+                chunk_kind="sermon_quote",
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query="pull up a sermon about faith", limit=1)
+        self.assertEqual(len(claims), 1)
+        self.assertIn("same power", claims[0].lower())
+
     def test_block_and_repair_list_points(self):
         claims = ["Marriage is a covenant, not a contract."]
         block = format_teaching_claims_block(claims)
@@ -81,9 +116,11 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("generic Christian pastoral tone", block)
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
+        self.assertIn("same thesis", block)
         steer = claim_repair_steer(claims)
         self.assertIn("without restarting", steer.lower())
         self.assertIn("covenant", steer)
+        self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
 
 

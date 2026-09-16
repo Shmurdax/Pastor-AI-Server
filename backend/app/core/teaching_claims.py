@@ -17,6 +17,14 @@ _SPACE_RE = re.compile(r"\s+")
 _CLAIM_MAX_CHARS = 280
 _CLAIM_MIN_CHARS = 24
 _DEFAULT_LIMIT = 6
+_CONTRAST_RE = re.compile(
+    r"\b("
+    r"not just|rather than|only if|only indicative|same power|"
+    r"fool'?s paradise|come let us|instead of|but the|"
+    r"do not|don't|cannot|can't"
+    r")\b",
+    re.IGNORECASE,
+)
 
 # Common English + generic Christian words. Distinctive Don content must survive this list.
 _STOP = frozenset(
@@ -79,7 +87,8 @@ def _score_claim(claim: str, query_tokens: set[str]) -> int:
     if not tokens:
         return -1
     overlap = sum(1 for token in tokens if token in query_tokens)
-    return overlap * 3 + min(len(tokens), 8)
+    contrast = 6 if _CONTRAST_RE.search(claim) else 0
+    return overlap * 3 + min(len(tokens), 8) + contrast
 
 
 def extract_teaching_claims(
@@ -136,6 +145,9 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "<required_teaching_points>",
         "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
         "The numbered points are the retrieved teaching content for this answer. Teach them in your own words.",
+        "In your own words means the same thesis with different wording. Keep the contrast "
+        "(the not / only if / same power / rather than). Do not keep a story or illustration "
+        "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part.",
@@ -154,10 +166,19 @@ def claim_is_covered(claim: str, answer: str) -> bool:
     if not answer_norm:
         return False
     answer_words = set(answer_norm.split())
+    hits = sum(1 for token in tokens if token in answer_words)
+    if len(tokens) >= 4:
+        for index in range(len(tokens) - 2):
+            if all(token in answer_words for token in tokens[index : index + 3]):
+                return True
+        later = tokens[len(tokens) // 2 :]
+        for index in range(len(later) - 1):
+            if later[index] in answer_words and later[index + 1] in answer_words and hits >= 3:
+                return True
+        return False
     phrases = [" ".join(tokens[index : index + 2]) for index in range(len(tokens) - 1)]
     if any(phrase in answer_norm for phrase in phrases):
         return True
-    hits = sum(1 for token in tokens if token in answer_words)
     return hits >= min(2, len(tokens))
 
 
@@ -171,6 +192,7 @@ def claim_repair_steer(missing: Iterable[str]) -> str:
         "Continue the same teaching without restarting or replacing the draft on screen.",
         "Keep a generic Christian pastoral tone. Do not imitate Pastor Don's speaking style.",
         "You missed these retrieved Pastor Don/Susan teaching points. Teach them now in your own words.",
+        "Keep the same thesis, including the contrast. Do not keep the illustration and change what it teaches.",
         "Do not invent a different outline. Do not switch to generic Christian topics that are not listed.",
     ]
     for index, claim in enumerate(points[:_DEFAULT_LIMIT], start=1):
