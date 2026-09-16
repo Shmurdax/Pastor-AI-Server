@@ -390,6 +390,15 @@ def looks_like_followup(query: str) -> bool:
     return len(text.split()) <= 8
 
 
+def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]] = None) -> str:
+    """Blend the last user turn into retrieval so follow-ups keep the topic."""
+    current_q = (current or "").strip()
+    last_prior = _last_prior_user(current_q, prior_user_queries)
+    if last_prior and current_q:
+        return f"{last_prior} {current_q}"
+    return current_q or last_prior
+
+
 def _last_prior_user(current_q: str, prior_user_queries: Optional[Iterable[str]]) -> str:
     current_key = (current_q or "").strip().lower()
     for item in reversed(list(prior_user_queries or [])):
@@ -723,11 +732,26 @@ def expand_search_queries(
     current_q = (current or "").strip()
     prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
     last_prior = _last_prior_user(current_q, prior)
-    intent = classify_followup_intent(current_q, prior, prior_ai_texts)
-    followup = intent in _CONTINUING_INTENTS
+    prior_focus = keyword_search_query(last_prior) if last_prior else ""
+    heading_focus = ""
+    if last_prior and prior_ai_texts:
+        labels = extract_used_headings(prior_ai_texts, limit=6)
+        if labels:
+            heading_focus = keyword_search_query(" ".join(labels))
 
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
+
+    # Follow-ups: search the prior user topic first so "expand week one"
+    # still retrieves marriage notes instead of generic "week / point" clips.
+    if prior_focus:
+        add(prior_focus)
+        add(f"Pastor Don Nordin {prior_focus}")
+        if heading_focus:
+            add(f"{prior_focus} {heading_focus}")
+        if focus and focus.lower() != prior_focus.lower():
+            add(f"{prior_focus} {focus}")
+
     if bible_names:
         joined = " ".join(bible_names)
         add(joined)
@@ -742,23 +766,15 @@ def expand_search_queries(
                     aliases.append(alias)
         if aliases:
             add(" ".join(bible_names + aliases))
-    elif focus:
-        # Embed the topical core first (homosexuality, salvation, …), not
+    elif focus and (not prior_focus or focus.lower() != prior_focus.lower()):
+        # Embed the topical core (homosexuality, salvation, …), not
         # "generate a sermon based on …".
         add(focus)
         add(f"Pastor Don Nordin {focus}")
 
-    # Follow-ups: blend THIS question with the prior USER question only.
-    # Do not embed the previous AI headings — those reprint the last outline.
-    if followup and last_prior:
-        add(keyword_search_query(f"{last_prior} {current_q}") or focus)
-
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
         add(current_q)
-
-    if focus and focus.lower() != current_q.lower():
-        add(focus)
 
     if not last_prior and focus:
         add(f"Pastor Don Nordin {focus}")

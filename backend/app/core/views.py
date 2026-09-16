@@ -62,27 +62,17 @@ from .chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
-    INTENT_APPLY,
-    INTENT_CLARIFY,
-    INTENT_NEW_ANGLE,
-    INTENT_NEW_TOPIC,
-    classify_followup_intent,
-    extract_used_headings,
+    topic_anchor_query,
     is_bible_source,
     is_video_chunk,
     search_queries_on_store,
     select_diverse_docs,
     sources_cited_in_answer,
-    uniqueness_instruction,
 )
 from .chat_system_prompt import (
-    ANGLE_STEER,
-    APPLY_STEER,
-    CLARIFY_STEER,
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
-    LENGTH_STEER,
     MAX_EXPANSION_PASSES,
     answer_char_count,
     answer_looks_incomplete,
@@ -92,7 +82,6 @@ from .chat_system_prompt import (
     find_biblical_character_names,
     join_continuation,
     looks_like_brief_social,
-    query_expects_long_answer,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -287,18 +276,6 @@ def _quote_catalog(prepared) -> dict:
 
 def _apply_quote_ids(prepared, answer: str) -> str:
     return finalize_quote_ids(answer, _quote_catalog(prepared))
-
-
-def _compact_prior_ai(text: str) -> str:
-    """Keep quote/verse bans without feeding the last teaching as a template."""
-    quotes = extract_used_quotes([text])
-    verses = extract_used_verse_refs([text])
-    parts = ["Previous teaching (do not copy its heading or outline)."]
-    if quotes:
-        parts.append("Already used quotations: " + " | ".join(quotes[:4]))
-    if verses:
-        parts.append("Already used NKJV refs: " + ", ".join(verses[:8]))
-    return " ".join(parts)
 
 
 def _continuation_messages(messages, first_answer: str):
@@ -668,7 +645,7 @@ class ChatAPIView(APIView):
                 prior_ai_texts.append(target_message.ai_response)
             used_quotes = extract_used_quotes(prior_ai_texts)
             used_verses = extract_used_verse_refs(prior_ai_texts)
-            used_headings = extract_used_headings(prior_ai_texts)
+            topic_query = topic_anchor_query(user_query_llm, prior_user_queries)
 
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
@@ -685,10 +662,8 @@ class ChatAPIView(APIView):
             brief_social = looks_like_brief_social(user_query_llm)
             # Pure greetings should not pull sermon notes—those notes trigger
             # quote/timestamp dumps. Informational questions keep full RAG.
-            followup_intent = INTENT_NEW_TOPIC
             if brief_social:
                 search_queries = [user_query_llm]
-                is_followup = False
                 docs = []
                 context = ""
                 allowed_quotes = []
@@ -704,22 +679,11 @@ class ChatAPIView(APIView):
                     prior_ai_texts=prior_ai_texts,
                     limit=7,
                 )
-                followup_intent = classify_followup_intent(
-                    user_query_llm,
-                    prior_user_queries,
-                    prior_ai_texts,
-                )
-                is_followup = followup_intent in {
-                    INTENT_NEW_ANGLE,
-                    INTENT_CLARIFY,
-                    INTENT_APPLY,
-                }
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
                 logger.debug(
-                    "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
+                    "Searching Qdrant with %s queries (k=%s each, session=%s): %s",
                     len(search_queries),
                     candidate_k,
-                    is_followup,
                     session_id[:18],
                     search_queries,
                 )
@@ -732,7 +696,7 @@ class ChatAPIView(APIView):
                 # Cain/Abel clip under the similarity threshold.
                 scored_hits = filter_hits_by_topic(
                     scored_hits,
-                    user_query_llm,
+                    topic_query,
                     retrieval_k=RETRIEVAL_K,
                 )
                 scored_hits = apply_retrieval_threshold(
@@ -755,9 +719,9 @@ class ChatAPIView(APIView):
                         str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
                         or _doc_source_name(doc)
                     ),
-                    query=user_query_llm,
+                    query=topic_query,
                 )
-                refs = verse_refs_for_lookup(user_query_llm, docs)
+                refs = verse_refs_for_lookup(topic_query, docs)
                 nkjv_docs = lookup_nkjv_verses(
                     client,
                     collection_name,
@@ -803,38 +767,19 @@ class ChatAPIView(APIView):
                 exchange = f"{msg.user_query} {msg.ai_response}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
-                history_messages.insert(0, AIMessage(content=_compact_prior_ai(msg.ai_response)))
+                history_messages.insert(0, AIMessage(content=msg.ai_response or ""))
                 history_messages.insert(0, HumanMessage(content=msg.user_query))
                 current_chars += len(exchange)
 
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
-            uniqueness = ""
-            if not brief_social:
-                banned_titles = []
-                seen_titles: set[str] = set()
-                for d in docs:
-                    title = _doc_source_label(d)
-                    if title and title.lower() not in seen_titles:
-                        seen_titles.add(title.lower())
-                        banned_titles.append(title)
-                uniqueness = uniqueness_instruction(
-                    used_quotes,
-                    used_verses,
-                    is_followup=is_followup,
-                    prior_user_query=(prior_user_queries[-1] if prior_user_queries else ""),
-                    intent=followup_intent,
-                    used_headings=used_headings,
-                    banned_titles=banned_titles,
-                )
             quote_catalog = build_quote_catalog(allowed_quotes, allowed_nkjv)
             grounding_block = ""
             if not brief_social:
                 grounding_block = format_grounding_block(allowed_quotes, allowed_nkjv)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + uniqueness
                 + grounding_block
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
@@ -858,17 +803,8 @@ class ChatAPIView(APIView):
             )
 
             human_content = user_query_llm
-            extra_steer = ""
-            if followup_intent == INTENT_CLARIFY:
-                extra_steer = CLARIFY_STEER
-            elif followup_intent == INTENT_APPLY:
-                extra_steer = APPLY_STEER
-            elif followup_intent == INTENT_NEW_ANGLE:
-                extra_steer = ANGLE_STEER
             if brief_social:
                 human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
-            elif query_expects_long_answer(user_query_llm):
-                human_content = f"{LENGTH_STEER}{extra_steer}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages

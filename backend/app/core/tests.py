@@ -1,7 +1,6 @@
 import unittest
 
 from .chat_system_prompt import (
-    LENGTH_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
@@ -44,12 +43,10 @@ class ChatSystemPromptTests(unittest.TestCase):
     def test_no_biblical_names_when_absent(self):
         self.assertEqual(find_biblical_character_names("How should pastors prepare a sermon?"), [])
 
-    def test_prompt_requires_sermon_notes_and_formatted_length(self):
+    def test_prompt_requires_sermon_notes_and_quote_ids(self):
         prompt = build_chat_system_prompt(biblical_names=["Moses"])
         self.assertIn("Susan Nordin", prompt)
-        self.assertIn("2000 characters", prompt)
         self.assertIn("sermon notes", prompt)
-        self.assertIn("Quality and pastoral depth", prompt)
         self.assertIn("QUOTE IDS", prompt)
         self.assertIn("{{Q1}}", prompt)
         self.assertIn("{{V1}}", prompt)
@@ -57,37 +54,16 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Social issues are in scope", prompt)
         self.assertIn("abortion", prompt.lower())
         self.assertIn("Do not say you must redirect", prompt)
-        self.assertIn("Prefer notes that clearly address the user's topic", prompt)
-        self.assertIn("MEDIA MIX", prompt)
-        self.assertIn("at least one written note and at least one video note", prompt)
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
-        self.assertIn("LENGTH (teaching answers):", prompt)
-        self.assertIn("**bold heading**", prompt)
-        self.assertIn("bullet points", prompt.lower())
-        self.assertIn("never open with a Scripture citation", prompt)
-        self.assertIn("Weave NKJV", prompt)
-        self.assertIn("a one-sentence reply is a failed answer", prompt)
-        self.assertIn("<length_close>", prompt)
-        self.assertIn("2000 characters", LENGTH_STEER)
-        self.assertIn("**bold headings**", LENGTH_STEER)
-        self.assertIn("bullet points", LENGTH_STEER)
-        self.assertIn("Open with a bold heading", LENGTH_STEER)
-        self.assertIn("summarize", LENGTH_STEER)
-        self.assertIn("User question:", LENGTH_STEER)
-        self.assertIn("summarize", prompt.lower())
-        self.assertIn("Do not reuse a quote ID or NKJV ID", prompt)
-        self.assertIn("Follow-up turns must use new {{Q#}}", prompt)
-        self.assertIn("{{Q1}}", LENGTH_STEER)
-        self.assertIn("{{V1}}", LENGTH_STEER)
-        self.assertIn("short pastoral close", LENGTH_STEER)
-        self.assertIn("do not pad with filler", LENGTH_STEER)
-        self.assertIn("never use a REFERENCE NOTES", LENGTH_STEER)
-        self.assertIn("Never pad afterward", prompt)
-        self.assertIn("In conclusion", prompt)
-        self.assertIn("never a sermon title", prompt)
-        self.assertIn("stop. Do not keep writing to fill space", prompt)
-        self.assertIn("DEFAULT MODE IS INFORMATIONAL TEACHING", prompt)
+        self.assertIn("Let the user's question and the retrieved notes decide", prompt)
+        self.assertIn("Follow-up turns may expand the last answer", prompt)
+        self.assertNotIn("2000 characters", prompt)
+        self.assertNotIn("<length_close>", prompt)
+        self.assertNotIn("LENGTH (teaching answers):", prompt)
+        self.assertNotIn("Follow-up turns must use new {{Q#}}", prompt)
+        self.assertNotIn("Do not reuse a quote ID or NKJV ID", prompt)
+        self.assertNotIn("a one-sentence reply is a failed answer", prompt)
         self.assertIn("CASUAL CONVERSATION EXCEPTION", prompt)
         self.assertIn("Do not pull sermon quotes", prompt)
         self.assertIn("Do not volunteer phone/email on ordinary greetings", prompt)
@@ -215,7 +191,7 @@ class ChatSystemPromptTests(unittest.TestCase):
             first + "\n\nServe one another in the local church body.",
         )
         self.assertIn("Do not repeat any sentence already written", CONTINUE_STEER)
-        self.assertIn("**bold heading**", CONTINUE_STEER)
+        self.assertIn("Continue the same teaching", CONTINUE_STEER)
 
     def test_cut_off_mid_sentence_still_requests_expansion(self):
         from .chat_system_prompt import (

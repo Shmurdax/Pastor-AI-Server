@@ -1,4 +1,3 @@
-import ast
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -204,39 +203,29 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertNotIn("next_stream_payload", source)
         self.assertIn("expand_search_queries", source)
         self.assertIn("prior_ai_texts=", source)
-        self.assertIn("is_followup=", source)
-        self.assertIn("classify_followup_intent", source)
-        self.assertIn("used_headings", source)
-        self.assertIn("ANGLE_STEER", source)
-        self.assertIn("CLARIFY_STEER", source)
-        self.assertIn("APPLY_STEER", source)
+        self.assertIn("topic_anchor_query", source)
+        self.assertNotIn("classify_followup_intent", source)
+        self.assertNotIn("uniqueness_instruction", source)
+        self.assertNotIn("ANGLE_STEER", source)
+        self.assertNotIn("CLARIFY_STEER", source)
+        self.assertNotIn("APPLY_STEER", source)
+        self.assertNotIn("LENGTH_STEER", source)
         self.assertIn('identity = f"u:{user.pk}"', source)
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
         self.assertIn("select_diverse_docs", source)
-        self.assertIn("uniqueness_instruction", source)
         self.assertIn("lookup_nkjv_verses", source)
         self.assertIn("_apply_quote_ids", source)
         self.assertIn("QuoteIdStreamer", source)
         self.assertIn("format_grounding_block", source)
         self.assertIn("quote_catalog", source)
-        self.assertIn("_compact_prior_ai", source)
-        tree = ast.parse(source)
-        defined = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
-        self.assertIn(
-            "_compact_prior_ai",
-            defined,
-            "follow-up history calls _compact_prior_ai; a missing def raises NameError",
-        )
+        self.assertNotIn("_compact_prior_ai", source)
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("join_continuation", source)
         self.assertIn('"type": "replace"', source)
         self.assertIn("quote_catalog", source)
         self.assertIn("keeping the first answer", source)
-        self.assertIn(
-            'human_content = f"{LENGTH_STEER}{extra_steer}{user_query_llm.strip()}"',
-            source,
-        )
+        self.assertIn("AIMessage(content=msg.ai_response or \"\")", source)
         self.assertIn("looks_like_brief_social", source)
         self.assertIn("CONVERSATIONAL_STEER", source)
         self.assertIn("Skipping Qdrant for brief social message", source)

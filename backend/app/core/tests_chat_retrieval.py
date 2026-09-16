@@ -25,6 +25,7 @@ from core.chat_retrieval import (
     query_focus_tokens,
     search_queries_on_store,
     select_diverse_docs,
+    topic_anchor_query,
     topic_overlap_score,
     uniqueness_instruction,
 )
@@ -56,10 +57,11 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         joined = " | ".join(queries).lower()
         self.assertIn("gay", joined)
+        self.assertTrue(queries[0].lower().startswith("gay"), queries)
         self.assertTrue(any("clarify" in item.lower() for item in queries))
         self.assertGreaterEqual(len(queries), 2)
 
-    def test_followup_query_does_not_embed_prior_ai_headings(self):
+    def test_followup_query_leads_with_prior_topic(self):
         queries = expand_search_queries(
             "Can you further clarify those steps?",
             ["What should I say to someone who is gay?"],
@@ -74,14 +76,38 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         joined = " | ".join(queries).lower()
         self.assertIn("gay", joined)
-        self.assertFalse(
-            any("affirm" in item.lower() or "worth" in item.lower() for item in queries),
+        self.assertTrue(queries[0].lower().startswith("gay"), queries)
+
+    def test_expand_week_one_leads_with_marriage(self):
+        prior = (
+            "I'd like to develop a sermon series on marriage. I need 3 weeks "
+            "worth of content. What should be main topics each week?"
+        )
+        current = "Can you expand on week one and back up each point with scripture?"
+        queries = expand_search_queries(
+            current,
+            [prior],
+            prior_ai_texts=[
+                "**Week 1: Understanding Biblical Marriage**\n"
+                "- Definition: a covenant between a man and a woman.\n"
+                "- Purpose: reflect God's love.\n"
+                "- Roles: complementary responsibilities.\n"
+            ],
+        )
+        self.assertTrue(queries)
+        self.assertIn("marriage", queries[0].lower())
+        joined = " | ".join(queries).lower()
+        self.assertIn("marriage", joined)
+        self.assertTrue(
+            any(
+                token in joined
+                for token in ("definition", "purpose", "roles", "covenant")
+            ),
             queries,
         )
-        self.assertFalse(
-            any("express care" in item.lower() or "offer truth" in item.lower() for item in queries),
-            queries,
-        )
+        anchor = topic_anchor_query(current, [prior])
+        self.assertIn("marriage", anchor.lower())
+        self.assertIn("week one", anchor.lower())
 
     def test_first_turn_embeds_topic_not_the_full_prompt(self):
         queries = expand_search_queries("What should I say to someone who is gay?")
