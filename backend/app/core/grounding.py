@@ -221,12 +221,6 @@ def verify_answer_grounding(
     )
 
 
-def format_grounding_block(quotes: Iterable[str], nkjv_pairs: Iterable[tuple[str, str]]) -> str:
-    from .quote_ids import build_quote_catalog, format_quote_id_block
-
-    return format_quote_id_block(build_quote_catalog(quotes, nkjv_pairs))
-
-
 def grounded_fallback_answer(
     quotes: Iterable[str],
     nkjv_pairs: Iterable[tuple[str, str]],

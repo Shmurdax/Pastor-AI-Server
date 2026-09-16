@@ -742,16 +742,6 @@ def expand_search_queries(
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
 
-    from .quote_ids import looks_like_quote_request
-
-    quote_request = looks_like_quote_request(current_q)
-    if quote_request:
-        topic = prior_focus or focus
-        if topic:
-            add(f"Pastor Don Nordin {topic}")
-        if heading_focus:
-            add(f"Pastor Don Nordin {heading_focus}")
-
     # Follow-ups: search the prior user topic first so "expand week one"
     # still retrieves marriage notes instead of generic "week / point" clips.
     if prior_focus:
@@ -1438,7 +1428,6 @@ def uniqueness_instruction(
             [
                 "This is a clarifying follow-up in the SAME chat. Stay on the same pastoral topic.",
                 "Only develop the part they asked about. Do not reprint the previous heading or step list.",
-                "You may use fresh {{Q#}} / {{V#}} tokens, but they must serve THIS same topic.",
             ]
         )
         if topic:
@@ -1448,7 +1437,6 @@ def uniqueness_instruction(
             [
                 "This is a follow-up in the SAME pastoral situation. Answer THIS new question.",
                 "Do not reuse the previous heading, outline, or step list. Write a new teaching.",
-                "Use fresh {{Q#}} / {{V#}} tokens that serve THIS question.",
             ]
         )
         if topic:
@@ -1457,9 +1445,9 @@ def uniqueness_instruction(
         lines.extend(
             [
                 "Each reply must be unique. Do not restate the previous answer, recycle the same outline, "
-                "or reuse the same Pastor Don/Susan quote ID or the same NKJV ID across turns.",
-                "Answer THIS user question with different notes, a different {{Q#}} token, and a different {{V#}} "
-                "than earlier turns. Draw from more than one labeled source in REFERENCE NOTES when they fit.",
+                "or reuse the same sermon excerpt and verse across turns.",
+                "Answer THIS user question with different notes than earlier turns. Draw from more than one "
+                "labeled source in REFERENCE NOTES when they fit.",
             ]
         )
     if headings:

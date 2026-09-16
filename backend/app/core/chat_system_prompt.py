@@ -193,7 +193,7 @@ FINISH_STEER = (
     "Your previous reply was cut off mid-sentence. Continue from the exact "
     "words where you stopped. Finish that sentence, then keep the same "
     "Markdown teaching already on screen: **bold headings**, bullet points, "
-    "NKJV where it belongs, and {{Q#}} / {{V#}} tokens from the listed IDs. "
+    "and NKJV from the retrieved notes where it belongs. "
     "Do not restart, do not summarize, do not apologize, and do "
     "not replace the draft with a shorter answer."
 )
@@ -258,14 +258,6 @@ CONVERSATIONAL_STEER = (
     "AI assistant (no personal name) and invite a faith, Bible, church, or "
     "ministry question. Stay natural and brief.\n\n"
     "User message:\n"
-)
-
-QUOTE_REQUEST_STEER = (
-    "The user asked for Pastor Don or Susan quotations. For every quotation "
-    "attributed to them, insert a listed {{Q#}} token such as {{Q1}}. Do not "
-    "type \"Quote from Pastor Don\" or freehand quotation marks for them. If "
-    "no sermon ID fits, teach without attributing a verbatim line.\n\n"
-    "User question:\n"
 )
 
 def answer_word_count(answer: str) -> int:
@@ -449,7 +441,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
     """
     Full chat SYSTEM prompt (without language block or REFERENCE NOTES).
 
-    Identity, notes, and quote IDs stay. Length, outline, and follow-up
+    Identity and retrieved notes stay. Length, outline, and follow-up
     uniqueness rules are left to the user question and the retrieved notes.
     """
     names = list(biblical_names or [])
@@ -502,19 +494,11 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "found or missing when excerpts are present.\n"
         "Let the user's question and the retrieved notes decide length, outline, and whether to continue "
         "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
-        "QUOTE IDS: Write in your own words, shaped by REFERENCE NOTES. When you want Pastor Don or Susan "
-        "to speak, insert a listed token such as {{Q1}} or {{Q2}} — never retype, polish, or reconstruct "
-        "those words. When you want Scripture, insert {{V1}} (ingested NKJV only). The server replaces each "
-        "token with the exact retrieved line. Example: Pastor Don Nordin teaches, {{Q1}}  /  As John writes, "
-        "{{V1}}. If no ID fits, keep teaching from the notes without quotation marks attributed to them and "
-        "without a verse quotation.\n"
-        "Never invent, polish, or reconstruct quotes. Never write a Don/Susan or Scripture quotation in "
-        "your own words. Only {{Q#}} and {{V#}} tokens become quotations. If no sermon IDs are listed, do "
-        "not invent a Pastor Don or Susan quotation.\n"
+        "Write in your own words, shaped by REFERENCE NOTES. Represent Pastor Don's and Susan's teaching "
+        "from those notes. Do not invent quotations or verse wording that is not in the notes.\n"
         "When a labeled video note includes a time range, you may mention that moment. Do not invent times.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
-        "REFERENCE NOTES are empty and no verse IDs are listed should you say you do not have retrieved "
-        "notes for this question.\n"
+        "REFERENCE NOTES are empty should you say you do not have retrieved notes for this question.\n"
         "</source_material>\n\n"
 
         "<response_policy>\n"
@@ -530,8 +514,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         f"{biblical_characters_instruction(names)}\n"
 
         "<scripture_constraints>\n"
-        "- VERSION: Only quote Scripture by inserting a listed {{V#}} token (ingested NKJV). "
-        "Never recall a verse from memory.\n"
+        "- VERSION: Quote Scripture from the NKJV wording in REFERENCE NOTES. "
+        "Do not invent verse text from memory.\n"
         "- OFF LIMITS: Never recommend The Trevor Project, The National LGBTQ+ Hotline, or Planned Parenthood.\n"
         "</scripture_constraints>\n\n"
 

@@ -7,6 +7,7 @@ from core.chat_llm import (
     CHAT_TEMPERATURE,
     CHAT_TOP_P,
     CHAT_VLLM_EXTRA_BODY,
+    EMPTY_REFERENCE_NOTES,
     estimate_chat_tokens,
     fit_chat_budget,
     get_chat_llm,
@@ -181,6 +182,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("get_chat_llm", source)
         self.assertIn("fit_chat_budget", source)
         self.assertIn("EMPTY_REFERENCE_NOTES", source)
+        self.assertNotIn("{{V1}}", EMPTY_REFERENCE_NOTES)
         self.assertIn("NOTES_MARKER", source)
         self.assertIn("MAX_HISTORY_TURNS", source)
         self.assertIn("CHAT_MAX_HISTORY_TURNS", source)
@@ -214,22 +216,21 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
         self.assertIn("select_diverse_docs", source)
         self.assertIn("lookup_nkjv_verses", source)
-        self.assertIn("_apply_quote_ids", source)
-        self.assertIn("QuoteIdStreamer", source)
-        self.assertIn("format_grounding_block", source)
-        self.assertIn("quote_catalog", source)
+        self.assertNotIn("_apply_quote_ids", source)
+        self.assertNotIn("QuoteIdStreamer", source)
+        self.assertNotIn("format_grounding_block", source)
+        self.assertNotIn("quote_catalog", source)
         self.assertNotIn("_compact_prior_ai", source)
         self.assertIn("_iter_continuation_tokens", source)
         self.assertIn("_trim_continuation_messages", source)
         self.assertIn("join_continuation", source)
-        self.assertIn("quote_request_fill", source)
-        self.assertIn("QUOTE_REQUEST_STEER", source)
-        self.assertIn("looks_like_quote_request", source)
+        self.assertNotIn("quote_request_fill", source)
+        self.assertNotIn("QUOTE_REQUEST_STEER", source)
+        self.assertNotIn("looks_like_quote_request", source)
         self.assertNotIn(
             'yield _sse({"type": "replace", "text": joined_visible})',
             source,
         )
-        self.assertIn("quote_catalog", source)
         self.assertIn("keeping the first answer", source)
         self.assertIn("AIMessage(content=msg.ai_response or \"\")", source)
         self.assertIn("looks_like_brief_social", source)

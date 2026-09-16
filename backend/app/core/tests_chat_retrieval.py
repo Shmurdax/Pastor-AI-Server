@@ -109,7 +109,7 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("marriage", anchor.lower())
         self.assertIn("week one", anchor.lower())
 
-    def test_quote_request_embeds_pastor_don_and_prior_topic(self):
+    def test_followup_quote_ask_still_anchors_to_prior_topic(self):
         queries = expand_search_queries(
             "Can you give me quotes from Pastor Don for week one?",
             ["I'd like to develop a sermon series on marriage."],

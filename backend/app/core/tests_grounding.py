@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from core.grounding import (
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
-    format_grounding_block,
     grounded_fallback_answer,
     lookup_nkjv_verses,
     verify_answer_grounding,
@@ -110,16 +109,6 @@ class GroundingTests(unittest.TestCase):
             retrieved_docs=docs,
         )
         self.assertEqual(len(found), 1)
-
-    def test_grounding_block_lists_allowed_sources(self):
-        block = format_grounding_block(
-            ["Comfort the child and stay in the kitchen with them."],
-            [("Psalm 34:18", "The Lord is near to those who have a broken heart.")],
-        )
-        self.assertIn("<quote_ids>", block)
-        self.assertIn("{{Q1}}", block)
-        self.assertIn("Comfort the child", block)
-        self.assertIn("Psalm 34:18", block)
 
 
 if __name__ == "__main__":

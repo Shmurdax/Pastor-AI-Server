@@ -42,19 +42,8 @@ from .chat_llm import (
 )
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .grounding import (
-    collect_allowed_nkjv,
-    collect_allowed_sermon_quotes,
-    format_grounding_block,
     lookup_nkjv_verses,
     verse_refs_for_lookup,
-)
-from .quote_ids import (
-    QuoteIdStreamer,
-    build_quote_catalog,
-    catalog_to_json,
-    finalize_quote_ids,
-    looks_like_quote_request,
-    quote_request_fill,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -75,7 +64,6 @@ from .chat_system_prompt import (
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
-    QUOTE_REQUEST_STEER,
     MAX_EXPANSION_PASSES,
     answer_char_count,
     answer_looks_incomplete,
@@ -265,20 +253,6 @@ def _sse_response(iterator):
 
 def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
-
-
-def _quote_catalog(prepared) -> dict:
-    catalog = prepared.get("quote_catalog")
-    if catalog:
-        return catalog
-    return build_quote_catalog(
-        prepared.get("allowed_quotes") or [],
-        prepared.get("allowed_nkjv") or [],
-    )
-
-
-def _apply_quote_ids(prepared, answer: str) -> str:
-    return finalize_quote_ids(answer, _quote_catalog(prepared))
 
 
 def _continuation_messages(messages, first_answer: str):
@@ -663,15 +637,12 @@ class ChatAPIView(APIView):
             )
 
             brief_social = looks_like_brief_social(user_query_llm)
-            quote_request = (not brief_social) and looks_like_quote_request(user_query_llm)
             # Pure greetings should not pull sermon notes—those notes trigger
             # quote/timestamp dumps. Informational questions keep full RAG.
             if brief_social:
                 search_queries = [user_query_llm]
                 docs = []
                 context = ""
-                allowed_quotes = []
-                allowed_nkjv = []
                 logger.debug(
                     "Skipping Qdrant for brief social message (session=%s)",
                     session_id[:18],
@@ -747,8 +718,6 @@ class ChatAPIView(APIView):
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
                 )
-                allowed_quotes = collect_allowed_sermon_quotes(docs)
-                allowed_nkjv = collect_allowed_nkjv(docs)
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -778,13 +747,8 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
-            quote_catalog = build_quote_catalog(allowed_quotes, allowed_nkjv)
-            grounding_block = ""
-            if not brief_social:
-                grounding_block = format_grounding_block(allowed_quotes, allowed_nkjv)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + grounding_block
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -809,8 +773,6 @@ class ChatAPIView(APIView):
             human_content = user_query_llm
             if brief_social:
                 human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
-            elif quote_request:
-                human_content = f"{QUOTE_REQUEST_STEER}{user_query_llm.strip()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -825,10 +787,6 @@ class ChatAPIView(APIView):
                 "docs": docs,
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
-                "allowed_quotes": allowed_quotes,
-                "allowed_nkjv": allowed_nkjv,
-                "quote_catalog": quote_catalog,
-                "quote_request": quote_request,
             }
 
         def _unique_sources(docs):
@@ -902,16 +860,11 @@ class ChatAPIView(APIView):
                 if prepared["kind"] == "final":
                     yield from _immediate_sse(prepared["payload"])
                     return
-                catalog = _quote_catalog(prepared)
-                if emit_live and catalog:
-                    yield _sse({"type": "quote_catalog", "quotes": catalog_to_json(catalog)})
-                streamer = QuoteIdStreamer(catalog)
                 first_raw_parts = []
                 for text in _generate_tokens(prepared):
                     first_raw_parts.append(text)
                     if emit_live:
-                        for event in streamer.ingest(text):
-                            yield _sse(event)
+                        yield _sse({"type": "delta", "text": text})
                 first_raw = "".join(first_raw_parts)
                 if not first_raw.strip():
                     raise ValueError("No generation chunks were returned")
@@ -933,13 +886,11 @@ class ChatAPIView(APIView):
                     try:
                         for text in _iter_continuation_tokens(prepared, answer):
                             if emit_live and not separator_sent:
-                                for event in streamer.ingest("\n\n"):
-                                    yield _sse(event)
+                                yield _sse({"type": "delta", "text": "\n\n"})
                                 separator_sent = True
                             extra_parts.append(text)
                             if emit_live:
-                                for event in streamer.ingest(text):
-                                    yield _sse(event)
+                                yield _sse({"type": "delta", "text": text})
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
@@ -947,22 +898,6 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
-                    # Keep streaming the continuation as deltas. Do not replace
-                    # the live draft when filling quote IDs.
-                fill = quote_request_fill(
-                    streamer.raw,
-                    catalog,
-                    quote_request=bool(prepared.get("quote_request")),
-                )
-                if fill:
-                    for event in streamer.ingest(fill):
-                        if emit_live:
-                            yield _sse(event)
-                answer, finish_events = streamer.finish()
-                if emit_live:
-                    for event in finish_events:
-                        yield _sse(event)
-                answer = _apply_quote_ids(prepared, answer)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1046,14 +981,6 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
-            fill = quote_request_fill(
-                answer,
-                _quote_catalog(prepared),
-                quote_request=bool(prepared.get("quote_request")),
-            )
-            if fill:
-                answer = f"{answer}{fill}"
-            answer = _apply_quote_ids(prepared, answer)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

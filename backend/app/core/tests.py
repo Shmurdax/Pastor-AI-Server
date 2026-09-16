@@ -1,6 +1,7 @@
 import unittest
 
 from .chat_system_prompt import (
+    FINISH_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
@@ -43,14 +44,16 @@ class ChatSystemPromptTests(unittest.TestCase):
     def test_no_biblical_names_when_absent(self):
         self.assertEqual(find_biblical_character_names("How should pastors prepare a sermon?"), [])
 
-    def test_prompt_requires_sermon_notes_and_quote_ids(self):
+    def test_prompt_requires_sermon_notes(self):
         prompt = build_chat_system_prompt(biblical_names=["Moses"])
         self.assertIn("Susan Nordin", prompt)
         self.assertIn("sermon notes", prompt)
-        self.assertIn("QUOTE IDS", prompt)
-        self.assertIn("{{Q1}}", prompt)
-        self.assertIn("{{V1}}", prompt)
-        self.assertIn("Never invent, polish, or reconstruct quotes", prompt)
+        self.assertIn("REFERENCE NOTES", prompt)
+        self.assertNotIn("QUOTE IDS", prompt)
+        self.assertNotIn("{{Q1}}", prompt)
+        self.assertNotIn("{{V1}}", prompt)
+        self.assertNotIn("{{Q#}}", FINISH_STEER)
+        self.assertNotIn("{{V#}}", FINISH_STEER)
         self.assertIn("Social issues are in scope", prompt)
         self.assertIn("abortion", prompt.lower())
         self.assertIn("Do not say you must redirect", prompt)

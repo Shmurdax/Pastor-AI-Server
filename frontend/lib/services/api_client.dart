@@ -104,7 +104,6 @@ class ApiClient {
     http.Client? client,
     required void Function(String delta) onDelta,
     void Function(String text)? onReplace,
-    void Function(Map<String, Map<String, String>> quotes)? onQuoteCatalog,
     bool Function()? isCancelled,
   }) async {
     bool cancelled() => isCancelled?.call() ?? false;
@@ -168,9 +167,7 @@ class ApiClient {
             'cancelled': true,
           };
         }
-        if (event.isQuoteCatalog && event.quotes.isNotEmpty) {
-          onQuoteCatalog?.call(event.quotes);
-        } else if (event.isDelta && event.text.isNotEmpty) {
+        if (event.isDelta && event.text.isNotEmpty) {
           assembled += event.text;
           onDelta(event.text);
         } else if (event.isReplace && event.text.isNotEmpty) {
