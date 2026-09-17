@@ -20,6 +20,15 @@ class AppStrings {
   String get chats => _t('chats');
   String get sermonLibrary => _t('sermonLibrary');
   String get sermonLibraryEmpty => _t('sermonLibraryEmpty');
+  String get allDocuments => _t('allDocuments');
+  String get searchDocuments => _t('searchDocuments');
+  String get ingestedDocumentsEmpty => _t('ingestedDocumentsEmpty');
+  String get ingestedDocumentsLoadFailed => _t('ingestedDocumentsLoadFailed');
+  String get viewOnly => _t('viewOnly');
+  String get downloadPdf => _t('downloadPdf');
+  String get closeDocumentsCatalog => _t('closeDocumentsCatalog');
+  String get browseAllDocuments => _t('browseAllDocuments');
+  String get retry => _t('retry');
   String get lastQuestionSources => _t('lastQuestionSources');
   String get previousChats => _t('previousChats');
   String get newChat => _t('newChat');
@@ -99,6 +108,15 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': 'Sermon Library',
     'sermonLibraryEmpty':
         'Relevant sermons will appear here after you ask a question.',
+    'allDocuments': 'All documents',
+    'searchDocuments': 'Search documents…',
+    'ingestedDocumentsEmpty': 'No ingested documents found.',
+    'ingestedDocumentsLoadFailed': 'Could not load documents.',
+    'viewOnly': 'View only',
+    'downloadPdf': 'Download',
+    'closeDocumentsCatalog': 'Close documents catalog',
+    'browseAllDocuments': 'Browse all documents',
+    'retry': 'Retry',
     'lastQuestionSources': "Last Question's Sources",
     'previousChats': 'Previous Chats',
     'newChat': 'New Chat',
@@ -172,6 +190,15 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': 'Biblioteca de sermones',
     'sermonLibraryEmpty':
         'Los sermones relevantes aparecerán aquí después de que hagas una pregunta.',
+    'allDocuments': 'Todos los documentos',
+    'searchDocuments': 'Buscar documentos…',
+    'ingestedDocumentsEmpty': 'No se encontraron documentos.',
+    'ingestedDocumentsLoadFailed': 'No se pudieron cargar los documentos.',
+    'viewOnly': 'Solo lectura',
+    'downloadPdf': 'Descargar',
+    'closeDocumentsCatalog': 'Cerrar catálogo de documentos',
+    'browseAllDocuments': 'Ver todos los documentos',
+    'retry': 'Reintentar',
     'lastQuestionSources': 'Fuentes de la última pregunta',
     'previousChats': 'Chats anteriores',
     'newChat': 'Nuevo chat',
@@ -247,6 +274,15 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': 'Bibliothèque de sermons',
     'sermonLibraryEmpty':
         'Les sermons pertinents apparaîtront ici après votre question.',
+    'allDocuments': 'Tous les documents',
+    'searchDocuments': 'Rechercher des documents…',
+    'ingestedDocumentsEmpty': 'Aucun document trouvé.',
+    'ingestedDocumentsLoadFailed': 'Impossible de charger les documents.',
+    'viewOnly': 'Lecture seule',
+    'downloadPdf': 'Télécharger',
+    'closeDocumentsCatalog': 'Fermer le catalogue de documents',
+    'browseAllDocuments': 'Parcourir tous les documents',
+    'retry': 'Réessayer',
     'lastQuestionSources': 'Sources de la dernière question',
     'previousChats': 'Discussions précédentes',
     'newChat': 'Nouvelle discussion',
@@ -322,6 +358,15 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': 'Biblioteca de sermões',
     'sermonLibraryEmpty':
         'Sermões relevantes aparecerão aqui depois que você fizer uma pergunta.',
+    'allDocuments': 'Todos os documentos',
+    'searchDocuments': 'Pesquisar documentos…',
+    'ingestedDocumentsEmpty': 'Nenhum documento encontrado.',
+    'ingestedDocumentsLoadFailed': 'Não foi possível carregar os documentos.',
+    'viewOnly': 'Somente visualização',
+    'downloadPdf': 'Baixar',
+    'closeDocumentsCatalog': 'Fechar catálogo de documentos',
+    'browseAllDocuments': 'Ver todos os documentos',
+    'retry': 'Tentar de novo',
     'lastQuestionSources': 'Fontes da última pergunta',
     'previousChats': 'Chats anteriores',
     'newChat': 'Novo chat',
@@ -397,6 +442,15 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': 'Predigtbibliothek',
     'sermonLibraryEmpty':
         'Relevante Predigten erscheinen hier, nachdem Sie eine Frage gestellt haben.',
+    'allDocuments': 'Alle Dokumente',
+    'searchDocuments': 'Dokumente durchsuchen…',
+    'ingestedDocumentsEmpty': 'Keine Dokumente gefunden.',
+    'ingestedDocumentsLoadFailed': 'Dokumente konnten nicht geladen werden.',
+    'viewOnly': 'Nur ansehen',
+    'downloadPdf': 'Herunterladen',
+    'closeDocumentsCatalog': 'Dokumentenkatalog schließen',
+    'browseAllDocuments': 'Alle Dokumente durchsuchen',
+    'retry': 'Erneut versuchen',
     'lastQuestionSources': 'Quellen der letzten Frage',
     'previousChats': 'Frühere Chats',
     'newChat': 'Neuer Chat',
@@ -471,6 +525,15 @@ const Map<String, Map<String, String>> _tables = {
     'chats': '채팅',
     'sermonLibrary': '설교 라이브러리',
     'sermonLibraryEmpty': '질문을 하시면 관련 설교가 여기에 표시됩니다.',
+    'allDocuments': '모든 문서',
+    'searchDocuments': '문서 검색…',
+    'ingestedDocumentsEmpty': '문서를 찾을 수 없습니다.',
+    'ingestedDocumentsLoadFailed': '문서를 불러올 수 없습니다.',
+    'viewOnly': '열람 전용',
+    'downloadPdf': '다운로드',
+    'closeDocumentsCatalog': '문서 목록 닫기',
+    'browseAllDocuments': '모든 문서 보기',
+    'retry': '다시 시도',
     'lastQuestionSources': '최근 질문의 출처',
     'previousChats': '이전 채팅',
     'newChat': '새 채팅',
@@ -537,6 +600,15 @@ const Map<String, Map<String, String>> _tables = {
     'chats': '对话',
     'sermonLibrary': '讲道资料库',
     'sermonLibraryEmpty': '提问后，相关讲道将显示在这里。',
+    'allDocuments': '全部文档',
+    'searchDocuments': '搜索文档…',
+    'ingestedDocumentsEmpty': '未找到文档。',
+    'ingestedDocumentsLoadFailed': '无法加载文档。',
+    'viewOnly': '仅可查看',
+    'downloadPdf': '下载',
+    'closeDocumentsCatalog': '关闭文档目录',
+    'browseAllDocuments': '浏览全部文档',
+    'retry': '重试',
     'lastQuestionSources': '上一个问题的来源',
     'previousChats': '历史对话',
     'newChat': '新对话',

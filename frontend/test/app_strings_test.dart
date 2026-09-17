@@ -34,6 +34,8 @@ void main() {
       final s = AppStrings(lang.code);
       expect(s.home.isNotEmpty, isTrue, reason: lang.code);
       expect(s.sermonLibrary.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.allDocuments.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.viewOnly.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeTitle.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name

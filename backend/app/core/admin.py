@@ -118,9 +118,9 @@ class UserChatHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(IngestedDocument)
 class IngestedDocumentAdmin(admin.ModelAdmin):
-    list_display = ("title", "source_name", "source_kind", "original_extension", "chunk_count", "updated_at")
+    list_display = ("title", "source_name", "source_kind", "view_only", "original_extension", "chunk_count", "updated_at")
     search_fields = ("title", "source_name", "normalized_title", "file_hash", "content_hash")
-    list_filter = ("source_kind", "original_extension", "updated_at")
+    list_filter = ("source_kind", "view_only", "original_extension", "updated_at")
     readonly_fields = (
         "source_name",
         "normalized_title",
@@ -133,7 +133,17 @@ class IngestedDocumentAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    actions = ("delete_selected_with_vectors",)
+    actions = ("delete_selected_with_vectors", "mark_view_only", "allow_download")
+
+    @admin.action(description="Make view only")
+    def mark_view_only(self, request, queryset):
+        updated = queryset.update(view_only=True)
+        self.message_user(request, f"Marked {updated} document(s) as view only.")
+
+    @admin.action(description="Allow download")
+    def allow_download(self, request, queryset):
+        updated = queryset.update(view_only=False)
+        self.message_user(request, f"Allowed download for {updated} document(s).")
 
     @admin.action(description="Delete selected documents from Django and Qdrant")
     def delete_selected_with_vectors(self, request, queryset):
@@ -190,6 +200,7 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "started_by",
         "status",
         "replace_existing_sources",
+        "view_only",
         "files_received",
         "files_processed",
         "chunks_created",
@@ -197,11 +208,12 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "finished_at",
     )
     search_fields = ("started_by", "error_message", "current_file")
-    list_filter = ("job_kind", "status", "replace_existing_sources", "created_at")
+    list_filter = ("job_kind", "status", "replace_existing_sources", "view_only", "created_at")
     readonly_fields = (
         "started_by",
         "job_kind",
         "replace_existing_sources",
+        "view_only",
         "status",
         "files_received",
         "files_processed",
@@ -453,6 +465,7 @@ def _admin_ingestion_view(request):
         ajax = _is_ajax(request)
         files = request.FILES.getlist("documents")
         replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
+        view_only = request.POST.get("view_only") == "on"
         if not files:
             if ajax:
                 return JsonResponse({"ok": False, "error": "Select at least one DOCX or PDF file."}, status=400)
@@ -463,6 +476,7 @@ def _admin_ingestion_view(request):
             started_by=request.user.get_username() or "admin",
             job_kind="document",
             replace_existing_sources=replace_existing_sources,
+            view_only=view_only,
             status="running",
             files_received=len(files),
         )

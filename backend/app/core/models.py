@@ -65,6 +65,11 @@ class IngestedDocument(models.Model):
         blank=True,
         help_text="Searchable topic title/topics/keywords/summary for video (and optional doc) RAG.",
     )
+    view_only = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="When enabled, members can read this PDF in the app but cannot download it.",
+    )
     chunk_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -118,6 +123,11 @@ class IngestionJob(models.Model):
         db_index=True,
     )
     replace_existing_sources = models.BooleanField(default=False)
+    view_only = models.BooleanField(
+        default=False,
+        help_text="When enabled, files in this job are stored as view-only (not downloadable) on the frontend.",
+        verbose_name="Make view only",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="running")
     files_received = models.PositiveIntegerField(default=0)
     files_processed = models.PositiveIntegerField(default=0)

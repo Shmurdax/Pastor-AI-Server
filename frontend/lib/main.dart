@@ -17,10 +17,13 @@ import 'package:flutter_application_1/screens/landing_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/paywall_screen.dart';
+import 'package:flutter_application_1/screens/pdf_viewer_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/ingested_documents_panel.dart';
+import 'package:flutter_application_1/models/ingested_document.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
@@ -269,6 +272,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _authInitialized = false;
   _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
   bool _eventsNavPanelOpen = false;
+  bool _ingestedDocsOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
 
   AppStrings get _s => context.read<LocaleController>().strings;
@@ -1076,7 +1080,13 @@ final bibleRefRegex = RegExp(
           return;
         }
 
-        if (fileUrl.isNotEmpty) {
+        final parsed = IngestedDocumentItem.fromJson(doc);
+        if (parsed.id > 0) {
+          await _openIngestedPdf(parsed);
+          return;
+        }
+
+        if (!parsed.viewOnly && fileUrl.isNotEmpty) {
           final launched = await launchUrl(
             Uri.parse(fileUrl),
             mode: LaunchMode.externalApplication,
@@ -1232,6 +1242,35 @@ final bibleRefRegex = RegExp(
     setState(() => _eventsNavPanelOpen = false);
   }
 
+  void _toggleIngestedDocs({bool? open}) {
+    setState(() {
+      _ingestedDocsOpen = open ?? !_ingestedDocsOpen;
+      if (_ingestedDocsOpen) {
+        _sidebarPanel = _SidebarPanel.sermonLibrary;
+      }
+    });
+  }
+
+  void _closeIngestedDocs() {
+    if (!_ingestedDocsOpen) return;
+    setState(() => _ingestedDocsOpen = false);
+  }
+
+  Future<void> _openIngestedPdf(IngestedDocumentItem document) async {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PdfViewerScreen(
+          apiService: _apiService,
+          document: document,
+        ),
+      ),
+    );
+  }
+
   void _focusChatNav() {
     setState(() => _eventsNavPanelOpen = false);
   }
@@ -1249,7 +1288,24 @@ final bibleRefRegex = RegExp(
     if (panel == _SidebarPanel.previousChats) {
       _reloadChatHistory();
     }
-    setState(() => _sidebarPanel = panel);
+    setState(() {
+      _sidebarPanel = panel;
+      if (panel != _SidebarPanel.sermonLibrary) {
+        _ingestedDocsOpen = false;
+      }
+    });
+  }
+
+  Widget _buildIngestedDocsPanel({required bool embeddedInSidebar}) {
+    return IngestedDocumentsPanel(
+      apiService: _apiService,
+      strings: _s,
+      embeddedInSidebar: embeddedInSidebar,
+      onClose: _closeIngestedDocs,
+      onOpenDocument: (doc) {
+        unawaited(_openIngestedPdf(doc));
+      },
+    );
   }
 
   void _loadChatFromHistory(Map<String, dynamic> entry) {
@@ -1633,6 +1689,14 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               ),
             ],
           ),
+          if (_ingestedDocsOpen && !isMobileOrTablet)
+            Positioned(
+              top: 20,
+              left: 20 + 320 + 12,
+              bottom: _layoutBottomInsetDesktop,
+              width: 320,
+              child: _buildIngestedDocsPanel(embeddedInSidebar: false),
+            ),
           if (_eventsNavPanelOpen)
             Positioned(
               top: 0,
@@ -1923,41 +1987,64 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             _buildSidebarTabSwitcher(),
             const SizedBox(height: 20),
             if (_sidebarPanel == _SidebarPanel.sermonLibrary) ...[
-              Text(_s.sermonLibrary,
-                  style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(_s.sermonLibrary,
+                        style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  ),
+                  IconButton(
+                    tooltip: _s.browseAllDocuments,
+                    onPressed: () => _toggleIngestedDocs(),
+                    icon: Icon(
+                      _ingestedDocsOpen ? Icons.chevron_left : Icons.chevron_right,
+                      color: _gold,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Container(height: 2, width: 40, color: _gold),
               const SizedBox(height: 20),
               Expanded(
-                child: withoutVideoSermonSources(_librarySermons).isEmpty &&
-                        withoutVideoSermonSources(_previousSermons).isEmpty
-                    ? Text(_s.sermonLibraryEmpty,
-                        style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
-                    : ListView(
-                        physics: _eventsNavPanelOpen
-                            ? const NeverScrollableScrollPhysics()
-                            : const ClampingScrollPhysics(),
-                        children: [
-                          ...withoutVideoSermonSources(_librarySermons)
-                              .map(_buildSermonLink),
-                          if (withoutVideoSermonSources(_previousSermons).isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            Row(children: [
-                              const Expanded(child: Divider(color: Colors.white24)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: Text(_s.lastQuestionSources,
-                                    style: GoogleFonts.figtree(
-                                        color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
-                              const Expanded(child: Divider(color: Colors.white24)),
-                            ]),
-                            const SizedBox(height: 10),
-                            ...withoutVideoSermonSources(_previousSermons).map(
-                                (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
-                          ],
-                        ],
+                child: Stack(
+                  children: [
+                    withoutVideoSermonSources(_librarySermons).isEmpty &&
+                            withoutVideoSermonSources(_previousSermons).isEmpty
+                        ? Text(_s.sermonLibraryEmpty,
+                            style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
+                        : ListView(
+                            physics: _eventsNavPanelOpen
+                                ? const NeverScrollableScrollPhysics()
+                                : const ClampingScrollPhysics(),
+                            children: [
+                              ...withoutVideoSermonSources(_librarySermons)
+                                  .map(_buildSermonLink),
+                              if (withoutVideoSermonSources(_previousSermons).isNotEmpty) ...[
+                                const SizedBox(height: 20),
+                                Row(children: [
+                                  const Expanded(child: Divider(color: Colors.white24)),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Text(_s.lastQuestionSources,
+                                        style: GoogleFonts.figtree(
+                                            color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                  const Expanded(child: Divider(color: Colors.white24)),
+                                ]),
+                                const SizedBox(height: 10),
+                                ...withoutVideoSermonSources(_previousSermons).map(
+                                    (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
+                              ],
+                            ],
+                          ),
+                    if (isMobile && _ingestedDocsOpen)
+                      Positioned.fill(
+                        child: _buildIngestedDocsPanel(embeddedInSidebar: true),
                       ),
+                  ],
+                ),
               ),
             ] else ...[
               Text(_s.previousChats,
