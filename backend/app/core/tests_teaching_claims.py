@@ -4,8 +4,10 @@ from types import SimpleNamespace
 from core.teaching_claims import (
     claim_is_covered,
     claim_repair_steer,
+    docs_without_local_anecdotes,
     extract_teaching_claims,
     format_teaching_claims_block,
+    is_local_anecdote,
     uncovered_claims,
 )
 
@@ -121,7 +123,45 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("without restarting", steer.lower())
         self.assertIn("covenant", steer)
         self.assertIn("same thesis", steer)
+        self.assertIn("portable doctrine", block.lower())
+        self.assertIn("named people", block.lower())
         self.assertEqual(format_teaching_claims_block([]), "")
+
+    def test_skips_local_event_and_named_people_claims(self):
+        self.assertTrue(is_local_anecdote(
+            "Darrell and Tonya discovered that God enlarged their hearts to include 3 extra teenagers."
+        ))
+        self.assertTrue(is_local_anecdote(
+            "At the Empowerment Conference the church learned to give."
+        ))
+        self.assertFalse(is_local_anecdote("Faith is a gift given to all people."))
+        self.assertFalse(is_local_anecdote("Faith and works belong together in James."))
+        docs = [
+            _doc(
+                "At the Empowerment Conference Darrell and Tonya discovered that God "
+                "enlarged their hearts to include 3 extra teenagers.",
+                source="heart.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="Darrell and Tonya discovered that God enlarged their hearts.",
+            ),
+            _doc(
+                "Faith is a gift given to all people, and there are three levels of faith.",
+                source="faith_lift.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="Faith is a gift given to all people.",
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query="three point sermon on Faith")
+        joined = " ".join(claims).lower()
+        self.assertTrue(any("gift" in item.lower() for item in claims), claims)
+        self.assertFalse(any("darrell" in item.lower() for item in claims), claims)
+        self.assertFalse(any("tonya" in item.lower() for item in claims), claims)
+        self.assertNotIn("empowerment", joined)
+        cleaned = docs_without_local_anecdotes(docs)
+        cleaned_text = " ".join(doc.page_content for doc in cleaned).lower()
+        self.assertIn("gift", cleaned_text)
+        self.assertNotIn("darrell", cleaned_text)
+        self.assertNotIn("tonya", cleaned_text)
 
 
 if __name__ == "__main__":

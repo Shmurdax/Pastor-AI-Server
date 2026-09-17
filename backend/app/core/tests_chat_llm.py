@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from core.chat_llm import (
     CHAT_FREQUENCY_PENALTY,
+    CHAT_LOCKED_TEMPERATURE,
     CHAT_PRESENCE_PENALTY,
     CHAT_TEMPERATURE,
     CHAT_TOP_P,
@@ -195,6 +196,9 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("FINISH_STEER", source)
         self.assertIn("MAX_EXPANSION_PASSES", source)
         self.assertIn("CHAT_TEMPERATURE", source)
+        self.assertIn("CHAT_LOCKED_TEMPERATURE", source)
+        self.assertEqual(CHAT_TEMPERATURE, 0.4)
+        self.assertEqual(CHAT_LOCKED_TEMPERATURE, 0.3)
         self.assertIn("CHAT_TOP_P", source)
         self.assertIn("CHAT_VLLM_EXTRA_BODY", source)
         self.assertIn("frequency_penalty=CHAT_FREQUENCY_PENALTY", source)
@@ -219,8 +223,14 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("extract_teaching_claims", source)
         self.assertIn("format_teaching_claims_block", source)
         self.assertIn("looks_like_library_pull", source)
+        self.assertIn("looks_like_topic_sermon", source)
+        self.assertIn("looks_like_primary_source_lock", source)
         self.assertIn("restrict_docs_to_primary_source", source)
         self.assertIn("LIBRARY_PULL_STEER", source)
+        self.assertIn("TOPIC_SERMON_STEER", source)
+        self.assertIn("PORTABLE_DOCTRINE_STEER", source)
+        self.assertIn("docs_without_local_anecdotes", source)
+        self.assertIn("CHAT_LOCKED_TEMPERATURE", source)
         self.assertIn("_claim_repair_plan", source)
         self.assertIn("claim_repair_steer", source)
         self.assertNotIn("_apply_quote_ids", source)

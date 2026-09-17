@@ -5,7 +5,9 @@ from .chat_system_prompt import (
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
+    PORTABLE_DOCTRINE_STEER,
     TARGET_TEACHING_CHARS,
+    TOPIC_SERMON_STEER,
     answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
@@ -62,6 +64,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Let the user's question and the retrieved notes decide", prompt)
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
+        self.assertIn("Teach portable doctrine", prompt)
+        self.assertIn("named church members", prompt)
+        self.assertIn("local events", PORTABLE_DOCTRINE_STEER.lower())
+        self.assertIn("single retrieved", TOPIC_SERMON_STEER.lower())
         self.assertIn("Follow-up turns may expand the last answer", prompt)
         self.assertNotIn("2000 characters", prompt)
         self.assertNotIn("<length_close>", prompt)

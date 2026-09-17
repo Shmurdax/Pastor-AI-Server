@@ -31,6 +31,7 @@ from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
 from .chat_language import language_reply_instruction, normalize_chat_language
 from .chat_llm import (
     CHAT_FREQUENCY_PENALTY,
+    CHAT_LOCKED_TEMPERATURE,
     CHAT_PRESENCE_PENALTY,
     CHAT_TEMPERATURE,
     CHAT_TOP_P,
@@ -59,6 +60,7 @@ from .grounding import (
 from .teaching_claims import (
     claim_repair_steer,
     claim_repair_token_budget,
+    docs_without_local_anecdotes,
     extract_teaching_claims,
     format_teaching_claims_block,
     uncovered_claims,
@@ -72,6 +74,8 @@ from .chat_retrieval import (
     filter_hits_by_topic,
     format_reference_notes,
     looks_like_library_pull,
+    looks_like_primary_source_lock,
+    looks_like_topic_sermon,
     restrict_docs_to_primary_source,
     topic_anchor_query,
     is_bible_source,
@@ -86,6 +90,8 @@ from .chat_system_prompt import (
     FINISH_STEER,
     LIBRARY_PULL_STEER,
     MAX_EXPANSION_PASSES,
+    PORTABLE_DOCTRINE_STEER,
+    TOPIC_SERMON_STEER,
     answer_char_count,
     answer_looks_incomplete,
     answer_needs_expansion,
@@ -609,12 +615,17 @@ class ChatAPIView(APIView):
         user_query_stored = str(raw_query).strip()
         # Search and generate in English; translate the displayed answer after.
         user_query_llm = english_search_query(user_query_stored, chat_language)
+        sampling_temperature = (
+            CHAT_LOCKED_TEMPERATURE
+            if looks_like_primary_source_lock(user_query_llm)
+            else CHAT_TEMPERATURE
+        )
 
         def prepare_chat():
             llm = get_chat_llm(
-                # Qwen2.5-14B-Instruct-AWQ: official Instruct sampling, not
-                # OpenAI frequency_penalty (that pushes unused Chinese tokens).
-                temperature=CHAT_TEMPERATURE,
+                # Colder sampling for topic-sermon / library-pull locks so the
+                # same notes do not lottery a different outline each turn.
+                temperature=sampling_temperature,
                 max_tokens=CHAT_MAX_TOKENS,
                 timeout=CHAT_TIMEOUT_S,
                 top_p=CHAT_TOP_P,
@@ -719,33 +730,36 @@ class ChatAPIView(APIView):
                     threshold=RETRIEVAL_THRESHOLD,
                     retrieval_k=RETRIEVAL_K,
                 )
-                docs = select_diverse_docs(
-                    scored_hits,
-                    k=RETRIEVAL_K,
-                    bible_ratio=RETRIEVAL_BIBLE_RATIO,
-                    video_ratio=RETRIEVAL_VIDEO_RATIO,
-                    max_per_source=RETRIEVAL_MAX_PER_SOURCE,
-                    max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
-                    used_quotes=used_quotes,
-                    used_verses=used_verses,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    is_video=is_video_chunk,
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
-                    query=topic_query,
+                source_key = lambda doc: (
+                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                    or _doc_source_name(doc)
                 )
-                if looks_like_library_pull(user_query_llm):
+                is_bible_doc = lambda doc: _is_bible_source(_doc_source_name(doc))
+                lock_primary = looks_like_primary_source_lock(user_query_llm)
+                if lock_primary:
                     docs = restrict_docs_to_primary_source(
-                        docs,
-                        topic=topic_query,
-                        is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                        source_key=lambda doc: (
-                            str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                            or _doc_source_name(doc)
-                        ),
+                        [doc for doc, _score in scored_hits],
+                        topic=user_query_llm,
+                        is_bible=is_bible_doc,
+                        source_key=source_key,
                     )
+                else:
+                    docs = select_diverse_docs(
+                        scored_hits,
+                        k=RETRIEVAL_K,
+                        bible_ratio=RETRIEVAL_BIBLE_RATIO,
+                        video_ratio=RETRIEVAL_VIDEO_RATIO,
+                        max_per_source=RETRIEVAL_MAX_PER_SOURCE,
+                        max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
+                        used_quotes=used_quotes,
+                        used_verses=used_verses,
+                        is_bible=is_bible_doc,
+                        is_video=is_video_chunk,
+                        source_key=source_key,
+                        query=topic_query,
+                    )
+                if looks_like_topic_sermon(user_query_llm):
+                    docs = docs_without_local_anecdotes(docs)
                 refs = verse_refs_for_lookup(topic_query, docs)
                 nkjv_docs = lookup_nkjv_verses(
                     client,
@@ -804,6 +818,8 @@ class ChatAPIView(APIView):
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + (LIBRARY_PULL_STEER if looks_like_library_pull(user_query_llm) else "")
+                + (TOPIC_SERMON_STEER if looks_like_topic_sermon(user_query_llm) else "")
+                + ("" if brief_social else PORTABLE_DOCTRINE_STEER)
                 + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
@@ -856,17 +872,18 @@ class ChatAPIView(APIView):
             )
 
         def _response_sources(docs, answer: str, query: str = ""):
-            """3–5 distinct sources: cited first, then topical retrieved notes/videos."""
+            """Distinct sources: cited first, then topical retrieved notes/videos."""
             if not docs:
                 return []
             cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX)
             preferred = cited if cited else _unique_sources(docs)
+            min_count = 1 if looks_like_primary_source_lock(query or user_query_llm) else RETRIEVAL_SOURCE_MIN
             return ensure_source_media_mix(
                 preferred,
                 docs,
                 _doc_source_label,
                 is_video=is_video_chunk,
-                min_count=RETRIEVAL_SOURCE_MIN,
+                min_count=min_count,
                 limit=RETRIEVAL_SOURCE_MAX,
                 query=query,
             )
@@ -879,7 +896,7 @@ class ChatAPIView(APIView):
         def _short_timeout_bound(max_tokens):
             timeout_s = min(EMPTY_STREAM_RETRY_TIMEOUT_S, float(CHAT_TIMEOUT_S))
             llm = get_chat_llm(
-                temperature=CHAT_TEMPERATURE,
+                temperature=sampling_temperature,
                 max_tokens=max_tokens,
                 timeout=timeout_s,
                 top_p=CHAT_TOP_P,
