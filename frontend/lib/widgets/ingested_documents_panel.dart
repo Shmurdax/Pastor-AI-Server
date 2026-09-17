@@ -35,6 +35,7 @@ class IngestedDocumentsPanel extends StatefulWidget {
 
 class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _loading = true;
   String? _error;
   List<IngestedDocumentItem> _documents = const [];
@@ -53,6 +54,7 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -223,31 +225,45 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final doc = items[index];
-        return ListTile(
-          dense: true,
-          leading: Icon(
-            doc.viewOnly ? Icons.visibility_outlined : Icons.description_outlined,
-            color: _gold,
-            size: 18,
-          ),
-          title: Text(
-            doc.title,
-            style: GoogleFonts.figtree(color: Colors.white, fontSize: 14),
-          ),
-          subtitle: doc.viewOnly
-              ? Text(
-                  _s.viewOnly,
-                  style: GoogleFonts.figtree(color: _gold, fontSize: 11),
-                )
-              : null,
-          onTap: () => widget.onOpenDocument(doc),
-        );
-      },
+    return RawScrollbar(
+      controller: _scrollController,
+      thumbVisibility: true,
+      trackVisibility: true,
+      interactive: true,
+      thickness: 12,
+      radius: const Radius.circular(8),
+      thumbColor: _gold.withValues(alpha: 0.9),
+      trackColor: Colors.white.withValues(alpha: 0.16),
+      trackBorderColor: Colors.white24,
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      child: ListView.builder(
+        controller: _scrollController,
+        primary: false,
+        padding: const EdgeInsets.fromLTRB(0, 8, 18, 8),
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final doc = items[index];
+          return ListTile(
+            dense: true,
+            leading: Icon(
+              doc.viewOnly ? Icons.visibility_outlined : Icons.description_outlined,
+              color: _gold,
+              size: 18,
+            ),
+            title: Text(
+              doc.title,
+              style: GoogleFonts.figtree(color: Colors.white, fontSize: 14),
+            ),
+            subtitle: doc.viewOnly
+                ? Text(
+                    _s.viewOnly,
+                    style: GoogleFonts.figtree(color: _gold, fontSize: 11),
+                  )
+                : null,
+            onTap: () => widget.onOpenDocument(doc),
+          );
+        },
+      ),
     );
   }
 }

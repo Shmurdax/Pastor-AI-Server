@@ -49,6 +49,7 @@ void main() {
     expect(find.text('Hope In Christ'), findsOneWidget);
     expect(find.text('Book Transcript'), findsOneWidget);
     expect(find.text('View only'), findsWidgets);
+    expect(find.byType(RawScrollbar), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'book');
     await tester.pumpAndSettle();
