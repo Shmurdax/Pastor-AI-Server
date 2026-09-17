@@ -25,6 +25,7 @@ from core.chat_retrieval import (
     restrict_docs_to_primary_source,
     merge_scored_hits,
     query_focus_tokens,
+    session_user_focus,
     search_queries_on_store,
     select_diverse_docs,
     topic_anchor_query,
@@ -119,6 +120,41 @@ class ChatRetrievalTests(unittest.TestCase):
         joined = " | ".join(queries).lower()
         self.assertIn("marriage", joined)
         self.assertTrue(any("pastor don" in item.lower() and "marriage" in item.lower() for item in queries), queries)
+
+    def test_later_followup_keeps_first_user_topic(self):
+        priors = [
+            "I need to teach on marriage this Wednesday. What does he say marriage is, and what does he say it is not?",
+            "Give me some thing else besides sexual intimacy",
+        ]
+        current = "Expand more on emotional and spiritual connection"
+        self.assertIn("marriage", session_user_focus(current, priors).lower())
+        queries = expand_search_queries(
+            current,
+            priors,
+            prior_ai_texts=[
+                "Marriage is honored in Hebrews 13:4. Sexual intimacy is important.\n",
+                "Focus on building a strong emotional and spiritual connection.\n",
+            ],
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("marriage", joined)
+        self.assertTrue(queries[0].lower().startswith("marriage") or "marriage" in queries[0].lower(), queries)
+        self.assertFalse(queries[0].lower().startswith("some thing else"), queries)
+        self.assertFalse(queries[0].lower().startswith("emotional"), queries)
+        anchor = topic_anchor_query(current, priors)
+        self.assertIn("marriage", anchor.lower())
+
+    def test_new_topic_leads_with_current_focus(self):
+        queries = expand_search_queries(
+            "What is communion?",
+            ["I need to teach on marriage this Wednesday."],
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("communion", joined)
+        self.assertTrue("communion" in queries[0].lower(), queries)
+        self.assertIn("marriage", joined)
 
     def test_first_turn_embeds_topic_not_the_full_prompt(self):
         queries = expand_search_queries("What should I say to someone who is gay?")
@@ -445,6 +481,13 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertEqual(
             classify_followup_intent("What is communion?", prior, prior_ai),
             INTENT_NEW_TOPIC,
+        )
+        self.assertEqual(
+            classify_followup_intent(
+                "Can you give me quotes from Pastor Don for week one?",
+                ["I'd like to develop a sermon series on marriage."],
+            ),
+            INTENT_NEW_ANGLE,
         )
         self.assertEqual(
             classify_followup_intent("What should I say tonight in the kitchen?", prior, prior_ai),

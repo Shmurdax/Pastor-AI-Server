@@ -37,6 +37,51 @@ _FOLLOWUP_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Same-series asks that often share no topic words with the first user prompt
+# ("quotes for week one", "something else besides intimacy").
+_THREAD_CONTINUE_RE = re.compile(
+    r"\b("
+    r"week\s+(?:one|two|three|four|five|\d+)|"
+    r"(?:first|second|third|fourth|fifth)\s+(?:week|point)|"
+    r"(?:that|those|each|the)\s+(?:point|points|heading|headings|week)|"
+    r"quotes?.{0,48}(?:week|point|heading)|"
+    r"(?:week|point|heading).{0,48}quotes?|"
+    r"(?:something|anything|some\s+thing)\s+else|"
+    r"besides|"
+    r"instead|"
+    r"another\s+(?:angle|point|aspect|thing)"
+    r")\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Retrieval words that refer to the chat/series, not a new doctrine topic.
+_THREAD_CUE_STOPWORDS = frozenset(
+    {
+        "don",
+        "first",
+        "five",
+        "four",
+        "heading",
+        "headings",
+        "nordin",
+        "one",
+        "pastor",
+        "point",
+        "points",
+        "quotation",
+        "quotations",
+        "quote",
+        "quotes",
+        "scripture",
+        "scriptures",
+        "second",
+        "third",
+        "three",
+        "two",
+        "week",
+    }
+)
+
 _APPLY_RE = re.compile(
     r"\b("
     r"what (?:do|should|would) i say|"
@@ -220,12 +265,15 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "about",
         "answer",
         "based",
+        "besides",
         "chapter",
         "compose",
         "create",
         "draft",
+        "else",
         "essay",
         "explain",
+        "expand",
         "generate",
         "give",
         "help",
@@ -255,9 +303,12 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "sermon",
         "sermons",
         "someone",
+        "some",
         "something",
         "stories",
         "story",
+        "thing",
+        "things",
         "talk",
         "talks",
         "teach",
@@ -452,13 +503,58 @@ def looks_like_followup(query: str) -> bool:
     return len(text.split()) <= 8
 
 
+def looks_like_thread_continue(query: str) -> bool:
+    """True when the ask refers back to this series without naming a new topic."""
+    text = (query or "").strip()
+    if not text:
+        return False
+    return bool(_FOLLOWUP_RE.search(text) or _THREAD_CONTINUE_RE.search(text))
+
+
+def _prior_user_turns(
+    current_q: str, prior_user_queries: Optional[Iterable[str]]
+) -> list[str]:
+    """Earlier user asks in this session, oldest first, excluding the current line."""
+    current_key = (current_q or "").strip().lower()
+    turns: list[str] = []
+    seen: set[str] = set()
+    for item in prior_user_queries or []:
+        text = str(item or "").strip()
+        key = text.lower()
+        if not text or key == current_key or key in seen:
+            continue
+        seen.add(key)
+        turns.append(text)
+    return turns
+
+
+def session_user_focus(
+    current: str,
+    prior_user_queries: Optional[Iterable[str]] = None,
+) -> str:
+    """Distinctive words from every prior user ask, first ask first."""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for text in _prior_user_turns(current, prior_user_queries):
+        for token in keyword_search_query(text).split():
+            key = token.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            parts.append(token)
+    return " ".join(parts).strip()
+
+
 def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]] = None) -> str:
-    """Blend the last user turn into retrieval so follow-ups keep the topic."""
+    """Blend the whole session's user asks into retrieval so follow-ups keep the topic."""
     current_q = (current or "").strip()
-    last_prior = _last_prior_user(current_q, prior_user_queries)
-    if last_prior and current_q:
-        return f"{last_prior} {current_q}"
-    return current_q or last_prior
+    thread = session_user_focus(current_q, prior_user_queries)
+    current_focus = keyword_search_query(current_q)
+    if thread and current_focus:
+        return f"{thread} {current_focus}"
+    if thread:
+        return thread
+    return current_focus or current_q
 
 
 def _last_prior_user(current_q: str, prior_user_queries: Optional[Iterable[str]]) -> str:
@@ -495,7 +591,10 @@ def classify_followup_intent(
     # first so "What is communion?" is not treated as a follow-up.
     if _FOLLOWUP_RE.search(current_q):
         return INTENT_CLARIFY
+    if _THREAD_CONTINUE_RE.search(current_q):
+        return INTENT_NEW_ANGLE
     current_tokens = set(keyword_search_query(current_q).lower().split())
+    current_content = {token for token in current_tokens if token not in _THREAD_CUE_STOPWORDS}
     prior_blob = last_prior
     for item in reversed(list(prior_ai_texts or [])):
         text = str(item or "").strip()
@@ -503,9 +602,9 @@ def classify_followup_intent(
             prior_blob = f"{last_prior} {keyword_search_query(text[:900])}"
             break
     prior_tokens = set(keyword_search_query(prior_blob).lower().split())
-    if current_tokens and prior_tokens and not (current_tokens & prior_tokens):
+    if current_content and prior_tokens and not (current_content & prior_tokens):
         return INTENT_NEW_TOPIC
-    if looks_like_followup(current_q):
+    if looks_like_followup(current_q) or not current_content:
         return INTENT_CLARIFY
     return INTENT_NEW_ANGLE
 
@@ -537,13 +636,19 @@ def extract_used_headings(texts: Iterable[str], *, limit: int = 8) -> list[str]:
 
 def keyword_search_query(text: str) -> str:
     """Content words for embeddings: drop filler like \"generate a sermon\"."""
-    terms = [
-        token
-        for token in re.findall(r"[A-Za-z']{3,}", text or "")
-        if token.lower() not in _QUESTION_STOPWORDS
-        and token.lower() not in _GENERIC_FOCUS_STOPWORDS
-        and token.lower() not in _ENTITY_NOISE
-    ]
+    terms: list[str] = []
+    seen: set[str] = set()
+    for token in re.findall(r"[A-Za-z']{3,}", text or ""):
+        key = token.lower()
+        if (
+            key in _QUESTION_STOPWORDS
+            or key in _GENERIC_FOCUS_STOPWORDS
+            or key in _ENTITY_NOISE
+            or key in seen
+        ):
+            continue
+        seen.add(key)
+        terms.append(token)
     return " ".join(terms).strip()
 
 
@@ -793,10 +898,12 @@ def expand_search_queries(
 
     current_q = (current or "").strip()
     prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
-    last_prior = _last_prior_user(current_q, prior)
-    prior_focus = keyword_search_query(last_prior) if last_prior else ""
+    prior_turns = _prior_user_turns(current_q, prior)
+    last_prior = prior_turns[-1] if prior_turns else ""
+    first_focus = keyword_search_query(prior_turns[0]) if prior_turns else ""
+    thread_focus = session_user_focus(current_q, prior)
     heading_focus = ""
-    if last_prior and prior_ai_texts:
+    if prior_turns and prior_ai_texts:
         labels = extract_used_headings(prior_ai_texts, limit=6)
         if labels:
             heading_focus = keyword_search_query(" ".join(labels))
@@ -810,15 +917,31 @@ def expand_search_queries(
             if token.lower() not in _LIBRARY_FOCUS_STOP
         )
 
-    # Follow-ups: search the prior user topic first so "expand week one"
-    # still retrieves marriage notes instead of generic "week / point" clips.
-    if prior_focus:
-        add(prior_focus)
-        add(f"Pastor Don Nordin {prior_focus}")
-        if heading_focus:
-            add(f"{prior_focus} {heading_focus}")
-        if focus and focus.lower() != prior_focus.lower():
-            add(f"{prior_focus} {focus}")
+    thread_tokens = set(thread_focus.lower().split())
+    current_tokens = set(focus.lower().split())
+    current_content = {token for token in current_tokens if token not in _THREAD_CUE_STOPWORDS}
+    # Short standalone questions ("What is communion?") used to count as
+    # follow-ups because they are <=8 words. Only series/clarify cues, or
+    # asks that are just "quotes / week one / Pastor Don", stay on-thread.
+    thread_continue = looks_like_thread_continue(current_q) or not current_content
+    hard_topic_break = bool(
+        current_content
+        and thread_tokens
+        and not (current_content & thread_tokens)
+        and not thread_continue
+    )
+    # Follow-ups: search the first user topic first so "expand week one" or
+    # "expand emotional connection" still retrieves marriage notes.
+    lead_focus = focus if hard_topic_break else (first_focus or thread_focus)
+    if lead_focus:
+        add(lead_focus)
+        add(f"Pastor Don Nordin {lead_focus}")
+    if thread_focus and thread_focus.lower() != (lead_focus or "").lower():
+        add(thread_focus)
+    if first_focus and heading_focus:
+        add(f"{first_focus} {heading_focus}")
+    if focus and (lead_focus or thread_focus) and focus.lower() != (lead_focus or "").lower():
+        add(f"{first_focus or thread_focus} {focus}")
 
     if bible_names:
         joined = " ".join(bible_names)
@@ -834,7 +957,7 @@ def expand_search_queries(
                     aliases.append(alias)
         if aliases:
             add(" ".join(bible_names + aliases))
-    elif focus and (not prior_focus or focus.lower() != prior_focus.lower()):
+    elif focus and (not lead_focus or focus.lower() != lead_focus.lower()):
         # Embed the topical core (homosexuality, salvation, …), not
         # "generate a sermon based on …".
         add(focus)
@@ -844,7 +967,7 @@ def expand_search_queries(
     if focus and current_q.lower() == focus.lower():
         add(current_q)
 
-    if not last_prior and focus:
+    if not prior_turns and focus:
         add(f"Pastor Don Nordin {focus}")
 
     return queries[: max(1, limit)]
