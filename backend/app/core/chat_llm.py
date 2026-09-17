@@ -17,12 +17,9 @@ _DEFAULT_MODEL = "christianai"
 
 # Qwen2.5-14B-Instruct-AWQ (served as christianai) is bilingual. Official
 # Instruct decoding is temperature 0.7, top_p 0.8, top_k 20, repetition_penalty
-# 1.05. Teaching answers use a colder default so the same RAG notes do not
-# sample a different outline each turn. OpenAI-style frequency/presence
-# penalties are wrong here: once common English words are penalized, unused
-# Chinese tokens become the cheap next pick.
-CHAT_TEMPERATURE = 0.4
-CHAT_LOCKED_TEMPERATURE = 0.3
+# 1.05. OpenAI-style frequency/presence penalties are wrong here: once common
+# English words are penalized, unused Chinese tokens become the cheap next pick.
+CHAT_TEMPERATURE = 0.7
 CHAT_TOP_P = 0.8
 CHAT_PRESENCE_PENALTY = 0.0
 CHAT_FREQUENCY_PENALTY = 0.0

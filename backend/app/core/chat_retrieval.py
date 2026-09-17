@@ -60,33 +60,6 @@ _LIBRARY_PULL_RE = re.compile(
 _LIBRARY_FOCUS_STOP = frozenset(
     {"excerpt", "excerpts", "find", "library", "open", "pull", "read", "show"}
 )
-# "three point sermon on Faith" should embed Faith, not "three/point".
-_OUTLINE_FOCUS_STOP = frozenset(
-    {
-        "five",
-        "four",
-        "numbered",
-        "outline",
-        "outlines",
-        "point",
-        "points",
-        "series",
-        "three",
-        "week",
-        "weeks",
-    }
-)
-_TOPIC_SERMON_RE = re.compile(
-    r"(?:"
-    r"\b(?:three|four|five|3|4|5)[\s-]*points?\s+(?:sermon|message|teaching|homily|outline)\b|"
-    r"\b(?:sermon|message|homily)\s+(?:series|outline)\s+(?:on|about|for)\b|"
-    r"\b(?:need|want|write|prepare|give|create|draft|compose|generate|make|develop|preach|build)\s+"
-    r"(?:me\s+)?(?:a\s+|an\s+)?(?:\d+[\s-]*)?(?:point\s+)?(?:sermon|message|homily|outline)\b|"
-    r"\ba\s+sermon\s+(?:on|about|for)\b|"
-    r"\bsermon\s+about\b"
-    r")",
-    re.IGNORECASE,
-)
 
 INTENT_NEW_TOPIC = "new_topic"
 INTENT_NEW_ANGLE = "same_topic_new_angle"
@@ -425,32 +398,6 @@ def looks_like_library_pull(query: str) -> bool:
     return bool(_LIBRARY_PULL_RE.search(query or ""))
 
 
-def looks_like_topic_sermon(query: str) -> bool:
-    """True when the user asked for a sermon/outline on a topic (not a library pull)."""
-    text = query or ""
-    if looks_like_library_pull(text):
-        return False
-    return bool(_TOPIC_SERMON_RE.search(text))
-
-
-def looks_like_primary_source_lock(query: str) -> bool:
-    """True when retrieval should stay inside one sermon plus Bible verses."""
-    return looks_like_library_pull(query) or looks_like_topic_sermon(query)
-
-
-def portable_search_focus(query: str) -> str:
-    """Topic words for embeddings: drop pull/outline scaffolding."""
-    focus = keyword_search_query(query)
-    if not looks_like_library_pull(query) and not looks_like_topic_sermon(query):
-        return focus
-    return " ".join(
-        token
-        for token in focus.split()
-        if token.lower() not in _LIBRARY_FOCUS_STOP
-        and token.lower() not in _OUTLINE_FOCUS_STOP
-    )
-
-
 def restrict_docs_to_primary_source(
     docs: Optional[Iterable[Any]],
     *,
@@ -462,9 +409,7 @@ def restrict_docs_to_primary_source(
     """Keep chunks from one sermon plus any already-selected Bible verses."""
     bible_fn = is_bible or (lambda _doc: False)
     source_fn = source_key or chunk_source_key
-    topic_tokens = set(portable_search_focus(topic).lower().split())
-    if not topic_tokens:
-        topic_tokens = set(keyword_search_query(topic).lower().split())
+    topic_tokens = set(keyword_search_query(topic).lower().split())
     scores: dict[str, int] = {}
     counts: dict[str, int] = {}
     ordered: list[Any] = list(docs or [])
@@ -705,15 +650,11 @@ def query_focus_tokens(text: str) -> frozenset[str]:
     entities = query_canonical_entity_tokens(text)
     if entities:
         return entities
-    stops = set(_GENERIC_FOCUS_STOPWORDS)
-    if looks_like_library_pull(text) or looks_like_topic_sermon(text):
-        stops |= _LIBRARY_FOCUS_STOP
-        stops |= _OUTLINE_FOCUS_STOP
     return frozenset(
         token.lower()
         for token in keyword_search_query(text).split()
         if len(token) >= 3
-        and token.lower() not in stops
+        and token.lower() not in _GENERIC_FOCUS_STOPWORDS
         and token.lower() not in {"god", "man", "men", "son", "day", "way"}
     )
 
@@ -861,7 +802,13 @@ def expand_search_queries(
             heading_focus = keyword_search_query(" ".join(labels))
 
     bible_names = retrieval_bible_names(current_q)
-    focus = portable_search_focus(current_q)
+    focus = keyword_search_query(current_q)
+    if looks_like_library_pull(current_q):
+        focus = " ".join(
+            token
+            for token in focus.split()
+            if token.lower() not in _LIBRARY_FOCUS_STOP
+        )
 
     # Follow-ups: search the prior user topic first so "expand week one"
     # still retrieves marriage notes instead of generic "week / point" clips.

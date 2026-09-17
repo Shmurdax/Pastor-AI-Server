@@ -6,7 +6,6 @@ Tone stays generic pastoral English. The claims are the doctrine and outline.
 from __future__ import annotations
 
 import re
-from types import SimpleNamespace
 from typing import Any, Iterable
 
 from .chat_retrieval import chunk_text, is_bible_source, metadata_source_hint
@@ -55,125 +54,6 @@ _STOP = frozenset(
         "verse", "verses", "word", "words", "amen", "hallelujah",
     }
 )
-
-_LOCAL_EVENT_RE = re.compile(
-    r"\b("
-    r"empowerment\s+conference|"
-    r"(?!the|this|that|our|a|an)\w{4,}\s+conference|"
-    r"camp\s+meeting|heart\s+for\s+the\s+house|"
-    r"this\s+(?:past\s+)?(?:sunday|wednesday|friday|weekend)|"
-    r"last\s+(?:sunday|week|night|wednesday)|"
-    r"vacation\s+bible\s+school|\bvbs\b"
-    r")\b",
-    re.IGNORECASE,
-)
-_FAMILY_STORY_RE = re.compile(
-    r"\b("
-    r"foster(?:ed|ing)?|adopt(?:ed|ing|ion)|"
-    r"a\s+couple\s+in\s+(?:the|our)\s+church|"
-    r"extra\s+teenagers|enlarged\s+their\s+hearts"
-    r")\b",
-    re.IGNORECASE,
-)
-_NAME_PAIR_RE = re.compile(r"\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b")
-_THEOLOGICAL_NAME_WORDS = frozenset(
-    {
-        "faith", "love", "hope", "grace", "truth", "works", "law", "gospel",
-        "spirit", "word", "church", "marriage", "husband", "wife", "father",
-        "son", "mother", "daughter", "lord", "god", "jesus", "christ", "holy",
-        "bible", "scripture", "heaven", "kingdom", "cross", "blood", "glory",
-        "wisdom", "peace", "joy", "mercy", "power", "life", "death", "sin",
-        "salvation", "righteousness", "holiness", "prayer", "worship",
-    }
-)
-_ALLOWED_PERSON_NAMES = frozenset(
-    {
-        "don", "susan", "nordin", "nordins", "pastor", "jesus", "christ",
-        "god", "lord", "moses", "abraham", "isaac", "jacob", "joseph",
-        "david", "solomon", "elijah", "elisha", "isaiah", "jeremiah",
-        "ezekiel", "daniel", "hosea", "joel", "amos", "jonah", "micah",
-        "peter", "james", "john", "paul", "timothy", "titus", "barnabas",
-        "silas", "stephen", "philip", "mary", "martha", "elizabeth",
-        "sarah", "ruth", "esther", "hannah", "nehemiah", "ezra", "noah",
-        "adam", "eve", "cain", "abel", "goliath", "samuel", "nathan",
-        "matthew", "mark", "luke", "andrew", "thomas", "judas", "simon",
-        "pharaoh", "pilate", "herod", "nicodemus", "lazarus", "job",
-    }
-)
-_ALLOWED_NAME_PAIRS = frozenset(
-    {
-        frozenset({"don", "susan"}),
-        frozenset({"cain", "abel"}),
-        frozenset({"mary", "martha"}),
-        frozenset({"david", "goliath"}),
-        frozenset({"adam", "eve"}),
-        frozenset({"peter", "john"}),
-        frozenset({"paul", "silas"}),
-        frozenset({"husband", "wife"}),
-        frozenset({"faith", "works"}),
-        frozenset({"grace", "truth"}),
-        frozenset({"love", "hope"}),
-    }
-)
-
-
-def is_local_anecdote(text: str) -> bool:
-    """True for local events, named members, or family stories—not portable doctrine."""
-    raw = (text or "").strip()
-    if not raw:
-        return False
-    if _LOCAL_EVENT_RE.search(raw):
-        return True
-    if _FAMILY_STORY_RE.search(raw):
-        return True
-    for match in _NAME_PAIR_RE.finditer(raw):
-        left = match.group(1).lower()
-        right = match.group(2).lower()
-        pair = frozenset({left, right})
-        if pair in _ALLOWED_NAME_PAIRS:
-            continue
-        if left in _THEOLOGICAL_NAME_WORDS or right in _THEOLOGICAL_NAME_WORDS:
-            continue
-        if left in _ALLOWED_PERSON_NAMES and right in _ALLOWED_PERSON_NAMES:
-            continue
-        return True
-    return False
-
-
-def drop_local_anecdote_sentences(text: str) -> str:
-    """Keep doctrinal sentences; drop local-event / named-people asides."""
-    parts = split_sentences(text)
-    if not parts:
-        return ""
-    kept = [part for part in parts if not is_local_anecdote(part)]
-    return " ".join(kept).strip()
-
-
-def docs_without_local_anecdotes(docs: Iterable[Any] | None) -> list[Any]:
-    """Copy retrieved chunks with local-event / named-people sentences removed."""
-    cleaned_docs: list[Any] = []
-    for doc in docs or []:
-        if _is_bible_doc(doc):
-            cleaned_docs.append(doc)
-            continue
-        meta = dict(_metadata(doc))
-        stored = str(meta.get("quote_text") or "").strip()
-        if stored:
-            kept = [
-                part.strip()
-                for part in stored.split(" | ")
-                if part.strip() and not is_local_anecdote(part)
-            ]
-            meta["quote_text"] = " | ".join(kept)
-        body = drop_local_anecdote_sentences(
-            spoken_text_without_timestamps(chunk_text(doc))
-        )
-        if not body and not meta.get("quote_text"):
-            continue
-        cleaned_docs.append(
-            SimpleNamespace(page_content=body or chunk_text(doc), metadata=meta)
-        )
-    return cleaned_docs
 
 
 def _metadata(doc: Any) -> dict:
@@ -231,8 +111,6 @@ def extract_teaching_claims(
         key = normalize_grounding_text(claim)
         if len(key) < 16 or key in seen:
             return
-        if is_local_anecdote(claim):
-            return
         seen.add(key)
         scored.append((_score_claim(claim, query_tokens) + bonus, claim))
 
@@ -272,9 +150,6 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Teach portable doctrine: definitions, levels, purposes, and contrasts. Do not retell local "
-        "church events, conferences, campaigns, or named people from the notes unless the user asked "
-        "for that story.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part.",
     ]
     for index, claim in enumerate(points, start=1):
@@ -319,7 +194,6 @@ def claim_repair_steer(missing: Iterable[str]) -> str:
         "You missed these retrieved Pastor Don/Susan teaching points. Teach them now in your own words.",
         "Keep the same thesis, including the contrast. Do not keep the illustration and change what it teaches.",
         "Do not invent a different outline. Do not switch to generic Christian topics that are not listed.",
-        "Do not add local events, conferences, or named church members.",
     ]
     for index, claim in enumerate(points[:_DEFAULT_LIMIT], start=1):
         lines.append(f"{index}. {claim}")

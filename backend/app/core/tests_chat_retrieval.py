@@ -22,9 +22,6 @@ from core.chat_retrieval import (
     is_video_chunk,
     looks_like_followup,
     looks_like_library_pull,
-    looks_like_primary_source_lock,
-    looks_like_topic_sermon,
-    portable_search_focus,
     restrict_docs_to_primary_source,
     merge_scored_hits,
     query_focus_tokens,
@@ -144,27 +141,6 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertFalse(any("pull" in item.lower() for item in queries), queries)
         self.assertFalse(any("library" in item.lower() for item in queries), queries)
 
-    def test_topic_sermon_embeds_faith_not_three_point(self):
-        query = "I need a three point sermon on Faith"
-        self.assertTrue(looks_like_topic_sermon(query))
-        self.assertTrue(looks_like_primary_source_lock(query))
-        self.assertFalse(looks_like_library_pull(query))
-        self.assertFalse(looks_like_topic_sermon("What does Pastor Don teach about faith?"))
-        self.assertFalse(looks_like_topic_sermon("What did Jesus mean in the sermon on the mount?"))
-        self.assertFalse(looks_like_primary_source_lock("What does Pastor Don teach about faith?"))
-        self.assertEqual(portable_search_focus(query).lower(), "faith")
-        queries = expand_search_queries(query, limit=7)
-        joined = " | ".join(queries).lower()
-        self.assertIn("faith", joined)
-        self.assertTrue(queries[0].lower() == "faith" or queries[0].lower().startswith("faith"), queries)
-        self.assertFalse(any("three" in item.lower() for item in queries), queries)
-        self.assertFalse(any("point" in item.lower() for item in queries), queries)
-        focus = query_focus_tokens(query)
-        self.assertIn("faith", focus)
-        self.assertNotIn("three", focus)
-        self.assertNotIn("point", focus)
-        self.assertNotIn("sermon", focus)
-
     def test_library_pull_keeps_one_sermon_source(self):
         docs = [
             _doc("Heart intro about summer and vacation.", source="heart.pdf"),
@@ -184,36 +160,6 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         sources = {doc.metadata["source"] for doc in kept}
         self.assertEqual(sources, {"fire.pdf", "nkjv-bible.pdf"})
-
-    def test_topic_sermon_prefers_faith_source_over_campaign(self):
-        docs = [
-            _doc(
-                "Heart for the House campaign weekend and summer vacation plans.",
-                source="heart_for_the_house.pdf",
-                title="Heart for the House",
-            ),
-            _doc(
-                "Faith is a gift given to all people. There are three levels of faith.",
-                source="faith_lift.pdf",
-                title="Faith Lift",
-            ),
-            _doc(
-                "Darrell and Tonya discovered God enlarged their hearts to include extra teenagers.",
-                source="rooted.pdf",
-                title="Rooted in Faith",
-            ),
-            _doc("NKJV Ephesians 2:8", source="nkjv-bible.pdf"),
-        ]
-        kept = restrict_docs_to_primary_source(
-            docs,
-            topic="I need a three point sermon on Faith",
-            is_bible=lambda doc: "bible" in doc.metadata["source"],
-            source_key=lambda doc: doc.metadata["source"],
-        )
-        sources = {doc.metadata["source"] for doc in kept}
-        self.assertIn("faith_lift.pdf", sources)
-        self.assertNotIn("heart_for_the_house.pdf", sources)
-        self.assertIn("nkjv-bible.pdf", sources)
 
     def test_generate_a_sermon_embeds_social_issue_not_template(self):
         queries = expand_search_queries(

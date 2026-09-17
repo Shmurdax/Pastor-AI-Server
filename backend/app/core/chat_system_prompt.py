@@ -258,24 +258,6 @@ LIBRARY_PULL_STEER = (
     "</library_pull>\n"
 )
 
-PORTABLE_DOCTRINE_STEER = (
-    "<portable_doctrine>\n"
-    "Teach the portable doctrine from the retrieved notes: definitions, levels, purposes, "
-    "contrasts, and Scripture. Do not retell local church events, conferences, campaigns, "
-    "or named people from the notes unless the user asked for that story. Do not use a "
-    "family or member illustration as a sermon point. Do not mash multiple sermons' local "
-    "campaigns into one outline.\n"
-    "</portable_doctrine>\n"
-)
-
-TOPIC_SERMON_STEER = (
-    "<topic_sermon>\n"
-    "The user asked for a sermon or outline on a topic. Stay inside the single retrieved "
-    "teaching source in REFERENCE NOTES, plus NKJV. Teach that source's portable doctrine. "
-    "Do not blend other sermons' campaigns, events, or named people into a new outline.\n"
-    "</topic_sermon>\n"
-)
-
 
 CONVERSATIONAL_STEER = (
     "This is a casual greeting or social check-in—not a teaching request. "
@@ -529,8 +511,6 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "
         "Paraphrase them. Do not replace them with generic Christian teaching that is absent from the points "
         "and notes. Represent Pastor Don's and Susan's positions faithfully. "
-        "Teach portable doctrine (definitions, levels, purposes, contrasts). Do not retell local events, "
-        "conferences, campaigns, or named church members unless the user asked for that story. "
         "Do not invent quotations or verse wording that is not in the notes.\n"
         "When a labeled video note includes a time range, you may mention that moment. Do not invent times.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
