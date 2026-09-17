@@ -1082,6 +1082,7 @@ final bibleRefRegex = RegExp(
 
         final parsed = IngestedDocumentItem.fromJson(doc);
         if (parsed.id > 0) {
+          if (!mounted) return;
           await _openIngestedPdf(parsed);
           return;
         }

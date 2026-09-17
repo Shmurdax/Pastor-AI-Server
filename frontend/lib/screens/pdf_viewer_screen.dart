@@ -81,13 +81,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             IconButton(
               tooltip: s.downloadPdf,
               onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 try {
                   final bytes = await _bytesFuture;
                   if (!mounted) return;
                   downloadPdfBytes(bytes, _downloadName);
                 } catch (_) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     SnackBar(content: Text(s.couldNotOpenSource(widget.document.title))),
                   );
                 }
