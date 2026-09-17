@@ -78,18 +78,10 @@ from .chat_retrieval import (
 )
 from .chat_system_prompt import (
     CONVERSATIONAL_STEER,
-    CONTINUE_STEER,
-    FINISH_STEER,
     LIBRARY_PULL_STEER,
-    MAX_EXPANSION_PASSES,
-    answer_char_count,
-    answer_looks_incomplete,
-    answer_needs_expansion,
     build_chat_system_prompt,
     compact_history_ai,
-    continuation_token_budget,
     find_biblical_character_names,
-    join_continuation,
     looks_like_brief_social,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
@@ -279,88 +271,6 @@ def _sse_response(iterator):
 
 def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
-
-
-def _continuation_messages(messages, first_answer: str, steer: str | None = None):
-    if not steer:
-        steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
-    return list(messages) + [
-        AIMessage(content=first_answer),
-        HumanMessage(content=steer),
-    ]
-
-
-def _join_continuation(answer: str, extra: str) -> str:
-    return join_continuation(answer, extra)
-
-
-def _trim_continuation_messages(messages):
-    """Drop history and clip notes so a continue turn still fits a short worker."""
-    system = None
-    last_human = None
-    last_ai = None
-    for msg in messages:
-        if isinstance(msg, SystemMessage):
-            system = msg
-        elif isinstance(msg, HumanMessage):
-            last_human = msg
-        elif isinstance(msg, AIMessage):
-            last_ai = msg
-    trimmed = []
-    if system is not None:
-        content = getattr(system, "content", "") or ""
-        if len(content) > 2400:
-            idx = content.find(NOTES_MARKER)
-            if idx >= 0:
-                prefix = content[: idx + len(NOTES_MARKER)]
-                notes = content[idx + len(NOTES_MARKER) :]
-                keep_notes = notes[: max(1200, min(len(notes), 2200))]
-                keep_prefix = prefix
-                budget = 3200
-                if len(keep_prefix) + len(keep_notes) > budget:
-                    keep_prefix = keep_prefix[: max(900, budget - len(keep_notes))]
-                content = keep_prefix + keep_notes
-            else:
-                content = content[:2400]
-        trimmed.append(SystemMessage(content=content))
-    if last_ai is not None:
-        trimmed.append(last_ai)
-    if last_human is not None:
-        trimmed.append(last_human)
-    return trimmed
-
-
-def _iter_continuation_tokens(prepared, answer: str, steer: str | None = None, *, token_budget: int | None = None):
-    budget = (
-        token_budget
-        if token_budget is not None
-        else continuation_token_budget(
-            answer, completion_tokens=prepared["completion_tokens"]
-        )
-    )
-    if budget <= 0:
-        return
-        yield
-    full = _continuation_messages(prepared["messages"], answer, steer=steer)
-    trimmed = _trim_continuation_messages(full)
-    bound = prepared["llm"].bind(max_tokens=budget)
-    attempts = (
-        (bound, full),
-        (bound, trimmed),
-    )
-    for bound, messages in attempts:
-        yielded = False
-        try:
-            for text in _iter_chat_tokens(bound, messages):
-                yielded = True
-                yield text
-            if yielded:
-                return
-        except Exception:
-            if yielded:
-                return
-            logger.exception("Continuation attempt failed")
-    logger.warning("Continuation produced no extra text")
 
 
 def _save_ai_response(
@@ -983,35 +893,6 @@ class ChatAPIView(APIView):
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
                 answer = first_raw
-                expansion_pass = 0
-                while (
-                    answer_needs_expansion(answer, query=user_query_llm)
-                    and expansion_pass < MAX_EXPANSION_PASSES
-                ):
-                    expansion_pass += 1
-                    logger.warning(
-                        "Chat answer was short (%s chars); requesting continuation %s/%s",
-                        answer_char_count(answer),
-                        expansion_pass,
-                        MAX_EXPANSION_PASSES,
-                    )
-                    extra_parts = []
-                    separator_sent = False
-                    try:
-                        for text in _iter_continuation_tokens(prepared, answer):
-                            if emit_live and not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
-                                separator_sent = True
-                            extra_parts.append(text)
-                            if emit_live:
-                                yield _sse({"type": "delta", "text": text})
-                    except Exception:
-                        logger.exception("Continuation failed; keeping the first answer")
-                        break
-                    extra = "".join(extra_parts).strip()
-                    if not extra:
-                        break
-                    answer = _join_continuation(answer, extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1062,45 +943,6 @@ class ChatAPIView(APIView):
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
-            expansion_pass = 0
-            while (
-                answer_needs_expansion(answer, query=user_query_llm)
-                and expansion_pass < MAX_EXPANSION_PASSES
-            ):
-                expansion_pass += 1
-                logger.warning(
-                    "Chat answer was short (%s chars); requesting continuation %s/%s",
-                    answer_char_count(answer),
-                    expansion_pass,
-                    MAX_EXPANSION_PASSES,
-                )
-                continue_tokens = continuation_token_budget(
-                    answer, completion_tokens=prepared["completion_tokens"]
-                )
-                if continue_tokens <= 0:
-                    break
-                try:
-                    extra = prepared["llm"].bind(max_tokens=continue_tokens).invoke(
-                        _continuation_messages(prepared["messages"], answer)
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("Continuation failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(
-                            max_tokens=continue_tokens
-                        ).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(prepared["messages"], answer)
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("Continuation failed; keeping the first answer")
-                        break
-                if not extra_text:
-                    break
-                answer = _join_continuation(answer, extra_text)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
