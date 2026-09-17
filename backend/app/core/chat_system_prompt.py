@@ -250,12 +250,11 @@ def query_expects_long_answer(query: str) -> bool:
 
 
 LIBRARY_PULL_STEER = (
-    "<library_pull>\n"
-    "The user asked to pull up one sermon from the library. Stay inside the single "
-    "retrieved sermon in REFERENCE NOTES. Do not mash other sermons into a new excerpt. "
-    "Keep that sermon's actual thesis when you paraphrase. Do not keep an illustration "
-    "and change what it teaches.\n"
-    "</library_pull>\n"
+    "<one_lesson>\n"
+    "Stay inside the single retrieved sermon in REFERENCE NOTES. "
+    "Teach that sermon's actual thesis. Do not mash other sermons into a new lesson. "
+    "Do not keep an illustration and change what it teaches.\n"
+    "</one_lesson>\n"
 )
 
 
@@ -336,17 +335,28 @@ def text_looks_degenerate(text: str) -> bool:
 
 
 def answer_needs_expansion(answer: str, *, query: str) -> bool:
-    """True when a teaching question got a short brush-off or a mid-sentence cut."""
+    """True only for a mid-sentence cut on a teaching question.
+
+    Finished short answers are left alone. A second write is how generic
+    filler and topic jumps get appended.
+    """
     if not query_expects_long_answer(query):
         return False
     if text_looks_degenerate(answer):
         return False
-    if answer_looks_incomplete(answer):
-        return True
-    # Already closed cleanly—do not force more tokens (that causes filler after the close).
-    if answer_has_conclusion(answer) and answer_char_count(answer) >= 1000:
-        return False
-    return answer_char_count(answer) < MIN_TEACHING_CHARS
+    return answer_looks_incomplete(answer)
+
+
+def compact_history_ai(text: str, *, limit: int = 420) -> str:
+    """Keep prior answers as a short cue so they do not become the next syllabus."""
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    paragraph = " ".join((raw.split("\n\n")[0]).split())
+    if len(paragraph) <= limit:
+        return paragraph
+    clipped = paragraph[: limit - 3].rsplit(" ", 1)[0].strip()
+    return (clipped or paragraph[: limit - 3].strip()) + "..."
 
 
 def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
@@ -498,19 +508,15 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "<source_material>\n"
         "Primary authority: Pastor Don Nordin's and Susan Nordin's sermon notes, teachings, videos, and "
         "ministry materials, plus NKJV Scripture.\n"
-        "Answer from the sermon notes and videos in REFERENCE NOTES first—not generic Christian advice. "
-        "Represent their views faithfully. Do not invent positions that contradict their teaching. "
+        "REFERENCE NOTES are one lesson. Teach that lesson in plain English. "
+        "Do not imitate Pastor Don's or Susan's speaking style. "
+        "Keep their distinctions (is / is not, rather than, only if). "
+        "Do not add a topic that is not in the notes. "
         "If the retrieved notes do not address the question, say that plainly. Never say notes were not "
         "found or missing when excerpts are present.\n"
-        "Let the user's question and the retrieved notes decide length, outline, and whether to continue "
-        "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
-        "Write in your own words, shaped by REFERENCE NOTES. Use a generic Christian pastoral tone; "
-        "do not imitate Pastor Don's or Susan's speaking style. "
-        "In your own words means the same thesis with different wording. Keep the contrast. "
-        "Do not keep an illustration and teach a different point with it. "
-        "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "
-        "Paraphrase them. Do not replace them with generic Christian teaching that is absent from the points "
-        "and notes. Represent Pastor Don's and Susan's positions faithfully. "
+        "When REQUIRED TEACHING POINTS are listed, teach those points. They are the outline. "
+        "Do not replace them with generic Christian advice that is absent from the notes. "
+        "Represent Pastor Don's and Susan's positions faithfully. "
         "Do not invent quotations or verse wording that is not in the notes.\n"
         "When a labeled video note includes a time range, you may mention that moment. Do not invent times.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
@@ -518,8 +524,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "</source_material>\n\n"
 
         "<response_policy>\n"
-        "Answer the user's question. Match their request: an outline, an expansion of the last points, "
-        "a short clarification, or a fuller teaching. Do not invent a competing outline just to be unique.\n"
+        "Answer the user's question from the retrieved lesson. Match their request: an outline, "
+        "a short clarification, or a fuller teaching. Do not invent a competing outline.\n"
         "CASUAL CONVERSATION EXCEPTION: Only for pure greetings, thanks, or light check-ins "
         "(for example \"Hello how are you today?\"), reply in one short warm conversational paragraph. "
         "Do not pull sermon quotes, timestamps, Scripture teaching blocks, or contact information into "

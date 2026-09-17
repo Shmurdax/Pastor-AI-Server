@@ -143,14 +143,10 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         return ""
     lines = [
         "<required_teaching_points>",
-        "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
-        "The numbered points are the retrieved teaching content for this answer. Teach them in your own words.",
-        "In your own words means the same thesis with different wording. Keep the contrast "
-        "(the not / only if / same power / rather than). Do not keep a story or illustration "
-        "and teach a different point with it.",
-        "They are the outline and the doctrine. Do not replace them with generic Christian topics "
-        "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part.",
+        "Teach these retrieved points in plain English. Do not imitate Pastor Don's or Susan's speaking style.",
+        "They are the outline. Keep each contrast (is / is not, rather than, only if).",
+        "Do not add a topic that is not in these points or the notes.",
+        "If the notes do not cover the question, say that. Do not invent a different lesson.",
     ]
     for index, claim in enumerate(points, start=1):
         lines.append(f"{index}. {claim}")
@@ -190,10 +186,10 @@ def claim_repair_steer(missing: Iterable[str]) -> str:
     points = [item.strip() for item in missing if item and item.strip()]
     lines = [
         "Continue the same teaching without restarting or replacing the draft on screen.",
-        "Keep a generic Christian pastoral tone. Do not imitate Pastor Don's speaking style.",
-        "You missed these retrieved Pastor Don/Susan teaching points. Teach them now in your own words.",
-        "Keep the same thesis, including the contrast. Do not keep the illustration and change what it teaches.",
-        "Do not invent a different outline. Do not switch to generic Christian topics that are not listed.",
+        "Teach these retrieved points in plain English. Do not imitate Pastor Don's speaking style.",
+        "You missed these retrieved Pastor Don/Susan teaching points. Teach them now.",
+        "Keep the same thesis, including the contrast.",
+        "Do not invent a different outline or add a topic that is not listed.",
     ]
     for index, claim in enumerate(points[:_DEFAULT_LIMIT], start=1):
         lines.append(f"{index}. {claim}")

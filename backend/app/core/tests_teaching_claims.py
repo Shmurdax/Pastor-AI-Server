@@ -109,14 +109,30 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertEqual(len(claims), 1)
         self.assertIn("same power", claims[0].lower())
 
+    def test_definition_query_keeps_is_not_thesis(self):
+        docs = [
+            _doc(
+                "The governments of this world did not create marriage, do not own "
+                "marriage, and cannot define marriage. Marriage was created by God.",
+                source="defining.pdf",
+            ),
+        ]
+        claims = extract_teaching_claims(
+            docs,
+            query="What does he say marriage is, and what does he say it is not?",
+            limit=4,
+        )
+        joined = " ".join(claims).lower()
+        self.assertTrue("cannot define" in joined or "did not create" in joined, claims)
+
     def test_block_and_repair_list_points(self):
         claims = ["Marriage is a covenant, not a contract."]
         block = format_teaching_claims_block(claims)
         self.assertIn("<required_teaching_points>", block)
-        self.assertIn("generic Christian pastoral tone", block)
+        self.assertIn("plain English", block)
         self.assertIn("covenant", block)
-        self.assertIn("Do not replace them with generic Christian topics", block)
-        self.assertIn("same thesis", block)
+        self.assertIn("Do not add a topic that is not in these points", block)
+        self.assertIn("outline", block)
         steer = claim_repair_steer(claims)
         self.assertIn("without restarting", steer.lower())
         self.assertIn("covenant", steer)

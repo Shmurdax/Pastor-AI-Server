@@ -398,6 +398,35 @@ def looks_like_library_pull(query: str) -> bool:
     return bool(_LIBRARY_PULL_RE.search(query or ""))
 
 
+_CALENDAR_TOPIC_STOP = frozenset(
+    {
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "today",
+        "tonight",
+        "tomorrow",
+        "yesterday",
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
+    }
+)
+
+
 def restrict_docs_to_primary_source(
     docs: Optional[Iterable[Any]],
     *,
@@ -409,7 +438,11 @@ def restrict_docs_to_primary_source(
     """Keep chunks from one sermon plus any already-selected Bible verses."""
     bible_fn = is_bible or (lambda _doc: False)
     source_fn = source_key or chunk_source_key
-    topic_tokens = set(keyword_search_query(topic).lower().split())
+    topic_tokens = {
+        token
+        for token in keyword_search_query(topic).lower().split()
+        if token not in _CALENDAR_TOPIC_STOP
+    }
     scores: dict[str, int] = {}
     counts: dict[str, int] = {}
     ordered: list[Any] = list(docs or [])

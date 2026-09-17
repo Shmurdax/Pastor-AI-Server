@@ -2,6 +2,7 @@ import unittest
 
 from .chat_system_prompt import (
     FINISH_STEER,
+    LIBRARY_PULL_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
@@ -9,6 +10,7 @@ from .chat_system_prompt import (
     answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
+    compact_history_ai,
     find_biblical_character_names,
     looks_like_brief_social,
     query_expects_long_answer,
@@ -59,10 +61,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Do not say you must redirect", prompt)
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
-        self.assertIn("Let the user's question and the retrieved notes decide", prompt)
-        self.assertIn("generic Christian pastoral tone", prompt)
+        self.assertIn("REFERENCE NOTES are one lesson", prompt)
+        self.assertIn("Do not add a topic that is not in the notes", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
-        self.assertIn("Follow-up turns may expand the last answer", prompt)
+        self.assertIn("plain English", prompt)
         self.assertNotIn("2000 characters", prompt)
         self.assertNotIn("<length_close>", prompt)
         self.assertNotIn("LENGTH (teaching answers):", prompt)
@@ -106,8 +108,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertEqual(len(mid), 1200)
         self.assertGreaterEqual(len(long_enough), 1500)
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
-        self.assertTrue(answer_needs_expansion(short, query=query))
-        self.assertTrue(answer_needs_expansion(mid, query=query))
+        self.assertFalse(answer_needs_expansion(short, query=query))
+        self.assertFalse(answer_needs_expansion(mid, query=query))
         self.assertFalse(answer_needs_expansion(long_enough, query=query))
         concluded = (
             ("Pastoral counsel for the student and parents. " * 24)
@@ -115,15 +117,25 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertGreaterEqual(len(concluded), 1000)
         self.assertFalse(answer_needs_expansion(concluded, query=query))
-        self.assertTrue(answer_needs_expansion(
+        self.assertFalse(answer_needs_expansion(
             short,
             query="Summarize his view of the Holy Spirit's work in conversion.",
         ))
         self.assertFalse(answer_needs_expansion("Thanks for asking — glad to help.", query="Hi"))
         self.assertIn("Moses", biblical_characters_instruction(["Moses"]))
         self.assertIn("No Biblical character names were detected", biblical_characters_instruction([]))
+        self.assertIn("single retrieved sermon", LIBRARY_PULL_STEER)
+        long_prior = (
+            "Marriage is honored according to Hebrews 13:4. Sexual intimacy is valued.\n\n"
+            "Consider the analogy of a bank account and then seek a marriage counselor. "
+            + ("More filler about communication and prayer. " * 20)
+        )
+        compact = compact_history_ai(long_prior)
+        self.assertIn("Hebrews 13:4", compact)
+        self.assertNotIn("marriage counselor", compact)
+        self.assertLessEqual(len(compact), 430)
 
-    def test_short_teaching_answer_still_requests_expansion(self):
+    def test_finished_short_teaching_does_not_request_expansion(self):
         query = (
             "According to this pastor's sermons, what is the main purpose of the church? "
             "Quote or closely paraphrase the language he actually uses."
@@ -148,7 +160,7 @@ class ChatSystemPromptTests(unittest.TestCase):
             "support essential for living a Christ-centered life."
         )
         self.assertLess(len(answer), MIN_TEACHING_CHARS)
-        self.assertTrue(answer_needs_expansion(answer, query=query))
+        self.assertFalse(answer_needs_expansion(answer, query=query))
         from .chat_system_prompt import continuation_token_budget
         self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
         self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)

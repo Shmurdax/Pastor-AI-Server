@@ -57,11 +57,8 @@ from .grounding import (
     verse_refs_for_lookup,
 )
 from .teaching_claims import (
-    claim_repair_steer,
-    claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
-    uncovered_claims,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -71,7 +68,6 @@ from .chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
-    looks_like_library_pull,
     restrict_docs_to_primary_source,
     topic_anchor_query,
     is_bible_source,
@@ -90,6 +86,7 @@ from .chat_system_prompt import (
     answer_looks_incomplete,
     answer_needs_expansion,
     build_chat_system_prompt,
+    compact_history_ai,
     continuation_token_budget,
     find_biblical_character_names,
     join_continuation,
@@ -295,19 +292,6 @@ def _continuation_messages(messages, first_answer: str, steer: str | None = None
 
 def _join_continuation(answer: str, extra: str) -> str:
     return join_continuation(answer, extra)
-
-
-def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    missing = uncovered_claims(answer, prepared.get("teaching_claims") or [])
-    if not missing:
-        return None, 0
-    budget = claim_repair_token_budget(
-        completion_tokens=prepared.get("completion_tokens") or 0
-    )
-    if budget <= 0:
-        return None, 0
-    logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
-    return claim_repair_steer(missing), budget
 
 
 def _trim_continuation_messages(messages):
@@ -750,16 +734,15 @@ class ChatAPIView(APIView):
                     ),
                     query=topic_query,
                 )
-                if looks_like_library_pull(user_query_llm):
-                    docs = restrict_docs_to_primary_source(
-                        docs,
-                        topic=topic_query,
-                        is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                        source_key=lambda doc: (
-                            str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                            or _doc_source_name(doc)
-                        ),
-                    )
+                docs = restrict_docs_to_primary_source(
+                    docs,
+                    topic=user_query_llm,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    source_key=lambda doc: (
+                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                        or _doc_source_name(doc)
+                    ),
+                )
                 refs = verse_refs_for_lookup(topic_query, docs)
                 nkjv_docs = lookup_nkjv_verses(
                     client,
@@ -784,7 +767,8 @@ class ChatAPIView(APIView):
                 )
                 teaching_claims = extract_teaching_claims(
                     docs,
-                    query=topic_query,
+                    query=user_query_llm,
+                    limit=4,
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
@@ -805,10 +789,11 @@ class ChatAPIView(APIView):
             for msg in history_rows:
                 if len(history_messages) >= MAX_HISTORY_TURNS * 2:
                     break
-                exchange = f"{msg.user_query} {msg.ai_response}"
+                compact_ai = compact_history_ai(msg.ai_response or "")
+                exchange = f"{msg.user_query} {compact_ai}"
                 if current_chars + len(exchange) > MAX_HISTORY_CHARS:
                     break
-                history_messages.insert(0, AIMessage(content=msg.ai_response or ""))
+                history_messages.insert(0, AIMessage(content=compact_ai))
                 history_messages.insert(0, HumanMessage(content=msg.user_query))
                 current_chars += len(exchange)
 
@@ -817,7 +802,7 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + (LIBRARY_PULL_STEER if looks_like_library_pull(user_query_llm) else "")
+                + LIBRARY_PULL_STEER
                 + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
@@ -870,18 +855,18 @@ class ChatAPIView(APIView):
             )
 
         def _response_sources(docs, answer: str, query: str = ""):
-            """3–5 distinct sources: cited first, then topical retrieved notes/videos."""
+            """Cite the retrieved lesson; do not pad with unrelated sermons."""
             if not docs:
                 return []
-            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX)
+            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=3)
             preferred = cited if cited else _unique_sources(docs)
             return ensure_source_media_mix(
                 preferred,
                 docs,
                 _doc_source_label,
                 is_video=is_video_chunk,
-                min_count=RETRIEVAL_SOURCE_MIN,
-                limit=RETRIEVAL_SOURCE_MAX,
+                min_count=1,
+                limit=3,
                 query=query,
             )
 
@@ -1027,28 +1012,6 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
-                repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
-                if repair_steer:
-                    extra_parts = []
-                    separator_sent = False
-                    try:
-                        for text in _iter_continuation_tokens(
-                            prepared,
-                            answer,
-                            steer=repair_steer,
-                            token_budget=repair_budget,
-                        ):
-                            if emit_live and not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
-                                separator_sent = True
-                            extra_parts.append(text)
-                            if emit_live:
-                                yield _sse({"type": "delta", "text": text})
-                    except Exception:
-                        logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = "".join(extra_parts).strip()
-                    if extra:
-                        answer = _join_continuation(answer, extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1138,31 +1101,6 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
-            repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
-            if repair_steer:
-                try:
-                    extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
-                        _continuation_messages(
-                            prepared["messages"], answer, steer=repair_steer
-                        )
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("Claim-coverage repair failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(
-                                    prepared["messages"], answer, steer=repair_steer
-                                )
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("Claim-coverage repair failed; keeping the first answer")
-                        extra_text = ""
-                if extra_text:
-                    answer = _join_continuation(answer, extra_text)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

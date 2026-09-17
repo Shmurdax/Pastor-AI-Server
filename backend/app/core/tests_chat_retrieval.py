@@ -161,6 +161,25 @@ class ChatRetrievalTests(unittest.TestCase):
         sources = {doc.metadata["source"] for doc in kept}
         self.assertEqual(sources, {"fire.pdf", "nkjv-bible.pdf"})
 
+    def test_topic_question_keeps_one_sermon_not_weekday_notes(self):
+        docs = [
+            _doc("Welcome to Wednesday Scriptures and midweek announcements.", source="wednesday.pdf"),
+            _doc(
+                "The governments of this world did not create marriage and cannot define marriage.",
+                source="defining.pdf",
+            ),
+            _doc("Heart campaign and church property updates for the board.", source="heart.pdf"),
+            _doc("NKJV Hebrews 13:4 Marriage is honorable among all", source="nkjv-bible.pdf"),
+        ]
+        kept = restrict_docs_to_primary_source(
+            docs,
+            topic="I need to teach on marriage this Wednesday. What does he say marriage is?",
+            is_bible=lambda doc: "bible" in doc.metadata["source"],
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = {doc.metadata["source"] for doc in kept}
+        self.assertEqual(sources, {"defining.pdf", "nkjv-bible.pdf"})
+
     def test_generate_a_sermon_embeds_social_issue_not_template(self):
         queries = expand_search_queries(
             "Generate a sermon based on homosexuality and abortion",
