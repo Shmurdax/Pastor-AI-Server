@@ -154,7 +154,7 @@ def _strip_source_label(name: str) -> str:
     return raw
 
 
-def _file_response_for_document(document: IngestedDocument):
+def _file_response_for_document(document: IngestedDocument, *, download: bool = False):
     source_name = document.source_name or ""
     file_path = ingested_media_path(source_name, document.source_kind)
     if not file_path.is_file():
@@ -168,7 +168,15 @@ def _file_response_for_document(document: IngestedDocument):
     if document.source_kind != "video" and file_path.suffix.lower() == ".pdf":
         content_type = "application/pdf"
     response = FileResponse(open(file_path, "rb"), content_type=content_type or "application/octet-stream")
-    response["Content-Disposition"] = f'inline; filename="{file_path.name}"'
+    view_only = bool(getattr(document, "view_only", False))
+    if view_only:
+        filename = "document.pdf" if file_path.suffix.lower() == ".pdf" else "document"
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+    else:
+        disposition = "attachment" if download else "inline"
+        response["Content-Disposition"] = f'{disposition}; filename="{file_path.name}"'
     return response
 
 # Keep retrieval embeddings on CPU via shared helper (vLLM owns GPU VRAM).
@@ -525,6 +533,7 @@ class IngestedDocumentsAPIView(APIView):
                     "privacy_hash": privacy_hash,
                     "media_title": media_title,
                     "topic_metadata": document.topic_metadata or {},
+                    "view_only": bool(document.view_only),
                 }
             )
         return Response({"documents": documents}, status=status.HTTP_200_OK)
@@ -542,7 +551,12 @@ class IngestedDocumentFileAPIView(APIView):
         document = IngestedDocument.objects.filter(id=document_id).first()
         if not document:
             raise Http404("Document was not found.")
-        return _file_response_for_document(document)
+        download = str(request.query_params.get("download") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        return _file_response_for_document(document, download=download)
 
 
 class SermonPdfByNameAPIView(APIView):

@@ -234,9 +234,13 @@ class ApiClient {
   Future<Map<String, dynamic>> getIngestedDocuments({
     int limit = 1000,
     String? match,
+    String? sourceKind,
   }) async {
     final qp = <String, String>{'limit': '$limit'};
     if (match != null && match.trim().isNotEmpty) qp['match'] = match.trim();
+    if (sourceKind != null && sourceKind.trim().isNotEmpty) {
+      qp['source_kind'] = sourceKind.trim();
+    }
     final uri = Uri.parse(_resolveUrl('/api/ingested-documents/'))
         .replace(queryParameters: qp);
     final res = await _client.get(uri, headers: _headers());

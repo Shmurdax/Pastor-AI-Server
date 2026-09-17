@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
@@ -60,9 +62,16 @@ class ApiService {
   Future<Map<String, dynamic>> getIngestedDocuments({
     int limit = 1000,
     String? match,
+    String? sourceKind,
   }) {
-    return _apiClient.getIngestedDocuments(limit: limit, match: match);
+    return _apiClient.getIngestedDocuments(
+      limit: limit,
+      match: match,
+      sourceKind: sourceKind,
+    );
   }
+
+  Future<Uint8List> getDocumentFile(int id) => _apiClient.getDocumentFile(id);
 
   Future<Map<String, dynamic>> submitPrayerRequest({
     required String prayerText,
