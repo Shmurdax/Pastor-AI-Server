@@ -136,10 +136,13 @@ class IngestedDocumentAdmin(admin.ModelAdmin):
     )
     actions = ("delete_selected_with_vectors", "hide_from_library", "show_in_library", "mark_view_only", "allow_download")
 
-    @admin.action(description="Hide from sermon library (chat only)")
+    @admin.action(description="Hide from sermon library and chat sources (chat knowledge only)")
     def hide_from_library(self, request, queryset):
         updated = queryset.update(in_library=False)
-        self.message_user(request, f"Hid {updated} document(s) from the sermon library.")
+        self.message_user(
+            request,
+            f"Hid {updated} document(s) from the sermon library and chat sermon sources.",
+        )
 
     @admin.action(description="Show in sermon library")
     def show_in_library(self, request, queryset):

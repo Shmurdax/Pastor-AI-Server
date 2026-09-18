@@ -159,6 +159,60 @@ def _library_documents():
     return IngestedDocument.objects.filter(in_library=True)
 
 
+def hidden_library_matchers() -> tuple[set[str], set[str]]:
+    """file_hashes and lowercased titles/stems that members must not see or open."""
+    hashes: set[str] = set()
+    names: set[str] = set()
+    for file_hash, title, source_name in IngestedDocument.objects.filter(in_library=False).values_list(
+        "file_hash", "title", "source_name"
+    ):
+        if file_hash:
+            hashes.add(str(file_hash))
+        for value in (title, source_name):
+            raw = (value or "").strip().lower()
+            if raw:
+                names.add(raw)
+            stem = _strip_source_label(value or "").strip().lower()
+            if stem:
+                names.add(stem)
+    return hashes, names
+
+
+def chunk_is_in_library(
+    doc,
+    *,
+    hidden_hashes: set[str],
+    hidden_names: set[str],
+) -> bool:
+    """True when this retrieved chunk may appear as a member-facing sermon source."""
+    metadata = getattr(doc, "metadata", {}) or {}
+    file_hash = str(metadata.get("file_hash") or "").strip()
+    if file_hash and file_hash in hidden_hashes:
+        return False
+    for key in ("source", "source_name", "title", "topic_title", "original_title"):
+        value = str(metadata.get(key) or "").strip()
+        if not value:
+            continue
+        if value.lower() in hidden_names:
+            return False
+        stem = _strip_source_label(value).strip().lower()
+        if stem and stem in hidden_names:
+            return False
+    return True
+
+
+def visible_chat_source_docs(docs):
+    """Keep RAG chunks for prompting; drop hidden books from clickable sermon sources."""
+    hidden_hashes, hidden_names = hidden_library_matchers()
+    if not hidden_hashes and not hidden_names:
+        return list(docs or [])
+    return [
+        doc
+        for doc in list(docs or [])
+        if chunk_is_in_library(doc, hidden_hashes=hidden_hashes, hidden_names=hidden_names)
+    ]
+
+
 def _file_response_for_document(document: IngestedDocument, *, download: bool = False):
     source_name = document.source_name or ""
     file_path = ingested_media_path(source_name, document.source_kind)
@@ -877,14 +931,21 @@ class ChatAPIView(APIView):
             )
 
         def _response_sources(docs, answer: str, query: str = ""):
-            """3–5 distinct sources: cited first, then topical retrieved notes/videos."""
-            if not docs:
+            """3–5 distinct sources: cited first, then topical retrieved notes/videos.
+
+            Knowledge-only books stay in REFERENCE NOTES but never in this list, so
+            members cannot open those files from chat sermon sources.
+            """
+            public_docs = visible_chat_source_docs(docs)
+            if not public_docs:
                 return []
-            cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX)
-            preferred = cited if cited else _unique_sources(docs)
+            cited = sources_cited_in_answer(
+                public_docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX
+            )
+            preferred = cited if cited else _unique_sources(public_docs)
             return ensure_source_media_mix(
                 preferred,
-                docs,
+                public_docs,
                 _doc_source_label,
                 is_video=is_video_chunk,
                 min_count=RETRIEVAL_SOURCE_MIN,
