@@ -230,6 +230,40 @@ _CUT_OFF_TAIL_RE = re.compile(
     r"(?:matthew|mark|luke|john|acts|romans|genesis|psalm|psalms)"
     r"(?:\s+\d+)?)\s*$"
 )
+_DANGLING_FUNCTION_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "to",
+        "for",
+        "with",
+        "within",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "by",
+        "from",
+        "into",
+        "onto",
+        "as",
+        "if",
+        "when",
+        "that",
+        "this",
+        "these",
+        "those",
+        "my",
+        "our",
+        "his",
+        "her",
+        "their",
+    }
+)
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]")
 _LEGALESE_RE = re.compile(
     r"\b(respective|pertaining|thereof|herein|aforementioned|constituencies|"
@@ -298,7 +332,12 @@ def answer_looks_incomplete(answer: str) -> bool:
     # Chapter-only citation ("John 1") or a 1–2 letter mid-word cut.
     if last_word.isdigit() and len(words) <= 8:
         return True
-    return bool(last_word.isalpha() and len(last_word) <= 2 and len(words) <= 6)
+    if last_word.isalpha() and len(last_word) <= 2 and len(words) <= 6:
+        return True
+    # Token cap often stops on a dangling article/preposition: "work within a"
+    if last_word.lower().strip("\"'") in _DANGLING_FUNCTION_WORDS:
+        return True
+    return False
 
 
 def _clause_looks_degenerate(clause: str) -> bool:

@@ -61,7 +61,7 @@ from .teaching_claims import (
     claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
-    uncovered_claims,
+    repairable_claims,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -356,8 +356,10 @@ def _join_continuation(answer: str, extra: str) -> str:
     return join_continuation(answer, extra)
 
 
-def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    missing = uncovered_claims(answer, prepared.get("teaching_claims") or [])
+def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
+    missing = repairable_claims(
+        answer, prepared.get("teaching_claims") or [], query=query
+    )
     if not missing:
         return None, 0
     budget = claim_repair_token_budget(
@@ -367,6 +369,31 @@ def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
         return None, 0
     logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
     return claim_repair_steer(missing), budget
+
+
+def _finish_incomplete_extra(prepared, answer: str) -> str:
+    """If a continue/repair pass was token-capped mid-sentence, finish that sentence."""
+    if not answer_looks_incomplete(answer):
+        return ""
+    budget = continuation_token_budget(
+        answer, completion_tokens=prepared.get("completion_tokens") or 0
+    )
+    if budget <= 0:
+        budget = 160
+    budget = min(max(budget, 96), 256)
+    extra_parts = []
+    try:
+        for text in _iter_continuation_tokens(
+            prepared,
+            answer,
+            steer=FINISH_STEER,
+            token_budget=budget,
+        ):
+            extra_parts.append(text)
+    except Exception:
+        logger.exception("Finish-cut-off pass failed; keeping the truncated answer")
+        return ""
+    return "".join(extra_parts).strip()
 
 
 def _trim_continuation_messages(messages):
@@ -1095,7 +1122,9 @@ class ChatAPIView(APIView):
                     if not extra:
                         break
                     answer = _join_continuation(answer, extra)
-                repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+                repair_steer, repair_budget = _claim_repair_plan(
+                    prepared, answer, query=user_query_llm
+                )
                 if repair_steer:
                     extra_parts = []
                     separator_sent = False
@@ -1117,6 +1146,12 @@ class ChatAPIView(APIView):
                     extra = "".join(extra_parts).strip()
                     if extra:
                         answer = _join_continuation(answer, extra)
+                finish_extra = _finish_incomplete_extra(prepared, answer)
+                if finish_extra:
+                    if emit_live:
+                        prefix = "" if answer.endswith((" ", "\n")) else " "
+                        yield _sse({"type": "delta", "text": prefix + finish_extra})
+                    answer = _join_continuation(answer, finish_extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1206,7 +1241,9 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
-            repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+            repair_steer, repair_budget = _claim_repair_plan(
+                prepared, answer, query=user_query_llm
+            )
             if repair_steer:
                 try:
                     extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
@@ -1231,6 +1268,9 @@ class ChatAPIView(APIView):
                         extra_text = ""
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
+            finish_extra = _finish_incomplete_extra(prepared, answer)
+            if finish_extra:
+                answer = _join_continuation(answer, finish_extra)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],

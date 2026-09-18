@@ -218,6 +218,13 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertGreaterEqual(len(cut_off), 1500)
         self.assertTrue(answer_looks_incomplete(cut_off))
+        self.assertTrue(
+            answer_looks_incomplete(
+                "speaking in tongues when I was 13 years old. The initial physical "
+                "evidence of this baptism was speaking in tongues, which is a powerful "
+                "sign of the Holy Spirit's presence and work within a"
+            )
+        )
         self.assertTrue(answer_needs_expansion(cut_off, query=query))
         self.assertGreater(continuation_token_budget(cut_off, completion_tokens=1024), 0)
         self.assertIn("do not replace the draft with a shorter answer", FINISH_STEER)

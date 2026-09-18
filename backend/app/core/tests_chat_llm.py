@@ -223,6 +223,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("LIBRARY_PULL_STEER", source)
         self.assertIn("_claim_repair_plan", source)
         self.assertIn("claim_repair_steer", source)
+        self.assertIn("repairable_claims", source)
+        self.assertIn("_finish_incomplete_extra", source)
         self.assertNotIn("_apply_quote_ids", source)
         self.assertNotIn("QuoteIdStreamer", source)
         self.assertNotIn("format_grounding_block", source)
