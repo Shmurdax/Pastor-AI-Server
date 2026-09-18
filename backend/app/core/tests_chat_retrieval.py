@@ -14,11 +14,13 @@ from core.chat_retrieval import (
     format_reference_notes,
     is_bible_source,
     is_video_chunk,
+    keyword_search_query,
     looks_like_followup,
     merge_scored_hits,
     query_focus_tokens,
     search_queries_on_store,
     select_diverse_docs,
+    sources_cited_in_answer,
     topic_overlap_score,
     uniqueness_instruction,
 )
@@ -561,6 +563,161 @@ class ChatRetrievalTests(unittest.TestCase):
         hits = search_queries_on_store(store, ["alpha", "beta"], k_per_query=8)
         self.assertEqual(store.similarity_search_with_score.call_count, 2)
         self.assertEqual(len(hits), 2)
+
+
+SCREENSHOT_TURN1 = "Recount what Pastor Don believes about faith?"
+SCREENSHOT_TURN2 = "Give me a 3 point sermon on that topic"
+SCREENSHOT_TURN1_PARAPHRASE = (
+    "**Faith as a Gift**\n\n"
+    "Pastor Don teaches that faith is a tool given at birth. You already use it when you "
+    "board an airplane, step into an elevator, or drive a car. Faith is independent of "
+    "religious beliefs, and blessings come from God when we exercise it.\n\n"
+    "In conclusion, cultivate the faith you already have."
+)
+
+
+class ScreenshotFaithTurnReproductionTests(unittest.TestCase):
+    """Qdrant/vLLM-free reproduction of the two chat turns from the user screenshot."""
+
+    def test_turn1_keeps_faith_keywords(self):
+        focus = keyword_search_query(SCREENSHOT_TURN1)
+        queries = expand_search_queries(SCREENSHOT_TURN1, limit=7)
+        joined = " | ".join(queries).lower()
+        # 7 tokens matches the <=8-word heuristic, but with no prior turn
+        # expand_search_queries still treats this as a first question.
+        self.assertEqual(len(SCREENSHOT_TURN1.split()), 7)
+        self.assertTrue(looks_like_followup(SCREENSHOT_TURN1))
+        self.assertIn("faith", focus.lower())
+        self.assertIn("faith", joined)
+        self.assertTrue(any("pastor don" in item.lower() for item in queries), queries)
+        self.assertNotIn("elevator", joined)
+        self.assertNotIn("airplane", joined)
+
+    def test_turn2_strips_to_point_and_is_not_classified_followup(self):
+        focus = keyword_search_query(SCREENSHOT_TURN2)
+        tokens = query_focus_tokens(SCREENSHOT_TURN2)
+        followup = looks_like_followup(SCREENSHOT_TURN2)
+        views_is_followup = True and followup  # prior exists in the screenshot thread
+        queries = expand_search_queries(
+            SCREENSHOT_TURN2,
+            [SCREENSHOT_TURN1],
+            prior_ai_texts=[SCREENSHOT_TURN1_PARAPHRASE],
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertEqual(len(SCREENSHOT_TURN2.split()), 9)
+        self.assertFalse(followup)
+        self.assertFalse(views_is_followup)
+        self.assertEqual(focus.lower(), "point")
+        self.assertEqual(tokens, frozenset({"point"}))
+        self.assertEqual(queries[0].lower(), "point")
+        self.assertTrue(any(item.lower() == "pastor don nordin point" for item in queries), queries)
+        self.assertTrue(any("faith" in item.lower() for item in queries), queries)
+        self.assertIn("point", joined)
+
+    def test_turn2_lexical_filter_keys_off_point_not_faith(self):
+        faith_note = _doc(
+            "Faith is a gift from God. Pastor Don teaches we walk by faith not sight.",
+            source="faith.pdf",
+            title="Walking in Faith",
+        )
+        point_hits = [
+            (
+                _doc(
+                    f"The point of message {index} is three points for a better life today.",
+                    source=f"better_life_{index}.pdf",
+                    title=f"A Better Life {index}",
+                ),
+                0.80,
+            )
+            for index in range(8)
+        ]
+        kept = filter_hits_by_topic(
+            [(faith_note, 0.91)] + point_hits,
+            SCREENSHOT_TURN2,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertTrue(any(item.startswith("better_life_") for item in sources), sources)
+        self.assertNotIn("faith.pdf", sources)
+
+    def test_uniqueness_and_length_steer_conflict_on_turn2(self):
+        from core.chat_system_prompt import LENGTH_STEER, query_expects_long_answer
+
+        is_followup = bool([SCREENSHOT_TURN1]) and looks_like_followup(SCREENSHOT_TURN2)
+        uniqueness = uniqueness_instruction(
+            extract_used_quotes([SCREENSHOT_TURN1_PARAPHRASE]),
+            extract_used_verse_refs([SCREENSHOT_TURN1_PARAPHRASE]),
+            is_followup=is_followup,
+            prior_user_query=SCREENSHOT_TURN1,
+        )
+        self.assertFalse(is_followup)
+        self.assertIn("Do not restate the previous answer", uniqueness)
+        self.assertNotIn("SAME chat", uniqueness)
+        self.assertTrue(query_expects_long_answer(SCREENSHOT_TURN2))
+        human = f"{LENGTH_STEER}{SCREENSHOT_TURN2}"
+        self.assertTrue(human.startswith(LENGTH_STEER))
+        self.assertIn("Quote Pastor Don", LENGTH_STEER)
+        self.assertIn("**bold headings**", LENGTH_STEER)
+        self.assertIn("bullet points", LENGTH_STEER)
+
+    def test_paraphrase_has_no_quotes_and_no_post_generation_check(self):
+        from core.chat_system_prompt import answer_needs_expansion
+
+        quotes = extract_used_quotes([SCREENSHOT_TURN1_PARAPHRASE])
+        verses = extract_used_verse_refs([SCREENSHOT_TURN1_PARAPHRASE])
+        self.assertEqual(quotes, [])
+        self.assertEqual(verses, [])
+        long_paraphrase = (SCREENSHOT_TURN1_PARAPHRASE + " ") * 20
+        self.assertGreaterEqual(len(long_paraphrase), 1500)
+        self.assertFalse(answer_needs_expansion(long_paraphrase, query=SCREENSHOT_TURN1))
+
+    def test_sources_ui_can_show_five_labels_without_quoting_notes(self):
+        docs = [
+            _doc("faith given at birth teaching", source="faith.pdf", title="Walking in Faith"),
+            _doc("airplane elevator driving examples of trust", source="trust.pdf", title="Everyday Trust"),
+            _doc("blessings from God when we believe", source="blessing.pdf", title="Blessings of God"),
+            _doc("Hebrews 11:1 now faith is the substance", source="nkjv-bible.pdf", title="NKJV Bible"),
+            _doc(
+                "video clip about using faith like boarding a plane",
+                source="may_23.mp4",
+                title="May 23",
+                content_type="video_transcript",
+                timestamp="08:50–09:30",
+            ),
+        ]
+
+        def label(doc):
+            meta = doc.metadata
+            name = meta.get("title") or meta["source"]
+            ts = meta.get("timestamp")
+            return f"{name} [{ts}]" if ts else name
+
+        cited = sources_cited_in_answer(docs, SCREENSHOT_TURN1_PARAPHRASE, label)
+        self.assertEqual(cited, [])
+        mixed = ensure_source_media_mix(
+            [],
+            docs,
+            label,
+            min_count=3,
+            limit=5,
+            query=SCREENSHOT_TURN1,
+        )
+        self.assertGreaterEqual(len(mixed), 3)
+        self.assertLessEqual(len(mixed), 5)
+
+    def test_format_notes_would_inject_labels_if_docs_retrieved(self):
+        docs = [
+            _doc(
+                'Pastor Don said, "Faith is a tool given at birth." Board a plane, ride an elevator.',
+                source="faith.pdf",
+                title="Walking in Faith",
+            ),
+        ]
+        notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
+        self.assertIn("[Note 1 | Walking in Faith]", notes)
+        self.assertIn("given at birth", notes)
+        self.assertIn("elevator", notes)
 
 
 if __name__ == "__main__":

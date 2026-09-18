@@ -40,6 +40,7 @@ from .chat_llm import (
 )
 from .chat_sse import iter_chat_tokens, iter_with_sse_heartbeats, sse_keepalive, sse_pack, wants_chat_stream
 from .chat_retrieval import (
+    _agent_dbg,
     apply_retrieval_threshold,
     ensure_source_media_mix,
     expand_search_queries,
@@ -769,6 +770,29 @@ class ChatAPIView(APIView):
                 + history_messages
                 + [HumanMessage(content=human_content)]
             )
+            # #region agent log
+            _agent_dbg(
+                "H5",
+                "views.py:prepare_chat",
+                "assembled chat prompt",
+                {
+                    "query": user_query_llm[:200],
+                    "uses_length_steer": human_content.startswith(LENGTH_STEER),
+                    "uses_conversational_steer": human_content.startswith(CONVERSATIONAL_STEER),
+                    "looks_like_followup_raw": looks_like_followup(user_query_llm),
+                    "is_followup": False if brief_social else bool(is_followup),
+                    "brief_social": brief_social,
+                    "uniqueness_added": bool(uniqueness),
+                    "uniqueness_followup_block": "SAME chat" in uniqueness,
+                    "uniqueness_do_not_restate": "Do not restate the previous answer" in uniqueness,
+                    "search_queries": list(search_queries)[:8],
+                    "doc_count": len(docs),
+                    "context_chars": len(context or ""),
+                    "notes_empty": not bool((context or "").strip()),
+                    "system_has_required_quotes": "REQUIRED QUOTES" in system_filled,
+                },
+            )
+            # #endregion
             bound = llm.bind(max_tokens=completion_tokens)
             return {
                 "kind": "generate",
@@ -792,10 +816,23 @@ class ChatAPIView(APIView):
         def _response_sources(docs, answer: str, query: str = ""):
             """3–5 distinct sources: cited first, then topical retrieved notes/videos."""
             if not docs:
+                # #region agent log
+                _agent_dbg(
+                    "H3",
+                    "views.py:_response_sources",
+                    "no retrieval docs",
+                    {
+                        "query": (query or "")[:160],
+                        "answer_chars": len(answer or ""),
+                        "quote_count": len(extract_used_quotes([answer or ""])),
+                        "returned_sources": [],
+                    },
+                )
+                # #endregion
                 return []
             cited = sources_cited_in_answer(docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX)
             preferred = cited if cited else _unique_sources(docs)
-            return ensure_source_media_mix(
+            mixed = ensure_source_media_mix(
                 preferred,
                 docs,
                 _doc_source_label,
@@ -804,6 +841,30 @@ class ChatAPIView(APIView):
                 limit=RETRIEVAL_SOURCE_MAX,
                 query=query,
             )
+            quotes = extract_used_quotes([answer or ""])
+            verses = extract_used_verse_refs([answer or ""])
+            # #region agent log
+            _agent_dbg(
+                "H4",
+                "views.py:_response_sources",
+                "sources vs quotes in answer",
+                {
+                    "query": (query or "")[:160],
+                    "cited": cited[:8],
+                    "preferred_is_cited": bool(cited),
+                    "returned_sources": mixed[:8],
+                    "returned_count": len(mixed),
+                    "doc_count": len(docs),
+                    "quote_count": len(quotes),
+                    "quotes": [item[:80] for item in quotes[:5]],
+                    "verse_count": len(verses),
+                    "verses": verses[:8],
+                    "answer_has_quotation_marks": ('"' in (answer or "")) or ("“" in (answer or "")),
+                    "post_generation_quote_enforced": False,
+                },
+            )
+            # #endregion
+            return mixed
 
         def _generate_tokens(prepared):
             bound = prepared["bound"]

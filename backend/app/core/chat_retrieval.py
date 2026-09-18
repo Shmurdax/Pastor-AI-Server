@@ -19,6 +19,31 @@ from typing import Any, Callable, Iterable, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _agent_dbg(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    try:
+        import json
+        import time
+
+        with open("/opt/cursor/logs/debug.log", "a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "id": f"log_{int(time.time() * 1000)}_{hypothesis_id}",
+                        "timestamp": int(time.time() * 1000),
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "hypothesisId": hypothesis_id,
+                    },
+                    default=str,
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+
+
 DEFAULT_BIBLE_SOURCE_MARKERS = (
     "bible",
     "nkjv",
@@ -688,7 +713,25 @@ def expand_search_queries(
     if not last_prior and focus:
         add(f"Pastor Don Nordin {focus}")
 
-    return queries[: max(1, limit)]
+    out = queries[: max(1, limit)]
+    # #region agent log
+    _agent_dbg(
+        "H2",
+        "chat_retrieval.py:expand_search_queries",
+        "expanded search queries",
+        {
+            "current": current_q[:240],
+            "last_prior": (last_prior or "")[:160],
+            "looks_like_followup_raw": looks_like_followup(current_q),
+            "looks_like_followup": followup,
+            "word_count": len(current_q.split()),
+            "keyword_search_query": focus,
+            "query_focus_tokens": sorted(query_focus_tokens(current_q)),
+            "search_queries": out,
+        },
+    )
+    # #endregion
+    return out
 
 
 def extract_used_quotes(texts: Iterable[str], *, limit: int = 10) -> list[str]:
@@ -1295,6 +1338,7 @@ def format_reference_notes(
 ) -> str:
     """Join chunks with source labels so the model can quote across sermons."""
     blocks: list[str] = []
+    labels: list[str] = []
     used = 0
     for index, doc in enumerate(docs, start=1):
         label = source_label(doc) or "Unknown"
@@ -1307,10 +1351,30 @@ def format_reference_notes(
             remain = max_chars - used - (2 if blocks else 0)
             if remain > 80:
                 blocks.append(block[:remain].rstrip())
+                labels.append(f"Note {index}|{label}")
             break
         blocks.append(block)
+        labels.append(f"Note {index}|{label}")
         used += extra
-    return "\n\n".join(blocks)
+    joined = "\n\n".join(blocks)
+    blob = joined.lower()
+    # #region agent log
+    _agent_dbg(
+        "H1",
+        "chat_retrieval.py:format_reference_notes",
+        "assembled REFERENCE NOTES",
+        {
+            "note_count": len(blocks),
+            "labels": labels[:12],
+            "joined_chars": len(joined),
+            "has_elevator": "elevator" in blob,
+            "has_airplane": "airplane" in blob or "aeroplane" in blob,
+            "has_given_at_birth": "given at birth" in blob or "at birth" in blob,
+            "has_quotation_marks": '"' in joined or "“" in joined,
+        },
+    )
+    # #endregion
+    return joined
 
 
 def uniqueness_instruction(
@@ -1360,4 +1424,21 @@ def uniqueness_instruction(
             + ", ".join(verses[:12])
         )
     lines.append("</uniqueness>")
-    return "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n"
+    # #region agent log
+    _agent_dbg(
+        "H5",
+        "chat_retrieval.py:uniqueness_instruction",
+        "uniqueness block",
+        {
+            "is_followup": bool(is_followup),
+            "followup_block_added": bool(is_followup),
+            "used_quote_count": len(quotes),
+            "used_verse_count": len(verses),
+            "prior_user_query": (prior_user_query or "")[:160],
+            "contains_do_not_restate": "Do not restate the previous answer" in text,
+            "contains_same_chat": "SAME chat" in text,
+        },
+    )
+    # #endregion
+    return text
