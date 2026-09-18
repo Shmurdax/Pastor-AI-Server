@@ -344,6 +344,7 @@ screen -dmS django bash -c "
   export VIDEO_TOPIC_METADATA_LLM='${VIDEO_TOPIC_METADATA_LLM:-1}' &&
   export INGEST_CHUNK_SIZE='${INGEST_CHUNK_SIZE:-1800}' &&
   export INGEST_CHUNK_OVERLAP='${INGEST_CHUNK_OVERLAP:-250}' &&
+  export INGEST_QDRANT_UPSERT_BATCH='${INGEST_QDRANT_UPSERT_BATCH:-128}' &&
   python manage.py migrate --noinput &&
   python manage.py ensure_superuser &&
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --worker-class gthread --threads 4 --workers 2 --timeout 1800 \

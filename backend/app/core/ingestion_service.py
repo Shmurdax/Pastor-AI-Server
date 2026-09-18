@@ -20,8 +20,10 @@ Ingestion pipeline (admin uploads):
 5. **Chunk + embed + Qdrant** — sermons split into quote-sized windows (~550 chars) with
    ``quote_text`` payload; NKJV splits into verse-level chunks with book/chapter/verse payload.
    A Bible file whose verse parse is too weak is rejected (no unlabelled ``bible_passage`` fallback).
-   Each chunk is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant. Duplicate chunk
-   hashes are skipped across the corpus. Near-duplicates are also skipped by normalized title
+   Each chunk is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant in
+   batches (``INGEST_QDRANT_UPSERT_BATCH``, default 128) so a full NKJV payload
+   stays under Qdrant's 32MiB REST JSON limit. Duplicate chunk hashes are skipped
+   across the corpus. Near-duplicates are also skipped by normalized title
    and cleaned-content hash. Reingest with ``python manage.py reingest_grounded_rag``.
 """
 import hashlib
@@ -34,10 +36,9 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Protocol
 
 from django.conf import settings
-from langchain_huggingface import HuggingFaceEmbeddings
 from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
@@ -63,6 +64,12 @@ except ImportError:  # pragma: no cover - handled at runtime by dependency insta
 logger = logging.getLogger(__name__)
 
 
+class EmbeddingsClient(Protocol):
+    """embed_documents client used by ingest (HuggingFace BGE in production)."""
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]: ...
+
+
 @dataclass
 class IngestionResult:
     files_received: int = 0
@@ -84,6 +91,10 @@ DEFAULT_SPLITTER_KWARGS = {
     "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "80")),
     "separators": ["\n\n", "\n", " ", ""],
 }
+# Qdrant REST rejects a single JSON upsert larger than 32MiB. NKJV (~8k verse
+# chunks) is ~19KB/point, so one shot is ~153MB. 128 points stays ~2.5MB.
+DEFAULT_QDRANT_UPSERT_BATCH = 128
+MAX_QDRANT_UPSERT_BATCH = 512
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
     for marker in os.environ.get(
@@ -193,6 +204,46 @@ def _is_bible_source(filename: str) -> bool:
     return any(marker in normalized for marker in BIBLE_SOURCE_MARKERS)
 
 
+def qdrant_upsert_batch_size() -> int:
+    """Points per Qdrant upsert; keep each JSON body under the 32MiB REST cap."""
+    raw = os.environ.get("INGEST_QDRANT_UPSERT_BATCH", str(DEFAULT_QDRANT_UPSERT_BATCH))
+    try:
+        size = int(raw)
+    except (TypeError, ValueError):
+        size = DEFAULT_QDRANT_UPSERT_BATCH
+    if size < 1:
+        size = DEFAULT_QDRANT_UPSERT_BATCH
+    return min(size, MAX_QDRANT_UPSERT_BATCH)
+
+
+def iter_point_batches(points: List, batch_size: Optional[int] = None):
+    """Yield successive slices so large NKJV upserts stay under Qdrant's payload limit."""
+    size = batch_size if batch_size is not None else qdrant_upsert_batch_size()
+    if size < 1:
+        size = DEFAULT_QDRANT_UPSERT_BATCH
+    for start in range(0, len(points), size):
+        yield points[start : start + size]
+
+
+def _upsert_points_with_retry(
+    qdrant_client: QdrantClient,
+    collection_name: str,
+    points: List,
+) -> None:
+    if not points:
+        return
+    retry_count = int(os.environ.get("INGEST_QDRANT_UPSERT_RETRIES", "3"))
+    retry_delay_s = float(os.environ.get("INGEST_QDRANT_UPSERT_RETRY_DELAY_S", "2"))
+    for attempt in range(1, retry_count + 1):
+        try:
+            qdrant_client.upsert(collection_name=collection_name, points=points, wait=True)
+            return
+        except Exception:
+            if attempt >= retry_count:
+                raise
+            time.sleep(retry_delay_s)
+
+
 def _upsert_chunks(
     source_name: str,
     title: str,
@@ -200,7 +251,7 @@ def _upsert_chunks(
     file_hash: str,
     *,
     document: IngestedDocument,
-    embeddings: HuggingFaceEmbeddings,
+    embeddings: EmbeddingsClient,
     qdrant_client: QdrantClient,
     collection_name: str,
     extra_metadata: Optional[dict] = None,
@@ -274,16 +325,48 @@ def _upsert_chunks(
         created += 1
 
     if points:
-        retry_count = int(os.environ.get("INGEST_QDRANT_UPSERT_RETRIES", "3"))
-        retry_delay_s = float(os.environ.get("INGEST_QDRANT_UPSERT_RETRY_DELAY_S", "2"))
-        for attempt in range(1, retry_count + 1):
+        batch_size = qdrant_upsert_batch_size()
+        batches = list(iter_point_batches(points, batch_size))
+        total_batches = len(batches)
+        try:
+            for batch_idx, batch in enumerate(batches, start=1):
+                if total_batches > 1:
+                    logger.info(
+                        "Qdrant upsert batch %s/%s (%s points) for %s",
+                        batch_idx,
+                        total_batches,
+                        len(batch),
+                        source_name,
+                    )
+                _upsert_points_with_retry(qdrant_client, collection_name, batch)
+        except Exception:
+            logger.exception(
+                "Qdrant upsert failed for %s after %s point(s); rolling back vectors",
+                source_name,
+                len(points),
+            )
             try:
-                qdrant_client.upsert(collection_name=collection_name, points=points, wait=True)
-                break
+                qdrant_client.delete(
+                    collection_name=collection_name,
+                    points_selector=qdrant_models.FilterSelector(
+                        filter=qdrant_models.Filter(
+                            must=[
+                                qdrant_models.FieldCondition(
+                                    key="source",
+                                    match=qdrant_models.MatchValue(value=source_name),
+                                ),
+                                qdrant_models.FieldCondition(
+                                    key="file_hash",
+                                    match=qdrant_models.MatchValue(value=file_hash),
+                                ),
+                            ]
+                        )
+                    ),
+                    wait=True,
+                )
             except Exception:
-                if attempt >= retry_count:
-                    raise
-                time.sleep(retry_delay_s)
+                logger.exception("Failed to roll back Qdrant points for %s", source_name)
+            raise
 
     return created, skipped
 
