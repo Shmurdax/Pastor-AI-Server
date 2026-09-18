@@ -62,6 +62,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Never say notes were not found", prompt)
         self.assertIn("No relevant sermon notes found", prompt)
         self.assertIn("Let the user's question and the retrieved notes decide", prompt)
+        self.assertIn("Do not wait for the user to ask for quotations or Scripture", prompt)
+        self.assertIn("at least two word-for-word quotation-marked excerpts", prompt)
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
@@ -214,6 +216,17 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
+        self.assertTrue(
+            answer_missing_required_quotes(
+                quoted, query=query, has_reference_notes=True, has_bible_notes=True
+            )
+        )
+        with_verse = quoted + " Hebrews 11:1 says faith is the substance of things hoped for."
+        self.assertFalse(
+            answer_missing_required_quotes(
+                with_verse, query=query, has_reference_notes=True, has_bible_notes=True
+            )
+        )
 
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation

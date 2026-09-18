@@ -200,12 +200,12 @@ FINISH_STEER = (
 )
 
 QUOTE_CONTINUE_STEER = (
-    "The previous reply taught the topic but did not include word-for-word "
-    "quotations from Pastor Don or Susan Nordin. Do not restart or apologize. "
-    "Do not say Certainly, Let's continue, or Teaching Points. Add a short "
-    "section with at least two quotation-marked excerpts that actually appear "
-    "in REFERENCE NOTES, attributed to Pastor Don and/or Susan. If Scripture "
-    "notes are present, weave in one unused NKJV verse. Then stop."
+    "The previous reply taught the topic but is missing required grounding. "
+    "Do not restart or apologize. Do not say Certainly, Let's continue, or "
+    "Teaching Points. If fewer than two quotation-marked excerpts from Pastor "
+    "Don or Susan that actually appear in REFERENCE NOTES are in the reply, "
+    "add them now, attributed. If Scripture notes are present and unused, "
+    "weave in NKJV verse(s) from those notes. Then stop."
 )
 QUOTE_CONTINUE_MIN_TOKENS = 320
 
@@ -439,17 +439,22 @@ def answer_missing_required_quotes(
     *,
     query: str,
     has_reference_notes: bool,
+    has_bible_notes: bool = False,
 ) -> bool:
-    """True when teaching notes were retrieved but the reply never quoted them."""
+    """True when teaching notes were retrieved but quotes or NKJV are missing."""
     if not has_reference_notes:
         return False
     if not query_expects_long_answer(query):
         return False
     if text_looks_degenerate(answer):
         return False
-    from .chat_retrieval import extract_used_quotes
+    from .chat_retrieval import extract_used_quotes, extract_used_verse_refs
 
-    return not extract_used_quotes([answer or ""])
+    if not extract_used_quotes([answer or ""]):
+        return True
+    if has_bible_notes and not extract_used_verse_refs([answer or ""]):
+        return True
+    return False
 
 
 def continuation_token_budget(answer: str, *, completion_tokens: int, min_tokens: int = 0) -> int:
@@ -643,10 +648,14 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "found or missing when excerpts are present.\n"
         "Let the user's question and the retrieved notes decide length, outline, and whether to continue "
         "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
-        "Write in your own words, shaped by REFERENCE NOTES. Use a generic Christian pastoral tone; "
+        "Teach the thesis in your own words, shaped by REFERENCE NOTES. Use a generic Christian pastoral tone; "
         "do not imitate Pastor Don's or Susan's speaking style. "
         "In your own words means the same thesis with different wording. Keep the contrast. "
         "Do not keep an illustration and teach a different point with it. "
+        "Do not wait for the user to ask for quotations or Scripture. For every teaching answer "
+        "(not a casual greeting), include at least two word-for-word quotation-marked excerpts "
+        "from Pastor Don and/or Susan that actually appear in REFERENCE NOTES, and include "
+        "NKJV verses from those notes when Scripture notes are present. "
         "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "
         "Paraphrase them. Do not replace them with generic Christian teaching that is absent from the points "
         "and notes. Represent Pastor Don's and Susan's positions faithfully. "
