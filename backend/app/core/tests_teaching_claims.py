@@ -3,9 +3,11 @@ from types import SimpleNamespace
 
 from core.teaching_claims import (
     claim_is_covered,
+    claim_matches_query,
     claim_repair_steer,
     extract_teaching_claims,
     format_teaching_claims_block,
+    query_topic_tokens,
     uncovered_claims,
 )
 
@@ -161,6 +163,40 @@ class TeachingClaimTests(unittest.TestCase):
         missing = repairable_claims(generic, claims, query=query)
         self.assertFalse(any("13" in item for item in missing), missing)
         self.assertFalse(any("sermon that late" in item.lower() for item in missing), missing)
+
+    def test_church_query_does_not_require_generic_church_sentences(self):
+        query = "Why does Pastor Don say this church is a big deal?"
+        tokens = query_topic_tokens(query)
+        self.assertIn("deal", tokens)
+        self.assertFalse(
+            claim_matches_query(
+                "The church should be a place of forgiveness, mercy, and harvest.",
+                tokens,
+            )
+        )
+        self.assertTrue(
+            claim_matches_query(
+                "This church is a big deal because gifts grow here for world evangelism.",
+                tokens,
+            )
+        )
+        docs = [
+            _doc(
+                "The church should be a place of forgiveness, mercy, restoration, and harvest.",
+                source="community.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "This church is a big deal because natural and spiritual gifts grow here "
+                "for world evangelism, not because it is a generic house of mercy.",
+                source="this-church.pdf",
+                chunk_kind="sermon_quote",
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query=query)
+        blob = " ".join(claims).lower()
+        self.assertIn("big deal", blob)
+        self.assertNotIn("forgiveness", blob)
 
 
 if __name__ == "__main__":

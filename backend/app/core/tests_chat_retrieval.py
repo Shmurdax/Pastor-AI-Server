@@ -24,6 +24,7 @@ from core.chat_retrieval import (
     is_video_chunk,
     looks_like_followup,
     looks_like_library_pull,
+    pin_docs_to_strong_title_matches,
     restrict_docs_to_primary_source,
     retain_title_matches,
     merge_scored_hits,
@@ -790,6 +791,8 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         sources = [doc.metadata["source"] for doc in selected]
         self.assertIn("Prayer_Barriers.pdf", sources)
+        self.assertNotIn("community.pdf", sources)
+        self.assertNotIn("harvest.pdf", sources)
 
         kept = retain_title_matches(
             [(community, 0.95), (harvest, 0.90), (canonical, 0.70)],
@@ -981,6 +984,89 @@ class ChatRetrievalTests(unittest.TestCase):
             rng=random.Random(3),
         )
         self.assertIn("NKJV", bible_labels)
+
+    def test_pin_docs_drops_loosely_related_sermons_when_title_matches(self):
+        church = _doc(
+            "This church is a big deal because gifts grow here for evangelism.",
+            source="this-church.pdf",
+            title="This Church Is a Big Deal",
+        )
+        community = _doc(
+            "The church should be a place of forgiveness, mercy, and harvest.",
+            source="community.pdf",
+            title="Community",
+        )
+        five_fold = _doc(
+            "The five fold church equips saints for ministry.",
+            source="five-fold.pdf",
+            title="Five Fold Church",
+        )
+        nkjv = _doc(
+            "For God so loved the world that He gave His only begotten Son.",
+            source="nkjv-bible.pdf",
+            title="New King James Version",
+        )
+        query = "Why does Pastor Don say this church is a big deal?"
+        pinned = pin_docs_to_strong_title_matches(
+            [community, church, five_fold, nkjv],
+            query,
+            candidate_hits=[(community, 0.95), (five_fold, 0.9), (church, 0.72), (nkjv, 0.8)],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = [doc.metadata["source"] for doc in pinned]
+        self.assertEqual(sources, ["this-church.pdf"])
+
+    def test_pin_docs_keeps_multiple_sermons_when_no_title_match(self):
+        weariness = _doc(
+            "Do not grow weary in doing good to the household of faith.",
+            source="weariness.pdf",
+            title="Weariness",
+        )
+        community = _doc(
+            "Love one another in community as a witness to the world.",
+            source="community.pdf",
+            title="Community",
+        )
+        query = "What does Pastor Don teach about love?"
+        kept = pin_docs_to_strong_title_matches(
+            [weariness, community],
+            query,
+            candidate_hits=[(community, 0.94), (weariness, 0.80)],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = [doc.metadata["source"] for doc in kept]
+        self.assertEqual(set(sources), {"weariness.pdf", "community.pdf"})
+
+    def test_select_diverse_docs_stops_filling_after_strong_title_match(self):
+        canonical = _doc(
+            "This church is a big deal because evangelism and gifts grow here.",
+            source="this-church.pdf",
+            title="This Church Is a Big Deal",
+        )
+        extra_chunk = _doc(
+            "The local church develops spiritual gifts for world evangelism.",
+            source="this-church.pdf",
+            title="This Church Is a Big Deal",
+        )
+        community = _doc(
+            "The church is a place of forgiveness and harvest in community.",
+            source="community.pdf",
+            title="Community",
+        )
+        selected = select_diverse_docs(
+            [(community, 0.96), (canonical, 0.74), (extra_chunk, 0.73)],
+            k=8,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query="Why does Pastor Don say this church is a big deal?",
+        )
+        sources = [doc.metadata["source"] for doc in selected]
+        self.assertTrue(sources)
+        self.assertTrue(all(src == "this-church.pdf" for src in sources), sources)
 
 
 if __name__ == "__main__":

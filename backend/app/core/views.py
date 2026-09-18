@@ -71,6 +71,7 @@ from .chat_retrieval import (
     filter_hits_by_topic,
     format_reference_notes,
     looks_like_library_pull,
+    pin_docs_to_strong_title_matches,
     restrict_docs_to_primary_source,
     retain_title_matches,
     topic_anchor_query,
@@ -889,6 +890,16 @@ class ChatAPIView(APIView):
                     if key and key not in seen_nkjv:
                         docs.append(extra)
                         seen_nkjv.add(key)
+                docs = pin_docs_to_strong_title_matches(
+                    docs,
+                    topic_query,
+                    candidate_hits=scored_hits,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    source_key=lambda doc: (
+                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                        or _doc_source_name(doc)
+                    ),
+                )
                 context = format_reference_notes(
                     docs,
                     _doc_source_label,
