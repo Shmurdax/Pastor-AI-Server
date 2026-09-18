@@ -71,4 +71,103 @@ void main() {
     expect(preferActiveSessionId('', 'remote'), 'remote');
     expect(preferActiveSessionId(null, null), '');
   });
+
+  test('remoteHistoryEntryIsAhead follows a growing AI draft', () {
+    expect(
+      remoteHistoryEntryIsAhead(
+        localMessages: [
+          {'role': 'user', 'text': 'What is faith?'},
+          {'role': 'ai', 'text': 'Faith', 'streaming': true},
+        ],
+        remoteEntry: {
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {'role': 'ai', 'text': 'Faith is trust in God.', 'streaming': true},
+          ],
+        },
+        localGenerating: false,
+      ),
+      isTrue,
+    );
+    expect(
+      remoteHistoryEntryIsAhead(
+        localMessages: [
+          {'role': 'user', 'text': 'What is faith?'},
+        ],
+        remoteEntry: {
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {'role': 'ai', 'text': '', 'streaming': true},
+          ],
+        },
+        localGenerating: false,
+      ),
+      isTrue,
+    );
+    expect(
+      remoteHistoryEntryIsAhead(
+        localMessages: [
+          {'role': 'user', 'text': 'What is faith?'},
+        ],
+        remoteEntry: {
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {'role': 'ai', 'text': 'Faith is trust.', 'streaming': true},
+          ],
+        },
+        localGenerating: true,
+      ),
+      isFalse,
+    );
+    expect(
+      remoteHistoryEntryIsAhead(
+        localMessages: [
+          {'role': 'user', 'text': 'What is faith?'},
+          {'role': 'ai', 'text': 'Faith is trust.', 'streaming': true},
+        ],
+        remoteEntry: {
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {
+              'role': 'ai',
+              'text': 'Faith is trust.',
+              'streaming': false,
+              'sources': ['Faith That Works'],
+            },
+          ],
+        },
+        localGenerating: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('merge keeps a live streaming draft over a newer shorter PUT', () {
+    final merged = mergeChatHistoryEntries(
+      [
+        {
+          'sessionId': 'a',
+          'updatedAt': 10,
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {'role': 'ai', 'text': 'Faith is trust in God.', 'streaming': true},
+          ],
+        },
+      ],
+      [
+        {
+          'sessionId': 'a',
+          'updatedAt': 99,
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+          ],
+        },
+      ],
+    );
+    expect((merged.single['messages'] as List).length, 2);
+    expect(
+      ((merged.single['messages'] as List).last as Map)['text'],
+      'Faith is trust in God.',
+    );
+  });
 }

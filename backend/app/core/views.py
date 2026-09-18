@@ -106,6 +106,7 @@ from .chat_system_prompt import (
     looks_like_continue_dump,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
+from .live_chat_history import LiveHistoryPublisher
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
 from .scope_gate import generate_out_of_scope_reply, query_in_scope
 from .storage_paths import ingested_media_path
@@ -400,11 +401,18 @@ def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
 
 
 def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    """Add a quote pass when notes were retrieved but the reply never quoted them."""
-    if not prepared.get("docs"):
+    """Add a quote pass when notes were retrieved but quotes or NKJV are missing."""
+    docs = prepared.get("docs") or []
+    if not docs:
         return None, 0
+    has_bible_notes = any(
+        _is_bible_source(_doc_source_name(doc)) for doc in docs
+    )
     if not answer_missing_required_quotes(
-        answer, query=query, has_reference_notes=True
+        answer,
+        query=query,
+        has_reference_notes=True,
+        has_bible_notes=has_bible_notes,
     ):
         return None, 0
     budget = quote_repair_token_budget(
@@ -769,6 +777,14 @@ class ChatAPIView(APIView):
         user_query_stored = str(raw_query).strip()
         # Search and generate in English; translate the displayed answer after.
         user_query_llm = english_search_query(user_query_stored, chat_language)
+        live_history = None
+        if chat_user is not None:
+            live_history = LiveHistoryPublisher(
+                user=chat_user,
+                client_session_id=str(client_session_id or "").strip(),
+                user_query=user_query_stored,
+            )
+            live_history.publish("", streaming=True, force=True)
 
         def prepare_chat():
             llm = get_chat_llm(
@@ -1154,6 +1170,8 @@ class ChatAPIView(APIView):
                     first_raw_parts.append(text)
                     if emit_live:
                         yield _sse({"type": "delta", "text": text})
+                    if live_history:
+                        live_history.publish("".join(first_raw_parts), streaming=True)
                 first_raw = "".join(first_raw_parts)
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
@@ -1183,6 +1201,8 @@ class ChatAPIView(APIView):
                     if emit_live:
                         yield _sse({"type": "delta", "text": "\n\n" + extra})
                     answer = _join_continuation(answer, extra)
+                    if live_history:
+                        live_history.publish(answer, streaming=True)
                 repair_steer, repair_budget = _claim_repair_plan(
                     prepared, answer, query=user_query_llm
                 )
@@ -1203,6 +1223,8 @@ class ChatAPIView(APIView):
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
                         answer = _join_continuation(answer, extra)
+                        if live_history:
+                            live_history.publish(answer, streaming=True)
                 quote_steer, quote_budget = _quote_repair_plan(
                     prepared, answer, query=user_query_llm
                 )
@@ -1223,12 +1245,23 @@ class ChatAPIView(APIView):
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
                         answer = _join_continuation(answer, extra)
+                        if live_history:
+                            live_history.publish(answer, streaming=True)
                 finish_extra = _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
                     if emit_live:
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
                     answer = _join_continuation(answer, finish_extra)
+                response_sources = _response_sources(
+                    prepared["docs"],
+                    answer,
+                    query=prepared.get("topic_query") or user_query_llm,
+                )
+                if live_history:
+                    live_history.publish(
+                        answer, streaming=False, sources=response_sources, force=True
+                    )
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1243,11 +1276,7 @@ class ChatAPIView(APIView):
                 done = {
                     "type": "done",
                     "answer": display,
-                    "sources": _response_sources(
-                        prepared["docs"],
-                        answer,
-                        query=prepared.get("topic_query") or user_query_llm,
-                    ),
+                    "sources": response_sources,
                 }
                 if saved_message is not None:
                     done["message_id"] = saved_message.id
@@ -1279,6 +1308,8 @@ class ChatAPIView(APIView):
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
+            if live_history:
+                live_history.publish(answer, streaming=True)
             expansion_pass = 0
             while (
                 answer_needs_expansion(answer, query=user_query_llm)
@@ -1380,6 +1411,15 @@ class ChatAPIView(APIView):
             finish_extra = _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
+            response_sources = _response_sources(
+                prepared["docs"],
+                answer,
+                query=prepared.get("topic_query") or user_query_llm,
+            )
+            if live_history:
+                live_history.publish(
+                    answer, streaming=False, sources=response_sources, force=True
+                )
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
@@ -1392,11 +1432,7 @@ class ChatAPIView(APIView):
             return Response(
                 _chat_payload(
                     display_reply(answer, chat_language),
-                    sources=_response_sources(
-                        prepared["docs"],
-                        answer,
-                        query=prepared.get("topic_query") or user_query_llm,
-                    ),
+                    sources=response_sources,
                     message_id=None if saved_message is None else saved_message.id,
                 ),
                 status=status.HTTP_200_OK,

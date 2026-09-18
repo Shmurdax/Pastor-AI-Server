@@ -1,29 +1,48 @@
 """Authenticated backup of Flutter sidebar chat history."""
 
+from django.db import transaction
 from rest_framework import permissions, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .live_chat_history import (
+    MAX_HISTORY_ENTRIES,
+    merge_history_entries,
+    pick_active_session_id,
+    sanitize_history_entries,
+)
 from .models import UserChatHistory
 
-# Hard ceiling so a buggy client cannot flood the DB.
-_MAX_ENTRIES = 40
+_MAX_ENTRIES = MAX_HISTORY_ENTRIES
 _MAX_SCHEMA = 1
 
 
 def _sanitize_entries(raw):
-    if not isinstance(raw, list):
-        return []
-    cleaned = []
-    for item in raw[:_MAX_ENTRIES]:
-        if not isinstance(item, dict):
-            continue
-        session_id = item.get("sessionId")
-        if not isinstance(session_id, str) or not session_id.strip():
-            continue
-        cleaned.append(item)
-    return cleaned
+    return sanitize_history_entries(raw)
+
+
+def _history_payload(row=None):
+    if row is None:
+        return {
+            "entries": [],
+            "active_session_id": "",
+            "schema_version": _MAX_SCHEMA,
+            "updated_at": None,
+        }
+    return {
+        "entries": row.entries or [],
+        "active_session_id": row.active_session_id or "",
+        "schema_version": row.schema_version,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _history_response(payload, *, status_code=status.HTTP_200_OK):
+    response = Response(payload, status=status_code)
+    response["Cache-Control"] = "private, no-store"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 class ChatHistoryAPIView(APIView):
@@ -34,26 +53,10 @@ class ChatHistoryAPIView(APIView):
 
     def get(self, request):
         row = UserChatHistory.objects.filter(user=request.user).first()
-        if row is None:
-            return Response(
-                {
-                    "entries": [],
-                    "active_session_id": "",
-                    "schema_version": _MAX_SCHEMA,
-                    "updated_at": None,
-                }
-            )
-        return Response(
-            {
-                "entries": row.entries or [],
-                "active_session_id": row.active_session_id or "",
-                "schema_version": row.schema_version,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            }
-        )
+        return _history_response(_history_payload(row))
 
     def put(self, request):
-        entries = _sanitize_entries(request.data.get("entries"))
+        incoming = sanitize_history_entries(request.data.get("entries"))
         active = request.data.get("active_session_id") or ""
         if not isinstance(active, str):
             active = ""
@@ -65,20 +68,34 @@ class ChatHistoryAPIView(APIView):
             schema = _MAX_SCHEMA
         schema = max(1, min(schema, _MAX_SCHEMA))
 
-        row, _ = UserChatHistory.objects.update_or_create(
-            user=request.user,
-            defaults={
-                "entries": entries,
-                "active_session_id": active,
-                "schema_version": schema,
-            },
-        )
-        return Response(
-            {
-                "entries": row.entries or [],
-                "active_session_id": row.active_session_id or "",
-                "schema_version": row.schema_version,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            },
-            status=status.HTTP_200_OK,
-        )
+        with transaction.atomic():
+            row = (
+                UserChatHistory.objects.select_for_update()
+                .filter(user=request.user)
+                .first()
+            )
+            if row is None:
+                row = UserChatHistory.objects.create(
+                    user=request.user,
+                    entries=incoming,
+                    active_session_id=active,
+                    schema_version=schema,
+                )
+            else:
+                merged = merge_history_entries(row.entries or [], incoming)
+                row.entries = merged
+                row.active_session_id = pick_active_session_id(
+                    merged,
+                    incoming_active=active,
+                    existing_active=row.active_session_id or "",
+                )
+                row.schema_version = schema
+                row.save(
+                    update_fields=[
+                        "entries",
+                        "active_session_id",
+                        "schema_version",
+                        "updated_at",
+                    ]
+                )
+        return _history_response(_history_payload(row))

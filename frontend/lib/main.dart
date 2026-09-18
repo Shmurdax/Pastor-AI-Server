@@ -274,6 +274,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _eventsNavPanelOpen = false;
   bool _ingestedDocsOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
+  Timer? _liveHistoryTimer;
+  bool _liveHistoryPollInFlight = false;
+  /// When true, do not steal the visible thread for a different live session.
+  bool _holdCurrentSession = false;
 
   AppStrings get _s => context.read<LocaleController>().strings;
   String get _languageCode => context.read<LocaleController>().languageCode;
@@ -381,6 +385,7 @@ final bibleRefRegex = RegExp(
       unawaited(_apiService.warmupChat());
       await _handleBillingReturn();
       if (!mounted) return;
+      _startLiveHistoryPolling();
       _localeListener = context.read<LocaleController>();
       _appliedLanguageCode = _localeListener!.languageCode;
       _localeListener!.addListener(_onLocaleChanged);
@@ -653,6 +658,97 @@ final bibleRefRegex = RegExp(
     if (mounted) setState(() => _authInitialized = true);
   }
 
+  void _startLiveHistoryPolling() {
+    _liveHistoryTimer?.cancel();
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+    unawaited(_pollLiveChatHistory());
+    _liveHistoryTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+      unawaited(_pollLiveChatHistory());
+    });
+  }
+
+  Future<void> _pollLiveChatHistory() async {
+    if (!mounted || _liveHistoryPollInFlight) return;
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) return;
+    _liveHistoryPollInFlight = true;
+    try {
+      _apiService.setAccessToken(auth.token);
+      final remote = await _apiService.getChatHistory();
+      if (!mounted) return;
+      final remoteEntries = (remote['entries'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (remoteEntries.isEmpty) return;
+      final merged = mergeChatHistoryEntries(_chatHistoryEntries, remoteEntries);
+      final localGenerating = _sessions.current.activeClient != null;
+      var nextSessionId = sessionId;
+      Map<String, dynamic>? currentRemote;
+      Map<String, dynamic>? activeRemote;
+      for (final entry in merged) {
+        if (entry['sessionId'] == sessionId) {
+          currentRemote = entry;
+        }
+      }
+      final active = (remote['active_session_id'] ?? '').toString().trim();
+      if (active.isNotEmpty) {
+        for (final entry in merged) {
+          if (entry['sessionId'] == active) {
+            activeRemote = entry;
+            break;
+          }
+        }
+      }
+      final currentEmpty = _sessions.current.messages.isEmpty;
+      final activeLive = historyEntryIsStreaming(activeRemote);
+      if (!localGenerating && !_holdCurrentSession) {
+        if (activeLive && active.isNotEmpty) {
+          nextSessionId = active;
+        } else if (currentEmpty && active.isNotEmpty && activeRemote != null) {
+          nextSessionId = active;
+        } else if (currentEmpty && merged.isNotEmpty) {
+          final latestId = merged.first['sessionId']?.toString() ?? '';
+          if (latestId.isNotEmpty) nextSessionId = latestId;
+        }
+      }
+      if (nextSessionId != sessionId) {
+        sessionId = nextSessionId;
+        unawaited(_persistSessionId());
+        currentRemote = null;
+        for (final entry in merged) {
+          if (entry['sessionId'] == nextSessionId) {
+            currentRemote = entry;
+            break;
+          }
+        }
+      }
+      final runtime = _sessions.ensure(sessionId);
+      final shouldApply = currentRemote != null &&
+          remoteHistoryEntryIsAhead(
+            localMessages: runtime.messages,
+            remoteEntry: currentRemote,
+            localGenerating: localGenerating,
+          );
+      if (!mounted) return;
+      setState(() {
+        _chatHistoryEntries = merged;
+        if (shouldApply && currentRemote != null) {
+          runtime.loadFromHistoryEntry(currentRemote);
+        }
+      });
+      if (shouldApply) {
+        _scrollToBottom(followStream: true);
+      }
+      await _tokenStorage.saveChatHistory(_historyStorageId, merged);
+    } catch (e) {
+      debugPrint('Live chat history poll failed: $e');
+    } finally {
+      _liveHistoryPollInFlight = false;
+    }
+  }
+
   Future<void> _pushChatHistoryToServer(List<Map<String, dynamic>> entries) async {
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated) return;
@@ -836,6 +932,7 @@ final bibleRefRegex = RegExp(
 
   @override
   void dispose() {
+    _liveHistoryTimer?.cancel();
     _localeListener?.removeListener(_onLocaleChanged);
     if (ChatNavActions.openEvents == _openChurchEvents) {
       ChatNavActions.openEvents = null;
@@ -1145,6 +1242,7 @@ final bibleRefRegex = RegExp(
     await _persistChatHistory();
     if (!mounted) return;
     // Leave any in-flight reply on the previous session running in the background.
+    _holdCurrentSession = true;
     setState(() {
       _sessions.startNewChat(const Uuid().v4());
       _showBackToBottomButton = false;
@@ -1159,6 +1257,7 @@ final bibleRefRegex = RegExp(
     if (signedIn == true && mounted) {
       await _syncAuthState();
       if (mounted) {
+        _startLiveHistoryPolling();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_s.signedInAs(context.read<AuthController>().user?.name ?? 'user'))),
         );
@@ -1311,6 +1410,7 @@ final bibleRefRegex = RegExp(
 
   void _loadChatFromHistory(Map<String, dynamic> entry) {
     final sid = entry['sessionId'] as String? ?? sessionId;
+    _holdCurrentSession = true;
     setState(() {
       // View switch only — do not cancel streams on other chats.
       _sessions.switchTo(sid, historyEntry: entry);
@@ -1330,6 +1430,8 @@ final bibleRefRegex = RegExp(
       onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
         if (!mounted) return;
+        _liveHistoryTimer?.cancel();
+        _holdCurrentSession = false;
         _sessions.disposeAll(cancelledText: _s.responseCancelled);
         setState(() {
           _sessions.startNewChat(const Uuid().v4());
@@ -1448,6 +1550,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   // Only one in-flight reply per chat; other chats may still stream.
   if (runtime.isGenerating) return;
 
+  _holdCurrentSession = true;
   final client = http.Client();
   final epoch = runtime.beginStream(client: client);
   if (epoch == null) {

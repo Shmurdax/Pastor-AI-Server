@@ -27,10 +27,11 @@ class ChatSessionRuntime {
   bool get isGenerating => isLoading || isStreamingReply;
 
   bool get showThinkingLogo {
-    if (!isLoading) return false;
-    if (!isStreamingReply) return true;
-    final text = (messages.last['text'] as String?) ?? '';
-    return text.trim().isEmpty;
+    if (isStreamingReply) {
+      final text = (messages.last['text'] as String?) ?? '';
+      return text.trim().isEmpty;
+    }
+    return isLoading;
   }
 
   bool isCurrentStream(int epoch) {
