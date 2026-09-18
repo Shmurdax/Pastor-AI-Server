@@ -474,6 +474,7 @@ export DJANGO_SESSION_COOKIE_SECURE=false
 export DJANGO_CSRF_COOKIE_SECURE=false
 python manage.py migrate --noinput
 restore_seed_ingested_catalog || true
+_reset_postgres_id_sequences || true
 python manage.py ensure_superuser
 python manage.py collectstatic --noinput 2>/dev/null || true
 log "Django ready (private admin path: /${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}/  login: ${DJANGO_SUPERUSER_USERNAME:-admin} / ${DJANGO_SUPERUSER_PASSWORD:-admin123})"

@@ -228,6 +228,51 @@ _pg_doc_count() {
   su -s /bin/bash postgres -c "psql -d '${db}' -tAc \"SELECT count(*) FROM core_ingesteddocument\"" 2>/dev/null | tr -d '[:space:]'
 }
 
+_pg_table_count() {
+  local table="$1"
+  local db="${POSTGRES_DB:-ai_db}"
+  su -s /bin/bash postgres -c "psql -d '${db}' -tAc \"SELECT count(*) FROM ${table}\"" 2>/dev/null | tr -d '[:space:]'
+}
+
+_reset_postgres_id_sequences() {
+  # pg_restore --data-only inserts explicit IDs and may rewind SEQUENCE SET below MAX(id).
+  # Without this, IngestionJob.objects.create() 500s: duplicate key (id)=(976).
+  local db="${POSTGRES_DB:-ai_db}"
+  local sqlf="/tmp/pastor_ai_reset_seqs.$$.sql"
+  _pg_ready || return 0
+  cat > "$sqlf" <<'SQL'
+DO $$
+DECLARE
+  rec RECORD;
+  max_id bigint;
+BEGIN
+  FOR rec IN
+    SELECT
+      n.nspname AS schema_name,
+      c.relname AS table_name,
+      a.attname AS column_name,
+      pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) AS seq
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE c.relkind = 'r'
+      AND n.nspname = 'public'
+      AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL
+  LOOP
+    EXECUTE format('SELECT MAX(%I) FROM %I.%I', rec.column_name, rec.schema_name, rec.table_name) INTO max_id;
+    IF max_id IS NULL THEN
+      PERFORM setval(rec.seq, 1, false);
+    ELSE
+      PERFORM setval(rec.seq, max_id, true);
+    END IF;
+  END LOOP;
+END $$;
+SQL
+  chmod a+r "$sqlf" 2>/dev/null || true
+  su -s /bin/bash postgres -c "psql -d '${db}' -v ON_ERROR_STOP=1 -f '${sqlf}'" >/dev/null 2>&1 || true
+  rm -f "$sqlf"
+}
+
 _should_skip_empty_live_dump() {
   # Return 0 (skip) only when an existing dump would be clobbered by an
   # unrestored empty cluster. A restore marker means this container already
@@ -335,6 +380,7 @@ _restore_persistent_postgres() {
   live_count="$(_pg_doc_count || true)"
   if [[ -n "$live_count" ]]; then
     touch "$PERSIST_RESTORE_MARKER" 2>/dev/null || true
+    _reset_postgres_id_sequences
     log "Restored ingested document catalog (${live_count} documents)"
     return 0
   fi
@@ -358,9 +404,22 @@ restore_seed_ingested_catalog() {
   fi
   [[ -s "$seed" ]] || return 0
   _pg_ready || return 0
-  local live_count
+  local live_count job_count
   live_count="$(_pg_doc_count || true)"
   if [[ -n "$live_count" && "$live_count" != "0" ]]; then
+    return 0
+  fi
+  # Wiping documents for a clean reingest leaves IngestionJob rows. Reloading the
+  # seed would insert those job ids again and rewind core_ingestionjob_id_seq.
+  job_count="$(_pg_table_count core_ingestionjob || true)"
+  if [[ -n "$job_count" && "$job_count" != "0" ]]; then
+    log "Skipping seed catalog restore: ingestion jobs already exist (${job_count})"
+    _reset_postgres_id_sequences
+    return 0
+  fi
+  if [[ -f "$PERSIST_RESTORE_MARKER" ]]; then
+    log "Skipping seed catalog restore: this database was already restored from persist"
+    _reset_postgres_id_sequences
     return 0
   fi
   local user="${POSTGRES_USER:-pastor}"
@@ -368,6 +427,7 @@ restore_seed_ingested_catalog() {
   log "Restoring ingested catalog seed from $seed"
   su -s /bin/bash postgres -c "pg_restore --no-owner --role='${user}' --data-only --disable-triggers -d '${db}' '${seed}'" \
     >/dev/null 2>&1 || true
+  _reset_postgres_id_sequences
   live_count="$(_pg_doc_count || true)"
   if [[ -n "$live_count" && "$live_count" != "0" ]]; then
     log "Restored ingested catalog seed (${live_count} documents)"

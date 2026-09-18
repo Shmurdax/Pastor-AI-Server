@@ -11,11 +11,15 @@ import os
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
+from core.postgres_sequences import reset_id_sequences
+
 
 class Command(BaseCommand):
     help = "Create the default Django admin superuser if it does not already exist."
 
     def handle(self, *args, **options):
+        # Heal sequences after a data-only catalog restore so ingest can insert jobs.
+        reset_id_sequences()
         username = os.getenv("DJANGO_SUPERUSER_USERNAME", "admin")
         password = os.getenv("DJANGO_SUPERUSER_PASSWORD", "admin123")
         email = os.getenv("DJANGO_SUPERUSER_EMAIL", "admin@localhost")

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .ingestion_service import delete_ingested_documents
 from .ingestion_tasks import StagedUpload, enqueue_ingestion_job, enqueue_video_ingestion_job
+from .postgres_sequences import create_ingestion_job
 from .models import (
     ChatMessage,
     IngestedChunk,
@@ -295,7 +296,7 @@ def _queue_video_job_from_path(
     source_path: Path,
     replace_existing_sources: bool,
 ) -> IngestionJob:
-    job = IngestionJob.objects.create(
+    job = create_ingestion_job(
         started_by=started_by,
         job_kind="video",
         replace_existing_sources=replace_existing_sources,
@@ -472,16 +473,16 @@ def _admin_ingestion_view(request):
             messages.warning(request, "Select at least one DOCX or PDF file.")
             return HttpResponseRedirect(request.path)
 
-        job = IngestionJob.objects.create(
-            started_by=request.user.get_username() or "admin",
-            job_kind="document",
-            replace_existing_sources=replace_existing_sources,
-            view_only=view_only,
-            status="running",
-            files_received=len(files),
-        )
-
+        job = None
         try:
+            job = create_ingestion_job(
+                started_by=request.user.get_username() or "admin",
+                job_kind="document",
+                replace_existing_sources=replace_existing_sources,
+                view_only=view_only,
+                status="running",
+                files_received=len(files),
+            )
             staged_uploads = _stage_uploads(job, files, staging_subdir="admin_ingestion_jobs")
 
             IngestionJobLog.objects.create(job=job, message="Ingestion job queued for background processing.")
@@ -504,17 +505,20 @@ def _admin_ingestion_view(request):
                     }
                 )
         except Exception as exc:
-            job.status = "failed"
-            job.error_message = str(exc)
-            job.finished_at = timezone.now()
-            job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
-            IngestionJobLog.objects.create(job=job, message=f"Ingestion failed: {exc}")
-            messages.error(request, f"Ingestion failed (job #{job.id}): {exc}")
+            if job is not None:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.finished_at = timezone.now()
+                job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+                IngestionJobLog.objects.create(job=job, message=f"Ingestion failed: {exc}")
+                messages.error(request, f"Ingestion failed (job #{job.id}): {exc}")
+            else:
+                messages.error(request, f"Ingestion failed: {exc}")
             if ajax:
-                return JsonResponse(
-                    {"ok": False, "error": str(exc), "job_id": job.id},
-                    status=500,
-                )
+                payload = {"ok": False, "error": str(exc)}
+                if job is not None:
+                    payload["job_id"] = job.id
+                return JsonResponse(payload, status=500)
         return HttpResponseRedirect(request.path)
 
     context = {
@@ -557,15 +561,15 @@ def _admin_video_ingestion_view(request):
             messages.warning(request, detail)
             return HttpResponseRedirect(request.path)
 
-        job = IngestionJob.objects.create(
-            started_by=request.user.get_username() or "admin",
-            job_kind="video",
-            replace_existing_sources=replace_existing_sources,
-            status="running",
-            files_received=len(files),
-        )
-
+        job = None
         try:
+            job = create_ingestion_job(
+                started_by=request.user.get_username() or "admin",
+                job_kind="video",
+                replace_existing_sources=replace_existing_sources,
+                status="running",
+                files_received=len(files),
+            )
             staged_uploads = _stage_uploads(job, files, staging_subdir="admin_video_ingestion_jobs")
             IngestionJobLog.objects.create(job=job, message="Video ingestion job queued for background processing.")
             enqueue_video_ingestion_job(
@@ -587,17 +591,20 @@ def _admin_video_ingestion_view(request):
                     }
                 )
         except Exception as exc:
-            job.status = "failed"
-            job.error_message = str(exc)
-            job.finished_at = timezone.now()
-            job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
-            IngestionJobLog.objects.create(job=job, message=f"Video ingestion failed: {exc}")
-            messages.error(request, f"Video ingestion failed (job #{job.id}): {exc}")
+            if job is not None:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.finished_at = timezone.now()
+                job.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+                IngestionJobLog.objects.create(job=job, message=f"Video ingestion failed: {exc}")
+                messages.error(request, f"Video ingestion failed (job #{job.id}): {exc}")
+            else:
+                messages.error(request, f"Video ingestion failed: {exc}")
             if ajax:
-                return JsonResponse(
-                    {"ok": False, "error": str(exc), "job_id": job.id},
-                    status=500,
-                )
+                payload = {"ok": False, "error": str(exc)}
+                if job is not None:
+                    payload["job_id"] = job.id
+                return JsonResponse(payload, status=500)
         return HttpResponseRedirect(request.path)
 
     context = {

@@ -61,6 +61,7 @@ mkdir -p "$LOG_DIR"
 cd "$APP_DIR"
 export FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$FRONTEND_DIR/build/web}"
 python manage.py migrate --noinput 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log"
+python manage.py reset_id_sequences 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log" || true
 
 if [[ -n "${VIMEO_ACCESS_TOKEN:-}" && -n "${VIMEO_FOLDER_ID:-${VIMEO_SHOWCASE_ID:-}}" ]]; then
   log "Syncing Vimeo Folder media"

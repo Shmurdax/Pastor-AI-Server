@@ -115,6 +115,7 @@ if [[ -x "${VENV_DIR}/bin/python" && -f "${APP_DIR}/manage.py" ]]; then
     >/dev/null 2>&1 || true
 fi
 restore_seed_ingested_catalog || true
+_reset_postgres_id_sequences || true
 # Ensure app role/db exist (idempotent)
 if command -v psql >/dev/null 2>&1 && [[ -n "${POSTGRES_USER:-}" && -n "${POSTGRES_DB:-}" ]]; then
   su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" 2>/dev/null | grep -q 1 \

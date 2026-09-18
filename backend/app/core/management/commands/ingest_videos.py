@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from core.models import IngestionJob, IngestionJobLog
+from core.postgres_sequences import create_ingestion_job
 from core.video_ingestion import ingest_video_files, is_video_filename
 
 
@@ -40,7 +41,7 @@ class Command(BaseCommand):
                 raise CommandError(f"Unsupported video or audio type: {path.name}")
             files.append(_PathUpload(path))
 
-        job = IngestionJob.objects.create(
+        job = create_ingestion_job(
             started_by="manage.py ingest_videos",
             job_kind="video",
             replace_existing_sources=bool(options["replace"]),

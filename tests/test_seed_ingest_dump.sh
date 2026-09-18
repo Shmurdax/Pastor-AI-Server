@@ -16,6 +16,8 @@ if b"core_ingesteddocument" not in data:
     raise SystemExit("FAIL: dump missing core_ingesteddocument")
 if b"core_ingestedchunk" not in data:
     raise SystemExit("FAIL: dump missing core_ingestedchunk")
+if b"core_ingestionjob" not in data:
+    raise SystemExit("FAIL: dump missing core_ingestionjob")
 # Full-app dump tables that must not be in this seed.
 for banned in (b"auth_user", b"authtoken_token", b"django_session", b"core_chatmessage"):
     if banned in data:

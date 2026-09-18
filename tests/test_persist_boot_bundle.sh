@@ -53,10 +53,17 @@ restore_workspace_from_persist
 # 4) Seed restore is a no-op when the live catalog already has rows.
 _pg_ready() { return 0; }
 _pg_doc_count() { echo 930; }
+_reset_postgres_id_sequences() { :; }
 mkdir -p "$(dirname "$SEED_INGEST_DUMP")"
 printf 'PGDMP-fake\n' > "$TMP/seed.dump"
 SEED_INGEST_DUMP="$TMP/seed.dump"
 restore_seed_ingested_catalog || fail "seed restore should succeed as no-op"
 [[ -s "$PERSIST_PG_ROOT/ingested_catalog.dump" ]] || fail "seed dump should be copied to persist"
+
+# 5) Wiping documents must not reload seed jobs (that rewinds ingestionjob_id_seq).
+_pg_doc_count() { echo 0; }
+_pg_table_count() { echo 12; }
+pg_restore() { echo "pg_restore-should-not-run" >&2; return 1; }
+restore_seed_ingested_catalog || fail "seed restore should skip when ingestion jobs exist"
 
 echo "OK persist boot bundle remigration"
