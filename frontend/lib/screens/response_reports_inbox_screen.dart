@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/response_report.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/brand_gradient.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -91,9 +92,7 @@ class _ResponseReportsInboxScreenState extends State<ResponseReportsInboxScreen>
 
     return Scaffold(
       backgroundColor: _surface,
-      appBar: AppBar(
-        backgroundColor: _navy,
-        foregroundColor: Colors.white,
+      appBar: brandGradientAppBar(
         title: Text('Response reports', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh)),
@@ -290,9 +289,7 @@ class _ResponseReportDetailScreenState extends State<ResponseReportDetailScreen>
 
     return Scaffold(
       backgroundColor: _surface,
-      appBar: AppBar(
-        backgroundColor: _navy,
-        foregroundColor: Colors.white,
+      appBar: brandGradientAppBar(
         title: Text('Report detail', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
       ),
       body: ListView(
