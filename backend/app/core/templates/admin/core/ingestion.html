@@ -141,7 +141,8 @@
      data-job-status-base="{% url 'admin:core_ingestion' %}">
   <h1>Document Ingestion</h1>
   <p>
-    Upload DOCX and PDF files. Each file is stored as a PDF for sermon library links.
+    Upload PDF, DOCX, TXT, or Markdown files. Each file is stored as a PDF for sermon library links.
+    Plain text and markdown are chunked from the original wording, then a library PDF is generated.
     Titles are auto-cleaned for display (no ALL CAPS / “teaching notes” clutter), and
     near-duplicates (same cleaned title or same content) are skipped.
   </p>
@@ -154,10 +155,10 @@
   <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
     {% csrf_token %}
     <div style="margin-bottom: 12px;">
-      <input id="documents-input" type="file" name="documents" multiple accept=".docx,.pdf" required style="display: none;" />
+      <input id="documents-input" type="file" name="documents" multiple accept=".docx,.pdf,.txt,.md" required style="display: none;" />
       <input id="documents-folder-input" type="file" webkitdirectory mozdirectory directory multiple style="display: none;" />
       <div id="documents-dropzone" class="ingestion-dropzone" role="button" tabindex="0" aria-label="Upload documents">
-        <strong>Drag and drop DOCX/PDF files here</strong><br>
+        <strong>Drag and drop PDF, DOCX, TXT, or Markdown files here</strong><br>
         <span>or click this area to browse individual files</span><br>
         <span style="display: inline-flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px;">
           <button id="documents-files-button" type="button">Select files…</button>
@@ -251,7 +252,7 @@
     var jobsBody = document.getElementById("documents-jobs-body");
     var form = input && input.form;
     var submitButton = form && form.querySelector('button[type="submit"]');
-    var allowedExtensions = [".pdf", ".docx"];
+    var allowedExtensions = [".pdf", ".docx", ".txt", ".md"];
     var MAX_FILES_PER_BATCH = 10;
     var MAX_BATCH_BYTES = 8 * 1024 * 1024;
     var MAX_UPLOAD_RETRIES = 3;
@@ -340,7 +341,7 @@
         else invalidNames.push(files[i].name);
       }
       if (invalidNames.length > 0) {
-        showError("Only DOCX and PDF files are allowed. Ignored: " + invalidNames.join(", "));
+        showError("Only PDF, DOCX, TXT, and Markdown files are allowed. Ignored: " + invalidNames.join(", "));
       }
       input.files = dataTransfer.files;
       setSelectedFiles(input.files);

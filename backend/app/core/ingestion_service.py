@@ -4,9 +4,11 @@ Ingestion pipeline (admin uploads):
 1. **Normalize to PDF on disk** — uploads under ``uploads/admin_ingestion`` are always stored as
    ``{original_basename_stem}.pdf``. Incoming PDFs are written as that path; DOCX is written
    temporarily, converted with LibreOffice (``soffice``), then the DOCX is removed.
+   Raw ``.txt`` / ``.md`` is decoded as text, then a library PDF is generated with fpdf2.
    These original PDFs are what the sermon library serves; they are never rewritten by cleanup.
 
-2. **Text extraction** — text is read from the PDF with ``pypdf`` (not from DOCX after conversion).
+2. **Text extraction** — PDFs/DOCX use ``pypdf`` after the file is on disk. ``.txt`` / ``.md``
+   chunks the original decoded text (not the generated PDF), so transcripts keep their wording.
 
 3. **Structured cleanup** — ``document_cleanup.clean_extracted_document`` removes page chrome,
    repeating headers/footers, boilerplate, and soft-wrap artifacts so Qdrant chunks stay coherent.
@@ -54,6 +56,7 @@ from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_payload_indexes, ensure_sermon_collection
 from .quote_chunking import split_sermon_quote_chunks
+from .sermon_pdf import write_library_pdf_from_text
 from .storage_paths import admin_ingestion_dir
 
 try:
@@ -86,6 +89,8 @@ class DeletionResult:
     qdrant_failures: int = 0
 
 
+DOCUMENT_EXTENSIONS = frozenset({".pdf", ".docx", ".txt", ".md"})
+TEXT_DOCUMENT_EXTENSIONS = frozenset({".txt", ".md"})
 DEFAULT_SPLITTER_KWARGS = {
     "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "550")),
     "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "80")),
@@ -185,6 +190,24 @@ def _extract_pdf_text(file_path: Path) -> str:
     for page in reader.pages:
         pages.append(page.extract_text() or "")
     return "\n".join(pages)
+
+
+def is_document_filename(name: str) -> bool:
+    return Path(name or "").suffix.lower() in DOCUMENT_EXTENSIONS
+
+
+def _decode_text_bytes(raw: bytes) -> str:
+    """Decode a .txt/.md upload, preferring UTF-8 (with BOM) then Windows-1252."""
+    if not raw:
+        return ""
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig")
+    for encoding in ("utf-8", "cp1252", "latin-1"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def _sha256_bytes(content: bytes) -> str:
@@ -418,9 +441,9 @@ def _canonical_pdf_name(original_name: str) -> str:
 
 
 def _replace_existing_for_upload(original_name: str) -> None:
-    """Remove prior rows/vectors for the same logical document (DOCX or PDF naming)."""
+    """Remove prior rows/vectors for the same logical document (PDF/DOCX/TXT/MD naming)."""
     stem = _safe_upload_stem(original_name)
-    candidates = {original_name, f"{stem}.pdf", f"{stem}.docx"}
+    candidates = {original_name, f"{stem}.pdf", f"{stem}.docx", f"{stem}.txt", f"{stem}.md"}
     for name in candidates:
         if not IngestedDocument.objects.filter(source_name=name).exists():
             continue
@@ -537,9 +560,11 @@ def ingest_uploaded_files(
     for upload in uploaded_files:
         try:
             extension = Path(upload.name).suffix.lower()
-            if extension not in {".pdf", ".docx"}:
+            if extension not in DOCUMENT_EXTENSIONS:
+                result.files_failed += 1
                 if log_fn:
                     log_fn(f"Skipped unsupported file type: {upload.name}")
+                _persist_job_progress(job, result, current_file=upload.name)
                 continue
 
             if log_fn:
@@ -582,7 +607,8 @@ def ingest_uploaded_files(
             if extension == ".pdf":
                 with open(pdf_path, "wb") as out:
                     out.write(raw_content)
-            else:
+                extracted_text = _extract_pdf_text(pdf_path)
+            elif extension == ".docx":
                 docx_path = upload_dir / f"{_safe_upload_stem(upload.name)}.docx"
                 with open(docx_path, "wb") as out:
                     out.write(raw_content)
@@ -590,11 +616,19 @@ def ingest_uploaded_files(
                     log_fn(f"Converting DOCX to PDF: {docx_path.name} -> {pdf_name}")
                 _convert_docx_to_pdf(docx_path, pdf_path)
                 docx_path.unlink(missing_ok=True)
+                extracted_text = _extract_pdf_text(pdf_path)
+            elif extension in TEXT_DOCUMENT_EXTENSIONS:
+                extracted_text = _decode_text_bytes(raw_content)
+                if log_fn:
+                    log_fn(f"Writing library PDF from {extension}: {upload.name} -> {pdf_name}")
+                write_library_pdf_from_text(pdf_path, title, extracted_text)
+            else:
+                raise ValueError(f"Unsupported document type: {extension}")
 
             # Persist the original/converted PDF first so sermon-library links always
             # have a file even if later text cleanup or chunking fails mid-way.
             # Cleanup below only mutates extracted text for Qdrant — never this PDF.
-            extracted_text = _extract_pdf_text(pdf_path)
+            # TXT/MD chunk the original decoded text, not pypdf of the generated PDF.
             use_bible_splitter = _is_bible_source(upload.name)
             # Sermon cleanup rejoins wrapped lines and will glue verse numbers
             # into the previous verse ("20 ... 24Now Abraham"). Skip it for Bibles.
@@ -602,6 +636,12 @@ def ingest_uploaded_files(
                 cleaned_text = _clean_text(extracted_text)
                 if log_fn:
                     log_fn(f"Skipping sermon-style cleanup for Bible source: {pdf_name}")
+            elif extension == ".md":
+                cleaned_text = _prepare_markdown_text_for_qdrant(
+                    extracted_text,
+                    source_name=pdf_name,
+                    log_fn=log_fn,
+                )
             else:
                 cleaned_text = _prepare_extracted_text_for_qdrant(
                     extracted_text,

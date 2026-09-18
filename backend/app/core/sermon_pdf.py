@@ -35,7 +35,7 @@ def _source_candidates(sermon_name: str) -> List[str]:
     raw = (sermon_name or "").strip()
     if not raw:
         return []
-    stem = Path(raw).stem if Path(raw).suffix.lower() in {".pdf", ".md", ".docx"} else raw
+    stem = Path(raw).stem if Path(raw).suffix.lower() in {".pdf", ".md", ".docx", ".txt"} else raw
     stem = stem.strip()
     if not stem:
         return []
@@ -206,6 +206,31 @@ def _pdf_safe(text: str) -> str:
     return text.encode("latin-1", "replace").decode("latin-1")
 
 
+def _iter_pdf_body_blocks(body: str, *, max_block: int = 2000):
+    """Yield wrapping-safe slices so fpdf2 multi_cell can handle book-length text."""
+    text = (body or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return
+    for paragraph in re.split(r"\n{2,}", text):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        start = 0
+        length = len(paragraph)
+        while start < length:
+            end = min(start + max_block, length)
+            if end < length:
+                cut = paragraph.rfind("\n", start, end)
+                if cut <= start:
+                    cut = paragraph.rfind(" ", start, end)
+                if cut > start:
+                    end = cut
+            block = paragraph[start:end].strip()
+            if block:
+                yield block
+            start = end if end > start else start + max_block
+
+
 def build_sermon_pdf_bytes(title: str, body: str, *, truncated: bool = False) -> bytes:
     pdf = FPDF(format="Letter")
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -224,9 +249,25 @@ def build_sermon_pdf_bytes(title: str, body: str, *, truncated: bool = False) ->
         pdf.ln(2)
         pdf.set_text_color(0, 0, 0)
     pdf.set_font("Helvetica", "", 11)
-    pdf.multi_cell(0, 6, _pdf_safe(body))
+    wrote_block = False
+    for block in _iter_pdf_body_blocks(body):
+        pdf.multi_cell(0, 6, _pdf_safe(block))
+        pdf.ln(2)
+        wrote_block = True
+    if not wrote_block:
+        pdf.multi_cell(0, 6, "")
     # fpdf2 returns bytearray when no filename is provided.
     return bytes(pdf.output())
+
+
+def write_library_pdf_from_text(pdf_path: Path, title: str, body: str) -> None:
+    """Persist a full-text library PDF. Does not apply the Qdrant-rebuild char cap."""
+    pdf_path = Path(pdf_path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    data = build_sermon_pdf_bytes(title, body, truncated=False)
+    pdf_path.write_bytes(data)
+    if not pdf_path.is_file() or pdf_path.stat().st_size == 0:
+        raise RuntimeError(f"Text PDF writer did not create {pdf_path}")
 
 
 def sermon_pdf_from_qdrant(sermon_name: str) -> Optional[tuple[str, bytes]]:

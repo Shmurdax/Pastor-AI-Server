@@ -9,6 +9,7 @@ void main() {
     expect(isVideoSermonSource('clip.MOV'), isTrue);
     expect(isVideoSermonSource('Pregnant With a Promise'), isFalse);
     expect(isVideoSermonSource('Teaching Notes.pdf'), isFalse);
+    expect(isVideoSermonSource('Full Transcript.txt'), isFalse);
   });
 
   test('librarySermonSources drops videos and keeps document titles', () {
@@ -95,6 +96,10 @@ void main() {
     final doc = parseSermonSourceRef('Pregnant With a Promise.pdf');
     expect(doc.displayStem, 'Pregnant With a Promise');
     expect(doc.seekSeconds, isNull);
+
+    final txt = parseSermonSourceRef('The Giver and His Gifts.txt');
+    expect(txt.displayStem, 'The Giver and His Gifts');
+    expect(txt.seekSeconds, isNull);
   });
 
   test('appendMediaSeekFragment adds HTML5 media fragment', () {
