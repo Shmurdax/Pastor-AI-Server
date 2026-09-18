@@ -318,6 +318,15 @@ LIBRARY_PULL_STEER = (
     "</library_pull>\n"
 )
 
+FOLLOWUP_STEER = (
+    "<follow_up>\n"
+    "This is a follow-up in the same chat. Answer THIS question from REFERENCE NOTES.\n"
+    "Do not claim the previous reply already taught a point unless that point is "
+    "actually in the previous reply. If the user asks about something new, teach it "
+    "as a new question from the notes. Do not invent a recap.\n"
+    "</follow_up>\n"
+)
+
 
 CONVERSATIONAL_STEER = (
     "This is a casual greeting or social check-in—not a teaching request. "

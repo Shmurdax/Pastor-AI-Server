@@ -87,6 +87,7 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     FINISH_STEER,
     LIBRARY_PULL_STEER,
+    FOLLOWUP_STEER,
     MAX_EXPANSION_PASSES,
     answer_char_count,
     answer_looks_incomplete,
@@ -862,6 +863,7 @@ class ChatAPIView(APIView):
                         or _doc_source_name(doc)
                     ),
                     query=topic_query,
+                    pin_query=user_query_llm,
                 )
                 if looks_like_library_pull(user_query_llm):
                     docs = restrict_docs_to_primary_source(
@@ -893,6 +895,7 @@ class ChatAPIView(APIView):
                 docs = pin_docs_to_strong_title_matches(
                     docs,
                     topic_query,
+                    pin_query=user_query_llm,
                     candidate_hits=scored_hits,
                     is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
                     source_key=lambda doc: (
@@ -941,6 +944,7 @@ class ChatAPIView(APIView):
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + (LIBRARY_PULL_STEER if looks_like_library_pull(user_query_llm) else "")
+                + (FOLLOWUP_STEER if prior_user_queries else "")
                 + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
@@ -981,6 +985,7 @@ class ChatAPIView(APIView):
                 "completion_tokens": completion_tokens,
                 "target_message": target_message,
                 "teaching_claims": teaching_claims,
+                "topic_query": topic_query,
             }
 
         def _response_sources(docs, answer: str, query: str = ""):
@@ -1185,7 +1190,7 @@ class ChatAPIView(APIView):
                     "sources": _response_sources(
                         prepared["docs"],
                         answer,
-                        query=user_query_llm,
+                        query=prepared.get("topic_query") or user_query_llm,
                     ),
                 }
                 if saved_message is not None:
@@ -1306,7 +1311,7 @@ class ChatAPIView(APIView):
                     sources=_response_sources(
                         prepared["docs"],
                         answer,
-                        query=user_query_llm,
+                        query=prepared.get("topic_query") or user_query_llm,
                     ),
                     message_id=None if saved_message is None else saved_message.id,
                 ),

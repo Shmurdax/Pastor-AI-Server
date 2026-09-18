@@ -1068,6 +1068,79 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(sources)
         self.assertTrue(all(src == "this-church.pdf" for src in sources), sources)
 
+    def test_followup_pin_query_does_not_collapse_to_prior_sermon(self):
+        prayer = _doc(
+            "Unforgiveness and unbelief are prayer barriers that choke faith.",
+            source="PRAYER BARRIERS.pdf",
+            title="Prayer Barriers",
+        )
+        community = _doc(
+            "Community life in the church body as we gather and love one another.",
+            source="community.pdf",
+            title="Community",
+        )
+        blend = (
+            "What barriers to prayer does Pastor Don talk about? "
+            "Which of those barriers should someone deal with first?"
+        )
+        follow = "Which of those barriers should someone deal with first, based on what you just said?"
+        kept = pin_docs_to_strong_title_matches(
+            [community, prayer],
+            blend,
+            pin_query=follow,
+            candidate_hits=[(community, 0.94), (prayer, 0.80)],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        sources = {doc.metadata["source"] for doc in kept}
+        self.assertEqual(sources, {"community.pdf", "PRAYER BARRIERS.pdf"})
+
+        selected = select_diverse_docs(
+            [(community, 0.94), (prayer, 0.80)],
+            k=6,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query=blend,
+            pin_query=follow,
+        )
+        selected_sources = {doc.metadata["source"] for doc in selected}
+        self.assertIn("PRAYER BARRIERS.pdf", selected_sources)
+        self.assertIn("community.pdf", selected_sources)
+
+        labels = select_chat_source_chips(
+            [community, prayer],
+            "Start with unconfessed sin as listed above.",
+            lambda doc: doc.metadata["title"],
+            min_count=3,
+            limit=5,
+            query=blend,
+            rng=__import__("random").Random(1),
+        )
+        self.assertIn("Prayer Barriers", labels)
+
+    def test_topic_change_still_pins_new_filename(self):
+        church = _doc(
+            "This church is a big deal because it is a house of mercy.",
+            source="this-church.pdf",
+            title="This Church Is a Big Deal",
+        )
+        tithe = _doc(
+            "Tithing is the first key to abundance with a good attitude.",
+            source="abundance.pdf",
+            title="Stop Tithing",
+        )
+        pinned = pin_docs_to_strong_title_matches(
+            [church, tithe],
+            "Why does Pastor Don say this church is a big deal? Why should a Christian stop tithing?",
+            pin_query="Why should a Christian stop tithing?",
+            candidate_hits=[(church, 0.9), (tithe, 0.8)],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        self.assertEqual([doc.metadata["source"] for doc in pinned], ["abundance.pdf"])
+
 
 if __name__ == "__main__":
     unittest.main()
