@@ -62,7 +62,8 @@ class TextUploadIngestTests(TestCase):
             ):
                 result = ingest_uploaded_files([upload], log_fn=logs.append)
             pdf_path = Path(tmp) / f"{Path(upload.name).stem}.pdf"
-            return result, pdf_path, fake_qdrant, logs
+            pdf_bytes = pdf_path.read_bytes() if pdf_path.is_file() else b""
+            return result, bool(pdf_bytes), pdf_bytes, fake_qdrant, logs
 
     def test_txt_chunks_original_text_and_writes_library_pdf(self):
         body = (
@@ -77,15 +78,15 @@ class TextUploadIngestTests(TestCase):
             body.encode("utf-8"),
             content_type="text/plain",
         )
-        result, pdf_path, qdrant, logs = self._ingest(upload)
+        result, pdf_exists, pdf_bytes, qdrant, logs = self._ingest(upload)
 
-        self.assertEqual(result.files_received, 1)
-        self.assertEqual(result.files_processed, 1)
-        self.assertEqual(result.files_failed, 0)
+        self.assertEqual(result.files_received, 1, logs)
+        self.assertEqual(result.files_processed, 1, logs)
+        self.assertEqual(result.files_failed, 0, logs)
         self.assertGreater(result.chunks_created, 0)
-        self.assertTrue(pdf_path.is_file())
-        self.assertTrue(pdf_path.read_bytes().startswith(b"%PDF"))
-        self.assertNotIn(b"truncated", pdf_path.read_bytes())
+        self.assertTrue(pdf_exists)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+        self.assertNotIn(b"truncated", pdf_bytes)
 
         doc = IngestedDocument.objects.get(source_name="The Giver and His Gifts - Full Transcript.pdf")
         self.assertEqual(doc.original_extension, ".txt")
@@ -101,10 +102,11 @@ class TextUploadIngestTests(TestCase):
     def test_markdown_keeps_headings_and_skips_pdf_extract(self):
         body = "# Kings and Priests\n\nJesus made us kings and priests unto God.\n"
         upload = SimpleUploadedFile("Kings_and_Priests.md", body.encode("utf-8"), content_type="text/markdown")
-        result, pdf_path, qdrant, logs = self._ingest(upload)
+        result, pdf_exists, pdf_bytes, qdrant, logs = self._ingest(upload)
 
-        self.assertEqual(result.files_processed, 1)
-        self.assertTrue(pdf_path.is_file())
+        self.assertEqual(result.files_processed, 1, logs)
+        self.assertTrue(pdf_exists)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
         doc = IngestedDocument.objects.get(source_name="Kings_and_Priests.pdf")
         self.assertEqual(doc.original_extension, ".md")
         texts = " ".join(point.payload["text"] for point in qdrant.upsert.call_args.kwargs["points"])
@@ -114,10 +116,10 @@ class TextUploadIngestTests(TestCase):
 
     def test_unsupported_type_is_failed_not_ingested(self):
         upload = SimpleUploadedFile("notes.xlsx", b"not-a-document", content_type="application/vnd.ms-excel")
-        result, pdf_path, qdrant, _logs = self._ingest(upload)
+        result, pdf_exists, _pdf_bytes, qdrant, _logs = self._ingest(upload)
         self.assertEqual(result.files_processed, 0)
         self.assertEqual(result.files_failed, 1)
-        self.assertFalse(pdf_path.exists())
+        self.assertFalse(pdf_exists)
         qdrant.upsert.assert_not_called()
         self.assertEqual(IngestedDocument.objects.count(), 0)
 

@@ -56,7 +56,6 @@ from .embeddings_utils import get_embeddings
 from .models import IngestedChunk, IngestedDocument, IngestionJob, IngestionJobFileFailure
 from .qdrant_utils import collection_exists, ensure_payload_indexes, ensure_sermon_collection
 from .quote_chunking import split_sermon_quote_chunks
-from .sermon_pdf import write_library_pdf_from_text
 from .storage_paths import admin_ingestion_dir
 
 try:
@@ -618,6 +617,8 @@ def ingest_uploaded_files(
                 docx_path.unlink(missing_ok=True)
                 extracted_text = _extract_pdf_text(pdf_path)
             elif extension in TEXT_DOCUMENT_EXTENSIONS:
+                from .sermon_pdf import write_library_pdf_from_text
+
                 extracted_text = _decode_text_bytes(raw_content)
                 if log_fn:
                     log_fn(f"Writing library PDF from {extension}: {upload.name} -> {pdf_name}")

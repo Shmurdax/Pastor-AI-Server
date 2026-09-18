@@ -23,7 +23,13 @@ class SermonPdfHelpersTests(SimpleTestCase):
     def test_build_pdf_bytes(self):
         data = build_sermon_pdf_bytes("Title", "Body text", truncated=True)
         self.assertTrue(data.startswith(b"%PDF"))
-        self.assertIn(b"reconstructed from indexed sermon notes", data)
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(data)).pages)
+        self.assertIn("reconstructed from indexed sermon notes", text)
+        self.assertIn("Body text", text)
 
     def test_library_pdf_from_long_text_is_not_truncated(self):
         body = "The Holy Spirit is a gift. " * 8000
