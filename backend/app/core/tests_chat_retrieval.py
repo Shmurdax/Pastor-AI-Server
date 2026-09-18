@@ -1,3 +1,4 @@
+import random
 import re
 import unittest
 from types import SimpleNamespace
@@ -27,8 +28,11 @@ from core.chat_retrieval import (
     retain_title_matches,
     merge_scored_hits,
     query_focus_tokens,
+    looks_like_bible_query,
     search_queries_on_store,
+    select_chat_source_chips,
     select_diverse_docs,
+    source_chip_relevance_score,
     title_overlap_score,
     topic_anchor_query,
     topic_overlap_score,
@@ -795,6 +799,188 @@ class ChatRetrievalTests(unittest.TestCase):
         kept_sources = [doc.metadata["source"] for doc, _score in kept]
         self.assertIn("Prayer_Barriers.pdf", kept_sources)
         self.assertEqual(kept_sources[0], "Prayer_Barriers.pdf")
+
+    def _prayer_catalog(self):
+        """Live-like retrieved set: C-titles first (high embedding), titled sermons later."""
+        return [
+            _doc(
+                "Community life in the church body as we gather and love one another.",
+                source="community.pdf",
+                title="Community",
+            ),
+            _doc(
+                "Contagious Christianity outreach notes for the city.",
+                source="contagious.pdf",
+                title="Contagious Christianity",
+            ),
+            _doc(
+                "Christian boundaries for dating and friendship in the church.",
+                source="boundaries.pdf",
+                title="Christian Boundaries",
+            ),
+            _doc(
+                "Fasting and prayer notes for seeking God with a clean heart.",
+                source="fasting.pdf",
+                title="Fasting and Prayer",
+            ),
+            _doc(
+                "Filled by the Spirit teaching for daily Christian living.",
+                source="filled.pdf",
+                title="Filled by the Spirit",
+            ),
+            _doc(
+                "In the beginning God created the heaven and the earth.",
+                source="nkjv-bible.pdf",
+                title="NKJV",
+            ),
+            _doc(
+                "Unforgiveness and unbelief are prayer barriers that choke faith.",
+                source="PRAYER BARRIERS.pdf",
+                title="Prayer Barriers",
+            ),
+            _doc(
+                "Alcohol and the Christian walk from Pastor Don's notes.",
+                source="THE CHRISTIAN AND ALCOHOL.pdf",
+                title="The Christian and Alcohol",
+            ),
+            _doc(
+                "Why receive the Holy Spirit as a gift after salvation.",
+                source="WHY RECEIVE THE HOLY SPIRIT.pdf",
+                title="Why Receive the Holy Spirit",
+            ),
+            _doc(
+                "Faith works with hope and patience until the promise comes.",
+                source="Works, Hope, Faith & Patience.pdf",
+                title="Works, Hope, Faith & Patience",
+            ),
+        ]
+
+    def test_az_fill_no_longer_drops_prayer_barriers(self):
+        query = "What are the prayer barriers Pastor Don teaches about?"
+        docs = self._prayer_catalog()
+        az_titles = sorted(doc.metadata["title"] for doc in docs)
+        self.assertEqual(
+            az_titles[:5],
+            [
+                "Christian Boundaries",
+                "Community",
+                "Contagious Christianity",
+                "Fasting and Prayer",
+                "Filled by the Spirit",
+            ],
+        )
+        self.assertNotIn("Prayer Barriers", az_titles[:5])
+
+        answer = (
+            "Pastor Don teaches that unforgiveness and unbelief hinder prayer "
+            "and keep the believer from receiving."
+        )
+        labels = select_chat_source_chips(
+            docs,
+            answer,
+            lambda doc: doc.metadata["title"],
+            min_count=3,
+            limit=5,
+            query=query,
+            rng=random.Random(0),
+        )
+        self.assertIn("Prayer Barriers", labels)
+        self.assertGreaterEqual(len(labels), 3)
+        self.assertLessEqual(len(labels), 5)
+        self.assertNotIn("NKJV", labels)
+
+        # Old views.py path: every retrieved title, sorted A–Z, passed as preferred.
+        az_preferred = ensure_source_media_mix(
+            az_titles,
+            docs,
+            lambda doc: doc.metadata["title"],
+            min_count=3,
+            limit=5,
+            query=query,
+            rng=random.Random(0),
+        )
+        self.assertIn("Prayer Barriers", az_preferred)
+        self.assertNotEqual(az_preferred, az_titles[:5])
+
+    def test_strong_title_match_is_selected_for_source_chips(self):
+        query = "What are the prayer barriers Pastor Don teaches about?"
+        docs = self._prayer_catalog()
+        focus = query_focus_tokens(query)
+        prayer = next(doc for doc in docs if doc.metadata["title"] == "Prayer Barriers")
+        community = next(doc for doc in docs if doc.metadata["title"] == "Community")
+        self.assertTrue(is_strong_title_match(prayer, focus))
+        self.assertFalse(is_strong_title_match(community, focus))
+        self.assertGreater(
+            source_chip_relevance_score(prayer, query, retrieval_rank=6, n_docs=10),
+            source_chip_relevance_score(community, query, retrieval_rank=0, n_docs=10),
+        )
+        labels = select_chat_source_chips(
+            docs,
+            "Here is an outline on hindrances to answered prayer.",
+            lambda doc: doc.metadata["title"],
+            query=query,
+            rng=random.Random(7),
+        )
+        self.assertIn("Prayer Barriers", labels)
+
+    def test_source_chips_random_among_relevant_not_always_community(self):
+        query = "What are the prayer barriers Pastor Don teaches about?"
+        docs = self._prayer_catalog()
+        answer = "Unforgiveness and unbelief choke faith when we pray."
+        prayer_hits = 0
+        community_hits = 0
+        unique_sets = set()
+        for seed in range(40):
+            labels = select_chat_source_chips(
+                docs,
+                answer,
+                lambda doc: doc.metadata["title"],
+                min_count=3,
+                limit=5,
+                query=query,
+                rng=random.Random(seed),
+            )
+            unique_sets.add(tuple(labels))
+            if "Prayer Barriers" in labels:
+                prayer_hits += 1
+            if "Community" in labels:
+                community_hits += 1
+            self.assertNotIn("NKJV", labels)
+            self.assertGreaterEqual(len(labels), 3)
+            self.assertLessEqual(len(labels), 5)
+        self.assertGreaterEqual(prayer_hits, 36, (prayer_hits, unique_sets))
+        self.assertLess(community_hits, prayer_hits)
+        self.assertLess(community_hits, 40, "Community must not occupy a slot on every draw")
+        self.assertGreaterEqual(len(unique_sets), 2)
+
+    def test_nkjv_does_not_fill_sermon_chips_for_sermon_question(self):
+        query = "What are the prayer barriers Pastor Don teaches about?"
+        docs = self._prayer_catalog()
+        self.assertFalse(looks_like_bible_query(query))
+        labels = select_chat_source_chips(
+            docs,
+            "Prayer is hindered by unforgiveness.",
+            lambda doc: doc.metadata["title"],
+            query=query,
+            rng=random.Random(3),
+        )
+        self.assertNotIn("NKJV", labels)
+        lowered = " ".join(labels).lower()
+        self.assertNotIn("king james", lowered)
+        self.assertNotIn("nkjv", lowered)
+
+        bible_query = "What does John 3:16 say in the NKJV?"
+        self.assertTrue(looks_like_bible_query(bible_query))
+        bible_labels = select_chat_source_chips(
+            docs,
+            "John 3:16 says God so loved the world.",
+            lambda doc: doc.metadata["title"],
+            min_count=3,
+            limit=5,
+            query=bible_query,
+            rng=random.Random(3),
+        )
+        self.assertIn("NKJV", bible_labels)
 
 
 if __name__ == "__main__":

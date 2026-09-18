@@ -12,7 +12,9 @@ the model repeated one Pastor Don line and one verse. This module:
 from __future__ import annotations
 
 import logging
+import math
 import os
+import random
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
@@ -764,6 +766,73 @@ def title_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     return hits / len(tokens)
 
 
+_BIBLE_QUERY_RE = re.compile(
+    r"\b(?:bible|scripture|scriptures|nkjv|kjv|verse|verses)\b",
+    re.IGNORECASE,
+)
+# Rank-only bonus tops out below this, so C-titles cannot count as "relevant"
+# just because they arrived first from embeddings.
+_CHIP_RANK_BONUS = 0.28
+_CHIP_RELEVANT_FLOOR = 0.45
+_CHIP_SAMPLE_POOL = 8
+
+
+def looks_like_bible_query(query: str) -> bool:
+    """True when the user asked for a verse, translation, or Bible text."""
+    text = (query or "").strip()
+    if not text:
+        return False
+    if _BIBLE_QUERY_RE.search(text):
+        return True
+    from .bible_refs import parse_verse_refs
+
+    return bool(parse_verse_refs(text))
+
+
+def source_chip_relevance_score(
+    doc: Any,
+    query: str,
+    *,
+    cited: bool = False,
+    retrieval_rank: int = 0,
+    n_docs: int = 1,
+) -> float:
+    """Score a retrieved sermon for the 3–5 chat source chips.
+
+    Title/filename overlap and model citations dominate. Retrieval rank is a
+    light tie-break so high-embedding Community/NKJV chunks cannot outrank a
+    sermon whose title names the question.
+    """
+    focus = query_focus_tokens(query)
+    title = title_overlap_score(doc, focus) if focus else 0.0
+    topic = topic_overlap_score(doc, focus) if focus else 0.0
+    if n_docs > 1:
+        rank_bonus = _CHIP_RANK_BONUS * (1.0 - (max(retrieval_rank, 0) / (n_docs - 1)))
+    else:
+        rank_bonus = 0.0
+    score = (2.6 * title) + (0.85 * topic) + rank_bonus
+    if focus and is_strong_title_match(doc, focus):
+        score += 3.4
+    if cited:
+        score += 2.2
+    return score
+
+
+def _weighted_shuffle_rows(
+    rows: list[tuple[Any, str, float]],
+    rng: random.Random,
+) -> list[tuple[Any, str, float]]:
+    """Efraimidis–Spirakis weighted shuffle: higher scores almost always come first."""
+    if len(rows) <= 1:
+        return list(rows)
+    keyed: list[tuple[float, tuple[Any, str, float]]] = []
+    for row in rows:
+        weight = math.exp(1.7 * max(row[2], 0.0))
+        keyed.append((rng.random() ** (1.0 / weight), row))
+    keyed.sort(key=lambda item: item[0], reverse=True)
+    return [row for _key, row in keyed]
+
+
 def is_strong_title_match(doc: Any, query_tokens: Iterable[str]) -> bool:
     """True when the title names the topic, even if the query also has filler words.
 
@@ -1414,69 +1483,106 @@ def ensure_source_media_mix(
     limit: int = 5,
     min_count: int = 3,
     query: str = "",
+    rng: Optional[random.Random] = None,
 ) -> list[str]:
     """Return 3–5 distinct sermon/video sources, mixed when both media types exist.
 
-    Citations are preferred, then remaining retrieved docs ranked by topical overlap.
+    Citations stay first. Remaining chips are a weighted sample of relevant
+    retrieved titles (title overlap + retrieval rank), not an A–Z fill.
     Multiple timestamps from the same sermon count as one source.
     """
     video_fn = is_video or is_video_chunk
     max_count = max(1, min(int(limit), 5))
     want = max(1, min(int(min_count), max_count))
     focus = query_focus_tokens(query)
+    allow_bible = looks_like_bible_query(query)
+    mixer = rng if rng is not None else random.Random()
+    ranked_docs = list(docs or [])
+    n_docs = max(len(ranked_docs), 1)
+    preferred_seq = [label for label in preferred_labels if source_stem_key(label)]
+    # A–Z unique-title dumps used to be passed as "preferred" and occupied every
+    # chip slot. Real model citations are a short list; ignore catalog-sized pins.
+    if len({source_stem_key(label) for label in preferred_seq}) > max_count:
+        preferred_seq = []
+    cited_stems = {source_stem_key(label) for label in preferred_seq}
+
+    def _is_note(doc: Any) -> bool:
+        return (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))
+
+    def _is_bible_doc(doc: Any) -> bool:
+        return doc is not None and is_bible_source(metadata_source_hint(doc))
+
+    def _is_topical(doc: Any) -> bool:
+        if doc is None or not focus:
+            return False
+        return title_overlap_score(doc, focus) > 0 or topic_overlap_score(doc, focus) > 0
+
+    def _is_relevant(row: tuple[Any, str, float]) -> bool:
+        doc, _label, score = row
+        if score >= _CHIP_RELEVANT_FLOOR:
+            return True
+        return _is_topical(doc)
 
     labeled: list[tuple[Any, str, str, float]] = []
-    for doc in list(docs or []):
+    for index, doc in enumerate(ranked_docs):
         label = (source_label(doc) or "").strip()
         if not label or label == "Unknown":
+            continue
+        stem = source_stem_key(label)
+        if not allow_bible and _is_bible_doc(doc):
             continue
         labeled.append(
             (
                 doc,
                 label,
-                source_stem_key(label),
-                (2.0 * title_overlap_score(doc, focus)) + topic_overlap_score(doc, focus),
+                stem,
+                source_chip_relevance_score(
+                    doc,
+                    query,
+                    cited=stem in cited_stems,
+                    retrieval_rank=index,
+                    n_docs=n_docs,
+                ),
             )
         )
 
-    def _is_note(doc: Any) -> bool:
-        return (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))
-
     by_stem: dict[str, tuple[Any, str, float]] = {}
-    for doc, label, stem, overlap in labeled:
+    for doc, label, stem, score in labeled:
         previous = by_stem.get(stem)
-        if previous is None or overlap > previous[2]:
-            by_stem[stem] = (doc, label, overlap)
+        if previous is None or score > previous[2]:
+            by_stem[stem] = (doc, label, score)
 
     ordered: list[tuple[Any, str, float]] = []
     seen_stems: set[str] = set()
-    for label in preferred_labels:
+    for label in preferred_seq:
         stem = source_stem_key(label)
         if not stem or stem in seen_stems:
             continue
-        if stem in by_stem:
-            ordered.append(by_stem[stem])
-        else:
-            cleaned = (label or "").strip()
-            if cleaned and cleaned != "Unknown":
-                ordered.append((None, cleaned, 0.0))
         seen_stems.add(stem)
-
-    leftovers = sorted(
-        (item for stem, item in by_stem.items() if stem not in seen_stems),
-        key=lambda row: row[2],
-        reverse=True,
-    )
-    # Prefer topical leftovers, then any remaining unique sermons (skip extra Bible fills).
-    topical = [row for row in leftovers if row[2] > 0]
-    rest = [row for row in leftovers if row[2] <= 0]
-    entity_tokens = query_canonical_entity_tokens(query)
-    fill_rows = topical if entity_tokens else topical + rest
-    for row in fill_rows:
-        doc, _label, _overlap = row
-        if doc is not None and is_bible_source(metadata_source_hint(doc)) and len(ordered) >= want:
+        row = by_stem.get(stem)
+        if row is None:
+            continue
+        if not allow_bible and _is_bible_doc(row[0]):
             continue
         ordered.append(row)
+
+    leftovers = [item for stem, item in by_stem.items() if stem not in seen_stems]
+    leftovers.sort(key=lambda row: row[2], reverse=True)
+    topical = [row for row in leftovers if _is_relevant(row)]
+    rest = [row for row in leftovers if not _is_relevant(row)]
+    entity_tokens = query_canonical_entity_tokens(query)
+    relevant_pool = topical if entity_tokens else topical[:_CHIP_SAMPLE_POOL]
+    for row in _weighted_shuffle_rows(relevant_pool, mixer):
+        ordered.append(row)
+    if not entity_tokens:
+        for row in _weighted_shuffle_rows(rest[:_CHIP_SAMPLE_POOL], mixer):
+            ordered.append(row)
+
+    n_relevant = sum(1 for row in ordered if _is_relevant(row))
+    if entity_tokens:
+        target = max_count
+    else:
+        target = min(max_count, max(want, n_relevant))
 
     picked: list[tuple[Any, str, float]] = []
     picked_stems: set[str] = set()
@@ -1484,26 +1590,31 @@ def ensure_source_media_mix(
         stem = source_stem_key(row[1])
         if not stem or stem in picked_stems:
             continue
-        overlap = row[2]
-        if entity_tokens and overlap <= 0:
-            doc = row[0]
-            if doc is None or not is_bible_source(metadata_source_hint(doc)):
-                continue
-        if len(picked) >= want and overlap <= 0:
+        doc, _label, _score = row
+        topical = _is_relevant(row)
+        if entity_tokens and not topical:
+            continue
+        if not allow_bible and _is_bible_doc(doc):
+            continue
+        if len(picked) >= want and not topical:
+            continue
+        if len(picked) >= target and not topical:
             continue
         picked.append(row)
         picked_stems.add(stem)
-        if len(picked) >= max_count:
+        if len(picked) >= min(target, max_count):
             break
 
     def _inject(predicate: Callable[[Any], bool]) -> None:
         if any(doc is not None and predicate(doc) for doc, _label, _overlap in picked):
             return
         for row in ordered:
-            doc, label, overlap = row
+            doc, label, _score = row
             if doc is None or not predicate(doc):
                 continue
-            if entity_tokens and overlap <= 0:
+            if entity_tokens and not _is_relevant(row):
+                continue
+            if not allow_bible and _is_bible_doc(doc):
                 continue
             stem = source_stem_key(label)
             if stem in picked_stems:
@@ -1529,10 +1640,10 @@ def ensure_source_media_mix(
             stem = source_stem_key(row[1])
             if stem in picked_stems:
                 continue
-            if entity_tokens and row[2] <= 0:
-                doc = row[0]
-                if doc is None or not is_bible_source(metadata_source_hint(doc)):
-                    continue
+            if entity_tokens and not _is_relevant(row):
+                continue
+            if not allow_bible and _is_bible_doc(row[0]):
+                continue
             picked.append(row)
             picked_stems.add(stem)
             added = True
@@ -1541,6 +1652,35 @@ def ensure_source_media_mix(
             break
 
     return [label for _doc, label, _overlap in picked[:max_count]]
+
+
+def select_chat_source_chips(
+    docs: Iterable[Any],
+    answer: str,
+    source_label: Callable[[Any], str],
+    *,
+    is_video: Optional[Callable[[Any], bool]] = None,
+    limit: int = 5,
+    min_count: int = 3,
+    query: str = "",
+    rng: Optional[random.Random] = None,
+) -> list[str]:
+    """Build the 3–5 chat source chips from retrieved docs.
+
+    Uses titles the model named when present. Does **not** A–Z fill the rest of
+    the retrieved catalog — leftover slots are a relevance-weighted sample.
+    """
+    cited = sources_cited_in_answer(docs, answer, source_label, limit=limit)
+    return ensure_source_media_mix(
+        cited,
+        docs,
+        source_label,
+        is_video=is_video,
+        limit=limit,
+        min_count=min_count,
+        query=query,
+        rng=rng,
+    )
 
 
 def format_reference_notes(

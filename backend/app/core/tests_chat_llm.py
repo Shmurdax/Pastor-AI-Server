@@ -215,6 +215,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn('identity = f"u:{user.pk}"', source)
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
         self.assertIn("select_diverse_docs", source)
+        self.assertIn("select_chat_source_chips", source)
+        self.assertNotIn("def _unique_sources", source)
         self.assertIn("lookup_nkjv_verses", source)
         self.assertIn("extract_teaching_claims", source)
         self.assertIn("format_teaching_claims_block", source)
