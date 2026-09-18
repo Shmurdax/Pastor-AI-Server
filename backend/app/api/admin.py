@@ -1,10 +1,12 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import User
 from django.forms.models import BaseInlineFormSet
 
 from core.persist_db import dump_persistent_postgres
 
+from .mailchimp import MailchimpError, collect_exportable_members
+from .mailchimp_admin import export_members_to_mailchimp
 from .models import MediaVideo, Profile
 
 
@@ -70,6 +72,28 @@ class PastorUserAdmin(DjangoUserAdmin):
     )
     list_select_related = ("profile",)
     search_fields = ("username", "email", "first_name", "last_name")
+    actions = list(DjangoUserAdmin.actions) + ["export_selected_to_mailchimp"]
+
+    @admin.action(description="Export selected users to Mailchimp")
+    def export_selected_to_mailchimp(self, request, queryset):
+        members = collect_exportable_members(queryset)
+        if not members:
+            self.message_user(
+                request,
+                "None of the selected users have an exportable AI login email.",
+                level=messages.WARNING,
+            )
+            return
+        try:
+            result = export_members_to_mailchimp(
+                members,
+                started_by=request.user.get_username() or "admin",
+            )
+        except MailchimpError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+            return
+        level = messages.WARNING if result.failed else messages.SUCCESS
+        self.message_user(request, result.summary(), level=level)
 
     @admin.display(description="Plan", ordering="profile__billing_period")
     def plan_tier(self, obj):

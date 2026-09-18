@@ -181,3 +181,22 @@ class MediaVideo(models.Model):
         if hours:
             return f"{hours}:{minutes:02d}:{seconds:02d}"
         return f"{minutes}:{seconds:02d}"
+
+
+class MailchimpExportRun(models.Model):
+    """One staff export of AI login emails into the Mailchimp audience."""
+
+    started_by = models.CharField(max_length=150, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    candidate_count = models.PositiveIntegerField(default=0)
+    added = models.PositiveIntegerField(default=0)
+    updated = models.PositiveIntegerField(default=0)
+    skipped = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    error_summary = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Mailchimp export {self.created_at:%Y-%m-%d %H:%M} ({self.started_by})"

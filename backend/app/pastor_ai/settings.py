@@ -288,3 +288,10 @@ VIMEO_FREE_PREVIEW_ID = (
     os.environ.get("VIMEO_FREE_PREVIEW_ID", "") or _load_dotenv_value("VIMEO_FREE_PREVIEW_ID")
 )
 
+# Mailchimp Marketing API — export AI login emails into an existing audience.
+# API key is Account → Extras → API keys. Audience ID is Audience → Settings.
+MAILCHIMP_API_KEY = os.environ.get("MAILCHIMP_API_KEY", "") or _load_dotenv_value("MAILCHIMP_API_KEY")
+MAILCHIMP_AUDIENCE_ID = (
+    os.environ.get("MAILCHIMP_AUDIENCE_ID", "") or _load_dotenv_value("MAILCHIMP_AUDIENCE_ID")
+)
+

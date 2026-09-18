@@ -302,6 +302,8 @@ screen -dmS django bash -c "
   export STRIPE_PRICE_YEARLY='${STRIPE_PRICE_YEARLY:-}' &&
   export PUBLIC_APP_URL='${PUBLIC_APP_URL:-}' &&
   export BILLING_MOCK_CHECKOUT='${BILLING_MOCK_CHECKOUT:-}' &&
+  export MAILCHIMP_API_KEY='${MAILCHIMP_API_KEY:-}' &&
+  export MAILCHIMP_AUDIENCE_ID='${MAILCHIMP_AUDIENCE_ID:-}' &&
   export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
   export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
   export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
