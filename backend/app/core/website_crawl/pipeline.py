@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from ..ingestion_service import ingest_markdown_documents, ingest_uploaded_files
 from ..models import IngestionJob, IngestionJobLog
+from ..postgres_sequences import create_ingestion_job
 from .crawler import CrawlResult, WebsiteCrawler
 
 logger = logging.getLogger(__name__)
@@ -173,7 +174,7 @@ def enqueue_website_crawl_job(
     """Queue a background crawl+ingest job using the existing ingestion worker pool."""
     from .tasks import enqueue_website_crawl
 
-    job = IngestionJob.objects.create(
+    job = create_ingestion_job(
         started_by=started_by,
         job_kind="website",
         replace_existing_sources=replace_existing_sources,
