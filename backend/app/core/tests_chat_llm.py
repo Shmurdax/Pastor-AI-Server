@@ -232,6 +232,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("QUOTE_CONTINUE_STEER", source)
         self.assertIn("answer_missing_required_quotes", source)
         self.assertIn("quote_repair_token_budget", source)
+        self.assertIn("close_old_connections", source)
         self.assertIn("claim_repair_steer", source)
         self.assertIn("repairable_claims", source)
         self.assertIn("_finish_incomplete_extra", source)
