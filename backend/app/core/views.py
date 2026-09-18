@@ -6,7 +6,9 @@ import mimetypes
 import re
 from pathlib import Path
 from django.conf import settings
+from django.db import close_old_connections
 from django.db.models import Q
+from django.db.utils import OperationalError
 from django.http import FileResponse
 from django.http import Http404
 from django.http import StreamingHttpResponse
@@ -518,22 +520,34 @@ def _save_ai_response(
     answer: str,
     allow_create: bool = True,
 ):
-    if regenerate and target_message is not None:
-        target_message.ai_response = answer
-        if chat_user and target_message.user_id is None:
-            target_message.user = chat_user
-            target_message.save(update_fields=["ai_response", "user"])
-        else:
-            target_message.save(update_fields=["ai_response"])
-        return target_message
-    if not allow_create:
-        return None
-    return ChatMessage.objects.create(
-        session_id=session_id,
-        user=chat_user,
-        user_query=user_query_stored,
-        ai_response=answer,
-    )
+    last_error = None
+    for attempt in range(2):
+        close_old_connections()
+        try:
+            if regenerate and target_message is not None:
+                target_message.ai_response = answer
+                if chat_user and target_message.user_id is None:
+                    target_message.user = chat_user
+                    target_message.save(update_fields=["ai_response", "user"])
+                else:
+                    target_message.save(update_fields=["ai_response"])
+                return target_message
+            if not allow_create:
+                return None
+            return ChatMessage.objects.create(
+                session_id=session_id,
+                user=chat_user,
+                user_query=user_query_stored,
+                ai_response=answer,
+            )
+        except OperationalError as exc:
+            last_error = exc
+            logger.warning(
+                "Chat save lost the database connection (attempt %s/2); retrying",
+                attempt + 1,
+            )
+            close_old_connections()
+    raise last_error
 
 
 def _chat_payload(answer: str, sources=None, message_id=None) -> dict:
