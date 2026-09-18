@@ -211,6 +211,15 @@ CONTINUE_STEER = (
     "for one story, that is not permission to stop after a short add-on."
 )
 
+QUOTE_CONTINUE_STEER = (
+    "Your previous reply taught the topic but did not include word-for-word "
+    "quotations from Pastor Don or Susan Nordin. Do not restart or apologize. "
+    "Add a short section with at least two quotation-marked excerpts that "
+    "actually appear in REFERENCE NOTES, attributed to Pastor Don and/or Susan. "
+    "If Scripture notes are present, weave in one unused NKJV verse. Then stop."
+)
+QUOTE_CONTINUE_MIN_TOKENS = 320
+
 TARGET_TEACHING_CHARS = 2000
 MIN_TEACHING_CHARS = 1500
 MIN_TEACHING_WORDS = 250
@@ -324,13 +333,42 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
     return answer_char_count(answer) < MIN_TEACHING_CHARS
 
 
-def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
+def answer_missing_required_quotes(
+    answer: str,
+    *,
+    query: str,
+    has_reference_notes: bool,
+) -> bool:
+    """True when teaching notes were retrieved but the reply never quoted them."""
+    if not has_reference_notes:
+        return False
+    if not query_expects_long_answer(query):
+        return False
+    if text_looks_degenerate(answer):
+        return False
+    from .chat_retrieval import extract_used_quotes
+
+    return not extract_used_quotes([answer or ""])
+
+
+def continuation_token_budget(
+    answer: str,
+    *,
+    completion_tokens: int,
+    min_tokens: int = 0,
+) -> int:
     """Cap a continue-pass so leftover max_tokens cannot dump Chinese or filler."""
-    remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
-    if remaining_chars <= 120 or int(completion_tokens) <= 0:
+    if int(completion_tokens) <= 0:
         return 0
-    guessed = max(96, remaining_chars // 3)
-    return min(int(completion_tokens), guessed)
+    remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
+    guessed = 0
+    if remaining_chars > 120:
+        guessed = max(96, remaining_chars // 3)
+    budget = min(int(completion_tokens), guessed) if guessed else 0
+    floor = max(0, int(min_tokens))
+    if floor:
+        return min(int(completion_tokens), max(budget, floor))
+    return budget
 
 
 _OVERLAP_SPLIT_RE = re.compile(r"\n{2,}|(?<=[.!?])[\"']?\s+")

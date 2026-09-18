@@ -14,9 +14,11 @@ from core.chat_retrieval import (
     format_reference_notes,
     is_bible_source,
     is_video_chunk,
+    keyword_search_query,
     looks_like_followup,
     merge_scored_hits,
     query_focus_tokens,
+    retrieval_topic_query,
     search_queries_on_store,
     select_diverse_docs,
     topic_overlap_score,
@@ -309,6 +311,8 @@ class ChatRetrievalTests(unittest.TestCase):
     def test_looks_like_followup(self):
         self.assertTrue(looks_like_followup("Can you further clarify that guidance?"))
         self.assertTrue(looks_like_followup("What do you mean?"))
+        self.assertTrue(looks_like_followup("Give me a 3 point sermon on that topic"))
+        self.assertTrue(looks_like_followup("Make that an outline"))
         self.assertFalse(looks_like_followup("Hello how are you today?"))
         self.assertFalse(looks_like_followup("Hi"))
         self.assertFalse(looks_like_followup(
@@ -561,6 +565,125 @@ class ChatRetrievalTests(unittest.TestCase):
         hits = search_queries_on_store(store, ["alpha", "beta"], k_per_query=8)
         self.assertEqual(store.similarity_search_with_score.call_count, 2)
         self.assertEqual(len(hits), 2)
+
+
+SCREENSHOT_TURN1 = "Recount what Pastor Don believes about faith?"
+SCREENSHOT_TURN2 = "Give me a 3 point sermon on that topic"
+SCREENSHOT_TURN1_PARAPHRASE = (
+    "**Faith as a Gift**\n\n"
+    "Pastor Don teaches that faith is a tool given at birth. You already use it when you "
+    "board an airplane, step into an elevator, or drive a car. Faith is independent of "
+    "religious beliefs, and blessings come from God when we exercise it.\n\n"
+    "In conclusion, cultivate the faith you already have."
+)
+
+
+class ScreenshotFaithTurnTests(unittest.TestCase):
+    """The two screenshot turns: retrieve faith notes, treat turn 2 as a follow-up."""
+
+    def test_turn1_keeps_faith_keywords(self):
+        focus = keyword_search_query(SCREENSHOT_TURN1)
+        queries = expand_search_queries(SCREENSHOT_TURN1, limit=7)
+        joined = " | ".join(queries).lower()
+        self.assertIn("faith", focus.lower())
+        self.assertIn("faith", joined)
+        self.assertTrue(any("pastor don" in item.lower() for item in queries), queries)
+        self.assertFalse(any(item.lower() == "point" for item in queries), queries)
+
+    def test_turn2_is_followup_and_searches_faith_not_point(self):
+        focus = keyword_search_query(SCREENSHOT_TURN2)
+        tokens = query_focus_tokens(SCREENSHOT_TURN2)
+        self.assertTrue(looks_like_followup(SCREENSHOT_TURN2))
+        self.assertFalse(focus)
+        self.assertFalse(tokens)
+        queries = expand_search_queries(
+            SCREENSHOT_TURN2,
+            [SCREENSHOT_TURN1],
+            prior_ai_texts=[SCREENSHOT_TURN1_PARAPHRASE],
+            limit=7,
+        )
+        joined = " | ".join(queries).lower()
+        self.assertTrue(queries, queries)
+        self.assertIn("faith", queries[0].lower())
+        self.assertIn("faith", joined)
+        self.assertFalse(any(item.lower() == "point" for item in queries), queries)
+        self.assertFalse(any(item.lower() == "pastor don nordin point" for item in queries), queries)
+
+    def test_turn2_lexical_filter_keeps_faith_notes(self):
+        faith_note = _doc(
+            "Faith is a gift from God. Pastor Don teaches we walk by faith not sight.",
+            source="faith.pdf",
+            title="Walking in Faith",
+        )
+        point_hits = [
+            (
+                _doc(
+                    f"The point of message {index} is three points for a better life today.",
+                    source=f"better_life_{index}.pdf",
+                    title=f"A Better Life {index}",
+                ),
+                0.80,
+            )
+            for index in range(8)
+        ]
+        topic_query = retrieval_topic_query(SCREENSHOT_TURN2, [SCREENSHOT_TURN1])
+        self.assertIn("faith", topic_query.lower())
+        kept = filter_hits_by_topic(
+            [(faith_note, 0.91)] + point_hits,
+            topic_query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertIn("faith.pdf", sources)
+
+    def test_turn2_uniqueness_stays_on_faith_and_asks_for_quotes(self):
+        uniqueness = uniqueness_instruction(
+            extract_used_quotes([SCREENSHOT_TURN1_PARAPHRASE]),
+            extract_used_verse_refs([SCREENSHOT_TURN1_PARAPHRASE]),
+            is_followup=True,
+            prior_user_query=SCREENSHOT_TURN1,
+            current_user_query=SCREENSHOT_TURN2,
+        )
+        self.assertIn("SAME chat", uniqueness)
+        self.assertIn("faith", uniqueness.lower())
+        self.assertIn("numbered sermon or outline", uniqueness)
+        self.assertIn("do not only rephrase the previous answer", uniqueness.lower())
+        self.assertNotIn("Do not restate the previous answer", uniqueness)
+
+    def test_paraphrase_without_quotes_needs_quote_repair(self):
+        from core.chat_system_prompt import (
+            answer_missing_required_quotes,
+            answer_needs_expansion,
+            continuation_token_budget,
+        )
+
+        quotes = extract_used_quotes([SCREENSHOT_TURN1_PARAPHRASE])
+        self.assertEqual(quotes, [])
+        long_paraphrase = (SCREENSHOT_TURN1_PARAPHRASE + " ") * 20
+        self.assertGreaterEqual(len(long_paraphrase), 1500)
+        self.assertFalse(answer_needs_expansion(long_paraphrase, query=SCREENSHOT_TURN1))
+        self.assertTrue(
+            answer_missing_required_quotes(
+                long_paraphrase,
+                query=SCREENSHOT_TURN1,
+                has_reference_notes=True,
+            )
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                long_paraphrase,
+                query=SCREENSHOT_TURN1,
+                has_reference_notes=False,
+            )
+        )
+        self.assertGreater(
+            continuation_token_budget(
+                long_paraphrase,
+                completion_tokens=1024,
+                min_tokens=320,
+            ),
+            0,
+        )
 
 
 if __name__ == "__main__":

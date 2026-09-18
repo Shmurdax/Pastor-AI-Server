@@ -164,6 +164,39 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
         self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)
         self.assertEqual(continuation_token_budget("x" * 2300, completion_tokens=1024), 0)
+        self.assertEqual(
+            continuation_token_budget("x" * 2300, completion_tokens=1024, min_tokens=320),
+            320,
+        )
+
+    def test_quote_free_teaching_answer_needs_quote_repair(self):
+        from .chat_system_prompt import answer_missing_required_quotes
+
+        query = "Recount what Pastor Don believes about faith?"
+        paraphrase = (
+            "Pastor Don emphasizes that faith is a powerful tool given to everyone at birth. "
+            "It is not exclusive to believers. This faith enables people to board an airplane "
+            "or enter an elevator. In conclusion, cultivate the faith you already have."
+        )
+        quoted = (
+            'Pastor Don Nordin teaches, "Faith is a powerful tool given to everyone at birth." '
+            "That line belongs in a teaching answer that actually quotes the notes."
+        )
+        self.assertTrue(
+            answer_missing_required_quotes(
+                paraphrase, query=query, has_reference_notes=True
+            )
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                quoted, query=query, has_reference_notes=True
+            )
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                paraphrase, query="Hi", has_reference_notes=True
+            )
+        )
 
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation
