@@ -43,6 +43,22 @@ class ViewOnlyIngestionAdminTests(TestCase):
         body = template.read_text(encoding="utf-8")
         self.assertIn('name="view_only"', body)
         self.assertIn("Make view only", body)
+        self.assertIn('name="hide_from_library"', body)
+        self.assertIn("Keep out of sermon library", body)
+
+    @patch("core.admin.enqueue_ingestion_job")
+    @patch("core.admin._stage_uploads", return_value=[])
+    def test_ingestion_post_hides_from_library_when_checked(self, _stage, mock_enqueue):
+        upload = SimpleUploadedFile("nkjv.pdf", b"%PDF-1.4", content_type="application/pdf")
+        response = self.client.post(
+            reverse("admin:core_ingestion"),
+            {"documents": upload, "hide_from_library": "on"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        job = IngestionJob.objects.get(id=response.json()["job_id"])
+        self.assertFalse(job.in_library)
+        self.assertFalse(job.view_only)
 
     @patch("core.admin.enqueue_ingestion_job")
     @patch("core.admin._stage_uploads", return_value=[])
@@ -72,6 +88,7 @@ class ViewOnlyIngestionAdminTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         job = IngestionJob.objects.get(id=response.json()["job_id"])
         self.assertFalse(job.view_only)
+        self.assertTrue(job.in_library)
         mock_enqueue.assert_called_once()
 
 
@@ -114,6 +131,29 @@ class ViewOnlyDocumentApiTests(TestCase):
         self.assertEqual(pdfs.status_code, 200)
         titles = {item["title"] for item in pdfs.data["documents"]}
         self.assertEqual(titles, {"Book Transcript", "Sunday Notes"})
+
+    def test_hidden_from_library_is_omitted_and_file_404s(self):
+        visible = _make_doc(title="Sunday Notes", source_name="sunday.pdf")
+        hidden = _make_doc(
+            title="New King James Version",
+            source_name="nkjv.pdf",
+            file_hash="d" * 64,
+            in_library=False,
+        )
+        listed = self.client.get("/api/ingested-documents/")
+        self.assertEqual(listed.status_code, 200)
+        titles = {item["title"] for item in listed.data["documents"]}
+        self.assertIn(visible.title, titles)
+        self.assertNotIn(hidden.title, titles)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "nkjv.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4 bible")
+            with patch.dict(os.environ, {"INGESTION_UPLOAD_DIR": tmp}):
+                by_id = self.client.get(f"/api/ingested-documents/{hidden.id}/file/")
+                by_name = self.client.get("/sermons/New King James Version.pdf")
+        self.assertEqual(by_id.status_code, 404)
+        self.assertEqual(by_name.status_code, 404)
 
     def test_view_only_file_is_inline_without_original_filename(self):
         doc = _make_doc(title="Secret Book", source_name="secret-book.pdf", view_only=True)

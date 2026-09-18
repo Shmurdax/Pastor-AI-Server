@@ -187,6 +187,12 @@
         Make view only
       </label>
     </div>
+    <div style="margin-bottom: 12px;">
+      <label>
+        <input type="checkbox" name="hide_from_library" />
+        Keep out of sermon library (chat knowledge only — members cannot open this PDF)
+      </label>
+    </div>
     <button type="submit" class="default">Run Incremental Ingestion</button>
   </form>
 
@@ -427,7 +433,7 @@
       return batches;
     }
 
-    function uploadBatchOnce(batchFiles, batchIndex, replaceExisting) {
+    function uploadBatchOnce(batchFiles, batchIndex, replaceExisting, viewOnly, hideFromLibrary) {
       return new Promise(function (resolve, reject) {
         var xhr = new XMLHttpRequest();
         xhr.open("POST", form.action || window.location.href, true);
@@ -461,6 +467,8 @@
         var csrfInput = form.querySelector('input[name="csrfmiddlewaretoken"]');
         if (csrfInput) formData.append("csrfmiddlewaretoken", csrfInput.value);
         if (replaceExisting) formData.append("replace_existing_sources", "on");
+        if (viewOnly) formData.append("view_only", "on");
+        if (hideFromLibrary) formData.append("hide_from_library", "on");
         for (var i = 0; i < batchFiles.length; i += 1) {
           formData.append("documents", batchFiles[i], batchFiles[i].name);
         }
@@ -468,7 +476,7 @@
       });
     }
 
-    async function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting) {
+    async function uploadBatch(batchFiles, batchIndex, totalBatches, replaceExisting, viewOnly, hideFromLibrary) {
       var lastError = null;
       for (var attempt = 1; attempt <= MAX_UPLOAD_RETRIES; attempt += 1) {
         try {
@@ -480,7 +488,7 @@
             );
             await sleep(1000 * attempt);
           }
-          return await uploadBatchOnce(batchFiles, batchIndex, replaceExisting);
+          return await uploadBatchOnce(batchFiles, batchIndex, replaceExisting, viewOnly, hideFromLibrary);
         } catch (err) {
           lastError = err;
           var message = err && err.message ? String(err.message) : "";
@@ -650,6 +658,8 @@
       var allFiles = Array.prototype.slice.call(input.files || []);
       var batches = splitFilesIntoBatches(allFiles);
       var replaceExisting = !!(form.querySelector('input[name="replace_existing_sources"]') && form.querySelector('input[name="replace_existing_sources"]').checked);
+      var viewOnly = !!(form.querySelector('input[name="view_only"]') && form.querySelector('input[name="view_only"]').checked);
+      var hideFromLibrary = !!(form.querySelector('input[name="hide_from_library"]') && form.querySelector('input[name="hide_from_library"]').checked);
       if (batches.length === 0) {
         showError("No valid files were selected for upload.");
         hideProgressPanel();
@@ -670,7 +680,7 @@
               "Uploading batch " + (batchIdx + 1) + "/" + batches.length +
                 " (" + batchFiles.length + " files, " + filesUploaded + "/" + allFiles.length + " done)"
             );
-            var payload = await uploadBatch(batchFiles, batchIdx + 1, batches.length, replaceExisting);
+            var payload = await uploadBatch(batchFiles, batchIdx + 1, batches.length, replaceExisting, viewOnly, hideFromLibrary);
             if (payload && payload.job_id) jobIds.push(payload.job_id);
             filesUploaded += batchFiles.length;
           }

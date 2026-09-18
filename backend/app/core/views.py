@@ -154,6 +154,11 @@ def _strip_source_label(name: str) -> str:
     return raw
 
 
+def _library_documents():
+    """Sermon-library catalog: RAG may still use rows with in_library=False."""
+    return IngestedDocument.objects.filter(in_library=True)
+
+
 def _file_response_for_document(document: IngestedDocument, *, download: bool = False):
     source_name = document.source_name or ""
     file_path = ingested_media_path(source_name, document.source_kind)
@@ -472,7 +477,7 @@ class IngestedDocumentsAPIView(APIView):
         except ValueError:
             limit = 1000
 
-        documents_qs = IngestedDocument.objects.all().order_by("-updated_at")
+        documents_qs = _library_documents().order_by("-updated_at")
         match = (request.query_params.get("match") or "").strip()
         if match:
             stem = _strip_source_label(match)
@@ -534,6 +539,7 @@ class IngestedDocumentsAPIView(APIView):
                     "media_title": media_title,
                     "topic_metadata": document.topic_metadata or {},
                     "view_only": bool(document.view_only),
+                    "in_library": bool(document.in_library),
                 }
             )
         return Response({"documents": documents}, status=status.HTTP_200_OK)
@@ -548,7 +554,7 @@ class IngestedDocumentFileAPIView(APIView):
         if auth_error:
             return auth_error
 
-        document = IngestedDocument.objects.filter(id=document_id).first()
+        document = _library_documents().filter(id=document_id).first()
         if not document:
             raise Http404("Document was not found.")
         download = str(request.query_params.get("download") or "").strip().lower() in {
@@ -577,7 +583,8 @@ class SermonPdfByNameAPIView(APIView):
             raise Http404("Document was not found.")
 
         document = (
-            IngestedDocument.objects.filter(
+            _library_documents()
+            .filter(
                 Q(title__iexact=normalized_stem)
                 | Q(source_name__iexact=f"{normalized_stem}.pdf")
                 | Q(source_name__istartswith=f"{normalized_stem}.")

@@ -70,6 +70,11 @@ class IngestedDocument(models.Model):
         db_index=True,
         help_text="When enabled, members can read this PDF in the app but cannot download it.",
     )
+    in_library = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="When off, chat/RAG still uses this file but it is hidden from the sermon library.",
+    )
     chunk_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -127,6 +132,11 @@ class IngestionJob(models.Model):
         default=False,
         help_text="When enabled, files in this job are stored as view-only (not downloadable) on the frontend.",
         verbose_name="Make view only",
+    )
+    in_library = models.BooleanField(
+        default=True,
+        help_text="When off, files are embedded for chat but hidden from the sermon library.",
+        verbose_name="Show in sermon library",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="running")
     files_received = models.PositiveIntegerField(default=0)
