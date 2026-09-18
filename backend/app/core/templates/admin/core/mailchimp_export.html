@@ -1,0 +1,84 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 760px;">
+  <h1>Mailchimp audience</h1>
+  <p>
+    Collects login emails from Nordin's AI accounts and upserts them into the
+    existing Mailchimp audience. Staff then send event and announcement campaigns
+    from Mailchimp. Contacts are tagged <code>nordin-ai</code>. Existing
+    unsubscribes are left alone.
+  </p>
+
+  <h2>Connection</h2>
+  {% if audience.configured and audience.connected %}
+    <p>
+      Connected to Mailchimp
+      {% if audience.audience_name %}
+        audience <strong>{{ audience.audience_name }}</strong>
+      {% else %}
+        audience
+      {% endif %}.
+    </p>
+  {% elif audience.configured %}
+    <p>Mailchimp keys are set, but the audience could not be reached: {{ audience.error }}</p>
+  {% else %}
+    <p>
+      Mailchimp is not configured. Add <code>MAILCHIMP_API_KEY</code> and
+      <code>MAILCHIMP_AUDIENCE_ID</code> to <code>tokens.env</code>, then run
+      <code>bash apply-tokens.sh</code>.
+    </p>
+  {% endif %}
+
+  <p>
+    <strong>{{ exportable_count }}</strong> active AI login email{{ exportable_count|pluralize }}
+    ready to export.
+  </p>
+
+  <form method="post" style="margin-top: 16px;">
+    {% csrf_token %}
+    <button type="submit" class="default"{% if not audience.configured %} disabled{% endif %}>
+      Export members to Mailchimp
+    </button>
+  </form>
+
+  <h2 style="margin-top: 24px;">Recent exports</h2>
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">When</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Started by</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Candidates</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Added</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Updated</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Skipped</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Failed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in latest_runs %}
+      <tr>
+        <td style="padding: 6px 0;">{{ run.created_at }}</td>
+        <td style="padding: 6px 0;">{{ run.started_by }}</td>
+        <td style="padding: 6px 0;">{{ run.candidate_count }}</td>
+        <td style="padding: 6px 0;">{{ run.added }}</td>
+        <td style="padding: 6px 0;">{{ run.updated }}</td>
+        <td style="padding: 6px 0;">{{ run.skipped }}</td>
+        <td style="padding: 6px 0;">{{ run.failed }}</td>
+      </tr>
+      {% if run.error_summary %}
+      <tr>
+        <td colspan="7" style="padding: 0 0 10px; color: var(--body-quiet-color, inherit); font-size: 12px;">
+          {{ run.error_summary|linebreaksbr }}
+        </td>
+      </tr>
+      {% endif %}
+      {% empty %}
+      <tr>
+        <td colspan="7" style="padding: 6px 0;">No exports yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
