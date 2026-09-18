@@ -4,6 +4,8 @@ This is the high-level guide for people who run the server and for ministry staf
 
 For a first-time install or a pod restart, see the root [README](../README.md) and [RUNPOD.md](../RUNPOD.md).
 
+For an engineering walkthrough of every loop that shapes a chat reply (base model, LoRA, ingest, RAG formatting, prompts, retries, continuations), see [How Nordin's AI Builds a Reply](AI_RESPONSE_PIPELINE.md).
+
 ---
 
 ## What this is

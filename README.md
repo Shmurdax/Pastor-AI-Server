@@ -4,6 +4,8 @@ Christian theology chat: **Flutter web UI** + **Django** + **Qdrant RAG** + **vL
 
 **Working with the live site (users, sermons, subscriptions, prayer, events)?** Start with the [Operator and Staff Guide](docs/STAFF_AND_OPERATOR_GUIDE.md). This README is the install / restart path.
 
+**Want to understand why the chat model answered a certain way?** Read [How Nordin's AI Builds a Reply](docs/AI_RESPONSE_PIPELINE.md). It maps every loop from the base LLM and ingested documents through RAG formatting to the final streamed answer.
+
 ## Git channels (`development` vs `master`)
 
 These are two different GitHub branches. All new work goes on **`development`**. **`master`** is production (what `christian-ai-prd` runs).
