@@ -764,6 +764,25 @@ def title_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     return hits / len(tokens)
 
 
+def is_strong_title_match(doc: Any, query_tokens: Iterable[str]) -> bool:
+    """True when the title names the topic, even if the query also has filler words.
+
+    Two title hits ("prayer" + "barriers") beat a 5-word question that also
+    includes Pastor Don / teach / about, which would otherwise dilute 2/5 below 0.5.
+    """
+    tokens = [str(token).lower() for token in query_tokens if str(token).strip()]
+    if not tokens:
+        return False
+    hay = title_search_blob(doc)
+    if not hay:
+        return False
+    token_set = set(tokens)
+    hits = sum(1 for token in tokens if _focus_token_in_blob(token, hay, token_set))
+    if hits >= 2:
+        return True
+    return (hits / len(tokens)) >= 0.5
+
+
 def retain_title_matches(
     original_hits: list[tuple[Any, float]],
     kept_hits: list[tuple[Any, float]],
@@ -779,7 +798,7 @@ def retain_title_matches(
         fp = chunk_fingerprint(chunk_text(doc))
         if not fp or fp in kept_fps:
             continue
-        if title_overlap_score(doc, tokens) >= 0.5:
+        if is_strong_title_match(doc, tokens):
             extras.append((doc, float(score)))
             kept_fps.add(fp)
     if not extras:
@@ -1252,8 +1271,10 @@ def select_diverse_docs(
     per_source: dict[str, int] = {}
     per_book: dict[str, int] = {}
     selected_tokens: list[frozenset[str]] = []
+    focus_tokens = query_focus_tokens(query)
     any_strong_title = any(
-        (not item.is_bible) and item.title_overlap >= 0.5 for item in chunks
+        (not item.is_bible) and is_strong_title_match(item.doc, focus_tokens)
+        for item in chunks
     )
 
     def can_take(
@@ -1332,7 +1353,9 @@ def select_diverse_docs(
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
             topic_boost = 0.40 * chunk.topic_overlap
             title_boost = 0.90 * chunk.title_overlap
-            if any_strong_title and not chunk.is_bible and chunk.title_overlap < 0.34:
+            if any_strong_title and not chunk.is_bible and not is_strong_title_match(
+                chunk.doc, focus_tokens
+            ):
                 # Generic high-embedding sermons (Community, Contagious Christianity)
                 # should not occupy slots when a title clearly names the topic.
                 title_boost -= 0.55

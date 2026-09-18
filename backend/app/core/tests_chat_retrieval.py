@@ -19,6 +19,7 @@ from core.chat_retrieval import (
     filter_hits_by_topic,
     format_reference_notes,
     is_bible_source,
+    is_strong_title_match,
     is_video_chunk,
     looks_like_followup,
     looks_like_library_pull,
@@ -771,6 +772,9 @@ class ChatRetrievalTests(unittest.TestCase):
             title="Harvest",
         )
         query = "What are the prayer barriers Pastor Don teaches about?"
+        focus = query_focus_tokens(query)
+        self.assertTrue(is_strong_title_match(canonical, focus))
+        self.assertFalse(is_strong_title_match(community, focus))
         selected = select_diverse_docs(
             [(community, 0.95), (harvest, 0.90), (canonical, 0.70)],
             k=6,
