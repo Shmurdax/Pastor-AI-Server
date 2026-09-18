@@ -731,6 +731,62 @@ def topic_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
     return hits / len(tokens)
 
 
+_TITLE_META_KEYS = (
+    "topic_title",
+    "title",
+    "original_title",
+    "source",
+    "source_name",
+    "file_name",
+    "filename",
+)
+
+
+def title_search_blob(doc: Any) -> str:
+    """Title/filename only — not chunk body — so generic sermons cannot fake a topic."""
+    metadata = getattr(doc, "metadata", None) or {}
+    parts = [str(metadata.get(key) or "") for key in _TITLE_META_KEYS]
+    raw = " ".join(part for part in parts if part).replace("&", " ")
+    raw = re.sub(r"[_\-./]+", " ", raw)
+    return re.sub(r"\s+", " ", raw).lower().strip()
+
+
+def title_overlap_score(doc: Any, query_tokens: Iterable[str]) -> float:
+    """Fraction of distinctive query words that appear in the sermon title/filename."""
+    tokens = [str(token).lower() for token in query_tokens if str(token).strip()]
+    if not tokens:
+        return 0.0
+    hay = title_search_blob(doc)
+    if not hay:
+        return 0.0
+    token_set = set(tokens)
+    hits = sum(1 for token in tokens if _focus_token_in_blob(token, hay, token_set))
+    return hits / len(tokens)
+
+
+def retain_title_matches(
+    original_hits: list[tuple[Any, float]],
+    kept_hits: list[tuple[Any, float]],
+    query: str,
+) -> list[tuple[Any, float]]:
+    """Put strong title matches back if the similarity threshold dropped them."""
+    tokens = query_focus_tokens(query)
+    if not tokens or not original_hits:
+        return kept_hits
+    kept_fps = {chunk_fingerprint(chunk_text(doc)) for doc, _score in kept_hits}
+    extras: list[tuple[Any, float]] = []
+    for doc, score in original_hits:
+        fp = chunk_fingerprint(chunk_text(doc))
+        if not fp or fp in kept_fps:
+            continue
+        if title_overlap_score(doc, tokens) >= 0.5:
+            extras.append((doc, float(score)))
+            kept_fps.add(fp)
+    if not extras:
+        return kept_hits
+    return extras + list(kept_hits)
+
+
 def filter_hits_by_topic(
     scored_hits: list[tuple[Any, float]],
     query: str,
@@ -934,6 +990,7 @@ class ScoredChunk:
     novelty: float = 0.0
     is_video: bool = False
     topic_overlap: float = 0.0
+    title_overlap: float = 0.0
 
 
 def merge_scored_hits(
@@ -1034,6 +1091,7 @@ def _as_scored_chunks(
                 novelty=_novelty_penalty(text, quotes, verses),
                 is_video=False if bible else bool(video_fn(doc)),
                 topic_overlap=topic_overlap_score(doc, focus),
+                title_overlap=title_overlap_score(doc, focus),
             )
         )
     return chunks
@@ -1194,6 +1252,9 @@ def select_diverse_docs(
     per_source: dict[str, int] = {}
     per_book: dict[str, int] = {}
     selected_tokens: list[frozenset[str]] = []
+    any_strong_title = any(
+        (not item.is_bible) and item.title_overlap >= 0.5 for item in chunks
+    )
 
     def can_take(
         chunk: ScoredChunk,
@@ -1270,12 +1331,18 @@ def select_diverse_docs(
             overlap = max((_jaccard(chunk.tokens, tokens) for tokens in selected_tokens), default=0.0)
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
             topic_boost = 0.40 * chunk.topic_overlap
+            title_boost = 0.90 * chunk.title_overlap
+            if any_strong_title and not chunk.is_bible and chunk.title_overlap < 0.34:
+                # Generic high-embedding sermons (Community, Contagious Christianity)
+                # should not occupy slots when a title clearly names the topic.
+                title_boost -= 0.55
             value = (
                 (relevance * chunk.score)
                 - ((1.0 - relevance) * overlap)
                 - chunk.novelty
                 - source_pen
                 + topic_boost
+                + title_boost
             )
             if value > best_value:
                 best_value = value
@@ -1340,7 +1407,14 @@ def ensure_source_media_mix(
         label = (source_label(doc) or "").strip()
         if not label or label == "Unknown":
             continue
-        labeled.append((doc, label, source_stem_key(label), topic_overlap_score(doc, focus)))
+        labeled.append(
+            (
+                doc,
+                label,
+                source_stem_key(label),
+                (2.0 * title_overlap_score(doc, focus)) + topic_overlap_score(doc, focus),
+            )
+        )
 
     def _is_note(doc: Any) -> bool:
         return (not video_fn(doc)) and (not is_bible_source(metadata_source_hint(doc)))

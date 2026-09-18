@@ -6,6 +6,7 @@ from .chat_system_prompt import (
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
     TARGET_TEACHING_CHARS,
+    answer_looks_incomplete,
     answer_needs_expansion,
     biblical_characters_instruction,
     build_chat_system_prompt,
@@ -107,7 +108,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertGreaterEqual(len(long_enough), 1500)
         query = "According to Pastor Don's sermons, what is the main purpose of the church?"
         self.assertTrue(answer_needs_expansion(short, query=query))
-        self.assertTrue(answer_needs_expansion(mid, query=query))
+        self.assertFalse(answer_needs_expansion(mid, query=query))
         self.assertFalse(answer_needs_expansion(long_enough, query=query))
         concluded = (
             ("Pastoral counsel for the student and parents. " * 24)
@@ -148,11 +149,14 @@ class ChatSystemPromptTests(unittest.TestCase):
             "support essential for living a Christ-centered life."
         )
         self.assertLess(len(answer), MIN_TEACHING_CHARS)
-        self.assertTrue(answer_needs_expansion(answer, query=query))
+        self.assertGreaterEqual(len(answer.strip()), 800)
+        self.assertFalse(answer_needs_expansion(answer, query=query))
         from .chat_system_prompt import continuation_token_budget
         self.assertGreater(continuation_token_budget(answer, completion_tokens=1024), 0)
         self.assertLess(continuation_token_budget(answer, completion_tokens=1024), 400)
         self.assertEqual(continuation_token_budget(("x" * 2299) + ".", completion_tokens=1024), 0)
+        brush_off = "The church exists to worship God and love people."
+        self.assertTrue(answer_needs_expansion(brush_off, query=query))
 
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation
@@ -196,7 +200,7 @@ class ChatSystemPromptTests(unittest.TestCase):
             first + "\n\nServe one another in the local church body.",
         )
         self.assertIn("Do not repeat any sentence already written", CONTINUE_STEER)
-        self.assertIn("Continue the same teaching", CONTINUE_STEER)
+        self.assertIn("Do not open with a conversational continuer", CONTINUE_STEER)
 
     def test_cut_off_mid_sentence_still_requests_expansion(self):
         from .chat_system_prompt import (
@@ -221,6 +225,13 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertTrue(answer_needs_expansion(cut_off, query=query))
         self.assertGreater(continuation_token_budget(cut_off, completion_tokens=1024), 0)
         self.assertIn("do not replace the draft with a shorter answer", FINISH_STEER)
+        self.assertTrue(
+            answer_looks_incomplete(
+                "speaking in tongues when I was 13 years old. The initial physical "
+                "evidence of this baptism was speaking in tongues, which is a powerful "
+                "sign of the Holy Spirit's presence and work within a"
+            )
+        )
         complete_bullets = (
             cut_off.rsplit("Moreover, in John 1", 1)[0]
             + "Welcome every guest as Christ welcomed us.\n\n"
@@ -235,6 +246,48 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(answer_looks_incomplete(
             "In conclusion, welcome every guest as Christ welcomed us."
         ))
+
+    def test_join_continuation_drops_continue_dump(self):
+        from .chat_system_prompt import join_continuation, looks_like_continue_dump
+
+        first = (
+            "Faith is trusting God's promises, hope waits on His timing, and "
+            "patience keeps us from quitting before the harvest. Pastor Don "
+            "teaches that these three work together so believers do not faint."
+        )
+        dumps = [
+            "Certainly, let’s continue with more from the notes. Weariness "
+            "comes when 44% of the church stops giving and the body grows anemic.",
+            "Sure, let's continue. Saul delayed Samuel, and we should fear Him "
+            "who can cast into hell, like the unjust judge.",
+            "Of course, I'll continue. The target audience was Gentiles, not "
+            "the lost sheep of Israel.",
+            "Absolutely, continuing with the teaching. Discernment means praying "
+            "against cancer rather than answering the alcohol question.",
+            "Let's continue with the teaching points. Do not go to the Gentiles "
+            "or the Samaritans.",
+            "Teaching Points\n1. Community is everything\n2. Contagious Christianity",
+        ]
+        for extra in dumps:
+            self.assertTrue(looks_like_continue_dump(first, extra), extra)
+            joined = join_continuation(first, extra)
+            self.assertEqual(joined, first, extra)
+            self.assertNotIn("Certainly", joined)
+            self.assertNotIn("Let’s continue", joined)
+            self.assertNotIn("Let's continue", joined)
+
+        moreover = (
+            "Moreover, Pastor Don emphasizes that patience is the proof of "
+            "hope when the answer is delayed."
+        )
+        self.assertFalse(looks_like_continue_dump(first, moreover))
+        self.assertIn("patience is the proof", join_continuation(first, moreover))
+
+        cut_off = first.rsplit(".", 1)[0] + " so we do not faint before the"
+        self.assertTrue(answer_looks_incomplete(cut_off))
+        self.assertFalse(
+            looks_like_continue_dump(cut_off, "harvest God promised in due season.")
+        )
 
 
 class ScopeGateParserTests(unittest.TestCase):

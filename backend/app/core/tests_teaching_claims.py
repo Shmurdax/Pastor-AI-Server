@@ -118,10 +118,49 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
         steer = claim_repair_steer(claims)
-        self.assertIn("without restarting", steer.lower())
+        self.assertIn("do not restart", steer.lower())
+        self.assertIn("let's continue", steer.lower())
         self.assertIn("covenant", steer)
         self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
+
+    def test_skips_memoir_and_off_topic_repair_for_faith_query(self):
+        docs = [
+            _doc(
+                "Under their loving care and spiritual direction, I accepted Christ "
+                "and received the baptism of the Holy Spirit with the initial physical "
+                "evidence of speaking in tongues when I was 13 years old.",
+                source="giver.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "It's funny when you're working on a sermon that late how you can't "
+                "seem to find anything in the Bible to preach.",
+                source="giver.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Faith is a gift of the Spirit, and loving the Lord means we pursue "
+                "the Giver and the gifts together.",
+                source="giver.pdf",
+                chunk_kind="sermon_quote",
+            ),
+        ]
+        query = "tell me about faith and loving the lord"
+        claims = extract_teaching_claims(docs, query=query)
+        self.assertTrue(any("gift" in item.lower() for item in claims), claims)
+        self.assertFalse(any("when i was 13" in item.lower() for item in claims), claims)
+        self.assertFalse(any("sermon that late" in item.lower() for item in claims), claims)
+
+        generic = (
+            "Faith is trusting the Lord's promises, and loving the Lord means "
+            "seeking him in worship, service, and obedience."
+        )
+        from core.teaching_claims import repairable_claims
+
+        missing = repairable_claims(generic, claims, query=query)
+        self.assertFalse(any("13" in item for item in missing), missing)
+        self.assertFalse(any("sermon that late" in item.lower() for item in missing), missing)
 
 
 if __name__ == "__main__":

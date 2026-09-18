@@ -183,10 +183,11 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 
 CONTINUE_STEER = (
-    "Your previous reply was too short. Continue the same teaching without "
-    "restarting or apologizing. Do not repeat any sentence already written—"
-    "the previous text is already on screen. Add the next material the user "
-    "still needs, then stop when the answer is complete."
+    "Your previous reply was too short. Add the next material the user still "
+    "needs without restarting or apologizing. Do not repeat any sentence already "
+    "written—the previous text is already on screen. Do not open with a "
+    "conversational continuer. Write the next teaching, then stop when the "
+    "answer is complete."
 )
 
 FINISH_STEER = (
@@ -201,6 +202,7 @@ FINISH_STEER = (
 TARGET_TEACHING_CHARS = 2000
 MIN_TEACHING_CHARS = 1500
 MIN_TEACHING_WORDS = 250
+COMPLETE_ANSWER_MIN_CHARS = 800
 MAX_EXPANSION_PASSES = 1
 
 _BRIEF_QUERY_RE = re.compile(
@@ -229,6 +231,64 @@ _CUT_OFF_TAIL_RE = re.compile(
     r"(?i)(?:moreover|furthermore|for instance|for example|in|"
     r"(?:matthew|mark|luke|john|acts|romans|genesis|psalm|psalms)"
     r"(?:\s+\d+)?)\s*$"
+)
+_DANGLING_FUNCTION_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "to",
+        "for",
+        "with",
+        "within",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "by",
+        "from",
+        "into",
+        "onto",
+        "as",
+        "if",
+        "when",
+        "that",
+        "this",
+        "these",
+        "those",
+        "my",
+        "our",
+        "his",
+        "her",
+        "their",
+    }
+)
+# Cooperative reopeners that start a second teaching dump after a finished answer.
+# Fold curly apostrophes before matching. Optional politeness + continue/proceed.
+_CONTINUE_REOPEN_RE = re.compile(
+    r"(?s)^\s*(?:"
+    r"(?:certainly|sure(?:ly)?|of\s+course|absolutely|okay|ok|yes|"
+    r"alright|all\s+right|right|indeed|gladly|happy\s+to)"
+    r"[\s,!.:;?—–-]+"
+    r")?"
+    r"(?:"
+    r"(?:let's|lets|let\s+us|i(?:'ll| will)|we(?:'ll| will| can| shall)|now(?: we)?)\s+"
+    r"(?:continue|proceed|keep\s+going|move\s+on|keep\s+teaching)"
+    r"|"
+    r"continuing(?:\s+(?:on|with|from))?"
+    r"|"
+    r"here(?:'s| is)\s+(?:more|the\s+(?:next|rest|continuation))"
+    r")"
+    r"\b"
+)
+_TEACHING_DUMP_HEADING_RE = re.compile(
+    r"(?is)^\s*(?:#{1,3}\s*)?(?:\*\*)?(?:"
+    r"teaching\s+points?|additional\s+(?:points?|notes?|teaching)|"
+    r"more\s+from\s+the\s+(?:notes|sermons?)"
+    r")\b"
 )
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]")
 _LEGALESE_RE = re.compile(
@@ -298,7 +358,12 @@ def answer_looks_incomplete(answer: str) -> bool:
     # Chapter-only citation ("John 1") or a 1–2 letter mid-word cut.
     if last_word.isdigit() and len(words) <= 8:
         return True
-    return bool(last_word.isalpha() and len(last_word) <= 2 and len(words) <= 6)
+    if last_word.isalpha() and len(last_word) <= 2 and len(words) <= 6:
+        return True
+    # Token cap often stops on a dangling article/preposition: "work within a"
+    if last_word.lower().strip("\"'") in _DANGLING_FUNCTION_WORDS:
+        return True
+    return False
 
 
 def _clause_looks_degenerate(clause: str) -> bool:
@@ -343,10 +408,11 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
         return False
     if answer_looks_incomplete(answer):
         return True
-    # Already closed cleanly—do not force more tokens (that causes filler after the close).
-    if answer_has_conclusion(answer) and answer_char_count(answer) >= 1000:
+    # A finished reply must not get a second generation pass. That pass is what
+    # emits "Certainly, let's continue" and dumps leftover retrieved notes.
+    if answer_char_count(answer) >= COMPLETE_ANSWER_MIN_CHARS:
         return False
-    return answer_char_count(answer) < MIN_TEACHING_CHARS
+    return True
 
 
 def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
@@ -410,6 +476,26 @@ def _clause_restates_answer(clause: str, answer_folded: str, answer_clauses: lis
     return False
 
 
+def looks_like_continue_dump(answer: str, extra: str) -> bool:
+    """True when extra is a second teaching pass after a finished answer.
+
+    Matches cooperative reopeners (Certainly / Sure / Of course + continue) and
+    leftover Teaching Points dumps. Incomplete first answers still keep extras
+    so a token-cap finish pass can complete the last sentence.
+    """
+    extra = (extra or "").strip()
+    if not extra:
+        return False
+    if answer_looks_incomplete(answer or ""):
+        return False
+    folded = _fold_for_overlap((extra or "").replace("\u2019", "'").replace("\u2018", "'"))
+    if folded and _CONTINUE_REOPEN_RE.match(folded):
+        return True
+    if _TEACHING_DUMP_HEADING_RE.match(extra):
+        return True
+    return False
+
+
 def strip_restarted_continuation(answer: str, extra: str) -> str:
     """Drop a continuation prefix that restates the first answer's opening."""
     extra = (extra or "").strip()
@@ -439,6 +525,8 @@ def join_continuation(answer: str, extra: str) -> str:
     answer = (answer or "").rstrip()
     extra = strip_restarted_continuation(answer, extra)
     if not extra:
+        return answer
+    if looks_like_continue_dump(answer, extra):
         return answer
     if answer_looks_incomplete(answer):
         if extra[:1] in ",.;:!?":

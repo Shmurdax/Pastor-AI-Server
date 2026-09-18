@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from .chat_retrieval import chunk_text, is_bible_source, metadata_source_hint
+from .chat_retrieval import chunk_text, is_bible_source, looks_like_library_pull, metadata_source_hint
 from .grounding import normalize_grounding_text
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
 
@@ -24,6 +24,55 @@ _CONTRAST_RE = re.compile(
     r"do not|don't|cannot|can't"
     r")\b",
     re.IGNORECASE,
+)
+
+# Topic words we still want when matching a user question, even though they are
+# too generic to identify a distinctive Don thesis on their own.
+_QUERY_TOPIC_WORDS = frozenset(
+    {
+        "faith",
+        "hope",
+        "love",
+        "loving",
+        "patience",
+        "prayer",
+        "barriers",
+        "alcohol",
+        "church",
+        "lord",
+        "god",
+        "jesus",
+        "christ",
+        "holy",
+        "spirit",
+        "bible",
+        "scripture",
+        "gospel",
+        "grace",
+        "worship",
+        "gift",
+        "gifts",
+        "altar",
+        "anointing",
+        "tithe",
+        "tithing",
+        "marriage",
+        "covenant",
+        "tongues",
+        "baptism",
+        "giving",
+    }
+)
+_MEMOIR_RE = re.compile(
+    r"(?i)\b("
+    r"i grew up|when i was \d+|i accepted christ|"
+    r"my parents(?:,| were)|i began preaching|"
+    r"working on a sermon that late"
+    r")\b"
+)
+_TESTIMONY_QUERY_RE = re.compile(
+    r"(?i)\b(testimony|biography|childhood|grew up|your story|"
+    r"pastor don'?s (?:life|story)|parents)\b"
 )
 
 # Common English + generic Christian words. Distinctive Don content must survive this list.
@@ -82,11 +131,36 @@ def claim_content_tokens(text: str) -> list[str]:
     return [word for word in words if word not in _STOP and len(word) >= 4]
 
 
+def query_topic_tokens(query: str) -> set[str]:
+    """Content tokens from the user question, keeping faith/love/Lord and similar."""
+    words = normalize_grounding_text(query).split()
+    kept: set[str] = set()
+    for word in words:
+        if len(word) < 4:
+            continue
+        if word in _STOP and word not in _QUERY_TOPIC_WORDS:
+            continue
+        kept.add(word)
+    return kept
+
+
+def claim_matches_query(claim: str, query_tokens: set[str]) -> bool:
+    if not query_tokens:
+        return True
+    claim_words = set(normalize_grounding_text(claim).split())
+    return bool(query_tokens & claim_words)
+
+
+def _looks_like_memoir(claim: str) -> bool:
+    return bool(_MEMOIR_RE.search(claim or ""))
+
+
 def _score_claim(claim: str, query_tokens: set[str]) -> int:
     tokens = claim_content_tokens(claim)
     if not tokens:
         return -1
-    overlap = sum(1 for token in tokens if token in query_tokens)
+    claim_words = set(normalize_grounding_text(claim).split())
+    overlap = sum(1 for token in query_tokens if token in claim_words)
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
     return overlap * 3 + min(len(tokens), 8) + contrast
 
@@ -98,15 +172,18 @@ def extract_teaching_claims(
     limit: int = _DEFAULT_LIMIT,
 ) -> list[str]:
     """Sentence-sized Don/Susan theses from retrieved sermon notes, not Bible."""
-    query_tokens = set(claim_content_tokens(query))
+    query_tokens = query_topic_tokens(query)
     scored: list[tuple[int, str]] = []
     seen: set[str] = set()
+    allow_memoir = bool(_TESTIMONY_QUERY_RE.search(query or ""))
 
     def add(raw: str, *, bonus: int = 0) -> None:
         claim = _clip_claim(raw)
         if len(claim) < _CLAIM_MIN_CHARS:
             return
         if len(claim_content_tokens(claim)) < 2 and bonus <= 0:
+            return
+        if _looks_like_memoir(claim) and not allow_memoir:
             return
         key = normalize_grounding_text(claim)
         if len(key) < 16 or key in seen:
@@ -134,7 +211,12 @@ def extract_teaching_claims(
             add(sentence)
 
     scored.sort(key=lambda item: (-item[0], len(item[1])))
-    return [claim for score, claim in scored if score >= 0][: max(1, limit)]
+    ranked = [claim for score, claim in scored if score >= 0]
+    if query_tokens and ranked and not looks_like_library_pull(query):
+        topical = [claim for claim in ranked if claim_matches_query(claim, query_tokens)]
+        if topical:
+            ranked = topical
+    return ranked[: max(1, limit)]
 
 
 def format_teaching_claims_block(claims: Iterable[str]) -> str:
@@ -186,14 +268,25 @@ def uncovered_claims(answer: str, claims: Iterable[str]) -> list[str]:
     return [claim for claim in claims if claim and not claim_is_covered(claim, answer)]
 
 
+def repairable_claims(answer: str, claims: Iterable[str], *, query: str = "") -> list[str]:
+    """Missed claims that still belong to the user's question (skip memoir / off-topic)."""
+    missing = uncovered_claims(answer, claims)
+    query_tokens = query_topic_tokens(query)
+    if not query_tokens:
+        return missing
+    return [claim for claim in missing if claim_matches_query(claim, query_tokens)]
+
+
 def claim_repair_steer(missing: Iterable[str]) -> str:
     points = [item.strip() for item in missing if item and item.strip()]
     lines = [
-        "Continue the same teaching without restarting or replacing the draft on screen.",
+        "The draft on screen already answers the user. Do not restart it.",
+        "Do not say Certainly, Let's continue, or Teaching Points.",
+        "Do not paste a numbered list. Write 1-2 ordinary paragraphs, then stop on a complete sentence.",
         "Keep a generic Christian pastoral tone. Do not imitate Pastor Don's speaking style.",
-        "You missed these retrieved Pastor Don/Susan teaching points. Teach them now in your own words.",
+        "Only add a missed point if it actually answers the user's question. Skip autobiography, jokes, and unrelated notes.",
+        "If none of the points below answer the user's question, reply with nothing.",
         "Keep the same thesis, including the contrast. Do not keep the illustration and change what it teaches.",
-        "Do not invent a different outline. Do not switch to generic Christian topics that are not listed.",
     ]
     for index, claim in enumerate(points[:_DEFAULT_LIMIT], start=1):
         lines.append(f"{index}. {claim}")

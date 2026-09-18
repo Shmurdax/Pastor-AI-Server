@@ -61,7 +61,7 @@ from .teaching_claims import (
     claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
-    uncovered_claims,
+    repairable_claims,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -73,6 +73,7 @@ from .chat_retrieval import (
     format_reference_notes,
     looks_like_library_pull,
     restrict_docs_to_primary_source,
+    retain_title_matches,
     topic_anchor_query,
     is_bible_source,
     is_video_chunk,
@@ -81,6 +82,7 @@ from .chat_retrieval import (
     sources_cited_in_answer,
 )
 from .chat_system_prompt import (
+    COMPLETE_ANSWER_MIN_CHARS,
     CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
@@ -94,6 +96,7 @@ from .chat_system_prompt import (
     find_biblical_character_names,
     join_continuation,
     looks_like_brief_social,
+    looks_like_continue_dump,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
@@ -356,8 +359,28 @@ def _join_continuation(answer: str, extra: str) -> str:
     return join_continuation(answer, extra)
 
 
-def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    missing = uncovered_claims(answer, prepared.get("teaching_claims") or [])
+def _usable_extra(answer: str, extra: str) -> str:
+    """Keep finish-the-sentence extras; drop a second teaching dump."""
+    extra = (extra or "").strip()
+    if not extra:
+        return ""
+    if looks_like_continue_dump(answer, extra):
+        logger.info("Dropped a second-pass continue dump after a finished answer")
+        return ""
+    return extra
+
+
+def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
+    # A finished teaching answer already had required points in the first pass.
+    # Repairing leftover notes is what concatenates "Certainly, let's continue".
+    if (
+        not answer_looks_incomplete(answer)
+        and answer_char_count(answer) >= COMPLETE_ANSWER_MIN_CHARS
+    ):
+        return None, 0
+    missing = repairable_claims(
+        answer, prepared.get("teaching_claims") or [], query=query
+    )
     if not missing:
         return None, 0
     budget = claim_repair_token_budget(
@@ -367,6 +390,31 @@ def _claim_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
         return None, 0
     logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
     return claim_repair_steer(missing), budget
+
+
+def _finish_incomplete_extra(prepared, answer: str) -> str:
+    """If a continue/repair pass was token-capped mid-sentence, finish that sentence."""
+    if not answer_looks_incomplete(answer):
+        return ""
+    budget = continuation_token_budget(
+        answer, completion_tokens=prepared.get("completion_tokens") or 0
+    )
+    if budget <= 0:
+        budget = 160
+    budget = min(max(budget, 96), 256)
+    extra_parts = []
+    try:
+        for text in _iter_continuation_tokens(
+            prepared,
+            answer,
+            steer=FINISH_STEER,
+            token_budget=budget,
+        ):
+            extra_parts.append(text)
+    except Exception:
+        logger.exception("Finish-cut-off pass failed; keeping the truncated answer")
+        return ""
+    return _usable_extra(answer, "".join(extra_parts).strip())
 
 
 def _trim_continuation_messages(messages):
@@ -789,10 +837,14 @@ class ChatAPIView(APIView):
                     topic_query,
                     retrieval_k=RETRIEVAL_K,
                 )
+                before_threshold = scored_hits
                 scored_hits = apply_retrieval_threshold(
                     scored_hits,
                     threshold=RETRIEVAL_THRESHOLD,
                     retrieval_k=RETRIEVAL_K,
+                )
+                scored_hits = retain_title_matches(
+                    before_threshold, scored_hits, topic_query
                 )
                 docs = select_diverse_docs(
                     scored_hits,
@@ -1079,26 +1131,23 @@ class ChatAPIView(APIView):
                         MAX_EXPANSION_PASSES,
                     )
                     extra_parts = []
-                    separator_sent = False
                     try:
                         for text in _iter_continuation_tokens(prepared, answer):
-                            if emit_live and not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
-                                separator_sent = True
                             extra_parts.append(text)
-                            if emit_live:
-                                yield _sse({"type": "delta", "text": text})
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = "".join(extra_parts).strip()
+                    extra = _usable_extra(answer, "".join(extra_parts))
                     if not extra:
                         break
+                    if emit_live:
+                        yield _sse({"type": "delta", "text": "\n\n" + extra})
                     answer = _join_continuation(answer, extra)
-                repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+                repair_steer, repair_budget = _claim_repair_plan(
+                    prepared, answer, query=user_query_llm
+                )
                 if repair_steer:
                     extra_parts = []
-                    separator_sent = False
                     try:
                         for text in _iter_continuation_tokens(
                             prepared,
@@ -1106,17 +1155,20 @@ class ChatAPIView(APIView):
                             steer=repair_steer,
                             token_budget=repair_budget,
                         ):
-                            if emit_live and not separator_sent:
-                                yield _sse({"type": "delta", "text": "\n\n"})
-                                separator_sent = True
                             extra_parts.append(text)
-                            if emit_live:
-                                yield _sse({"type": "delta", "text": text})
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = "".join(extra_parts).strip()
+                    extra = _usable_extra(answer, "".join(extra_parts))
                     if extra:
+                        if emit_live:
+                            yield _sse({"type": "delta", "text": "\n\n" + extra})
                         answer = _join_continuation(answer, extra)
+                finish_extra = _finish_incomplete_extra(prepared, answer)
+                if finish_extra:
+                    if emit_live:
+                        prefix = "" if answer.endswith((" ", "\n")) else " "
+                        yield _sse({"type": "delta", "text": prefix + finish_extra})
+                    answer = _join_continuation(answer, finish_extra)
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
                     target_message=prepared["target_message"],
@@ -1205,8 +1257,13 @@ class ChatAPIView(APIView):
                         break
                 if not extra_text:
                     break
+                extra_text = _usable_extra(answer, extra_text)
+                if not extra_text:
+                    break
                 answer = _join_continuation(answer, extra_text)
-            repair_steer, repair_budget = _claim_repair_plan(prepared, answer)
+            repair_steer, repair_budget = _claim_repair_plan(
+                prepared, answer, query=user_query_llm
+            )
             if repair_steer:
                 try:
                     extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
@@ -1229,8 +1286,12 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
                         extra_text = ""
+                extra_text = _usable_extra(answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
+            finish_extra = _finish_incomplete_extra(prepared, answer)
+            if finish_extra:
+                answer = _join_continuation(answer, finish_extra)
             saved_message = _save_ai_response(
                 regenerate=regenerate,
                 target_message=prepared["target_message"],
