@@ -13,6 +13,7 @@ from django.urls import reverse
 from core.ingestion_service import (
     DOCUMENT_EXTENSIONS,
     _decode_text_bytes,
+    document_scripture_topic_metadata,
     ingest_uploaded_files,
     is_document_filename,
 )
@@ -27,6 +28,20 @@ class DocumentFilenameTests(SimpleTestCase):
         self.assertTrue(is_document_filename("slides.docx"))
         self.assertFalse(is_document_filename("clip.mp4"))
         self.assertFalse(is_document_filename("sheet.xlsx"))
+
+
+class ScriptureTopicMetadataTests(SimpleTestCase):
+    def test_indexes_cited_verses_and_skips_bible_sources(self):
+        meta = document_scripture_topic_metadata(
+            "Hope",
+            "God so loved the world, John 3:16-17.",
+            is_bible=False,
+        )
+        self.assertEqual(meta["scripture_refs"], ["John 3:16", "John 3:17"])
+        self.assertEqual(
+            document_scripture_topic_metadata("NKJV", "John 3:16", is_bible=True),
+            {},
+        )
 
 
 class DecodeTextBytesTests(SimpleTestCase):
@@ -69,7 +84,7 @@ class TextUploadIngestTests(TestCase):
         body = (
             "Chapter 1\n\n"
             "The Holy Spirit is a gift from the Father to the church. "
-            "Every believer can receive this gift and walk in it daily.\n\n"
+            "Every believer can receive this gift and walk in it daily, as John 3:16-17 teaches.\n\n"
             "Chapter 2\n\n"
             "The gifts are given so the body of Christ can be built up in love."
         )
@@ -92,12 +107,17 @@ class TextUploadIngestTests(TestCase):
         self.assertEqual(doc.original_extension, ".txt")
         self.assertEqual(doc.source_kind, "document")
         self.assertIn("Giver", doc.title)
+        refs = (doc.topic_metadata or {}).get("scripture_refs") or []
+        self.assertIn("John 3:16", refs)
+        self.assertIn("John 3:17", refs)
 
         upserted = qdrant.upsert.call_args.kwargs["points"]
         texts = " ".join(point.payload["text"] for point in upserted)
         self.assertIn("Holy Spirit is a gift", texts)
         self.assertNotIn("EXTRACTED FROM PDF", texts)
-        self.assertTrue(any("library PDF from .txt" in line for line in logs))
+        self.assertTrue(
+            any("library PDF from .txt" in line for line in logs)
+        )
 
     def test_markdown_keeps_headings_and_skips_pdf_extract(self):
         body = "# Kings and Priests\n\nJesus made us kings and priests unto God.\n"

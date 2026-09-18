@@ -31,6 +31,7 @@ void main() {
                   id: 1,
                   title: 'Hope In Christ',
                   viewOnly: false,
+                  scriptureRefs: ['John 3:16'],
                 ),
                 IngestedDocumentItem(
                   id: 2,
@@ -46,18 +47,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('All documents'), findsOneWidget);
-    expect(find.text('Hope In Christ'), findsOneWidget);
     expect(find.text('Book Transcript'), findsOneWidget);
+    expect(find.text('Hope In Christ'), findsOneWidget);
     expect(find.text('View only'), findsWidgets);
     expect(find.byType(RawScrollbar), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Book Transcript')).dy <
+          tester.getTopLeft(find.text('Hope In Christ')).dy,
+      isTrue,
+    );
 
     await tester.enterText(find.byType(TextField), 'book');
     await tester.pumpAndSettle();
     expect(find.text('Book Transcript'), findsOneWidget);
     expect(find.text('Hope In Christ'), findsNothing);
 
-    await tester.tap(find.text('Book Transcript'));
-    expect(opened?.id, 2);
-    expect(opened?.viewOnly, isTrue);
+    await tester.enterText(find.byType(TextField), 'John 3:16');
+    await tester.pumpAndSettle();
+    expect(find.text('Hope In Christ'), findsOneWidget);
+    expect(find.text('Book Transcript'), findsNothing);
+    expect(find.text('Mentions John 3:16'), findsOneWidget);
+
+    await tester.tap(find.text('Hope In Christ'));
+    expect(opened?.id, 1);
   });
 }

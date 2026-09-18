@@ -113,6 +113,7 @@ class ViewOnlyDocumentApiTests(TestCase):
             source_name="sunday.pdf",
             file_hash="b" * 64,
             view_only=False,
+            topic_metadata={"scripture_refs": ["John 3:16"]},
         )
         _make_doc(
             title="Video Talk",
@@ -127,6 +128,7 @@ class ViewOnlyDocumentApiTests(TestCase):
         by_title = {item["title"]: item for item in all_docs.data["documents"]}
         self.assertTrue(by_title["Book Transcript"]["view_only"])
         self.assertFalse(by_title["Sunday Notes"]["view_only"])
+        self.assertEqual(by_title["Sunday Notes"]["scripture_refs"], ["John 3:16"])
 
         pdfs = self.client.get("/api/ingested-documents/", {"source_kind": "document"})
         self.assertEqual(pdfs.status_code, 200)

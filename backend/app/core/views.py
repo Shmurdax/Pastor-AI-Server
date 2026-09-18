@@ -52,6 +52,7 @@ from .chat_sse import (
     sse_pack,
     wants_chat_stream,
 )
+from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
     lookup_nkjv_verses,
     verse_refs_for_lookup,
@@ -641,6 +642,7 @@ class IngestedDocumentsAPIView(APIView):
                     "privacy_hash": privacy_hash,
                     "media_title": media_title,
                     "topic_metadata": document.topic_metadata or {},
+                    "scripture_refs": scripture_refs_from_metadata(document.topic_metadata),
                     "view_only": bool(document.view_only),
                     "in_library": bool(document.in_library),
                 }
