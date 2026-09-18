@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from api.models import Profile
 from core.models import ChurchEvent
 
 
@@ -933,3 +934,55 @@ class PaidAccountAdminPersistenceTests(TestCase):
         names = {model.get("object_name") for model in pastoral}
         self.assertIn("User", names)
         self.assertIn("Profile", names)
+
+
+@override_settings(STORAGES=_ADMIN_TEST_STORAGES)
+class AdminAddUserProfileTests(TestCase):
+    """Admin Users → Add must not INSERT a second Profile for the new user."""
+
+    def setUp(self):
+        self.staff = User.objects.create_superuser(
+            username="admin@church.org",
+            email="admin@church.org",
+            password="AdminPass123!",
+        )
+        self.client = Client()
+        self.client.force_login(self.staff)
+        self.add_url = f"/{settings.ADMIN_URL_PATH}/auth/user/add/"
+
+    def test_add_user_creates_exactly_one_profile(self):
+        response = self.client.post(
+            self.add_url,
+            {
+                "username": "grokbot1@gmail.com",
+                "password1": "GrokBotPass123!",
+                "password2": "GrokBotPass123!",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302, response.content[:2000])
+        user = User.objects.get(username="grokbot1@gmail.com")
+        self.assertEqual(user.email, "grokbot1@gmail.com")
+        self.assertEqual(Profile.objects.filter(user=user).count(), 1)
+
+    def test_add_user_posted_profile_inline_does_not_duplicate(self):
+        response = self.client.post(
+            self.add_url,
+            {
+                "username": "grokbot2@gmail.com",
+                "password1": "GrokBotPass123!",
+                "password2": "GrokBotPass123!",
+                "profile-TOTAL_FORMS": "1",
+                "profile-INITIAL_FORMS": "0",
+                "profile-MIN_NUM_FORMS": "0",
+                "profile-MAX_NUM_FORMS": "1",
+                "profile-0-subscription_status": "active",
+                "profile-0-billing_period": "monthly",
+                "profile-0-pending_billing_period": "",
+                "profile-0-avatar_url": "",
+                "_save": "Save",
+            },
+        )
+        self.assertEqual(response.status_code, 302, response.content[:2000])
+        user = User.objects.get(username="grokbot2@gmail.com")
+        self.assertEqual(Profile.objects.filter(user=user).count(), 1)
