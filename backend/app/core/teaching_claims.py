@@ -63,6 +63,37 @@ _QUERY_TOPIC_WORDS = frozenset(
         "giving",
     }
 )
+# Words almost every sermon uses. Overlap on these alone must not make a
+# Community / harvest sentence a required point for "why this church…".
+_WEAK_QUERY_WORDS = frozenset(
+    {
+        "faith",
+        "hope",
+        "love",
+        "loving",
+        "prayer",
+        "church",
+        "churches",
+        "lord",
+        "god",
+        "jesus",
+        "christ",
+        "holy",
+        "spirit",
+        "bible",
+        "scripture",
+        "gospel",
+        "grace",
+        "worship",
+        "gift",
+        "gifts",
+        "christian",
+        "christians",
+        "life",
+        "lives",
+        "people",
+    }
+)
 _MEMOIR_RE = re.compile(
     r"(?i)\b("
     r"i grew up|when i was \d+|i accepted christ|"
@@ -144,10 +175,22 @@ def query_topic_tokens(query: str) -> set[str]:
     return kept
 
 
+def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
+    """Query words that are not generic Christian vocabulary (church/love/spirit)."""
+    return {
+        str(token).lower()
+        for token in query_tokens
+        if str(token).strip() and str(token).lower() not in _WEAK_QUERY_WORDS
+    }
+
+
 def claim_matches_query(claim: str, query_tokens: set[str]) -> bool:
     if not query_tokens:
         return True
     claim_words = set(normalize_grounding_text(claim).split())
+    distinctive = distinctive_query_tokens(query_tokens)
+    if distinctive:
+        return bool(distinctive & claim_words)
     return bool(query_tokens & claim_words)
 
 
@@ -160,9 +203,11 @@ def _score_claim(claim: str, query_tokens: set[str]) -> int:
     if not tokens:
         return -1
     claim_words = set(normalize_grounding_text(claim).split())
+    distinctive = distinctive_query_tokens(query_tokens)
+    dist_overlap = sum(1 for token in distinctive if token in claim_words)
     overlap = sum(1 for token in query_tokens if token in claim_words)
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
-    return overlap * 3 + min(len(tokens), 8) + contrast
+    return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast
 
 
 def extract_teaching_claims(

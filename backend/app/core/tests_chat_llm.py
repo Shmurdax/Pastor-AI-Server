@@ -222,6 +222,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("format_teaching_claims_block", source)
         self.assertIn("looks_like_library_pull", source)
         self.assertIn("restrict_docs_to_primary_source", source)
+        self.assertIn("pin_docs_to_strong_title_matches", source)
         self.assertIn("LIBRARY_PULL_STEER", source)
         self.assertIn("_claim_repair_plan", source)
         self.assertIn("claim_repair_steer", source)

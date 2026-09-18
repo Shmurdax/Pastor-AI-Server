@@ -874,6 +874,80 @@ def retain_title_matches(
     return extras + list(kept_hits)
 
 
+def pin_docs_to_strong_title_matches(
+    docs: Optional[Iterable[Any]],
+    query: str,
+    *,
+    candidate_hits: Optional[Iterable[tuple[Any, float]]] = None,
+    is_bible: Optional[Callable[[Any], bool]] = None,
+    source_key: Optional[Callable[[Any], str]] = None,
+    limit: int = 12,
+) -> list[Any]:
+    """Keep titled sermons that name the question; stop filling loosely related PDFs.
+
+    Broad questions with no strong filename match are unchanged so love/faith
+    can still gather several notes. Bible/NKJV stays only on verse questions.
+    """
+    selected = list(docs or [])
+    tokens = query_focus_tokens(query)
+    if not selected or not tokens:
+        return selected
+    bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
+    source_fn = source_key or chunk_source_key
+    hits = list(candidate_hits or ())
+    match_keys: set[str] = set()
+    for doc in selected:
+        if bible_fn(doc):
+            continue
+        if is_strong_title_match(doc, tokens):
+            match_keys.add(source_fn(doc))
+    for doc, _score in hits:
+        if bible_fn(doc):
+            continue
+        if is_strong_title_match(doc, tokens):
+            match_keys.add(source_fn(doc))
+    if not match_keys:
+        return selected
+
+    scored: dict[str, float] = {}
+    pool: list[Any] = []
+    for doc, score in hits:
+        if bible_fn(doc):
+            continue
+        if source_fn(doc) not in match_keys:
+            continue
+        pool.append(doc)
+        fp = chunk_fingerprint(chunk_text(doc))
+        if fp:
+            scored[fp] = max(float(score), scored.get(fp, float("-inf")))
+    for doc in selected:
+        if bible_fn(doc):
+            continue
+        if source_fn(doc) in match_keys:
+            pool.append(doc)
+
+    pinned: list[Any] = []
+    seen: set[str] = set()
+    pool.sort(
+        key=lambda doc: scored.get(chunk_fingerprint(chunk_text(doc)), 0.0),
+        reverse=True,
+    )
+    for doc in pool:
+        fp = chunk_fingerprint(chunk_text(doc)) or f"id:{id(doc)}"
+        if fp in seen:
+            continue
+        seen.add(fp)
+        pinned.append(doc)
+        if len(pinned) >= max(1, limit):
+            break
+    if not pinned:
+        return selected
+    if looks_like_bible_query(query):
+        bible_docs = [doc for doc in selected if bible_fn(doc)][:2]
+        return pinned + bible_docs
+    return pinned
+
+
 def filter_hits_by_topic(
     scored_hits: list[tuple[Any, float]],
     query: str,
@@ -1353,7 +1427,19 @@ def select_diverse_docs(
     ) -> bool:
         if chunk.fingerprint in selected_fps:
             return False
-        if per_source.get(chunk.source_key, 0) >= max_per_source:
+        title_hit = (not chunk.is_bible) and is_strong_title_match(
+            chunk.doc, focus_tokens
+        )
+        if any_strong_title and chunk.is_bible and not looks_like_bible_query(query):
+            return False
+        if any_strong_title and not chunk.is_bible and not title_hit:
+            # Filename already names the question — do not fill leftover slots
+            # with Community / Contagious / other loosely related sermons.
+            return False
+        source_cap = max_per_source
+        if any_strong_title and title_hit:
+            source_cap = max(max_per_source, 8)
+        if per_source.get(chunk.source_key, 0) >= source_cap:
             return False
         if prefer_bible is True and not chunk.is_bible:
             return False
