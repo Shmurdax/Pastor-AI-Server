@@ -878,18 +878,22 @@ def pin_docs_to_strong_title_matches(
     docs: Optional[Iterable[Any]],
     query: str,
     *,
+    pin_query: str = "",
     candidate_hits: Optional[Iterable[tuple[Any, float]]] = None,
     is_bible: Optional[Callable[[Any], bool]] = None,
     source_key: Optional[Callable[[Any], str]] = None,
     limit: int = 12,
 ) -> list[Any]:
-    """Keep titled sermons that name the question; stop filling loosely related PDFs.
+    """Keep titled sermons that name THIS message; stop filling loosely related PDFs.
 
-    Broad questions with no strong filename match are unchanged so love/faith
-    can still gather several notes. Bible/NKJV stays only on verse questions.
+    Pin from ``pin_query`` (the current user turn) when provided so a follow-up
+    like "which of those first?" does not collapse notes to the previous sermon
+    title, and a real topic change can still pin a new filename. Broad questions
+    with no strong filename match are unchanged. Bible/NKJV stays only on verse
+    questions.
     """
     selected = list(docs or [])
-    tokens = query_focus_tokens(query)
+    tokens = query_focus_tokens(pin_query or query)
     if not selected or not tokens:
         return selected
     bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
@@ -942,7 +946,7 @@ def pin_docs_to_strong_title_matches(
             break
     if not pinned:
         return selected
-    if looks_like_bible_query(query):
+    if looks_like_bible_query(pin_query or query):
         bible_docs = [doc for doc in selected if bible_fn(doc)][:2]
         return pinned + bible_docs
     return pinned
@@ -1360,6 +1364,7 @@ def select_diverse_docs(
     source_key: Optional[Callable[[Any], str]] = None,
     relevance: float = 0.72,
     query: str = "",
+    pin_query: str = "",
 ) -> list[Any]:
     """Pick ``k`` chunks that stay relevant while spreading across sermons, videos, and books.
 
@@ -1414,8 +1419,9 @@ def select_diverse_docs(
     per_book: dict[str, int] = {}
     selected_tokens: list[frozenset[str]] = []
     focus_tokens = query_focus_tokens(query)
+    pin_tokens = query_focus_tokens(pin_query) if (pin_query or "").strip() else focus_tokens
     any_strong_title = any(
-        (not item.is_bible) and is_strong_title_match(item.doc, focus_tokens)
+        (not item.is_bible) and is_strong_title_match(item.doc, pin_tokens)
         for item in chunks
     )
 
@@ -1428,9 +1434,11 @@ def select_diverse_docs(
         if chunk.fingerprint in selected_fps:
             return False
         title_hit = (not chunk.is_bible) and is_strong_title_match(
-            chunk.doc, focus_tokens
+            chunk.doc, pin_tokens
         )
-        if any_strong_title and chunk.is_bible and not looks_like_bible_query(query):
+        if any_strong_title and chunk.is_bible and not looks_like_bible_query(
+            pin_query or query
+        ):
             return False
         if any_strong_title and not chunk.is_bible and not title_hit:
             # Filename already names the question — do not fill leftover slots
@@ -1508,7 +1516,7 @@ def select_diverse_docs(
             topic_boost = 0.40 * chunk.topic_overlap
             title_boost = 0.90 * chunk.title_overlap
             if any_strong_title and not chunk.is_bible and not is_strong_title_match(
-                chunk.doc, focus_tokens
+                chunk.doc, pin_tokens
             ):
                 # Generic high-embedding sermons (Community, Contagious Christianity)
                 # should not occupy slots when a title clearly names the topic.

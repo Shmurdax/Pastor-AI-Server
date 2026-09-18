@@ -2,6 +2,7 @@ import unittest
 
 from .chat_system_prompt import (
     FINISH_STEER,
+    FOLLOWUP_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
@@ -64,6 +65,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
+        self.assertIn("Do not invent a recap", FOLLOWUP_STEER)
         self.assertNotIn("2000 characters", prompt)
         self.assertNotIn("<length_close>", prompt)
         self.assertNotIn("LENGTH (teaching answers):", prompt)
