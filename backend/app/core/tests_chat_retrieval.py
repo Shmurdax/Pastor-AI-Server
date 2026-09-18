@@ -22,7 +22,9 @@ from core.chat_retrieval import (
     is_bible_source,
     is_strong_title_match,
     is_video_chunk,
+    keyword_search_query,
     looks_like_followup,
+    looks_like_format_followup,
     looks_like_library_pull,
     pin_docs_to_strong_title_matches,
     restrict_docs_to_primary_source,
@@ -466,6 +468,31 @@ class ChatRetrievalTests(unittest.TestCase):
             classify_followup_intent("How do I reassure my kid even if I am overwhelmed?", []),
             INTENT_NEW_TOPIC,
         )
+
+    def test_screenshot_three_point_sermon_recasts_faith_not_communion(self):
+        prior = ["Recount what Pastor Don believes about faith?"]
+        recast = "Give me a 3 point sermon on that topic"
+        communion = "Give me a 3 point sermon on communion"
+        self.assertTrue(looks_like_format_followup(recast))
+        self.assertTrue(looks_like_followup(recast))
+        self.assertFalse(looks_like_format_followup(communion))
+        self.assertEqual(
+            classify_followup_intent(recast, prior, ["Pastor Don teaches that faith trusts God."]),
+            INTENT_NEW_ANGLE,
+        )
+        self.assertEqual(
+            classify_followup_intent(communion, prior, ["Pastor Don teaches that faith trusts God."]),
+            INTENT_NEW_TOPIC,
+        )
+        self.assertFalse(keyword_search_query(recast))
+        self.assertNotIn("point", keyword_search_query(recast).lower())
+        self.assertIn("communion", keyword_search_query(communion).lower())
+        self.assertNotIn("point", keyword_search_query(communion).lower())
+        queries = expand_search_queries(recast, prior_user_queries=prior)
+        joined = " | ".join(queries).lower()
+        self.assertIn("faith", joined)
+        self.assertTrue(queries[0].lower().find("faith") >= 0, queries)
+        self.assertFalse(any("point" in item.lower().split() for item in queries), queries)
 
     def test_extract_used_headings_from_markdown(self):
         headings = extract_used_headings(

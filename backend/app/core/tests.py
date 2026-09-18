@@ -160,6 +160,61 @@ class ChatSystemPromptTests(unittest.TestCase):
         brush_off = "The church exists to worship God and love people."
         self.assertTrue(answer_needs_expansion(brush_off, query=query))
 
+    def test_quote_repair_runs_on_complete_paraphrase_without_quotes(self):
+        from .chat_system_prompt import (
+            QUOTE_CONTINUE_MIN_TOKENS,
+            QUOTE_CONTINUE_STEER,
+            answer_missing_required_quotes,
+            continuation_token_budget,
+            quote_repair_token_budget,
+        )
+
+        query = "Recount what Pastor Don believes about faith?"
+        paraphrase = (
+            "Pastor Don teaches that faith is trust in God rather than a feeling. "
+            * 25
+        )
+        self.assertGreaterEqual(len(paraphrase.strip()), 800)
+        self.assertFalse(answer_needs_expansion(paraphrase, query=query))
+        self.assertTrue(
+            answer_missing_required_quotes(
+                paraphrase, query=query, has_reference_notes=True
+            )
+        )
+        quoted = (
+            paraphrase
+            + '\n\nPastor Don says, "Faith is the substance of things hoped for in Christ."'
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                quoted, query=query, has_reference_notes=True
+            )
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                paraphrase, query=query, has_reference_notes=False
+            )
+        )
+        self.assertFalse(
+            answer_missing_required_quotes(
+                paraphrase, query="Hi", has_reference_notes=True
+            )
+        )
+        long_done = ("x" * 2299) + "."
+        self.assertEqual(continuation_token_budget(long_done, completion_tokens=1024), 0)
+        self.assertGreaterEqual(
+            quote_repair_token_budget(long_done, completion_tokens=1024),
+            QUOTE_CONTINUE_MIN_TOKENS,
+        )
+        self.assertGreaterEqual(
+            continuation_token_budget(
+                long_done, completion_tokens=1024, min_tokens=QUOTE_CONTINUE_MIN_TOKENS
+            ),
+            QUOTE_CONTINUE_MIN_TOKENS,
+        )
+        self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
+        self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
+
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation
 

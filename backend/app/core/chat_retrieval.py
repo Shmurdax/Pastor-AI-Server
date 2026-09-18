@@ -34,8 +34,26 @@ _FOLLOWUP_RE = re.compile(
     r"\b("
     r"clarif(?:y|ied|ication)|further|expand(?:ing)?|elaborat(?:e|ion)|"
     r"what do you mean|go (?:deeper|further)|say more|more (?:about|detail|on)|"
-    r"that (?:guidance|answer|point|teaching|quote)|in other words"
+    r"that (?:guidance|answer|point|teaching|quote|topic)|"
+    r"this topic|same topic|on that|"
+    r"in other words"
     r")\b",
+    re.IGNORECASE,
+)
+_FORMAT_FOLLOWUP_RE = re.compile(
+    r"\b("
+    r"(?:\d+|one|two|three|four|five)\s*[- ]?points?|"
+    r"sermon outline|(?:an|the)\s+outline"
+    r")\b",
+    re.IGNORECASE,
+)
+_OUTLINE_POINT_RE = re.compile(
+    r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\s*[- ]?points?\b",
+    re.IGNORECASE,
+)
+_DEMONSTRATIVE_TOPIC_RE = re.compile(
+    r"\b(?:on\s+)?(?:that|this|the same|same)\s+topic\b",
     re.IGNORECASE,
 )
 
@@ -248,6 +266,8 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "passage",
         "passages",
         "please",
+        "point",
+        "points",
         "prepare",
         "produce",
         "prompt",
@@ -439,6 +459,18 @@ def restrict_docs_to_primary_source(
     return kept + bible_docs[:2]
 
 
+def looks_like_format_followup(query: str) -> bool:
+    """True when the user is recasting the last topic (outline / 'that topic')."""
+    text = (query or "").strip()
+    if not text:
+        return False
+    if _DEMONSTRATIVE_TOPIC_RE.search(text):
+        return True
+    # "Give me a 3 point sermon on communion" still has a topic word after
+    # stripping outline scaffolding; that is a new question, not a recast.
+    return bool(_FORMAT_FOLLOWUP_RE.search(text) and not keyword_search_query(text))
+
+
 def looks_like_followup(query: str) -> bool:
     """True for short / clarify-style prompts (not the only follow-up gate)."""
     text = (query or "").strip()
@@ -449,7 +481,7 @@ def looks_like_followup(query: str) -> bool:
 
     if looks_like_brief_social(text):
         return False
-    if _FOLLOWUP_RE.search(text):
+    if _FOLLOWUP_RE.search(text) or looks_like_format_followup(text):
         return True
     return len(text.split()) <= 8
 
@@ -492,6 +524,10 @@ def classify_followup_intent(
         return INTENT_NEW_TOPIC
     if _APPLY_RE.search(current_q):
         return INTENT_APPLY
+    # Format recasts ("3 point sermon on that topic") keep the prior pastoral
+    # topic even when leftover template words share no tokens with it.
+    if looks_like_format_followup(current_q):
+        return INTENT_NEW_ANGLE
     # Explicit clarify words stay on-topic even when they share no keywords
     # ("What do you mean?"). Short new questions do not — check topic-break
     # first so "What is communion?" is not treated as a follow-up.
@@ -537,11 +573,19 @@ def extract_used_headings(texts: Iterable[str], *, limit: int = 8) -> list[str]:
     return found
 
 
+def strip_template_phrasing(text: str) -> str:
+    """Drop outline scaffolding ('3 point', 'that topic') before embedding."""
+    cleaned = _OUTLINE_POINT_RE.sub(" ", text or "")
+    cleaned = _DEMONSTRATIVE_TOPIC_RE.sub(" ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def keyword_search_query(text: str) -> str:
     """Content words for embeddings: drop filler like \"generate a sermon\"."""
+    cleaned = strip_template_phrasing(text)
     terms = [
         token
-        for token in re.findall(r"[A-Za-z']{3,}", text or "")
+        for token in re.findall(r"[A-Za-z']{3,}", cleaned)
         if token.lower() not in _QUESTION_STOPWORDS
         and token.lower() not in _GENERIC_FOCUS_STOPWORDS
         and token.lower() not in _ENTITY_NOISE

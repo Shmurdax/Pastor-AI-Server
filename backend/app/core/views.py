@@ -90,11 +90,14 @@ from .chat_system_prompt import (
     LIBRARY_PULL_STEER,
     FOLLOWUP_STEER,
     MAX_EXPANSION_PASSES,
+    QUOTE_CONTINUE_STEER,
     answer_char_count,
     answer_looks_incomplete,
+    answer_missing_required_quotes,
     answer_needs_expansion,
     build_chat_system_prompt,
     continuation_token_budget,
+    quote_repair_token_budget,
     find_biblical_character_names,
     join_continuation,
     looks_like_brief_social,
@@ -392,6 +395,23 @@ def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
         return None, 0
     logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
     return claim_repair_steer(missing), budget
+
+
+def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
+    """Add a quote pass when notes were retrieved but the reply never quoted them."""
+    if not prepared.get("docs"):
+        return None, 0
+    if not answer_missing_required_quotes(
+        answer, query=query, has_reference_notes=True
+    ):
+        return None, 0
+    budget = quote_repair_token_budget(
+        answer, completion_tokens=prepared.get("completion_tokens") or 0
+    )
+    if budget <= 0:
+        return None, 0
+    logger.info("Quote repair: retrieved notes were not quoted in the answer")
+    return QUOTE_CONTINUE_STEER, budget
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -1169,6 +1189,26 @@ class ChatAPIView(APIView):
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
                         answer = _join_continuation(answer, extra)
+                quote_steer, quote_budget = _quote_repair_plan(
+                    prepared, answer, query=user_query_llm
+                )
+                if quote_steer:
+                    extra_parts = []
+                    try:
+                        for text in _iter_continuation_tokens(
+                            prepared,
+                            answer,
+                            steer=quote_steer,
+                            token_budget=quote_budget,
+                        ):
+                            extra_parts.append(text)
+                    except Exception:
+                        logger.exception("Quote repair failed; keeping the first answer")
+                    extra = _usable_extra(answer, "".join(extra_parts))
+                    if extra:
+                        if emit_live:
+                            yield _sse({"type": "delta", "text": "\n\n" + extra})
+                        answer = _join_continuation(answer, extra)
                 finish_extra = _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
                     if emit_live:
@@ -1291,6 +1331,34 @@ class ChatAPIView(APIView):
                         extra_text = (getattr(extra, "content", "") or "").strip()
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
+                        extra_text = ""
+                extra_text = _usable_extra(answer, extra_text)
+                if extra_text:
+                    answer = _join_continuation(answer, extra_text)
+            quote_steer, quote_budget = _quote_repair_plan(
+                prepared, answer, query=user_query_llm
+            )
+            if quote_steer:
+                try:
+                    extra = prepared["llm"].bind(max_tokens=quote_budget).invoke(
+                        _continuation_messages(
+                            prepared["messages"], answer, steer=quote_steer
+                        )
+                    )
+                    extra_text = (getattr(extra, "content", "") or "").strip()
+                except Exception:
+                    logger.exception("Quote repair failed; retrying with a trimmed prompt")
+                    try:
+                        extra = prepared["llm"].bind(max_tokens=quote_budget).invoke(
+                            _trim_continuation_messages(
+                                _continuation_messages(
+                                    prepared["messages"], answer, steer=quote_steer
+                                )
+                            )
+                        )
+                        extra_text = (getattr(extra, "content", "") or "").strip()
+                    except Exception:
+                        logger.exception("Quote repair failed; keeping the first answer")
                         extra_text = ""
                 extra_text = _usable_extra(answer, extra_text)
                 if extra_text:

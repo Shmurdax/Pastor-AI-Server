@@ -199,6 +199,16 @@ FINISH_STEER = (
     "not replace the draft with a shorter answer."
 )
 
+QUOTE_CONTINUE_STEER = (
+    "The previous reply taught the topic but did not include word-for-word "
+    "quotations from Pastor Don or Susan Nordin. Do not restart or apologize. "
+    "Do not say Certainly, Let's continue, or Teaching Points. Add a short "
+    "section with at least two quotation-marked excerpts that actually appear "
+    "in REFERENCE NOTES, attributed to Pastor Don and/or Susan. If Scripture "
+    "notes are present, weave in one unused NKJV verse. Then stop."
+)
+QUOTE_CONTINUE_MIN_TOKENS = 320
+
 TARGET_TEACHING_CHARS = 2000
 MIN_TEACHING_CHARS = 1500
 MIN_TEACHING_WORDS = 250
@@ -424,18 +434,50 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
     return True
 
 
-def continuation_token_budget(answer: str, *, completion_tokens: int) -> int:
+def answer_missing_required_quotes(
+    answer: str,
+    *,
+    query: str,
+    has_reference_notes: bool,
+) -> bool:
+    """True when teaching notes were retrieved but the reply never quoted them."""
+    if not has_reference_notes:
+        return False
+    if not query_expects_long_answer(query):
+        return False
+    if text_looks_degenerate(answer):
+        return False
+    from .chat_retrieval import extract_used_quotes
+
+    return not extract_used_quotes([answer or ""])
+
+
+def continuation_token_budget(answer: str, *, completion_tokens: int, min_tokens: int = 0) -> int:
     """Cap a continue-pass so leftover max_tokens cannot dump Chinese or filler."""
     completion = int(completion_tokens)
+    floor = max(0, int(min_tokens))
     if completion <= 0:
         return 0
     remaining_chars = TARGET_TEACHING_CHARS + 250 - answer_char_count(answer)
     if answer_looks_incomplete(answer):
         remaining_chars = max(remaining_chars, 400)
     elif remaining_chars <= 120:
-        return 0
+        return min(completion, floor) if floor else 0
     guessed = max(96, remaining_chars // 3)
-    return min(completion, guessed)
+    budget = min(completion, guessed)
+    if floor:
+        return min(completion, max(budget, floor))
+    return budget
+
+
+def quote_repair_token_budget(answer: str, *, completion_tokens: int) -> int:
+    """Keep a quote pass even after a finished paraphrase used the length budget."""
+    completion = int(completion_tokens) or QUOTE_CONTINUE_MIN_TOKENS
+    return continuation_token_budget(
+        answer,
+        completion_tokens=completion,
+        min_tokens=QUOTE_CONTINUE_MIN_TOKENS,
+    )
 
 
 _OVERLAP_SPLIT_RE = re.compile(r"\n{2,}|(?<=[.!?])[\"']?\s+")
