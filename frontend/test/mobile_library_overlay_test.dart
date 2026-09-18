@@ -49,7 +49,8 @@ void main() {
 
     final scaffoldState = tester.state<ScaffoldState>(find.byType(Scaffold).first);
     scaffoldState.openDrawer();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
@@ -63,5 +64,11 @@ void main() {
     expect(find.text('Sermon Library').hitTestable(), findsNothing);
     expect(find.text('New Chat').hitTestable(), findsNothing);
     expect(find.text("NORDIN'S AI").hitTestable(), findsWidgets);
+
+    await tester.tap(find.byTooltip('Close documents catalog'));
+    await tester.pump();
+    expect(find.text('Sermons').hitTestable(), findsOneWidget);
+    expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
+    expect(find.text('All documents').hitTestable(), findsNothing);
   });
 }
