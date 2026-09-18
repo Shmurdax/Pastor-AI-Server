@@ -25,6 +25,7 @@ from api.billing_views import (
     MockActivatePremiumView,
     StripeWebhookView,
     SyncSubscriptionView,
+    subscription_terms_view,
 )
 from api.views import (
     ChurchEventDetailAPI,
@@ -84,6 +85,7 @@ urlpatterns = [
     path('api/billing/change-plan/', ChangePlanView.as_view()),
     path('api/billing/sync-subscription/', SyncSubscriptionView.as_view()),
     path('api/billing/webhook/', StripeWebhookView.as_view()),
+    path("subscription-terms/", subscription_terms_view, name="subscription_terms"),
 
     # Chat + prayer + ingested docs
     path('api/chat/warmup/', ChatWarmupAPIView.as_view(), name='chat_warmup_api'),

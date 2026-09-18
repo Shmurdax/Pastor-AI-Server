@@ -17,6 +17,7 @@ import logging
 import stripe
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.authentication import TokenAuthentication
@@ -52,6 +53,50 @@ def _mock_checkout_enabled() -> bool:
 
 def _ensure_stripe() -> None:
     stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+def subscription_consent_message(period: str) -> str:
+    """Period-aware acknowledgment shown on Stripe Checkout."""
+    if (period or "").lower() == Profile.BillingPeriod.YEARLY:
+        return (
+            "I acknowledge I am subscribing to a yearly Premium plan "
+            "($150/year) that renews until I cancel."
+        )
+    return (
+        "I acknowledge I am subscribing to a monthly Premium plan "
+        "($15/month) that renews until I cancel."
+    )
+
+
+def _checkout_consent_kwargs(period: str) -> dict:
+    message = subscription_consent_message(period)
+    return {
+        "consent_collection": {"terms_of_service": "required"},
+        "custom_text": {
+            "terms_of_service_acceptance": {"message": message},
+        },
+    }
+
+
+def subscription_terms_view(_request):
+    """Public terms page Stripe Checkout can link from the consent checkbox."""
+    return HttpResponse(
+        """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nordin's AI Premium subscription terms</title>
+</head>
+<body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5;">
+  <h1>Nordin's AI Premium subscription</h1>
+  <p>Premium is a recurring paid subscription. The monthly plan is $15 per month. The yearly plan is $150 per year.</p>
+  <p>Your subscription renews automatically until you cancel. After you cancel, you keep Premium until the end of the current billing period.</p>
+</body>
+</html>
+""",
+        content_type="text/html; charset=utf-8",
+    )
 
 
 def _get_or_create_profile(user: User) -> Profile:
@@ -574,24 +619,42 @@ class CreateCheckoutSessionView(_AuthenticatedBillingView):
                 profile.stripe_customer_id = customer_id
                 profile.save(update_fields=["stripe_customer_id"])
 
-            session = stripe.checkout.Session.create(
-                ui_mode="embedded_page",
-                mode="subscription",
-                customer=customer_id,
-                client_reference_id=str(request.user.id),
-                line_items=[_line_item_for_period(period)],
-                return_url=return_url,
-                metadata={
+            session_kwargs = {
+                "ui_mode": "embedded_page",
+                "mode": "subscription",
+                "customer": customer_id,
+                "client_reference_id": str(request.user.id),
+                "line_items": [_line_item_for_period(period)],
+                "return_url": return_url,
+                "metadata": {
                     "user_id": str(request.user.id),
                     "billing_period": period,
                 },
-                subscription_data={
+                "subscription_data": {
                     "metadata": {
                         "user_id": str(request.user.id),
                         "billing_period": period,
                     }
                 },
-            )
+                **_checkout_consent_kwargs(period),
+            }
+            try:
+                session = stripe.checkout.Session.create(**session_kwargs)
+            except stripe.error.InvalidRequestError as exc:
+                # Stripe only renders the required TOS checkbox when a Terms of
+                # Service URL is set in Dashboard → Settings → Public details.
+                # Fall back to submit-button copy so checkout still opens.
+                detail = str(exc).lower()
+                if "terms of service" not in detail and "terms_of_service" not in detail:
+                    raise
+                logger.warning(
+                    "Stripe TOS URL missing; showing consent text without a required checkbox"
+                )
+                session_kwargs.pop("consent_collection", None)
+                session_kwargs["custom_text"] = {
+                    "submit": {"message": subscription_consent_message(period)},
+                }
+                session = stripe.checkout.Session.create(**session_kwargs)
         except stripe.error.StripeError as exc:
             return _stripe_error_response(exc)
 

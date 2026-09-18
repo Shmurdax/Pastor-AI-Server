@@ -38,6 +38,7 @@ from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_
 from .video_job_queue import video_job_has_staging
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
+from api.mailchimp_admin import mailchimp_export_view
 
 
 STALE_INGESTION_JOB_MINUTES = 30
@@ -966,6 +967,11 @@ def _get_urls():
             name="core_website_crawl",
         ),
         path(
+            "core/mailchimp-export/",
+            admin.site.admin_view(mailchimp_export_view),
+            name="core_mailchimp_export",
+        ),
+        path(
             "core/ingestion-jobs/status/",
             admin.site.admin_view(_admin_ingestion_jobs_status_view),
             name="core_ingestion_jobs_status",
@@ -1019,6 +1025,7 @@ PASTORAL_OBJECT_NAMES = {
     "PrayerRequest",
     "ResponseReport",
     "ChurchEvent",
+    "MailchimpExportTool",
 }
 CONTENT_TOOL_OBJECT_NAMES = {
     "CoreIngestionTool",
@@ -1036,6 +1043,19 @@ ADVANCED_CORE_OBJECT_NAMES = {
     "IngestionJobFileFailure",
     "ChatMessage",
 }
+
+
+def _pastoral_tool_entries():
+    return [
+        {
+            "name": "Mailchimp audience",
+            "object_name": "MailchimpExportTool",
+            "admin_url": reverse("admin:core_mailchimp_export"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+    ]
 
 
 def _content_tool_entries():
@@ -1114,6 +1134,7 @@ def _split_admin_navigation(request):
 
     advanced_apps = [app for app in advanced_apps if app.get("name") and app.get("models")]
     advanced_apps.sort(key=lambda app: app.get("name", "").lower())
+    pastoral_models = _pastoral_tool_entries() + pastoral_models
     pastoral_models.sort(key=lambda model: model.get("name", "").lower())
     return content_models, pastoral_models, advanced_apps
 

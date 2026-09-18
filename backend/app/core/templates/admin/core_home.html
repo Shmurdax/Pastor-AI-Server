@@ -293,6 +293,13 @@
   <div class="pastor-section">
     <h2 class="pastor-section-header">Pastoral</h2>
     <p class="pastor-section-intro">Day-to-day church operations.</p>
+    <div class="pastor-tools-grid">
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Mailchimp audience</h3>
+        <p class="pastor-tool-description">Export AI login emails into the ministry Mailchimp audience for event and announcement campaigns.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_mailchimp_export' %}">Open →</a>
+      </div>
+    </div>
     <div class="pastor-link-row">
       {% for item in pastoral_models %}
         <a href="{{ item.admin_url }}">{{ item.name }}</a>

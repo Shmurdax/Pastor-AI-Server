@@ -156,7 +156,7 @@ The home page has **Core Admin Tools** cards for ingestion and PDF browsing, plu
 
 You will mostly live in two groups on the admin home page:
 
-- **Pastoral** — **Users** (accounts and subscriptions), **Profiles**, prayer requests, response reports, and events
+- **Pastoral** — **Users** (accounts and subscriptions), **Profiles**, prayer requests, response reports, events, and **Mailchimp audience**
 - **Content tools** — document/video ingestion and website scraping
 
 Paid signups show up immediately under **Pastoral → Users**. The list includes email, plan (monthly/yearly), subscription status, and a Premium column. Open the user to edit the membership fields on the same page (the Profile section under the login fields).
@@ -195,6 +195,21 @@ When someone creates an account on the public site and pays, that User row is cr
 Do not delete the last superuser. If someone cannot reach the private admin URL, they are usually missing Staff status, or they are signing in on the public app with a different email than the admin user.
 
 Google users are created on first Google sign-in. They look like normal Users; username is the Google email.
+
+---
+
+## Mailchimp audience export
+
+**Pastoral → Mailchimp audience**
+
+This page pushes Nordin's AI login emails into the ministry's existing Mailchimp audience so staff can send event and announcement campaigns from Mailchimp (from `info@thenordins.org`). The app does not compose or send those campaigns.
+
+1. Operator sets `MAILCHIMP_API_KEY` and `MAILCHIMP_AUDIENCE_ID` in `tokens.env`, then runs `bash apply-tokens.sh` (restart Django if it is already running).
+2. Staff open **Mailchimp audience**, confirm it shows the connected audience name and how many local emails will export.
+3. Click **Export members to Mailchimp**. New contacts are added as subscribed, existing contacts are updated (name fields), and each contact is tagged `nordin-ai`. People who already unsubscribed in Mailchimp are skipped.
+4. In Mailchimp, send the campaign to the audience or to the `nordin-ai` segment.
+
+The default install account `admin@localhost` is never exported. Inactive accounts are skipped. From **Pastoral → Users** you can also select specific rows and use the **Export selected users to Mailchimp** action.
 
 ---
 
