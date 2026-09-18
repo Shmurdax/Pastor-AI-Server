@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/brand_gradient.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -138,9 +139,7 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
 
     return Scaffold(
       backgroundColor: _surface,
-      appBar: AppBar(
-        backgroundColor: _navy,
-        foregroundColor: Colors.white,
+      appBar: brandGradientAppBar(
         title: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh)),
@@ -411,9 +410,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
 
     return Scaffold(
       backgroundColor: _surface,
-      appBar: AppBar(
-        backgroundColor: _navy,
-        foregroundColor: Colors.white,
+      appBar: brandGradientAppBar(
         title: Text(item.displayName, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
