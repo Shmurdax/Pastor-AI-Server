@@ -62,7 +62,7 @@ void main() {
   });
 
   testWidgets('prayer request detail app bar uses the red/purple brand gradient', (tester) async {
-    const item = PrayerRequestItem(
+    final item = PrayerRequestItem(
       id: 1,
       name: 'Jane Member',
       email: 'jane@test.com',
