@@ -986,3 +986,106 @@ class AdminAddUserProfileTests(TestCase):
         self.assertEqual(response.status_code, 302, response.content[:2000])
         user = User.objects.get(username="grokbot2@gmail.com")
         self.assertEqual(Profile.objects.filter(user=user).count(), 1)
+
+
+class SubscriptionConsentCopyTests(TestCase):
+    def test_monthly_and_yearly_copy(self):
+        from api.billing_views import subscription_consent_message
+
+        monthly = subscription_consent_message("monthly")
+        yearly = subscription_consent_message("yearly")
+        self.assertIn("monthly", monthly)
+        self.assertIn("$15/month", monthly)
+        self.assertIn("yearly", yearly)
+        self.assertIn("$150/year", yearly)
+
+
+@override_settings(
+    BILLING_MOCK_CHECKOUT="false",
+    STRIPE_SECRET_KEY="sk_test_consent",
+    STRIPE_PUBLISHABLE_KEY="pk_test_consent",
+    STRIPE_PRICE_MONTHLY="",
+    STRIPE_PRICE_YEARLY="",
+    PUBLIC_APP_URL="https://example.test",
+)
+class CreateCheckoutSessionConsentTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="checkout@church.org",
+            email="checkout@church.org",
+            password="MemberPass123!",
+            first_name="Checkout",
+            last_name="Member",
+        )
+        self.user.profile.stripe_customer_id = "cus_test_consent"
+        self.user.profile.save(update_fields=["stripe_customer_id"])
+        self.token = Token.objects.create(user=self.user).key
+
+    def test_monthly_session_requires_subscription_consent(self):
+        session = {"id": "cs_1", "client_secret": "cs_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(
+                "/api/billing/create-checkout-session/",
+                {"billing_period": "monthly"},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        kwargs = create.call_args.kwargs
+        self.assertEqual(kwargs["consent_collection"], {"terms_of_service": "required"})
+        message = kwargs["custom_text"]["terms_of_service_acceptance"]["message"]
+        self.assertIn("monthly Premium plan", message)
+        self.assertIn("$15/month", message)
+
+    def test_yearly_session_consent_names_yearly_price(self):
+        session = {"id": "cs_2", "client_secret": "cs_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(
+                "/api/billing/create-checkout-session/",
+                {"billing_period": "yearly"},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        message = create.call_args.kwargs["custom_text"]["terms_of_service_acceptance"][
+            "message"
+        ]
+        self.assertIn("yearly Premium plan", message)
+        self.assertIn("$150/year", message)
+
+    def test_missing_tos_url_falls_back_to_submit_text(self):
+        import stripe
+
+        error = stripe.error.InvalidRequestError(
+            "You cannot collect a terms of service agreement without specifying a terms of service URL.",
+            "consent_collection",
+        )
+        session = {"id": "cs_3", "client_secret": "cs_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            side_effect=[error, session],
+        ) as create:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(
+                "/api/billing/create-checkout-session/",
+                {"billing_period": "monthly"},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(create.call_count, 2)
+        second = create.call_args_list[1].kwargs
+        self.assertNotIn("consent_collection", second)
+        self.assertIn("monthly Premium plan", second["custom_text"]["submit"]["message"])
+
+    def test_subscription_terms_page_is_public(self):
+        res = self.client.get("/subscription-terms/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"$15 per month", res.content)
+        self.assertIn(b"$150 per year", res.content)
