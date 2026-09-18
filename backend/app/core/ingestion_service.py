@@ -19,6 +19,7 @@ Ingestion pipeline (admin uploads):
 
 5. **Chunk + embed + Qdrant** — sermons split into quote-sized windows (~550 chars) with
    ``quote_text`` payload; NKJV splits into verse-level chunks with book/chapter/verse payload.
+   A Bible file whose verse parse is too weak is rejected (no unlabelled ``bible_passage`` fallback).
    Each chunk is embedded (``BAAI/bge-base-en-v1.5``) and upserted into Qdrant. Duplicate chunk
    hashes are skipped across the corpus. Near-duplicates are also skipped by normalized title
    and cleaned-content hash. Reingest with ``python manage.py reingest_grounded_rag``.
@@ -37,7 +38,6 @@ from typing import Callable, List, Optional
 
 from django.conf import settings
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
@@ -79,16 +79,9 @@ class DeletionResult:
     qdrant_failures: int = 0
 
 
-# Larger chunking for Bible documents keeps the corpus lighter-weight
-# (fewer embeddings/points) than sermon-sized uploads.
 DEFAULT_SPLITTER_KWARGS = {
     "chunk_size": int(os.environ.get("INGEST_CHUNK_SIZE", "550")),
     "chunk_overlap": int(os.environ.get("INGEST_CHUNK_OVERLAP", "80")),
-    "separators": ["\n\n", "\n", " ", ""],
-}
-BIBLE_SPLITTER_KWARGS = {
-    "chunk_size": int(os.environ.get("BIBLE_INGEST_CHUNK_SIZE", "3000")),
-    "chunk_overlap": int(os.environ.get("BIBLE_INGEST_CHUNK_OVERLAP", "150")),
     "separators": ["\n\n", "\n", " ", ""],
 }
 BIBLE_SOURCE_MARKERS = tuple(
@@ -105,19 +98,19 @@ def split_text_for_ingest(markdown_text: str, *, is_bible: bool) -> tuple[List[s
     """Quote-level sermon windows, or verse-level NKJV chunks when the parse is trusted."""
     if is_bible:
         chunks, metas = split_nkjv_document(markdown_text)
-        if chunks:
-            kept_chunks: List[str] = []
-            kept_metas: List[dict] = []
-            for chunk, meta in zip(chunks, metas):
-                cleaned = _clean_text(chunk)
-                if cleaned:
-                    kept_chunks.append(cleaned)
-                    kept_metas.append(meta)
-            if kept_chunks:
-                return kept_chunks, kept_metas
-        splitter = RecursiveCharacterTextSplitter(**BIBLE_SPLITTER_KWARGS)
-        fallback = [_clean_text(item) for item in splitter.split_text(markdown_text) if _clean_text(item)]
-        return fallback, [{"chunk_kind": "bible_passage", "content_type": "bible"} for _ in fallback]
+        kept_chunks: List[str] = []
+        kept_metas: List[dict] = []
+        for chunk, meta in zip(chunks, metas):
+            cleaned = _clean_text(chunk)
+            if cleaned:
+                kept_chunks.append(cleaned)
+                kept_metas.append(meta)
+        if kept_chunks and any(str(meta.get("chunk_kind") or "") == "bible_verse" for meta in kept_metas):
+            return kept_chunks, kept_metas
+        raise ValueError(
+            "Bible verse parse was too weak to trust; refusing unlabelled passage chunks. "
+            "Need verse-structured NKJV text (Genesis 1:1 … or a Word-export with verse numbers)."
+        )
     return split_sermon_quote_chunks(markdown_text)
 
 
@@ -518,12 +511,20 @@ def ingest_uploaded_files(
             # have a file even if later text cleanup or chunking fails mid-way.
             # Cleanup below only mutates extracted text for Qdrant — never this PDF.
             extracted_text = _extract_pdf_text(pdf_path)
-            cleaned_text = _prepare_extracted_text_for_qdrant(
-                extracted_text,
-                title=title,
-                source_name=pdf_name,
-                log_fn=log_fn,
-            )
+            use_bible_splitter = _is_bible_source(upload.name)
+            # Sermon cleanup rejoins wrapped lines and will glue verse numbers
+            # into the previous verse ("20 ... 24Now Abraham"). Skip it for Bibles.
+            if use_bible_splitter:
+                cleaned_text = _clean_text(extracted_text)
+                if log_fn:
+                    log_fn(f"Skipping sermon-style cleanup for Bible source: {pdf_name}")
+            else:
+                cleaned_text = _prepare_extracted_text_for_qdrant(
+                    extracted_text,
+                    title=title,
+                    source_name=pdf_name,
+                    log_fn=log_fn,
+                )
             if not cleaned_text:
                 pdf_path.unlink(missing_ok=True)
                 result.files_skipped_as_duplicates += 1
@@ -556,20 +557,11 @@ def ingest_uploaded_files(
                 continue
 
             markdown_text = _to_markdown(title, cleaned_text)
-            use_bible_splitter = _is_bible_source(upload.name)
             chunks, per_chunk_metadata = split_text_for_ingest(
                 markdown_text, is_bible=use_bible_splitter
             )
             if log_fn and use_bible_splitter:
-                kinds = {str(meta.get("chunk_kind") or "") for meta in per_chunk_metadata}
-                log_fn(
-                    "Bible source detected; "
-                    + (
-                        "using verse-level NKJV chunks."
-                        if "bible_verse" in kinds
-                        else "verse parse was weak, falling back to passage chunks."
-                    )
-                )
+                log_fn(f"Bible source detected; using verse-level NKJV chunks ({len(chunks)}).")
             if log_fn and not use_bible_splitter:
                 log_fn(f"Quote-level sermon split: {len(chunks)} windows.")
 
