@@ -522,6 +522,7 @@ def ingest_uploaded_files(
     result = IngestionResult(files_received=len(uploaded_files))
     extra_metadata_by_name = extra_metadata_by_name or {}
     view_only = bool(job is not None and getattr(job, "view_only", False))
+    in_library = True if job is None else bool(getattr(job, "in_library", True))
 
     upload_dir = admin_ingestion_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -657,6 +658,7 @@ def ingest_uploaded_files(
                 original_extension=extension,
                 source_kind="document",
                 view_only=view_only,
+                in_library=in_library,
             )
 
             try:
@@ -686,8 +688,9 @@ def ingest_uploaded_files(
             result.chunks_skipped_as_duplicates += skipped
             if log_fn:
                 view_note = " [view only]" if view_only else ""
+                library_note = "" if in_library else " [chat only, hidden from library]"
                 log_fn(
-                    f"Ingested {upload.name} as {pdf_name}{view_note} "
+                    f"Ingested {upload.name} as {pdf_name}{view_note}{library_note} "
                     f"(title “{title}”): created {created} chunks, skipped {skipped} duplicates."
                 )
             _persist_job_progress(job, result, current_file=upload.name)

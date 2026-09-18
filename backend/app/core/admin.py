@@ -119,9 +119,9 @@ class UserChatHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(IngestedDocument)
 class IngestedDocumentAdmin(admin.ModelAdmin):
-    list_display = ("title", "source_name", "source_kind", "view_only", "original_extension", "chunk_count", "updated_at")
+    list_display = ("title", "source_name", "source_kind", "in_library", "view_only", "original_extension", "chunk_count", "updated_at")
     search_fields = ("title", "source_name", "normalized_title", "file_hash", "content_hash")
-    list_filter = ("source_kind", "view_only", "original_extension", "updated_at")
+    list_filter = ("source_kind", "in_library", "view_only", "original_extension", "updated_at")
     readonly_fields = (
         "source_name",
         "normalized_title",
@@ -134,7 +134,17 @@ class IngestedDocumentAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    actions = ("delete_selected_with_vectors", "mark_view_only", "allow_download")
+    actions = ("delete_selected_with_vectors", "hide_from_library", "show_in_library", "mark_view_only", "allow_download")
+
+    @admin.action(description="Hide from sermon library (chat only)")
+    def hide_from_library(self, request, queryset):
+        updated = queryset.update(in_library=False)
+        self.message_user(request, f"Hid {updated} document(s) from the sermon library.")
+
+    @admin.action(description="Show in sermon library")
+    def show_in_library(self, request, queryset):
+        updated = queryset.update(in_library=True)
+        self.message_user(request, f"Showed {updated} document(s) in the sermon library.")
 
     @admin.action(description="Make view only")
     def mark_view_only(self, request, queryset):
@@ -202,6 +212,7 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "status",
         "replace_existing_sources",
         "view_only",
+        "in_library",
         "files_received",
         "files_processed",
         "chunks_created",
@@ -209,12 +220,13 @@ class IngestionJobAdmin(admin.ModelAdmin):
         "finished_at",
     )
     search_fields = ("started_by", "error_message", "current_file")
-    list_filter = ("job_kind", "status", "replace_existing_sources", "view_only", "created_at")
+    list_filter = ("job_kind", "status", "replace_existing_sources", "view_only", "in_library", "created_at")
     readonly_fields = (
         "started_by",
         "job_kind",
         "replace_existing_sources",
         "view_only",
+        "in_library",
         "status",
         "files_received",
         "files_processed",
@@ -467,6 +479,7 @@ def _admin_ingestion_view(request):
         files = request.FILES.getlist("documents")
         replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
         view_only = request.POST.get("view_only") == "on"
+        in_library = request.POST.get("hide_from_library") != "on"
         if not files:
             if ajax:
                 return JsonResponse({"ok": False, "error": "Select at least one DOCX or PDF file."}, status=400)
@@ -480,6 +493,7 @@ def _admin_ingestion_view(request):
                 job_kind="document",
                 replace_existing_sources=replace_existing_sources,
                 view_only=view_only,
+                in_library=in_library,
                 status="running",
                 files_received=len(files),
             )
