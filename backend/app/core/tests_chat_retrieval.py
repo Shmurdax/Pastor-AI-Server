@@ -19,14 +19,17 @@ from core.chat_retrieval import (
     filter_hits_by_topic,
     format_reference_notes,
     is_bible_source,
+    is_strong_title_match,
     is_video_chunk,
     looks_like_followup,
     looks_like_library_pull,
     restrict_docs_to_primary_source,
+    retain_title_matches,
     merge_scored_hits,
     query_focus_tokens,
     search_queries_on_store,
     select_diverse_docs,
+    title_overlap_score,
     topic_anchor_query,
     topic_overlap_score,
     uniqueness_instruction,
@@ -706,6 +709,92 @@ class ChatRetrievalTests(unittest.TestCase):
         hits = search_queries_on_store(store, ["alpha", "beta"], k_per_query=8)
         self.assertEqual(store.similarity_search_with_score.call_count, 2)
         self.assertEqual(len(hits), 2)
+
+    def test_title_overlap_prefers_named_sermon_over_generic_community(self):
+        canonical = _doc(
+            "Faith works with hope and patience until the promise comes.",
+            source="Works_Hope_Faith_Patience.pdf",
+            title="Works Hope Faith & Patience",
+        )
+        community = _doc(
+            "Faith hope and patience show up in community life together "
+            "as we love one another and stay contagious in our witness.",
+            source="community.pdf",
+            title="Community",
+        )
+        contagious = _doc(
+            "Faith and hope keep Christianity contagious when we wait with patience.",
+            source="contagious.pdf",
+            title="Contagious Christianity",
+        )
+        query = "What does Pastor Don teach about faith hope and patience?"
+        focus = query_focus_tokens(query)
+        self.assertGreaterEqual(title_overlap_score(canonical, focus), 0.5)
+        self.assertLess(title_overlap_score(community, focus), 0.34)
+        self.assertLess(title_overlap_score(contagious, focus), 0.34)
+
+        selected = select_diverse_docs(
+            [(community, 0.94), (contagious, 0.93), (canonical, 0.71)],
+            k=6,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query=query,
+        )
+        sources = [doc.metadata["source"] for doc in selected]
+        self.assertIn("Works_Hope_Faith_Patience.pdf", sources)
+
+        labels = ensure_source_media_mix(
+            ["Community"],
+            [community, contagious, canonical],
+            lambda doc: doc.metadata["title"],
+            min_count=3,
+            limit=5,
+            query=query,
+        )
+        self.assertIn("Works Hope Faith & Patience", labels)
+
+    def test_title_overlap_prefers_prayer_barriers_sermon(self):
+        canonical = _doc(
+            "Unforgiveness and unbelief are prayer barriers that choke faith.",
+            source="Prayer_Barriers.pdf",
+            title="Prayer Barriers",
+        )
+        community = _doc(
+            "Prayer in community keeps the church contagious and connected.",
+            source="community.pdf",
+            title="Community",
+        )
+        harvest = _doc(
+            "Prayer and harvest go together when we ask the Lord of the harvest.",
+            source="harvest.pdf",
+            title="Harvest",
+        )
+        query = "What are the prayer barriers Pastor Don teaches about?"
+        focus = query_focus_tokens(query)
+        self.assertTrue(is_strong_title_match(canonical, focus))
+        self.assertFalse(is_strong_title_match(community, focus))
+        selected = select_diverse_docs(
+            [(community, 0.95), (harvest, 0.90), (canonical, 0.70)],
+            k=6,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query=query,
+        )
+        sources = [doc.metadata["source"] for doc in selected]
+        self.assertIn("Prayer_Barriers.pdf", sources)
+
+        kept = retain_title_matches(
+            [(community, 0.95), (harvest, 0.90), (canonical, 0.70)],
+            [(community, 0.95), (harvest, 0.90)],
+            query,
+        )
+        kept_sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertIn("Prayer_Barriers.pdf", kept_sources)
+        self.assertEqual(kept_sources[0], "Prayer_Barriers.pdf")
 
 
 if __name__ == "__main__":
