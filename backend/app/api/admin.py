@@ -1,14 +1,34 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import User
+from django.forms.models import BaseInlineFormSet
 
 from core.persist_db import dump_persistent_postgres
 
 from .models import MediaVideo, Profile
 
 
+class ProfileInlineFormSet(BaseInlineFormSet):
+    """Update the signal-created Profile instead of inserting a second row."""
+
+    def save_new(self, form, commit=True):
+        existing = Profile.objects.filter(user_id=self.instance.pk).first()
+        if existing is None:
+            return super().save_new(form, commit=commit)
+        for name, value in form.cleaned_data.items():
+            if name in {"id", "user", "DELETE"}:
+                continue
+            if hasattr(existing, name):
+                setattr(existing, name, value)
+        if commit:
+            existing.save()
+        form.instance = existing
+        return existing
+
+
 class ProfileInline(admin.StackedInline):
     model = Profile
+    formset = ProfileInlineFormSet
     can_delete = False
     extra = 0
     max_num = 1
@@ -70,7 +90,17 @@ class PastorUserAdmin(DjangoUserAdmin):
         profile = getattr(obj, "profile", None)
         return bool(profile and profile.is_premium)
 
+    def get_inline_instances(self, request, obj=None):
+        # The add view saves the User first; api.signals then creates Profile.
+        # Showing the OneToOne inline on add POSTs a second INSERT for the same
+        # user_id and 500s (api_profile_user_id_key). Edit the profile after save.
+        if obj is None:
+            return []
+        return super().get_inline_instances(request, obj)
+
     def save_model(self, request, obj, form, change):
+        if not (obj.email or "").strip() and "@" in (obj.username or ""):
+            obj.email = obj.username
         super().save_model(request, obj, form, change)
         dump_persistent_postgres()
 
