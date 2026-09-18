@@ -22,6 +22,8 @@ class AppStrings {
   String get sermonLibraryEmpty => _t('sermonLibraryEmpty');
   String get allDocuments => _t('allDocuments');
   String get searchDocuments => _t('searchDocuments');
+  String mentionsVerse(String ref) =>
+      _t('mentionsVerse').replaceAll('{ref}', ref);
   String get ingestedDocumentsEmpty => _t('ingestedDocumentsEmpty');
   String get ingestedDocumentsLoadFailed => _t('ingestedDocumentsLoadFailed');
   String get viewOnly => _t('viewOnly');
@@ -109,7 +111,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibraryEmpty':
         'Relevant sermons will appear here after you ask a question.',
     'allDocuments': 'All documents',
-    'searchDocuments': 'Search documents…',
+    'searchDocuments': 'Search by title or verse…',
+    'mentionsVerse': 'Mentions {ref}',
     'ingestedDocumentsEmpty': 'No ingested documents found.',
     'ingestedDocumentsLoadFailed': 'Could not load documents.',
     'viewOnly': 'View only',
@@ -191,7 +194,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibraryEmpty':
         'Los sermones relevantes aparecerán aquí después de que hagas una pregunta.',
     'allDocuments': 'Todos los documentos',
-    'searchDocuments': 'Buscar documentos…',
+    'searchDocuments': 'Buscar por título o versículo…',
+    'mentionsVerse': 'Menciona {ref}',
     'ingestedDocumentsEmpty': 'No se encontraron documentos.',
     'ingestedDocumentsLoadFailed': 'No se pudieron cargar los documentos.',
     'viewOnly': 'Solo lectura',
@@ -275,7 +279,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibraryEmpty':
         'Les sermons pertinents apparaîtront ici après votre question.',
     'allDocuments': 'Tous les documents',
-    'searchDocuments': 'Rechercher des documents…',
+    'searchDocuments': 'Rechercher par titre ou verset…',
+    'mentionsVerse': 'Mentionne {ref}',
     'ingestedDocumentsEmpty': 'Aucun document trouvé.',
     'ingestedDocumentsLoadFailed': 'Impossible de charger les documents.',
     'viewOnly': 'Lecture seule',
@@ -359,7 +364,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibraryEmpty':
         'Sermões relevantes aparecerão aqui depois que você fizer uma pergunta.',
     'allDocuments': 'Todos os documentos',
-    'searchDocuments': 'Pesquisar documentos…',
+    'searchDocuments': 'Pesquisar por título ou versículo…',
+    'mentionsVerse': 'Menciona {ref}',
     'ingestedDocumentsEmpty': 'Nenhum documento encontrado.',
     'ingestedDocumentsLoadFailed': 'Não foi possível carregar os documentos.',
     'viewOnly': 'Somente visualização',
@@ -443,7 +449,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibraryEmpty':
         'Relevante Predigten erscheinen hier, nachdem Sie eine Frage gestellt haben.',
     'allDocuments': 'Alle Dokumente',
-    'searchDocuments': 'Dokumente durchsuchen…',
+    'searchDocuments': 'Nach Titel oder Bibelvers suchen…',
+    'mentionsVerse': 'Erwähnt {ref}',
     'ingestedDocumentsEmpty': 'Keine Dokumente gefunden.',
     'ingestedDocumentsLoadFailed': 'Dokumente konnten nicht geladen werden.',
     'viewOnly': 'Nur ansehen',
@@ -526,7 +533,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': '설교 라이브러리',
     'sermonLibraryEmpty': '질문을 하시면 관련 설교가 여기에 표시됩니다.',
     'allDocuments': '모든 문서',
-    'searchDocuments': '문서 검색…',
+    'searchDocuments': '제목 또는 구절로 검색…',
+    'mentionsVerse': '{ref} 언급',
     'ingestedDocumentsEmpty': '문서를 찾을 수 없습니다.',
     'ingestedDocumentsLoadFailed': '문서를 불러올 수 없습니다.',
     'viewOnly': '열람 전용',
@@ -601,7 +609,8 @@ const Map<String, Map<String, String>> _tables = {
     'sermonLibrary': '讲道资料库',
     'sermonLibraryEmpty': '提问后，相关讲道将显示在这里。',
     'allDocuments': '全部文档',
-    'searchDocuments': '搜索文档…',
+    'searchDocuments': '按标题或经文搜索…',
+    'mentionsVerse': '提到 {ref}',
     'ingestedDocumentsEmpty': '未找到文档。',
     'ingestedDocumentsLoadFailed': '无法加载文档。',
     'viewOnly': '仅可查看',

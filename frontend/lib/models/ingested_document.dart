@@ -7,6 +7,7 @@ class IngestedDocumentItem {
     this.viewOnly = false,
     this.fileUrl = '',
     this.updatedAt,
+    this.scriptureRefs = const [],
   });
 
   final int id;
@@ -16,6 +17,7 @@ class IngestedDocumentItem {
   final bool viewOnly;
   final String fileUrl;
   final DateTime? updatedAt;
+  final List<String> scriptureRefs;
 
   factory IngestedDocumentItem.fromJson(Map<String, dynamic> json) {
     final idRaw = json['id'];
@@ -28,8 +30,30 @@ class IngestedDocumentItem {
       viewOnly: json['view_only'] == true,
       fileUrl: (json['file_url'] ?? json['file_path'] ?? '').toString(),
       updatedAt: DateTime.tryParse((json['updated_at'] ?? '').toString()),
+      scriptureRefs: _scriptureRefsFromJson(json),
     );
   }
+}
+
+List<String> _scriptureRefsFromJson(Map<String, dynamic> json) {
+  final out = <String>[];
+  final seen = <String>{};
+  void addAll(dynamic raw) {
+    if (raw is! List) return;
+    for (final item in raw) {
+      final label = item?.toString().trim() ?? '';
+      if (label.isEmpty) continue;
+      if (!seen.add(label.toLowerCase())) continue;
+      out.add(label);
+    }
+  }
+
+  addAll(json['scripture_refs']);
+  final meta = json['topic_metadata'];
+  if (meta is Map) {
+    addAll(meta['scripture_refs']);
+  }
+  return out;
 }
 
 List<IngestedDocumentItem> parseIngestedDocuments(dynamic data) {

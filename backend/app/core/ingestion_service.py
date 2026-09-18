@@ -46,6 +46,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models as qdrant_models
 
 from .bible_chunking import split_nkjv_document
+from .bible_refs import scripture_refs_from_text
 from .document_cleanup import (
     clean_extracted_document,
     clean_markdown_document,
@@ -224,6 +225,16 @@ def _qdrant_point_id(chunk_hash: str) -> str:
 def _is_bible_source(filename: str) -> bool:
     normalized = filename.lower()
     return any(marker in normalized for marker in BIBLE_SOURCE_MARKERS)
+
+
+def document_scripture_topic_metadata(title: str, cleaned_text: str, *, is_bible: bool) -> dict:
+    """Persist cited verses so the Flutter document browser can search by ref."""
+    if is_bible:
+        return {}
+    refs = scripture_refs_from_text(f"{title or ''}\n{cleaned_text or ''}")
+    if not refs:
+        return {}
+    return {"scripture_refs": refs}
 
 
 def qdrant_upsert_batch_size() -> int:
@@ -690,6 +701,9 @@ def ingest_uploaded_files(
             if log_fn and not use_bible_splitter:
                 log_fn(f"Quote-level sermon split: {len(chunks)} windows.")
 
+            topic_metadata = document_scripture_topic_metadata(
+                title, cleaned_text, is_bible=use_bible_splitter
+            )
             doc = IngestedDocument.objects.create(
                 source_name=pdf_name,
                 title=title,
@@ -698,6 +712,7 @@ def ingest_uploaded_files(
                 content_hash=content_hash,
                 original_extension=extension,
                 source_kind="document",
+                topic_metadata=topic_metadata,
                 view_only=view_only,
                 in_library=in_library,
             )

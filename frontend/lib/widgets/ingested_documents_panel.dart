@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/models/ingested_document.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/verse_search.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 const _navy = Color(0xFF1B264F);
@@ -87,15 +88,10 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
   }
 
   List<IngestedDocumentItem> get _filtered {
-    final query = _searchController.text.trim().toLowerCase();
-    if (query.isEmpty) return _documents;
-    return _documents
-        .where(
-          (doc) =>
-              doc.title.toLowerCase().contains(query) ||
-              doc.sourceName.toLowerCase().contains(query),
-        )
-        .toList();
+    return catalogDocuments(
+      _documents,
+      query: _searchController.text,
+    );
   }
 
   @override
@@ -243,6 +239,14 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
         itemCount: items.length,
         itemBuilder: (context, index) {
           final doc = items[index];
+          final query = _searchController.text.trim();
+          final mention = mentionedVerseLabel(doc, query);
+          final showMention = mention != null &&
+              !doc.title.toLowerCase().contains(query.toLowerCase());
+          final subtitleParts = <String>[
+            if (doc.viewOnly) _s.viewOnly,
+            if (showMention) _s.mentionsVerse(mention!),
+          ];
           return ListTile(
             dense: true,
             leading: Icon(
@@ -254,12 +258,12 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
               doc.title,
               style: GoogleFonts.figtree(color: Colors.white, fontSize: 14),
             ),
-            subtitle: doc.viewOnly
-                ? Text(
-                    _s.viewOnly,
+            subtitle: subtitleParts.isEmpty
+                ? null
+                : Text(
+                    subtitleParts.join(' · '),
                     style: GoogleFonts.figtree(color: _gold, fontSize: 11),
-                  )
-                : null,
+                  ),
             onTap: () => widget.onOpenDocument(doc),
           );
         },

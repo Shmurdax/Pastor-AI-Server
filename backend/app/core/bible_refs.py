@@ -160,3 +160,43 @@ def parse_verse_refs(text: str) -> list[tuple[str, int, int]]:
             seen.add(key)
             found.append((book, chapter, verse))
     return found
+
+
+CATALOG_SCRIPTURE_REF_LIMIT = 400
+
+
+def scripture_refs_from_text(text: str, *, limit: int = CATALOG_SCRIPTURE_REF_LIMIT) -> list[str]:
+    """Unique display refs (John 3:16) for sermon-library verse search."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for book, chapter, verse in parse_verse_refs(text):
+        key = f"{book}|{chapter}|{verse}"
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(format_verse_ref(book, chapter, verse))
+        if len(found) >= limit:
+            break
+    return found
+
+
+def scripture_refs_from_metadata(meta: object, *, limit: int = CATALOG_SCRIPTURE_REF_LIMIT) -> list[str]:
+    if not isinstance(meta, dict):
+        return []
+    raw = meta.get("scripture_refs") or []
+    if not isinstance(raw, (list, tuple)):
+        return []
+    found: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        label = str(item or "").strip()
+        if not label:
+            continue
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(label)
+        if len(found) >= limit:
+            break
+    return found

@@ -1,7 +1,7 @@
 import unittest
 
 from core.bible_chunking import parse_nkjv_verses, split_nkjv_document
-from core.bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs
+from core.bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs, scripture_refs_from_metadata, scripture_refs_from_text
 
 
 class BibleChunkingTests(unittest.TestCase):
@@ -63,6 +63,13 @@ class BibleChunkingTests(unittest.TestCase):
         self.assertIn(("psalm", 34, 18), refs)
         self.assertIn(("john", 3, 16), refs)
         self.assertEqual(format_verse_ref("psalm", 34, 18), "Psalm 34:18")
+
+    def test_scripture_refs_from_text_expands_ranges(self):
+        refs = scripture_refs_from_text(
+            'As John 3:16-17 (NKJV) says, "God so loved." Psalm 23:1 also.'
+        )
+        self.assertEqual(refs, ["John 3:16", "John 3:17", "Psalm 23:1"])
+        self.assertEqual(scripture_refs_from_metadata({"scripture_refs": refs}), refs)
 
     def test_ordinal_book_names(self):
         self.assertEqual(canonical_book_key("1st Samuel"), "1 samuel")

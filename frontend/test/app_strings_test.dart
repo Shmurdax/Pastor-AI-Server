@@ -38,6 +38,7 @@ void main() {
       expect(s.viewOnly.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeTitle.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
+      expect(s.mentionsVerse('John 3:16').contains('John 3:16'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name
       expect(s.home, isNot('home'));
       expect(enKeys.home, 'Home');

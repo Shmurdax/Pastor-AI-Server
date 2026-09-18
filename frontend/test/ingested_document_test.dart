@@ -10,11 +10,16 @@ void main() {
       'source_kind': 'document',
       'view_only': true,
       'file_url': 'https://example.test/api/ingested-documents/12/file/',
+      'scripture_refs': ['John 3:16'],
+      'topic_metadata': {
+        'scripture_refs': ['John 3:16', 'Romans 8:1'],
+      },
     });
     expect(doc.id, 12);
     expect(doc.title, 'Book Transcript');
     expect(doc.viewOnly, isTrue);
     expect(doc.fileUrl, contains('/12/file/'));
+    expect(doc.scriptureRefs, ['John 3:16', 'Romans 8:1']);
   });
 
   test('parseIngestedDocuments skips invalid rows', () {
