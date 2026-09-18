@@ -65,7 +65,6 @@ from .teaching_claims import (
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
-    ensure_source_media_mix,
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
@@ -78,8 +77,8 @@ from .chat_retrieval import (
     is_bible_source,
     is_video_chunk,
     search_queries_on_store,
+    select_chat_source_chips,
     select_diverse_docs,
-    sources_cited_in_answer,
 )
 from .chat_system_prompt import (
     COMPLETE_ANSWER_MIN_CHARS,
@@ -973,31 +972,20 @@ class ChatAPIView(APIView):
                 "teaching_claims": teaching_claims,
             }
 
-        def _unique_sources(docs):
-            return sorted(
-                {
-                    name
-                    for name in (_doc_source_label(doc) for doc in docs)
-                    if name and name != "Unknown"
-                }
-            )
-
         def _response_sources(docs, answer: str, query: str = ""):
-            """3–5 distinct sources: cited first, then topical retrieved notes/videos.
+            """3–5 distinct sources: cited first, then a relevant weighted sample.
 
             Knowledge-only books stay in REFERENCE NOTES but never in this list, so
-            members cannot open those files from chat sermon sources.
+            members cannot open those files from chat sermon sources. Uncited
+            leftovers are not filled A–Z — that buried Prayer Barriers under
+            Community / Contagious / NKJV.
             """
             public_docs = visible_chat_source_docs(docs)
             if not public_docs:
                 return []
-            cited = sources_cited_in_answer(
-                public_docs, answer, _doc_source_label, limit=RETRIEVAL_SOURCE_MAX
-            )
-            preferred = cited if cited else _unique_sources(public_docs)
-            return ensure_source_media_mix(
-                preferred,
+            return select_chat_source_chips(
                 public_docs,
+                answer,
                 _doc_source_label,
                 is_video=is_video_chunk,
                 min_count=RETRIEVAL_SOURCE_MIN,
