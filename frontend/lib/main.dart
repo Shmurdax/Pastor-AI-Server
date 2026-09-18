@@ -1983,97 +1983,107 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               ]),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
-              const SizedBox(height: 20),
             ],
-            _buildSidebarTabSwitcher(),
-            const SizedBox(height: 20),
-            if (_sidebarPanel == _SidebarPanel.sermonLibrary) ...[
-              Row(
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Expanded(
-                    child: Text(_s.sermonLibrary,
-                        style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                  ),
-                  IconButton(
-                    tooltip: _s.browseAllDocuments,
-                    onPressed: () => _toggleIngestedDocs(),
-                    icon: Icon(
-                      _ingestedDocsOpen ? Icons.chevron_left : Icons.chevron_right,
-                      color: _gold,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(height: 2, width: 40, color: _gold),
-              const SizedBox(height: 20),
-              Expanded(
-                child: Stack(
-                  children: [
-                    withoutVideoSermonSources(_librarySermons).isEmpty &&
-                            withoutVideoSermonSources(_previousSermons).isEmpty
-                        ? Text(_s.sermonLibraryEmpty,
-                            style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
-                        : ListView(
-                            physics: _eventsNavPanelOpen
-                                ? const NeverScrollableScrollPhysics()
-                                : const ClampingScrollPhysics(),
+                  Positioned.fill(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isMobile) const SizedBox(height: 20),
+                        _buildSidebarTabSwitcher(),
+                        const SizedBox(height: 20),
+                        if (_sidebarPanel == _SidebarPanel.sermonLibrary) ...[
+                          Row(
                             children: [
-                              ...withoutVideoSermonSources(_librarySermons)
-                                  .map(_buildSermonLink),
-                              if (withoutVideoSermonSources(_previousSermons).isNotEmpty) ...[
-                                const SizedBox(height: 20),
-                                Row(children: [
-                                  const Expanded(child: Divider(color: Colors.white24)),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                    child: Text(_s.lastQuestionSources,
-                                        style: GoogleFonts.figtree(
-                                            color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                  const Expanded(child: Divider(color: Colors.white24)),
-                                ]),
-                                const SizedBox(height: 10),
-                                ...withoutVideoSermonSources(_previousSermons).map(
-                                    (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
-                              ],
+                              Expanded(
+                                child: Text(_s.sermonLibrary,
+                                    style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                              ),
+                              IconButton(
+                                tooltip: _s.browseAllDocuments,
+                                onPressed: () => _toggleIngestedDocs(),
+                                icon: Icon(
+                                  _ingestedDocsOpen ? Icons.chevron_left : Icons.chevron_right,
+                                  color: _gold,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
                             ],
                           ),
-                    if (isMobile && _ingestedDocsOpen)
-                      Positioned.fill(
-                        child: _buildIngestedDocsPanel(embeddedInSidebar: true),
-                      ),
-                  ],
-                ),
-              ),
-            ] else ...[
-              Text(_s.previousChats,
-                  style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Container(height: 2, width: 40, color: _gold),
-              const SizedBox(height: 20),
-              Expanded(child: _buildPreviousChatsPanel(auth)),
-            ],
-            const SizedBox(height: 20),
-            _buildAuthFooter(auth),
-            const SizedBox(height: 12),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 20.0),
-                child: OutlinedButton.icon(
-                  onPressed: _clearChat,
-                  icon: const Icon(Icons.delete_sweep_outlined, color: _gold, size: 20),
-                  label: Text(_s.newChat,
-                      style: GoogleFonts.figtree(
-                          color: _gold, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: _gold, width: 1.5),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    foregroundColor: _gold.withOpacity(0.1),
+                          const SizedBox(height: 8),
+                          Container(height: 2, width: 40, color: _gold),
+                          const SizedBox(height: 20),
+                          Expanded(
+                            child: withoutVideoSermonSources(_librarySermons).isEmpty &&
+                                    withoutVideoSermonSources(_previousSermons).isEmpty
+                                ? Text(_s.sermonLibraryEmpty,
+                                    style: GoogleFonts.figtree(color: Colors.white70, fontSize: 14))
+                                : ListView(
+                                    physics: _eventsNavPanelOpen
+                                        ? const NeverScrollableScrollPhysics()
+                                        : const ClampingScrollPhysics(),
+                                    children: [
+                                      ...withoutVideoSermonSources(_librarySermons)
+                                          .map(_buildSermonLink),
+                                      if (withoutVideoSermonSources(_previousSermons).isNotEmpty) ...[
+                                        const SizedBox(height: 20),
+                                        Row(children: [
+                                          const Expanded(child: Divider(color: Colors.white24)),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                            child: Text(_s.lastQuestionSources,
+                                                style: GoogleFonts.figtree(
+                                                    color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
+                                          ),
+                                          const Expanded(child: Divider(color: Colors.white24)),
+                                        ]),
+                                        const SizedBox(height: 10),
+                                        ...withoutVideoSermonSources(_previousSermons).map(
+                                            (s) => Opacity(opacity: 0.7, child: _buildSermonLink(s))),
+                                      ],
+                                    ],
+                                  ),
+                          ),
+                        ] else ...[
+                          Text(_s.previousChats,
+                              style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Container(height: 2, width: 40, color: _gold),
+                          const SizedBox(height: 20),
+                          Expanded(child: _buildPreviousChatsPanel(auth)),
+                        ],
+                        const SizedBox(height: 20),
+                        _buildAuthFooter(auth),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 20.0),
+                            child: OutlinedButton.icon(
+                              onPressed: _clearChat,
+                              icon: const Icon(Icons.delete_sweep_outlined, color: _gold, size: 20),
+                              label: Text(_s.newChat,
+                                  style: GoogleFonts.figtree(
+                                      color: _gold, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: _gold, width: 1.5),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                foregroundColor: _gold.withOpacity(0.1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  if (isMobile && _ingestedDocsOpen)
+                    Positioned.fill(
+                      child: _buildIngestedDocsPanel(embeddedInSidebar: true),
+                    ),
+                ],
               ),
             ),
           ],
