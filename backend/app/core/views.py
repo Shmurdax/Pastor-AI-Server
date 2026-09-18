@@ -126,7 +126,7 @@ BIBLE_SOURCE_MARKERS = tuple(
     if marker.strip()
 )
 _SOURCE_TIMESTAMP_RE = re.compile(r"\s*\[[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?–[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\]\s*$")
-_SOURCE_MEDIA_EXTS = {".pdf", ".md", ".docx"} | {
+_SOURCE_MEDIA_EXTS = {".pdf", ".md", ".docx", ".txt"} | {
     ".mp4",
     ".m4v",
     ".mov",

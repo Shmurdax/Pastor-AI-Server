@@ -17,7 +17,7 @@ from django.core.paginator import EmptyPage
 from django.utils.text import get_valid_filename
 from pathlib import Path
 
-from .ingestion_service import delete_ingested_documents
+from .ingestion_service import delete_ingested_documents, is_document_filename
 from .ingestion_tasks import StagedUpload, enqueue_ingestion_job, enqueue_video_ingestion_job
 from .postgres_sequences import create_ingestion_job
 from .models import (
@@ -482,8 +482,21 @@ def _admin_ingestion_view(request):
         in_library = request.POST.get("hide_from_library") != "on"
         if not files:
             if ajax:
-                return JsonResponse({"ok": False, "error": "Select at least one DOCX or PDF file."}, status=400)
-            messages.warning(request, "Select at least one DOCX or PDF file.")
+                return JsonResponse(
+                    {"ok": False, "error": "Select at least one PDF, DOCX, TXT, or Markdown file."},
+                    status=400,
+                )
+            messages.warning(request, "Select at least one PDF, DOCX, TXT, or Markdown file.")
+            return HttpResponseRedirect(request.path)
+
+        unsupported = [upload.name for upload in files if not is_document_filename(upload.name)]
+        if unsupported:
+            shown = unsupported[:15]
+            extra = "" if len(unsupported) <= 15 else f" (and {len(unsupported) - 15} more)"
+            detail = "Only PDF, DOCX, TXT, and Markdown files are allowed. Ignored: " + ", ".join(shown) + extra
+            if ajax:
+                return JsonResponse({"ok": False, "error": detail}, status=400)
+            messages.warning(request, detail)
             return HttpResponseRedirect(request.path)
 
         job = None
