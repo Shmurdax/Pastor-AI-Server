@@ -770,10 +770,9 @@ _BIBLE_QUERY_RE = re.compile(
     r"\b(?:bible|scripture|scriptures|nkjv|kjv|verse|verses)\b",
     re.IGNORECASE,
 )
-# Rank-only bonus tops out below this, so C-titles cannot count as "relevant"
-# just because they arrived first from embeddings.
+# Rank-only bonus tops out well below title/citation boosts, so C-titles cannot
+# outrank a sermon whose title names the question.
 _CHIP_RANK_BONUS = 0.28
-_CHIP_RELEVANT_FLOOR = 0.45
 _CHIP_SAMPLE_POOL = 8
 
 
@@ -1518,8 +1517,8 @@ def ensure_source_media_mix(
         return title_overlap_score(doc, focus) > 0 or topic_overlap_score(doc, focus) > 0
 
     def _is_relevant(row: tuple[Any, str, float]) -> bool:
-        doc, _label, score = row
-        if score >= _CHIP_RELEVANT_FLOOR:
+        doc, _label, _score = row
+        if allow_bible and _is_bible_doc(doc):
             return True
         return _is_topical(doc)
 
@@ -1571,15 +1570,18 @@ def ensure_source_media_mix(
     topical = [row for row in leftovers if _is_relevant(row)]
     rest = [row for row in leftovers if not _is_relevant(row)]
     entity_tokens = query_canonical_entity_tokens(query)
-    relevant_pool = topical if entity_tokens else topical[:_CHIP_SAMPLE_POOL]
+    # Named-story sermon questions stay on topical hits. Verse/Bible questions
+    # still need NKJV even when a book name like "John" looks like an entity.
+    named_story_lock = bool(entity_tokens) and not allow_bible
+    relevant_pool = topical if named_story_lock else topical[:_CHIP_SAMPLE_POOL]
     for row in _weighted_shuffle_rows(relevant_pool, mixer):
         ordered.append(row)
-    if not entity_tokens:
+    if not named_story_lock:
         for row in _weighted_shuffle_rows(rest[:_CHIP_SAMPLE_POOL], mixer):
             ordered.append(row)
 
     n_relevant = sum(1 for row in ordered if _is_relevant(row))
-    if entity_tokens:
+    if named_story_lock:
         target = max_count
     else:
         target = min(max_count, max(want, n_relevant))
@@ -1592,7 +1594,7 @@ def ensure_source_media_mix(
             continue
         doc, _label, _score = row
         topical = _is_relevant(row)
-        if entity_tokens and not topical:
+        if named_story_lock and not topical:
             continue
         if not allow_bible and _is_bible_doc(doc):
             continue
@@ -1612,7 +1614,7 @@ def ensure_source_media_mix(
             doc, label, _score = row
             if doc is None or not predicate(doc):
                 continue
-            if entity_tokens and not _is_relevant(row):
+            if named_story_lock and not _is_relevant(row):
                 continue
             if not allow_bible and _is_bible_doc(doc):
                 continue
@@ -1629,7 +1631,7 @@ def ensure_source_media_mix(
 
     if by_stem:
         _inject(_is_note)
-        if entity_tokens:
+        if named_story_lock:
             _inject(lambda doc: video_fn(doc) and topic_overlap_score(doc, focus) > 0)
         else:
             _inject(video_fn)
@@ -1640,7 +1642,7 @@ def ensure_source_media_mix(
             stem = source_stem_key(row[1])
             if stem in picked_stems:
                 continue
-            if entity_tokens and not _is_relevant(row):
+            if named_story_lock and not _is_relevant(row):
                 continue
             if not allow_bible and _is_bible_doc(row[0]):
                 continue
