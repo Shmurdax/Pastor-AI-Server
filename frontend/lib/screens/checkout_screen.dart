@@ -35,18 +35,21 @@ class SubscriptionConsentCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CheckboxListTile(
-      value: value,
-      onChanged: onChanged,
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      activeColor: _navy,
-      title: Text(
-        subscriptionConsentLabel(billingPeriod),
-        style: GoogleFonts.figtree(
-          fontSize: 13,
-          color: _navy,
-          height: 1.35,
+    return Material(
+      color: Colors.transparent,
+      child: CheckboxListTile(
+        value: value,
+        onChanged: onChanged,
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        activeColor: _navy,
+        title: Text(
+          subscriptionConsentLabel(billingPeriod),
+          style: GoogleFonts.figtree(
+            fontSize: 13,
+            color: _navy,
+            height: 1.35,
+          ),
         ),
       ),
     );
@@ -90,11 +93,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String? _sessionId;
   bool _confirmingPurchase = false;
   bool _purchaseHandled = false;
-  bool _acknowledged = false;
   Timer? _statusPollTimer;
-
-  String get _periodLabel =>
-      widget.billingPeriod == BillingPeriod.monthly ? 'Monthly' : 'Yearly';
 
   String get _priceLabel =>
       widget.billingPeriod == BillingPeriod.monthly ? '\$15.00' : '\$150.00';
@@ -196,6 +195,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _publishableKey = pk;
         _loadingConfig = false;
       });
+      if (_stripeConfigured) {
+        await _startCheckoutSession();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -203,11 +205,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
       });
     }
-  }
-
-  Future<void> _continueToPayment() async {
-    if (!_acknowledged || _startingCheckout || _clientSecret != null) return;
-    await _startCheckoutSession();
   }
 
   Future<void> _startCheckoutSession() async {
@@ -376,25 +373,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     Text(
                       _mockCheckout
                           ? 'Enter card details to continue. (Temporary demo checkout — nothing is charged or stored.)'
-                          : _clientSecret != null
-                              ? 'Card and billing fields are provided by Stripe. '
-                                  'A payment overlay will open — scroll to Confirm.'
-                              : 'Acknowledge your $_periodLabel plan, then continue to payment.',
+                          : 'Card and billing fields are provided by Stripe. '
+                              'A payment overlay will open — scroll to Confirm.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.figtree(
                         fontSize: 13,
                         height: 1.4,
                         color: Colors.black54,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    SubscriptionConsentCheckbox(
-                      billingPeriod: widget.billingPeriod,
-                      value: _acknowledged,
-                      onChanged: _clientSecret != null
-                          ? null
-                          : (checked) =>
-                              setState(() => _acknowledged = checked ?? false),
                     ),
                   ],
                 ),
@@ -445,7 +431,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           child: _MockCheckoutForm(
                             billingPeriod: _periodApiValue,
                             priceLabel: '$_priceLabel $_pricePeriod',
-                            canSubmit: _acknowledged,
                             onSuccess: _onMockCheckoutSuccess,
                           ),
                         );
@@ -458,32 +443,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           clientSecret: _clientSecret!,
                           height: stripeHeight,
                           onComplete: _onStripeCheckoutComplete,
-                        );
-                      }
-                      if (_stripeConfigured) {
-                        return ListView(
-                          children: [
-                            FilledButton(
-                              onPressed: _acknowledged ? _continueToPayment : null,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _navy,
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor:
-                                    _navy.withValues(alpha: 0.35),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Text(
-                                'Continue to payment',
-                                style: GoogleFonts.figtree(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ],
                         );
                       }
                       return const SingleChildScrollView(child: _SetupHint());
@@ -506,13 +465,11 @@ class _MockCheckoutForm extends StatefulWidget {
   const _MockCheckoutForm({
     required this.billingPeriod,
     required this.priceLabel,
-    required this.canSubmit,
     required this.onSuccess,
   });
 
   final String billingPeriod;
   final String priceLabel;
-  final bool canSubmit;
   final Future<void> Function(AuthUser user) onSuccess;
 
   @override
@@ -529,6 +486,7 @@ class _MockCheckoutFormState extends State<_MockCheckoutForm> {
   final _api = ApiService();
 
   bool _submitting = false;
+  bool _acknowledged = false;
   String? _error;
 
   @override
@@ -720,9 +678,18 @@ class _MockCheckoutFormState extends State<_MockCheckoutForm> {
                 style: GoogleFonts.figtree(color: Colors.red.shade800, fontSize: 13),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            SubscriptionConsentCheckbox(
+              billingPeriod: widget.billingPeriod == 'yearly'
+                  ? BillingPeriod.yearly
+                  : BillingPeriod.monthly,
+              value: _acknowledged,
+              onChanged: (checked) =>
+                  setState(() => _acknowledged = checked ?? false),
+            ),
+            const SizedBox(height: 12),
             FilledButton(
-              onPressed: (_submitting || !widget.canSubmit) ? null : _submit,
+              onPressed: (_submitting || !_acknowledged) ? null : _submit,
               style: FilledButton.styleFrom(
                 backgroundColor: _navy,
                 foregroundColor: Colors.white,
