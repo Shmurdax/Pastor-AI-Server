@@ -50,6 +50,7 @@ from .chat_retrieval import (
     is_bible_source,
     is_video_chunk,
     looks_like_followup,
+    retrieval_topic_query,
     search_queries_on_store,
     select_diverse_docs,
     sources_cited_in_answer,
@@ -60,7 +61,10 @@ from .chat_system_prompt import (
     CONTINUE_STEER,
     LENGTH_STEER,
     MAX_EXPANSION_PASSES,
+    QUOTE_CONTINUE_MIN_TOKENS,
+    QUOTE_CONTINUE_STEER,
     answer_char_count,
+    answer_missing_required_quotes,
     answer_needs_expansion,
     build_chat_system_prompt,
     continuation_token_budget,
@@ -250,10 +254,10 @@ def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
 
 
-def _continuation_messages(messages, first_answer: str):
+def _continuation_messages(messages, first_answer: str, *, steer: str = CONTINUE_STEER):
     return list(messages) + [
         AIMessage(content=first_answer),
-        HumanMessage(content=CONTINUE_STEER),
+        HumanMessage(content=steer),
     ]
 
 
@@ -297,14 +301,38 @@ def _trim_continuation_messages(messages):
     return trimmed
 
 
-def _iter_continuation_tokens(prepared, answer: str):
+def _continuation_plan(answer: str, *, query: str, docs, completion_tokens: int):
+    """Length expansion and/or a quote-repair pass when notes were retrieved."""
+    need_len = answer_needs_expansion(answer, query=query)
+    need_quotes = answer_missing_required_quotes(
+        answer,
+        query=query,
+        has_reference_notes=bool(docs),
+    )
+    if not need_len and not need_quotes:
+        return None
+    steer = CONTINUE_STEER if need_len else QUOTE_CONTINUE_STEER
+    min_tokens = 0 if need_len else QUOTE_CONTINUE_MIN_TOKENS
     budget = continuation_token_budget(
-        answer, completion_tokens=prepared["completion_tokens"]
+        answer,
+        completion_tokens=completion_tokens,
+        min_tokens=min_tokens,
+    )
+    if budget <= 0:
+        return None
+    return {"steer": steer, "budget": budget, "need_len": need_len, "need_quotes": need_quotes}
+
+
+def _iter_continuation_tokens(prepared, answer: str, *, steer: str = CONTINUE_STEER, min_tokens: int = 0):
+    budget = continuation_token_budget(
+        answer,
+        completion_tokens=prepared["completion_tokens"],
+        min_tokens=min_tokens,
     )
     if budget <= 0:
         return
         yield
-    full = _continuation_messages(prepared["messages"], answer)
+    full = _continuation_messages(prepared["messages"], answer, steer=steer)
     trimmed = _trim_continuation_messages(full)
     bound = prepared["llm"].bind(max_tokens=budget)
     attempts = (
@@ -650,6 +678,7 @@ class ChatAPIView(APIView):
                     limit=7,
                 )
                 is_followup = bool(prior_user_queries) and looks_like_followup(user_query_llm)
+                topic_query = retrieval_topic_query(user_query_llm, prior_user_queries)
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
                 logger.debug(
                     "Searching Qdrant with %s queries (k=%s each, followup=%s, session=%s): %s",
@@ -668,7 +697,7 @@ class ChatAPIView(APIView):
                 # Cain/Abel clip under the similarity threshold.
                 scored_hits = filter_hits_by_topic(
                     scored_hits,
-                    user_query_llm,
+                    topic_query,
                     retrieval_k=RETRIEVAL_K,
                 )
                 scored_hits = apply_retrieval_threshold(
@@ -691,7 +720,7 @@ class ChatAPIView(APIView):
                         str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
                         or _doc_source_name(doc)
                     ),
-                    query=user_query_llm,
+                    query=topic_query,
                 )
                 context = format_reference_notes(
                     docs,
@@ -734,6 +763,7 @@ class ChatAPIView(APIView):
                     used_verses,
                     is_followup=is_followup,
                     prior_user_query=(prior_user_queries[-1] if prior_user_queries else ""),
+                    current_user_query=user_query_llm,
                 )
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
@@ -860,21 +890,33 @@ class ChatAPIView(APIView):
                 if not answer.strip():
                     raise ValueError("No generation chunks were returned")
                 expansion_pass = 0
-                while (
-                    answer_needs_expansion(answer, query=user_query_llm)
-                    and expansion_pass < MAX_EXPANSION_PASSES
-                ):
+                while expansion_pass < MAX_EXPANSION_PASSES:
+                    plan = _continuation_plan(
+                        answer,
+                        query=user_query_llm,
+                        docs=prepared.get("docs"),
+                        completion_tokens=prepared["completion_tokens"],
+                    )
+                    if plan is None:
+                        break
                     expansion_pass += 1
                     logger.warning(
-                        "Chat answer was short (%s chars); requesting continuation %s/%s",
-                        answer_char_count(answer),
+                        "Chat answer continuation %s/%s (chars=%s, quotes=%s, length=%s)",
                         expansion_pass,
                         MAX_EXPANSION_PASSES,
+                        answer_char_count(answer),
+                        plan["need_quotes"],
+                        plan["need_len"],
                     )
                     extra_parts = []
                     separator_sent = False
                     try:
-                        for text in _iter_continuation_tokens(prepared, answer):
+                        for text in _iter_continuation_tokens(
+                            prepared,
+                            answer,
+                            steer=plan["steer"],
+                            min_tokens=0 if plan["need_len"] else QUOTE_CONTINUE_MIN_TOKENS,
+                        ):
                             if emit_live and not separator_sent:
                                 yield _sse({"type": "delta", "text": "\n\n"})
                                 separator_sent = True
@@ -935,25 +977,32 @@ class ChatAPIView(APIView):
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
             expansion_pass = 0
-            while (
-                answer_needs_expansion(answer, query=user_query_llm)
-                and expansion_pass < MAX_EXPANSION_PASSES
-            ):
+            while expansion_pass < MAX_EXPANSION_PASSES:
+                plan = _continuation_plan(
+                    answer,
+                    query=user_query_llm,
+                    docs=prepared.get("docs"),
+                    completion_tokens=prepared["completion_tokens"],
+                )
+                if plan is None:
+                    break
                 expansion_pass += 1
                 logger.warning(
-                    "Chat answer was short (%s chars); requesting continuation %s/%s",
-                    answer_char_count(answer),
+                    "Chat answer continuation %s/%s (chars=%s, quotes=%s, length=%s)",
                     expansion_pass,
                     MAX_EXPANSION_PASSES,
+                    answer_char_count(answer),
+                    plan["need_quotes"],
+                    plan["need_len"],
                 )
-                continue_tokens = continuation_token_budget(
-                    answer, completion_tokens=prepared["completion_tokens"]
-                )
-                if continue_tokens <= 0:
-                    break
+                continue_tokens = plan["budget"]
                 try:
                     extra = prepared["llm"].bind(max_tokens=continue_tokens).invoke(
-                        _continuation_messages(prepared["messages"], answer)
+                        _continuation_messages(
+                            prepared["messages"],
+                            answer,
+                            steer=plan["steer"],
+                        )
                     )
                     extra_text = (getattr(extra, "content", "") or "").strip()
                 except Exception:
@@ -963,7 +1012,11 @@ class ChatAPIView(APIView):
                             max_tokens=continue_tokens
                         ).invoke(
                             _trim_continuation_messages(
-                                _continuation_messages(prepared["messages"], answer)
+                                _continuation_messages(
+                                    prepared["messages"],
+                                    answer,
+                                    steer=plan["steer"],
+                                )
                             )
                         )
                         extra_text = (getattr(extra, "content", "") or "").strip()

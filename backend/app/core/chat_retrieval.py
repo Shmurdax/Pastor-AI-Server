@@ -32,8 +32,26 @@ _FOLLOWUP_RE = re.compile(
     r"\b("
     r"clarif(?:y|ied|ication)|further|expand(?:ing)?|elaborat(?:e|ion)|"
     r"what do you mean|go (?:deeper|further)|say more|more (?:about|detail|on)|"
-    r"that (?:guidance|answer|point|teaching|quote)|in other words"
+    r"that (?:guidance|answer|point|teaching|quote|topic)|"
+    r"this topic|same topic|on that|"
+    r"in other words"
     r")\b",
+    re.IGNORECASE,
+)
+_FORMAT_FOLLOWUP_RE = re.compile(
+    r"\b("
+    r"(?:\d+|one|two|three|four|five)\s*[- ]?points?|"
+    r"sermon outline|(?:an|the)\s+outline"
+    r")\b",
+    re.IGNORECASE,
+)
+_OUTLINE_POINT_RE = re.compile(
+    r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\s*[- ]?points?\b",
+    re.IGNORECASE,
+)
+_DEMONSTRATIVE_TOPIC_RE = re.compile(
+    r"\b(?:on\s+)?(?:that|this|the same|same)\s+topic\b",
     re.IGNORECASE,
 )
 
@@ -203,6 +221,8 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "passage",
         "passages",
         "please",
+        "point",
+        "points",
         "prepare",
         "produce",
         "prompt",
@@ -350,6 +370,14 @@ def chunk_fingerprint(text: str) -> str:
     return collapsed[:400]
 
 
+def looks_like_format_followup(query: str) -> bool:
+    """True when the user is asking to recast the last topic as an outline/sermon."""
+    text = (query or "").strip()
+    if not text:
+        return False
+    return bool(_FORMAT_FOLLOWUP_RE.search(text) or _DEMONSTRATIVE_TOPIC_RE.search(text))
+
+
 def looks_like_followup(query: str) -> bool:
     text = (query or "").strip()
     if not text:
@@ -359,21 +387,46 @@ def looks_like_followup(query: str) -> bool:
 
     if looks_like_brief_social(text):
         return False
-    if _FOLLOWUP_RE.search(text):
+    if _FOLLOWUP_RE.search(text) or looks_like_format_followup(text):
         return True
     return len(text.split()) <= 8
 
 
+def strip_template_phrasing(text: str) -> str:
+    """Drop outline scaffolding ('3 point', 'that topic') before embedding."""
+    cleaned = _OUTLINE_POINT_RE.sub(" ", text or "")
+    cleaned = _DEMONSTRATIVE_TOPIC_RE.sub(" ", cleaned)
+    return " ".join(cleaned.split())
+
+
 def keyword_search_query(text: str) -> str:
     """Content words for embeddings: drop filler like \"generate a sermon\"."""
+    cleaned = strip_template_phrasing(text)
     terms = [
         token
-        for token in re.findall(r"[A-Za-z']{3,}", text or "")
+        for token in re.findall(r"[A-Za-z']{3,}", cleaned)
         if token.lower() not in _QUESTION_STOPWORDS
         and token.lower() not in _GENERIC_FOCUS_STOPWORDS
         and token.lower() not in _ENTITY_NOISE
     ]
     return " ".join(terms).strip()
+
+
+def retrieval_topic_query(
+    current: str,
+    prior_user_queries: Optional[Iterable[str]] = None,
+) -> str:
+    """Query text for lexical filters: prior topic + current, for follow-ups."""
+    current_q = (current or "").strip()
+    prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
+    last_prior = ""
+    for item in reversed(prior):
+        if item.lower() != current_q.lower():
+            last_prior = item
+            break
+    if last_prior and looks_like_followup(current_q):
+        return " ".join(part for part in (last_prior, current_q) if part)
+    return current_q
 
 
 _ENTITY_NOISE = frozenset(
@@ -627,33 +680,47 @@ def expand_search_queries(
             break
     followup = bool(last_prior) and looks_like_followup(current_q)
 
-    bible_names = retrieval_bible_names(current_q)
-    focus = keyword_search_query(current_q)
-    if bible_names:
-        joined = " ".join(bible_names)
+    def add_bible_name_queries(names: list[str], source_text: str) -> None:
+        if not names:
+            return
+        joined = " ".join(names)
         add(joined)
         add(f"Pastor Don Nordin {joined}")
-        passage = story_passage_for_query(current_q)
+        passage = story_passage_for_query(source_text)
         if passage:
             add(f"{passage} {joined}")
         aliases = []
-        for name in bible_names:
+        for name in names:
             for alias in _safe_whisper_aliases(name.lower()):
                 if alias.lower() != name.lower():
                     aliases.append(alias)
         if aliases:
-            add(" ".join(bible_names + aliases))
-    elif focus:
-        # Embed the topical core first (homosexuality, salvation, …), not
-        # "generate a sermon based on …".
-        add(focus)
-        add(f"Pastor Don Nordin {focus}")
+            add(" ".join(list(names) + aliases))
 
-    # For follow-ups, lead with topic-carrying rewrites so retrieval stays on
-    # the prior pastoral question instead of a vague "clarify those steps".
+    current_names = retrieval_bible_names(current_q)
+    bible_names = current_names or (
+        retrieval_bible_names(last_prior) if followup and last_prior else []
+    )
+    focus = keyword_search_query(current_q)
+    prior_focus = keyword_search_query(last_prior) if last_prior else ""
+
+    # Follow-ups like "Give me a 3 point sermon on that topic" have no topical
+    # leftover after template stripping. Lead with the prior pastoral question
+    # instead of embedding leftover outline words ("point").
     if followup and last_prior:
-        prior_focus = keyword_search_query(f"{last_prior} {current_q}") or focus
-        add(prior_focus)
+        if current_names:
+            add_bible_name_queries(current_names, current_q)
+        lead = prior_focus or keyword_search_query(f"{last_prior} {current_q}") or focus
+        if lead:
+            add(lead)
+            add(f"Pastor Don Nordin {lead}")
+        extra_terms = [
+            token
+            for token in (focus or "").split()
+            if token.lower() not in {word.lower() for word in lead.split()}
+        ]
+        if extra_terms:
+            add(f"{' '.join(extra_terms)} {lead}".strip())
         last_ai = ""
         for item in reversed(list(prior_ai_texts or [])):
             text = str(item or "").strip()
@@ -670,8 +737,16 @@ def expand_search_queries(
             step_text = " ".join(part for pair in step_bits for part in pair if part)
             ai_keywords = keyword_search_query((step_text + " " + last_ai[:900]).strip())
             if ai_keywords:
-                add(f"{ai_keywords} {focus or current_q}")
-                add(f"{keyword_search_query(last_prior)} {ai_keywords}".strip())
+                add(f"{ai_keywords} {lead or focus or current_q}")
+                add(f"{prior_focus} {ai_keywords}".strip())
+        add(keyword_search_query(f"{last_prior} {current_q}"))
+    elif bible_names:
+        add_bible_name_queries(bible_names, current_q if current_names else last_prior)
+    elif focus:
+        # Embed the topical core first (homosexuality, salvation, …), not
+        # "generate a sermon based on …".
+        add(focus)
+        add(f"Pastor Don Nordin {focus}")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
@@ -679,14 +754,14 @@ def expand_search_queries(
     if last_prior and not followup:
         add(keyword_search_query(f"{last_prior} {current_q}"))
 
-    if focus and focus.lower() != current_q.lower():
+    if focus and focus.lower() != current_q.lower() and not followup:
         add(focus)
-
-    if last_prior and looks_like_followup(current_q):
-        add(keyword_search_query(f"{last_prior} {current_q}"))
 
     if not last_prior and focus:
         add(f"Pastor Don Nordin {focus}")
+
+    if not queries:
+        add(prior_focus or focus or current_q)
 
     return queries[: max(1, limit)]
 
@@ -1319,6 +1394,7 @@ def uniqueness_instruction(
     *,
     is_followup: bool = False,
     prior_user_query: str = "",
+    current_user_query: str = "",
 ) -> str:
     quotes = [item.strip() for item in used_quotes if item and item.strip()]
     verses = [item.strip() for item in used_verses if item and item.strip()]
@@ -1336,6 +1412,12 @@ def uniqueness_instruction(
         )
         if topic:
             lines.append(f'Prior user question to stay anchored to: "{topic}"')
+        if looks_like_format_followup(current_user_query):
+            lines.append(
+                "The user asked to recast this topic (for example as a numbered sermon or outline). "
+                "You may use that format. Quote unused wording from REFERENCE NOTES in quotation marks—"
+                "do not only rephrase the previous answer."
+            )
     else:
         lines.extend(
             [
