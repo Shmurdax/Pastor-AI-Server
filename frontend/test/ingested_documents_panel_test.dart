@@ -52,6 +52,10 @@ void main() {
     expect(find.text('View only'), findsWidgets);
     expect(find.byType(RawScrollbar), findsOneWidget);
     expect(
+      tester.widget<RawScrollbar>(find.byType(RawScrollbar)).padding,
+      const EdgeInsets.fromLTRB(4, 8, 4, 22),
+    );
+    expect(
       tester.getTopLeft(find.text('Book Transcript')).dy <
           tester.getTopLeft(find.text('Hope In Christ')).dy,
       isTrue,
