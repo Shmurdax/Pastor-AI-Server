@@ -45,6 +45,7 @@ class ViewOnlyIngestionAdminTests(TestCase):
         self.assertIn("Make view only", body)
         self.assertIn('name="hide_from_library"', body)
         self.assertIn("Keep out of sermon library", body)
+        self.assertIn("hidden from sermon sources", body)
 
     @patch("core.admin.enqueue_ingestion_job")
     @patch("core.admin._stage_uploads", return_value=[])
@@ -190,3 +191,68 @@ class ViewOnlyDocumentApiTests(TestCase):
     def test_admin_url_for_ingestion_still_resolves(self):
         prefix = f"/{settings.ADMIN_URL_PATH}"
         self.assertEqual(reverse("admin:core_ingestion"), f"{prefix}/core/ingestion/")
+
+
+class HiddenLibraryChatSourceTests(TestCase):
+    def _chunk(self, *, source, file_hash, title=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            page_content="The Holy Spirit is a gift.",
+            metadata={
+                "source": source,
+                "file_hash": file_hash,
+                "title": title or source,
+            },
+        )
+
+    def test_hidden_books_are_dropped_from_chat_sermon_sources(self):
+        from core.chat_retrieval import ensure_source_media_mix, sources_cited_in_answer
+        from core.views import _doc_source_label, visible_chat_source_docs
+
+        visible = _make_doc(title="Sunday Notes", source_name="sunday.pdf", file_hash="s" * 64)
+        hidden = _make_doc(
+            title="The Giver and His Gifts",
+            source_name="The Giver and His Gifts - Full Transcript.pdf",
+            file_hash="g" * 64,
+            in_library=False,
+        )
+        bible = _make_doc(
+            title="New King James Version",
+            source_name="nkjv.pdf",
+            file_hash="n" * 64,
+            in_library=False,
+        )
+        docs = [
+            self._chunk(source=hidden.source_name, file_hash=hidden.file_hash, title=hidden.title),
+            self._chunk(source=visible.source_name, file_hash=visible.file_hash, title=visible.title),
+            self._chunk(source=bible.source_name, file_hash=bible.file_hash, title=bible.title),
+        ]
+        public = visible_chat_source_docs(docs)
+        self.assertEqual(len(public), 1)
+        self.assertEqual(_doc_source_label(public[0]), "Sunday Notes")
+
+        answer = (
+            "As The Giver and His Gifts teaches, the Holy Spirit is a gift. "
+            "Sunday Notes also says to walk in love. New King James Version 1 Corinthians 12:7."
+        )
+        cited = sources_cited_in_answer(public, answer, _doc_source_label, limit=5)
+        mixed = ensure_source_media_mix(
+            cited or ["Sunday Notes"],
+            public,
+            _doc_source_label,
+            min_count=1,
+            limit=5,
+            query="spiritual gifts",
+        )
+        labels = " ".join(mixed).lower()
+        self.assertTrue(any("sunday" in item.lower() for item in mixed), mixed)
+        self.assertNotIn("giver", labels)
+        self.assertNotIn("king james", labels)
+
+    def test_unmatched_chunks_still_appear_as_sources(self):
+        from core.views import visible_chat_source_docs
+
+        orphan = self._chunk(source="Walking in Love.pdf", file_hash="z" * 64, title="Walking in Love")
+        public = visible_chat_source_docs([orphan])
+        self.assertEqual(len(public), 1)
