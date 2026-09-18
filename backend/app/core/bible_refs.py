@@ -90,6 +90,23 @@ _BOOK_ALIASES = {
 _BOOK_LOOKUP = {book: book for book in BIBLE_BOOKS}
 for alias, canonical in {
     "song of songs": "song of solomon",
+    "1st samuel": "1 samuel",
+    "2nd samuel": "2 samuel",
+    "1st kings": "1 kings",
+    "2nd kings": "2 kings",
+    "1st chronicles": "1 chronicles",
+    "2nd chronicles": "2 chronicles",
+    "1st corinthians": "1 corinthians",
+    "2nd corinthians": "2 corinthians",
+    "1st thessalonians": "1 thessalonians",
+    "2nd thessalonians": "2 thessalonians",
+    "1st timothy": "1 timothy",
+    "2nd timothy": "2 timothy",
+    "1st peter": "1 peter",
+    "2nd peter": "2 peter",
+    "1st john": "1 john",
+    "2nd john": "2 john",
+    "3rd john": "3 john",
 }.items():
     _BOOK_LOOKUP[alias] = canonical
 
@@ -109,6 +126,7 @@ VERSE_REF_RE = re.compile(
 
 def canonical_book_key(name: str) -> str:
     key = re.sub(r"\s+", " ", (name or "").strip().lower())
+    key = re.sub(r"^(\d)(?:st|nd|rd|th)\s+", r"\1 ", key)
     key = re.sub(r"^psalms$", "psalm", key)
     return _BOOK_LOOKUP.get(key, key)
 
