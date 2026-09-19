@@ -64,6 +64,7 @@ from .grounding import (
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
     split_docs_for_grounding,
+    strip_ungrounded_spans,
     verify_answer_grounding,
     verse_refs_for_lookup,
 )
@@ -106,12 +107,15 @@ from .chat_system_prompt import (
     answer_missing_required_quotes,
     answer_needs_expansion,
     build_chat_system_prompt,
+    compact_teaching_answer,
     continuation_token_budget,
     quote_repair_token_budget,
     find_biblical_character_names,
     join_continuation,
     looks_like_brief_social,
     looks_like_continue_dump,
+    novel_continuation,
+    skip_rewrite_repair,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .live_chat_history import LiveHistoryPublisher
@@ -377,8 +381,12 @@ def _join_continuation(answer: str, extra: str) -> str:
 
 def _usable_extra(answer: str, extra: str) -> str:
     """Keep finish-the-sentence extras; drop a second teaching dump."""
-    extra = (extra or "").strip()
-    if not extra:
+    raw = (extra or "").strip()
+    if not raw:
+        return ""
+    extra = novel_continuation(answer, raw)
+    if raw and not extra:
+        logger.info("Dropped a second-pass continue dump after a finished answer")
         return ""
     if looks_like_continue_dump(answer, extra):
         logger.info("Dropped a second-pass continue dump after a finished answer")
@@ -410,6 +418,8 @@ def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
 
 def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
     """Add a quote pass when notes were retrieved but quotes or NKJV are missing."""
+    if skip_rewrite_repair(answer):
+        return None, 0
     docs = prepared.get("docs") or []
     if not docs:
         return None, 0
@@ -458,11 +468,13 @@ def _grounding_snippets(prepared):
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
     if not nkjv:
         nkjv = collect_allowed_nkjv(bible, limit=1)
-    return quotes, nkjv
+    return quotes[:2], nkjv[:1]
 
 
 def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
     """Follow each teaching reply with a RAG check against retrieved notes."""
+    if skip_rewrite_repair(answer):
+        return None, 0
     docs = prepared.get("docs") or []
     if not docs:
         return None, 0
@@ -492,6 +504,24 @@ def _rag_grounding_fallback(prepared, answer: str) -> str:
         return ""
     logger.warning("RAG check still failing; appending on-topic retrieved excerpts")
     return grounded_fallback_answer(quotes, nkjv)
+
+
+def _finalize_teaching_answer(prepared, answer: str) -> str:
+    """Collapse duplicate outlines, drop invented quotes, then append notes if needed."""
+    answer = compact_teaching_answer(answer)
+    docs = prepared.get("docs") or []
+    if not docs:
+        return answer
+    report, _sermon, _bible = _rag_check_report(prepared, answer)
+    if report.ok:
+        return answer
+    stripped = strip_ungrounded_spans(answer, report)
+    if stripped:
+        answer = compact_teaching_answer(stripped)
+    fallback = _rag_grounding_fallback(prepared, answer)
+    if fallback and fallback not in (answer or ""):
+        answer = (answer or "").rstrip() + "\n\n" + fallback
+    return compact_teaching_answer(answer)
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -1345,11 +1375,14 @@ class ChatAPIView(APIView):
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
                     answer = _join_continuation(answer, finish_extra)
-                rag_fallback = _rag_grounding_fallback(prepared, answer)
-                if rag_fallback:
-                    if emit_live:
-                        yield _sse({"type": "delta", "text": "\n\n" + rag_fallback})
-                    answer = (answer or "").rstrip() + "\n\n" + rag_fallback
+                final_answer = _finalize_teaching_answer(prepared, answer)
+                if emit_live:
+                    prefix = (answer or "").rstrip()
+                    if final_answer.startswith(prefix):
+                        extra = final_answer[len(prefix) :].strip()
+                        if extra:
+                            yield _sse({"type": "delta", "text": "\n\n" + extra})
+                answer = final_answer
                 response_sources = _response_sources(
                     prepared["docs"],
                     answer,
@@ -1534,9 +1567,7 @@ class ChatAPIView(APIView):
             finish_extra = _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
-            rag_fallback = _rag_grounding_fallback(prepared, answer)
-            if rag_fallback:
-                answer = (answer or "").rstrip() + "\n\n" + rag_fallback
+            answer = _finalize_teaching_answer(prepared, answer)
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,

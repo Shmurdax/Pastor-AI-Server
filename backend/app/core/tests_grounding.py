@@ -88,6 +88,23 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("Psalm 34:18", text)
         self.assertNotIn("dog heaven", text.lower())
 
+    def test_strip_ungrounded_spans_removes_invented_quote(self):
+        from core.grounding import GroundingReport, strip_ungrounded_spans
+
+        answer = (
+            'Pastor Don would say, "Your dog is in dog heaven waiting for you." '
+            "Then he points us back to prayer."
+        )
+        report = GroundingReport(
+            ok=False,
+            invented_quotes=["Your dog is in dog heaven waiting for you."],
+            invented_scripture=[],
+            missing_nkjv_refs=[],
+        )
+        cleaned = strip_ungrounded_spans(answer, report)
+        self.assertNotIn("dog heaven", cleaned)
+        self.assertIn("points us back to prayer", cleaned)
+
     def test_lookup_uses_retrieved_docs_without_client(self):
         docs = [
             _doc(

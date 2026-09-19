@@ -202,12 +202,13 @@ FINISH_STEER = (
 QUOTE_CONTINUE_STEER = (
     "The previous reply taught the topic but is missing required grounding. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or "
-    "Teaching Points. If fewer than two quotation-marked excerpts from Pastor "
-    "Don or Susan that actually appear in REFERENCE NOTES are in the reply, "
-    "add them now, attributed. If Scripture notes are present and unused, "
-    "weave in NKJV verse(s) from those notes. Then stop."
+    "Teaching Points. Do not repeat headings, numbered points, or any sentence "
+    "already on screen. Output only the missing quotation-marked excerpts from "
+    "Pastor Don or Susan that actually appear in REFERENCE NOTES, attributed, "
+    "and NKJV verse(s) from those notes if unused. Two excerpts and one verse "
+    "are enough. Then stop."
 )
-QUOTE_CONTINUE_MIN_TOKENS = 320
+QUOTE_CONTINUE_MIN_TOKENS = 160
 
 TARGET_TEACHING_CHARS = 2000
 MIN_TEACHING_CHARS = 1500
@@ -476,12 +477,18 @@ def continuation_token_budget(answer: str, *, completion_tokens: int, min_tokens
 
 
 def quote_repair_token_budget(answer: str, *, completion_tokens: int) -> int:
-    """Keep a quote pass even after a finished paraphrase used the length budget."""
+    """Keep a short quote pass; never enough tokens to rewrite the sermon."""
     completion = int(completion_tokens) or QUOTE_CONTINUE_MIN_TOKENS
-    return continuation_token_budget(
-        answer,
-        completion_tokens=completion,
-        min_tokens=QUOTE_CONTINUE_MIN_TOKENS,
+    if completion <= 0:
+        return 0
+    return min(completion, QUOTE_CONTINUE_MIN_TOKENS)
+
+
+def skip_rewrite_repair(answer: str) -> bool:
+    """True when a finished teaching is already on screen and must not be rewritten."""
+    return (
+        not answer_looks_incomplete(answer or "")
+        and answer_char_count(answer) >= COMPLETE_ANSWER_MIN_CHARS
     )
 
 
@@ -532,6 +539,64 @@ def _clause_restates_answer(clause: str, answer_folded: str, answer_clauses: lis
     return False
 
 
+_NUMBERED_HEADING_RE = re.compile(
+    r"^\s*(?:\d+|[A-Za-z])[\.\)\*]+[\s.]+(.+)$"
+)
+_MARKDOWN_HEADING_RE = re.compile(r"^(?:#{1,3}\s+.+|\*\*[^*].+\*\*|__[^_].+__)$")
+_RECAP_OPENER_RE = re.compile(
+    r"(?is)^(by focusing on these points|in (?:this|these) ways|"
+    r"he teaches that|to summarize|as we have seen|putting this together)\b"
+)
+_VERSE_LINE_RE = re.compile(
+    r"\b(?:[1-3]\s*)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+\b"
+)
+_STARRED_NUMBER_RE = re.compile(r"(?m)^(\s*\d+)\*+\.")
+
+
+def _heading_key(line: str) -> str | None:
+    raw = (line or "").strip()
+    if not raw:
+        return None
+    numbered = _NUMBERED_HEADING_RE.match(raw)
+    if numbered:
+        folded = _fold_for_overlap(numbered.group(1))
+        if 8 <= len(folded) <= 80:
+            return folded
+    if _MARKDOWN_HEADING_RE.match(raw):
+        folded = _fold_for_overlap(re.sub(r"[#*_]", " ", raw))
+        if 8 <= len(folded) <= 80:
+            return folded
+    if len(raw) <= 80 and not re.search(r"[.!?]$", raw) and not raw.startswith(("-", "•", "*")):
+        words = raw.split()
+        titled = sum(1 for word in words if word[:1].isupper())
+        if 2 <= len(words) <= 8 and titled >= max(1, len(words) - 1):
+            folded = _fold_for_overlap(raw)
+            if 8 <= len(folded) <= 80:
+                return folded
+    return None
+
+
+def extract_outline_titles(text: str) -> list[str]:
+    titles: list[str] = []
+    seen: set[str] = set()
+    for line in (text or "").splitlines():
+        key = _heading_key(line)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        titles.append(key)
+    return titles
+
+
+def _looks_like_grounding_add(text: str) -> bool:
+    sample = text or ""
+    if any(mark in sample for mark in ('"', "“", "”")):
+        return True
+    if "NKJV" in sample.upper():
+        return True
+    return bool(_VERSE_LINE_RE.search(sample))
+
+
 def looks_like_continue_dump(answer: str, extra: str) -> bool:
     """True when extra is a second teaching pass after a finished answer.
 
@@ -549,11 +614,18 @@ def looks_like_continue_dump(answer: str, extra: str) -> bool:
         return True
     if _TEACHING_DUMP_HEADING_RE.match(extra):
         return True
+    shared = [
+        title
+        for title in extract_outline_titles(extra)
+        if title in set(extract_outline_titles(answer or ""))
+    ]
+    if len(shared) >= 2 and not _looks_like_grounding_add(extra):
+        return True
     return False
 
 
 def strip_restarted_continuation(answer: str, extra: str) -> str:
-    """Drop a continuation prefix that restates the first answer's opening."""
+    """Drop restated headings and sentences; keep only novel continuation."""
     extra = (extra or "").strip()
     answer = (answer or "").strip()
     if not extra or not answer:
@@ -565,30 +637,143 @@ def strip_restarted_continuation(answer: str, extra: str) -> str:
     if extra_folded in answer_folded:
         return ""
     answer_clauses = [_fold_for_overlap(part) for _, part in _clause_spans(answer)]
-    kept_at: int | None = None
-    for start, clause in _clause_spans(extra):
+    answer_titles = set(extract_outline_titles(answer))
+    if answer_looks_incomplete(answer):
+        kept_at: int | None = None
+        for start, clause in _clause_spans(extra):
+            if _clause_restates_answer(clause, answer_folded, answer_clauses):
+                continue
+            kept_at = start
+            break
+        if kept_at is None:
+            return ""
+        return extra[kept_at:].strip()
+
+    kept: list[str] = []
+    for _start, clause in _clause_spans(extra):
+        heading = _heading_key(clause.splitlines()[0] if clause else "")
+        if heading and heading in answer_titles:
+            continue
         if _clause_restates_answer(clause, answer_folded, answer_clauses):
             continue
-        kept_at = start
-        break
-    if kept_at is None:
+        kept.append(clause)
+    if not kept:
         return ""
-    return extra[kept_at:].strip()
+    shared = [
+        title
+        for title in extract_outline_titles(extra)
+        if title in answer_titles
+    ]
+    if len(shared) >= 2:
+        quotes = [clause for clause in kept if _looks_like_grounding_add(clause)]
+        return "\n\n".join(quotes).strip()
+    return "\n\n".join(kept).strip()
+
+
+def collapse_duplicate_outline_blocks(text: str) -> str:
+    """Keep the first outline; keep only new quotes from a restated copy."""
+    lines = (text or "").splitlines()
+    if not lines:
+        return text or ""
+    seen: set[str] = set()
+    dropping = False
+    kept: list[str] = []
+
+    def _flush_kept_folded() -> str:
+        return _fold_for_overlap("\n".join(kept))
+
+    for line in lines:
+        key = _heading_key(line)
+        if key:
+            if key in seen:
+                dropping = True
+                continue
+            seen.add(key)
+            dropping = False
+            kept.append(line)
+            continue
+        if dropping:
+            if _looks_like_grounding_add(line):
+                folded = _fold_for_overlap(line)
+                if folded and folded not in _flush_kept_folded():
+                    kept.append(line)
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def strip_trailing_recap(answer: str) -> str:
+    """Drop a closing paragraph that restates points already taught."""
+    text = (answer or "").rstrip()
+    paras = re.split(r"\n\s*\n", text)
+    if len(paras) < 3:
+        return text
+    last = paras[-1].strip()
+    if not last or _looks_like_grounding_add(last):
+        return text
+    first_line = next((line.strip() for line in last.splitlines() if line.strip()), "")
+    if _heading_key(first_line):
+        return text
+    body = "\n\n".join(paras[:-1])
+    if len(last) < 80:
+        return text
+    body_folded = _fold_for_overlap(body)
+    body_clauses = [_fold_for_overlap(part) for part in paras[:-1]]
+    if _RECAP_OPENER_RE.match(last) or _clause_restates_answer(last, body_folded, body_clauses):
+        return body.rstrip()
+    return text
+
+
+def compact_teaching_answer(answer: str) -> str:
+    """Remove duplicate outlines, starred numbering glitches, and closing recaps."""
+    text = _STARRED_NUMBER_RE.sub(r"\1.", answer or "")
+    text = collapse_duplicate_outline_blocks(text)
+    return strip_trailing_recap(text)
+
+
+def novel_continuation(answer: str, extra: str) -> str:
+    """Continuation text that will not restamp headings already on screen."""
+    extra = (extra or "").strip()
+    answer = (answer or "").strip()
+    if not extra:
+        return ""
+    extra = strip_restarted_continuation(answer, extra)
+    if not extra:
+        return ""
+    if looks_like_continue_dump(answer, extra):
+        return ""
+    if answer_looks_incomplete(answer):
+        return extra
+    collapsed = collapse_duplicate_outline_blocks(answer + "\n\n" + extra)
+    prefix = answer.rstrip()
+    if collapsed.rstrip() == prefix:
+        return ""
+    if collapsed.startswith(prefix):
+        return collapsed[len(prefix) :].lstrip("\n")
+    quotes = [
+        clause
+        for _start, clause in _clause_spans(extra)
+        if _looks_like_grounding_add(clause)
+        and not _clause_restates_answer(
+            clause,
+            _fold_for_overlap(answer),
+            [_fold_for_overlap(part) for _, part in _clause_spans(answer)],
+        )
+    ]
+    return "\n\n".join(quotes).strip()
 
 
 def join_continuation(answer: str, extra: str) -> str:
     """Append expansion text, stripping a restarted copy of the opening."""
     answer = (answer or "").rstrip()
-    extra = strip_restarted_continuation(answer, extra)
+    extra = novel_continuation(answer, extra)
     if not extra:
-        return answer
-    if looks_like_continue_dump(answer, extra):
         return answer
     if answer_looks_incomplete(answer):
         if extra[:1] in ",.;:!?":
             return answer + extra
         return answer + " " + extra
-    return answer + "\n\n" + extra
+    return compact_teaching_answer(answer + "\n\n" + extra)
 
 
 def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
@@ -648,6 +833,10 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "found or missing when excerpts are present.\n"
         "Let the user's question and the retrieved notes decide length, outline, and whether to continue "
         "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
+        "Keep teaching answers focused: usually two to four short points. Two Pastor Don or Susan "
+        "quotations and one NKJV verse are enough for the whole answer—do not quote under every heading. "
+        "Do not recap the same points after the last item. Do not repeat a heading or numbered outline "
+        "that is already on screen.\n"
         "Teach the thesis in your own words, shaped by REFERENCE NOTES. Use a generic Christian pastoral tone; "
         "do not imitate Pastor Don's or Susan's speaking style. "
         "In your own words means the same thesis with different wording. Keep the contrast. "

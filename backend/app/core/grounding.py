@@ -301,24 +301,40 @@ def verify_answer_grounding(
     )
 
 
+def strip_ungrounded_spans(answer: str, report: GroundingReport | None) -> str:
+    """Drop invented quotation/verse wording so a repair pass is not a second sermon."""
+    text = answer or ""
+    if report is None:
+        return text
+    for span in list(report.invented_quotes) + list(report.invented_scripture):
+        snippet = (span or "").strip()
+        if len(snippet) < 20:
+            continue
+        text = text.replace(snippet, "")
+    text = re.sub(r'"\s*"', "", text)
+    text = re.sub(r"[“”]\s*[“”]", "", text)
+    text = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", text)
+    return text.strip()
+
+
 def grounded_fallback_answer(
     quotes: Iterable[str],
     nkjv_pairs: Iterable[tuple[str, str]],
 ) -> str:
-    quote_list = [item.strip() for item in quotes if item and item.strip()]
-    nkjv_list = [(ref, text) for ref, text in nkjv_pairs if text and text.strip()]
-    parts: list[str] = ["**From the retrieved notes**"]
+    quote_list = [item.strip() for item in quotes if item and item.strip()][:2]
+    nkjv_list = [(ref, text) for ref, text in nkjv_pairs if text and text.strip()][:1]
+    parts: list[str] = ["From the retrieved notes:"]
     if quote_list:
         parts.append("Pastor Don and Susan Nordin teach from the retrieved sermons:")
-        for quote in quote_list[:4]:
+        for quote in quote_list:
             parts.append(f'"{quote}"')
     else:
         parts.append(
             "The retrieved sermon notes do not include a usable Pastor Don or Susan quotation for this question."
         )
     if nkjv_list:
-        parts.append("**Scripture (NKJV)**")
-        for ref, wording in nkjv_list[:4]:
+        parts.append("Scripture (NKJV):")
+        for ref, wording in nkjv_list:
             parts.append(f'{ref} (NKJV): "{wording}"')
     else:
         parts.append("No NKJV verse from the retrieved Bible document applies in this turn.")
@@ -444,8 +460,9 @@ def lookup_nkjv_verses(
 GROUNDING_REPAIR_STEER = (
     "A RAG check found quotations or verses that are not in the retrieved notes. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
+    "Do not repeat headings, numbered points, or rewrite the sermon already on screen. "
     "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
-    "Add at least two word-for-word ALLOWED SERMON QUOTES attributed to Pastor Don or Susan, "
+    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
     "and one ALLOWED NKJV verse if that list is not empty."
 )
 

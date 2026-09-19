@@ -208,6 +208,10 @@ class ChatSystemPromptTests(unittest.TestCase):
             quote_repair_token_budget(long_done, completion_tokens=1024),
             QUOTE_CONTINUE_MIN_TOKENS,
         )
+        self.assertLessEqual(
+            quote_repair_token_budget(long_done, completion_tokens=1024),
+            192,
+        )
         self.assertGreaterEqual(
             continuation_token_budget(
                 long_done, completion_tokens=1024, min_tokens=QUOTE_CONTINUE_MIN_TOKENS
@@ -216,6 +220,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
+        self.assertIn("Do not repeat headings", QUOTE_CONTINUE_STEER)
+        from .chat_system_prompt import skip_rewrite_repair
+        self.assertTrue(skip_rewrite_repair(paraphrase))
+        self.assertTrue(skip_rewrite_repair(quoted))
         self.assertTrue(
             answer_missing_required_quotes(
                 quoted, query=query, has_reference_notes=True, has_bible_notes=True
@@ -358,6 +366,50 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertFalse(
             looks_like_continue_dump(cut_off, "harvest God promised in due season.")
         )
+
+    def test_join_continuation_drops_restated_outline_headers(self):
+        from .chat_system_prompt import (
+            compact_teaching_answer,
+            join_continuation,
+        )
+
+        first = (
+            "Certainly! Here's a 3-point sermon on the topic of faith based on Pastor Don's teachings:\n\n"
+            "**Faith Over Doubt**\n"
+            "1*. Faith Sees Beyond Immediate Circumstances\n"
+            "Faith operates on a higher plane compared to reality. It sees the unseen "
+            "and hopes for what is yet to come.\n"
+            "2. Faith Transcends Doubt\n"
+            "Faith must surpass the IF FACTOR of doubt and disbelief.\n"
+            "3. Faith Receives Divine Blessings\n"
+            "Faith is the key to receiving miracles and divine blessings. "
+            "Pastor Don teaches that believers receive what God promised because they trust His word "
+            "instead of the visible circumstance in front of them.\n\n"
+            "By focusing on these points, we can see how faith operates as a powerful force."
+        )
+        extra = (
+            "Faith Over Doubt\n"
+            "1. Faith Sees Beyond Immediate Circumstances\n"
+            "Faith operates on a higher plane compared to reality. It sees the unseen "
+            "and hopes for what is yet to come.\n"
+            '"For God so loved the world that He gave His only begotten Son." (John 3:16, NKJV)\n'
+            "2. Faith Transcends Doubt\n"
+            '"For I am not ashamed of the gospel of Christ." (Romans 1:16, NKJV)\n'
+            "3. Faith Receives Divine Blessings\n"
+            '"There is no condemnation for those who belong to Christ Jesus." (Romans 8:1, NKJV)'
+        )
+        joined = join_continuation(first, extra)
+        self.assertEqual(joined.lower().count("faith over doubt"), 1, joined)
+        self.assertEqual(joined.count("Faith Transcends Doubt"), 1, joined)
+        self.assertIn("John 3:16", joined)
+        self.assertIn("Romans 1:16", joined)
+        recap = (
+            first
+            + "\n\nHe teaches that faith is the foundation of effective prayer, "
+            "much like Noah's faith in building the ark based on God's promise."
+        )
+        compacted = compact_teaching_answer(recap)
+        self.assertNotIn("He teaches that faith is the foundation", compacted)
 
 
 class ScopeGateParserTests(unittest.TestCase):
