@@ -51,9 +51,9 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
-/// Phone/tablet sermon-library drawer. Slightly wider than Material's 304
-/// default so Home / Chat / Events / Media stay on one row.
-const _compactSidebarWidth = 352.0;
+/// Phone/tablet sermon-library drawer. Wider than Material's 304 default so
+/// Home / Chat / Events / Media stay on one row.
+const _compactSidebarWidth = 360.0;
 
 /// Prevents Material 3 stretch / glow from painting grey at the viewport edge on web.
 class _NoOverscrollScrollBehavior extends MaterialScrollBehavior {
@@ -2056,7 +2056,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     return Container(
       width: isMobile ? double.infinity : 320,
       margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: _layoutBottomInsetDesktop, top: 20),
-      padding: const EdgeInsets.all(24),
+      padding: isMobile
+          ? const EdgeInsets.fromLTRB(16, 24, 16, 24)
+          : const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: isMobile ? BorderRadius.zero : BorderRadius.circular(32),
         gradient: const LinearGradient(
@@ -2070,17 +2072,44 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile) ...[
-              Wrap(spacing: 4, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
-                _buildNavButton(_s.chat, () {
-                  if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-                    Navigator.of(context).pop();
-                  }
-                  _focusChatNav();
-                }, textColor: Colors.white),
-                _buildNavButton(_s.events, _openChurchEvents, textColor: Colors.white),
-                _buildNavButton(_s.media, _openMedia, textColor: Colors.white),
-              ]),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildNavButton(
+                      _s.home,
+                      () => _launchUrl("https://thenordins.org/"),
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.chat,
+                      () {
+                        if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+                          Navigator.of(context).pop();
+                        }
+                        _focusChatNav();
+                      },
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.events,
+                      _openChurchEvents,
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.media,
+                      _openMedia,
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
             ],
@@ -2889,7 +2918,12 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
     );
   }
 
-  Widget _buildNavButton(String label, VoidCallback onTap, {Color textColor = Colors.black}) {
+  Widget _buildNavButton(
+    String label,
+    VoidCallback onTap, {
+    Color textColor = Colors.black,
+    double horizontalPadding = 10.0,
+  }) {
     bool isHovered = false;
     return StatefulBuilder(
       builder: (context, setState) => MouseRegion(
@@ -2899,7 +2933,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
         child: GestureDetector(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
