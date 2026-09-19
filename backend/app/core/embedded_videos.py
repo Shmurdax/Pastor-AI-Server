@@ -577,6 +577,7 @@ def _build_embedded_video(
     catalog_title = (entry.title if entry else "").strip()
     rejected_titles = set(lookup_stems_for_vimeo_id(vimeo_id))
     rejected_titles.add(vimeo_id)
+    rejected_titles.add(f"Vimeo {vimeo_id}")
     if featured:
         title_candidates = (
             document_title,

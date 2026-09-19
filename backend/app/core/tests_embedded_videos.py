@@ -150,6 +150,23 @@ class EmbeddedVideoMatchingTests(TestCase):
         self.assertEqual(video.segments[0].text, "Faith without works is dead.")
         self.assertEqual(video.embed_src, "https://player.vimeo.com/video/1217796650?dnt=1")
 
+    def test_numeric_ingest_prefers_document_title_over_vimeo_placeholder(self):
+        IngestedDocument.objects.create(
+            source_name="403856658.m4a",
+            title="April 10",
+            file_hash="aa" * 32,
+            original_extension=".m4a",
+            source_kind="video",
+            chunk_count=1,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "403856658.m4a").write_bytes(b"audio")
+            video = get_embedded_video("403856658", upload_dir=root)
+        self.assertIsNotNone(video)
+        self.assertEqual(video.title, "April 10")
+        self.assertEqual(video.embed_url, "https://player.vimeo.com/video/403856658")
+
     def test_unknown_vimeo_id_is_not_returned(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(get_embedded_video("999999999", upload_dir=Path(tmp)))
