@@ -362,7 +362,53 @@ def lookup_nkjv_verses(
 
 
 GROUNDING_REPAIR_STEER = (
-    "Your previous draft quoted wording that is not in ALLOWED SERMON QUOTES or ALLOWED NKJV. "
-    "Rewrite using only those lists. Copy Pastor Don/Susan lines and NKJV verses word-for-word. "
-    "Do not invent kitchen speeches, new verses, or new quotations. If the lists cannot answer, say so.\n"
+    "A RAG check found quotations or verses that are not in the retrieved notes. "
+    "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
+    "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
+    "Add at least two word-for-word ALLOWED SERMON QUOTES attributed to Pastor Don or Susan, "
+    "and one ALLOWED NKJV verse if that list is not empty."
 )
+
+
+def split_docs_for_grounding(docs: Iterable[Any]) -> tuple[list[Any], list[Any]]:
+    sermon: list[Any] = []
+    bible: list[Any] = []
+    for doc in docs or []:
+        if _is_bible_doc(doc):
+            bible.append(doc)
+        else:
+            sermon.append(doc)
+    return sermon, bible
+
+
+def grounding_repair_steer(
+    report: GroundingReport,
+    quotes: Iterable[str],
+    nkjv_pairs: Iterable[tuple[str, str]],
+) -> str:
+    parts = [GROUNDING_REPAIR_STEER]
+    if report.invented_quotes:
+        parts.append("Drop these ungrounded quotations:")
+        for span in report.invented_quotes[:4]:
+            parts.append(f'- "{(span or "")[:220]}"')
+    dropped = list(report.invented_scripture) + list(report.missing_nkjv_refs)
+    if dropped:
+        parts.append("Drop these ungrounded Scripture lines or refs:")
+        for span in dropped[:6]:
+            parts.append(f"- {(span or '')[:220]}")
+    quote_list = [item.strip() for item in quotes if item and str(item).strip()][:4]
+    if quote_list:
+        parts.append("ALLOWED SERMON QUOTES (copy word-for-word):")
+        for quote in quote_list:
+            parts.append(f'- "{quote[:240]}"')
+    nkjv_list = [
+        (str(ref), str(text).strip())
+        for ref, text in nkjv_pairs
+        if text and str(text).strip()
+    ][:4]
+    if nkjv_list:
+        parts.append("ALLOWED NKJV (copy word-for-word):")
+        for ref, wording in nkjv_list:
+            parts.append(f'- {ref}: "{wording[:240]}"')
+    parts.append("Then stop.")
+    return "\n".join(parts)

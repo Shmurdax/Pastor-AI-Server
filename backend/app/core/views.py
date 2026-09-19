@@ -56,7 +56,13 @@ from .chat_sse import (
 )
 from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
+    collect_allowed_nkjv,
+    collect_allowed_sermon_quotes,
+    grounded_fallback_answer,
+    grounding_repair_steer,
     lookup_nkjv_verses,
+    split_docs_for_grounding,
+    verify_answer_grounding,
     verse_refs_for_lookup,
 )
 from .teaching_claims import (
@@ -422,6 +428,55 @@ def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
         return None, 0
     logger.info("Quote repair: retrieved notes were not quoted in the answer")
     return QUOTE_CONTINUE_STEER, budget
+
+
+def _rag_check_report(prepared, answer: str):
+    docs = prepared.get("docs") or []
+    sermon, bible = split_docs_for_grounding(docs)
+    report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
+    logger.info(
+        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s",
+        report.ok,
+        len(report.invented_quotes),
+        len(report.invented_scripture),
+        len(report.missing_nkjv_refs),
+    )
+    return report, sermon, bible
+
+
+def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
+    """Follow each teaching reply with a RAG check against retrieved notes."""
+    docs = prepared.get("docs") or []
+    if not docs:
+        return None, 0
+    report, sermon, bible = _rag_check_report(prepared, answer)
+    if report.ok:
+        return None, 0
+    quotes = collect_allowed_sermon_quotes(sermon)
+    nkjv = collect_allowed_nkjv(bible)
+    if not quotes and not nkjv:
+        return None, 0
+    budget = quote_repair_token_budget(
+        answer, completion_tokens=prepared.get("completion_tokens") or 0
+    )
+    if budget <= 0:
+        return None, 0
+    return grounding_repair_steer(report, quotes, nkjv), budget
+
+
+def _rag_grounding_fallback(prepared, answer: str) -> str:
+    docs = prepared.get("docs") or []
+    if not docs:
+        return ""
+    report, sermon, bible = _rag_check_report(prepared, answer)
+    if report.ok:
+        return ""
+    quotes = collect_allowed_sermon_quotes(sermon)
+    nkjv = collect_allowed_nkjv(bible)
+    if not quotes and not nkjv:
+        return ""
+    logger.warning("RAG check still failing; appending extractive notes")
+    return grounded_fallback_answer(quotes, nkjv)
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -1247,12 +1302,39 @@ class ChatAPIView(APIView):
                         answer = _join_continuation(answer, extra)
                         if live_history:
                             live_history.publish(answer, streaming=True)
+                grounding_steer, grounding_budget = _grounding_repair_plan(
+                    prepared, answer
+                )
+                if grounding_steer:
+                    extra_parts = []
+                    try:
+                        for text in _iter_continuation_tokens(
+                            prepared,
+                            answer,
+                            steer=grounding_steer,
+                            token_budget=grounding_budget,
+                        ):
+                            extra_parts.append(text)
+                    except Exception:
+                        logger.exception("RAG grounding repair failed; keeping the first answer")
+                    extra = _usable_extra(answer, "".join(extra_parts))
+                    if extra:
+                        if emit_live:
+                            yield _sse({"type": "delta", "text": "\n\n" + extra})
+                        answer = _join_continuation(answer, extra)
+                        if live_history:
+                            live_history.publish(answer, streaming=True)
                 finish_extra = _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
                     if emit_live:
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
                     answer = _join_continuation(answer, finish_extra)
+                rag_fallback = _rag_grounding_fallback(prepared, answer)
+                if rag_fallback:
+                    if emit_live:
+                        yield _sse({"type": "delta", "text": "\n\n" + rag_fallback})
+                    answer = (answer or "").rstrip() + "\n\n" + rag_fallback
                 response_sources = _response_sources(
                     prepared["docs"],
                     answer,
@@ -1408,9 +1490,38 @@ class ChatAPIView(APIView):
                 extra_text = _usable_extra(answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
+            grounding_steer, grounding_budget = _grounding_repair_plan(prepared, answer)
+            if grounding_steer:
+                try:
+                    extra = prepared["llm"].bind(max_tokens=grounding_budget).invoke(
+                        _continuation_messages(
+                            prepared["messages"], answer, steer=grounding_steer
+                        )
+                    )
+                    extra_text = (getattr(extra, "content", "") or "").strip()
+                except Exception:
+                    logger.exception("RAG grounding repair failed; retrying with a trimmed prompt")
+                    try:
+                        extra = prepared["llm"].bind(max_tokens=grounding_budget).invoke(
+                            _trim_continuation_messages(
+                                _continuation_messages(
+                                    prepared["messages"], answer, steer=grounding_steer
+                                )
+                            )
+                        )
+                        extra_text = (getattr(extra, "content", "") or "").strip()
+                    except Exception:
+                        logger.exception("RAG grounding repair failed; keeping the first answer")
+                        extra_text = ""
+                extra_text = _usable_extra(answer, extra_text)
+                if extra_text:
+                    answer = _join_continuation(answer, extra_text)
             finish_extra = _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
+            rag_fallback = _rag_grounding_fallback(prepared, answer)
+            if rag_fallback:
+                answer = (answer or "").rstrip() + "\n\n" + rag_fallback
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,

@@ -110,6 +110,42 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertEqual(len(found), 1)
 
+    def test_grounding_repair_steer_lists_allowed_lines(self):
+        from core.grounding import GroundingReport, grounding_repair_steer
+
+        report = GroundingReport(
+            ok=False,
+            invented_quotes=["Your dog is in dog heaven waiting for you."],
+            invented_scripture=[],
+            missing_nkjv_refs=["Jeremiah 9:24"],
+        )
+        steer = grounding_repair_steer(
+            report,
+            ["We sit with the grieving and we pray."],
+            [("Psalm 34:18", "The Lord is near to those who have a broken heart.")],
+        )
+        self.assertIn("RAG check", steer)
+        self.assertIn("dog heaven", steer)
+        self.assertIn("We sit with the grieving", steer)
+        self.assertIn("Psalm 34:18", steer)
+        self.assertIn("Do not say Certainly", steer)
+
+    def test_split_docs_for_grounding_separates_bible(self):
+        from core.grounding import split_docs_for_grounding
+
+        docs = [
+            _doc("sermon line", source="notes.pdf", chunk_kind="sermon_quote"),
+            _doc(
+                "The Lord is near to those who have a broken heart.",
+                source="nkjv-bible.pdf",
+                chunk_kind="bible_verse",
+                book="psalm",
+            ),
+        ]
+        sermon, bible = split_docs_for_grounding(docs)
+        self.assertEqual(len(sermon), 1)
+        self.assertEqual(len(bible), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
