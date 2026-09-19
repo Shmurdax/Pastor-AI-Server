@@ -16,6 +16,7 @@ from .email_verification import (
     issue_and_send_verification_code,
     verify_email_code,
 )
+from .gmail_send import email_delivery_mode
 from .serializers import (
     GoogleAuthSerializer,
     LoginSerializer,
@@ -76,6 +77,7 @@ class AuthConfigView(APIView):
             {
                 "google_configured": bool(client_id),
                 "google_client_id": client_id,
+                "email_delivery": email_delivery_mode(),
             }
         )
 
@@ -208,7 +210,7 @@ class SendEmailCodeView(_AuthenticatedAuthView):
             "already_verified": False,
             "email": request.user.email,
         }
-        if settings.DEBUG:
+        if settings.DEBUG and email_delivery_mode() == "console":
             payload["debug_code"] = code
         return Response(payload)
 

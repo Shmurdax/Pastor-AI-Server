@@ -11,6 +11,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
+from .gmail_send import GmailSendError, email_delivery_mode, gmail_is_configured, send_via_gmail_api
 from .models import EmailVerificationCode, Profile
 
 logger = logging.getLogger(__name__)
@@ -91,20 +92,30 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> str:
         "If you did not create an account, you can ignore this email.\n"
     )
     try:
-        send_mail(
-            subject,
-            body,
-            _from_email(),
-            [user.email],
-            fail_silently=False,
-        )
+        if gmail_is_configured():
+            send_via_gmail_api(to_email=user.email, subject=subject, body=body)
+        else:
+            send_mail(
+                subject,
+                body,
+                _from_email(),
+                [user.email],
+                fail_silently=False,
+            )
+    except GmailSendError as exc:
+        logger.exception("Gmail API failed to send verification email to %s", user.email)
+        raise EmailVerificationError(str(exc) or "We could not send the email.", status=503) from exc
     except Exception:
         logger.exception("Failed to send verification email to %s", user.email)
         raise EmailVerificationError(
             "We could not send the email. Please try again in a moment.",
             status=503,
         )
-    logger.info("Sent email verification code to %s", user.email)
+    logger.info(
+        "Sent email verification code to %s via %s",
+        user.email,
+        email_delivery_mode(),
+    )
     return code
 
 

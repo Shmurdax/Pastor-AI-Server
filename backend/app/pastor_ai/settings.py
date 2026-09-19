@@ -313,3 +313,20 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
+# Gmail API (users.messages.send) for 6-digit signup verification emails.
+# Prefer a Workspace service account with domain-wide delegation, or a user
+# OAuth refresh token with https://www.googleapis.com/auth/gmail.send.
+GMAIL_SENDER = os.environ.get("GMAIL_SENDER", "") or _load_dotenv_value("GMAIL_SENDER")
+GMAIL_SERVICE_ACCOUNT_JSON = (
+    os.environ.get("GMAIL_SERVICE_ACCOUNT_JSON", "") or _load_dotenv_value("GMAIL_SERVICE_ACCOUNT_JSON")
+)
+GMAIL_SERVICE_ACCOUNT_FILE = (
+    os.environ.get("GMAIL_SERVICE_ACCOUNT_FILE", "") or _load_dotenv_value("GMAIL_SERVICE_ACCOUNT_FILE")
+)
+GOOGLE_CLIENT_SECRET = (
+    os.environ.get("GOOGLE_CLIENT_SECRET", "") or _load_dotenv_value("GOOGLE_CLIENT_SECRET")
+)
+GOOGLE_REFRESH_TOKEN = (
+    os.environ.get("GOOGLE_REFRESH_TOKEN", "") or _load_dotenv_value("GOOGLE_REFRESH_TOKEN")
+)
+
