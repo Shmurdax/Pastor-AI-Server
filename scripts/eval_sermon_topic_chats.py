@@ -572,7 +572,8 @@ def run_eval(
             replay = None
             if i <= len(existing_pairs):
                 _prev_q, prev_a = existing_pairs[i - 1]
-                replay = (prev_a, [])
+                if str(prev_a or "").strip():
+                    replay = (prev_a, [])
             started = time.time()
             if replay:
                 answer, sources = replay
