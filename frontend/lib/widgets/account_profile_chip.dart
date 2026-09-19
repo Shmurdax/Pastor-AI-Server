@@ -4,7 +4,6 @@ import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import 'package:flutter_application_1/widgets/brand_gradient.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -204,7 +203,7 @@ Future<void> showAccountProfileSheet(
                 if (user.isStaff) ...[
                   SizedBox(
                     width: double.infinity,
-                    child: BrandGradientFilledButton(
+                    child: FilledButton.icon(
                       onPressed: () {
                         Navigator.of(ctx).pop();
                         if (onOpenPrayerInbox != null) {
@@ -219,12 +218,17 @@ Future<void> showAccountProfileSheet(
                       },
                       icon: const Icon(Icons.volunteer_activism_outlined),
                       label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _navy,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    child: BrandGradientFilledButton(
+                    child: FilledButton.icon(
                       onPressed: () {
                         Navigator.of(ctx).pop();
                         if (onOpenResponseReports != null) {
@@ -239,6 +243,11 @@ Future<void> showAccountProfileSheet(
                       },
                       icon: const Icon(Icons.flag_outlined),
                       label: Text('Response reports', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _navy,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
