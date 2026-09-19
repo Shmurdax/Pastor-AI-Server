@@ -227,18 +227,24 @@ Paste both IDs plus `RUNPOD_API_KEY` into `tokens.env` on the CPU pod, then
 ## Production CPU pod
 
 The always-on GPU pod (`6pf27d8080515x`, `christian-ai-prd`) was **terminated**.
-Production is a CPU-only Secure Cloud pod on the same network volume
-(`int0elzo4l` at `/workspace`):
+Production is a CPU-only Secure Cloud pod. US-NE-1 had no `cpu3g` 4-vCPU
+stock, so the 4 vCPU / 16 GB pod runs in **US-MO-2** on a copied network
+volume. Keep the volume mounted at `/workspace`.
 
 | | |
 |--|--|
-| Pod id | `rv1ttmvj5xy02k` |
-| Name | `christian-ai-prd` |
+| Pod id | `f4dfpc5x5sosvs` |
+| Name | `christian-ai-prd-4cpu` |
 | Git channel | `master` (`/workspace/pastor-ai/.git_channel`) |
-| Flavor | `cpu3g` (2 vCPU / 8 GB, **no GPU**) |
-| Cost | **$0.08/hr** (the old GPU pod was $0.59/hr) |
-| SSH | `ssh rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+| Flavor | `cpu3g` (4 vCPU / 16 GB, **no GPU**) |
+| Cost | **$0.16/hr** |
+| Volume | `n0esql1mpm` at `/workspace` (US-MO-2) |
+| SSH | `ssh f4dfpc5x5sosvs-64411dd1@ssh.runpod.io -i ~/.ssh/id_ed25519` |
 | Public URL | `https://christianaiapophatictestdomain.com` (named Cloudflare tunnel) |
+
+The previous 2 vCPU / 8 GB pod `rv1ttmvj5xy02k` is **stopped**. After the
+new site has been healthy, terminate that pod and then delete volume
+`int0elzo4l` (US-NE-1). Do not delete `n0esql1mpm`.
 
 ## Development CPU pod
 
@@ -351,7 +357,7 @@ first request instead:
    `ENFORCE_EAGER=true` so vLLM skips CUDA-graph capture. Do **not** attach
    a user network volume for chat: it pins the endpoint to one DC (workers
    sit `THROTTLED` waiting for that region's 48GB GPUs) and shadows the
-   faster host cache. Leave CPU volume `int0elzo4l` (US-NE-1) off serverless.
+   faster host cache. Leave CPU volume `n0esql1mpm` (US-MO-2) off serverless.
 5. **SSE keepalives** every 8 seconds so Cloudflare does not drop the stream
    during MiniLM + GPU boot.
 

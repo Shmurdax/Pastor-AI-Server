@@ -97,7 +97,7 @@ Optional:
                              the worker to one DC and often leaves 48GB GPUs
                              THROTTLED. Default is host-cached MODEL_NAME.
                              Must live in a serverless DC (US-KS-2, US-GA-1,
-                             US-NC-1, EU-RO-1 — not the CPU pod's US-NE-1).
+                             US-NC-1, EU-RO-1 — not the CPU pod's US-MO-2 / US-NE-1).
   RUNPOD_DATA_CENTER_IDS     Pin the vLLM endpoint to that volume's region
                              (only with --attach-volume)
   VLLM_IDLE_TIMEOUT          Seconds a worker stays up after the last request
@@ -473,8 +473,8 @@ if [[ "$ATTACH_VOLUME" == 1 ]]; then
   VLLM_VOLUME_ID="${RUNPOD_NETWORK_VOLUME_ID:-}"
   VLLM_DATA_CENTER_IDS="${RUNPOD_DATA_CENTER_IDS:-}"
   [[ -n "$VLLM_VOLUME_ID" ]] || die "--attach-volume requires RUNPOD_NETWORK_VOLUME_ID"
-  if [[ ",${VLLM_DATA_CENTER_IDS}," == *",US-NE-1,"* ]]; then
-    die "US-NE-1 is the CPU-pod data center and cannot host serverless vLLM"
+  if [[ ",${VLLM_DATA_CENTER_IDS}," == *",US-NE-1,"* ]] || [[ ",${VLLM_DATA_CENTER_IDS}," == *",US-MO-2,"* ]]; then
+    die "US-NE-1 / US-MO-2 is the CPU-pod data center and cannot host serverless vLLM"
   fi
   log "Will attach network volume ${VLLM_VOLUME_ID} to the vLLM worker (opt-in; pins one DC)"
   if [[ -n "$VLLM_DATA_CENTER_IDS" ]]; then

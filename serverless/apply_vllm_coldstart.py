@@ -38,7 +38,8 @@ TEMPLATE_ID_DEFAULT = "oynmb132ae"
 VOLUME_NAME = "pastor-ai-vllm-cache"
 VOLUME_SIZE_GB = 80
 CANDIDATE_DCS = ("US-KS-2", "US-GA-1", "US-NC-1", "EU-RO-1")
-FORBIDDEN_DCS = {"US-NE-1"}
+FORBIDDEN_DCS = {"US-NE-1", "US-MO-2"}
+CPU_VOLUME_IDS = {"int0elzo4l", "n0esql1mpm"}
 MODEL_NAME = "Qwen/Qwen2.5-14B-Instruct-AWQ"
 HF_CACHE = "/runpod-volume/huggingface-cache"
 VLLM_CACHE = "/runpod-volume/vllm_cache"
@@ -243,16 +244,16 @@ def main() -> int:
     if not isinstance(volumes, list):
         volumes = []
 
-    cpu_volume = next((vol for vol in volumes if str(vol.get("id") or "") == "int0elzo4l"), None)
+    cpu_volume = next((vol for vol in volumes if str(vol.get("id") or "") in CPU_VOLUME_IDS), None)
     if cpu_volume:
-        log("CPU volume int0elzo4l is present and will not be attached to serverless")
+        log(f"CPU volume {cpu_volume.get('id')} is present and will not be attached to serverless")
 
     volume_id = ""
     data_center = ""
     if args.attach_volume:
         volume = pick_volume(volumes, args.volume_id.strip(), requested_dc)
         if volume and str(volume.get("dataCenterId") or "") in FORBIDDEN_DCS:
-            die("Refusing to attach a US-NE-1 / CPU-pod volume to serverless vLLM")
+            die("Refusing to attach a CPU-pod volume (US-NE-1 / US-MO-2) to serverless vLLM")
         if volume is None:
             volume = create_volume(requested_dc or CANDIDATE_DCS[0], args.dry_run)
         volume_id = str(volume.get("id") or "")
