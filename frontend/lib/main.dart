@@ -13,6 +13,7 @@ import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
+import 'package:flutter_application_1/screens/email_verification_screen.dart';
 import 'package:flutter_application_1/screens/landing_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
@@ -166,7 +167,9 @@ class _AppAccessGateState extends State<AppAccessGate> {
           } else {
             await auth.refreshMe();
           }
-          if (auth.hasPremiumAccess) break;
+          if (auth.hasPremiumAccess || auth.needsEmailVerification || auth.isPremium) {
+            break;
+          }
         } catch (_) {
           if (attempt == 5) rethrow;
         }
@@ -190,6 +193,9 @@ class _AppAccessGateState extends State<AppAccessGate> {
 
     if (!auth.sessionReady) {
       return const _SessionSplash();
+    }
+    if (auth.needsEmailVerification) {
+      return const EmailVerificationScreen();
     }
     if (auth.hasPremiumAccess) {
       return const ChatScreen();
@@ -512,7 +518,10 @@ final bibleRefRegex = RegExp(
           } else {
             await auth.refreshMe();
           }
-          if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+          if (status['status'] == 'complete' ||
+              auth.hasPremiumAccess ||
+              auth.needsEmailVerification ||
+              auth.isPremium) {
             break;
           }
         } catch (_) {
@@ -523,10 +532,15 @@ final bibleRefRegex = RegExp(
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
       if (!mounted) return;
-      final complete =
-          status?['status'] == 'complete' || auth.hasPremiumAccess;
+      final complete = status?['status'] == 'complete' ||
+          auth.hasPremiumAccess ||
+          auth.needsEmailVerification ||
+          auth.isPremium;
       if (complete) {
-        await showPurchaseCompleteDialog(context);
+        await showPurchaseCompleteDialog(
+          context,
+          needsEmailVerification: auth.needsEmailVerification,
+        );
       }
     } catch (_) {
       await auth.refreshMe();

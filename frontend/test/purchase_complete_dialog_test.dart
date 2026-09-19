@@ -36,9 +36,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Purchase complete'), findsOneWidget);
-    expect(find.text('Back to chatbot'), findsOneWidget);
+    expect(find.text('Continue'), findsOneWidget);
 
-    await tester.tap(find.text('Back to chatbot'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
     expect(find.text('Purchase complete'), findsNothing);
@@ -75,11 +75,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Purchase complete'), findsOneWidget);
 
-    await tester.tap(find.text('Back to chatbot'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
     expect(find.text('Purchase complete'), findsNothing);
     expect(find.text('Finish purchase'), findsNothing);
     expect(find.text('Chatbot'), findsOneWidget);
+  });
+
+  testWidgets('first-time subscribers are told to enter the emailed code', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: FilledButton(
+                onPressed: () => showPurchaseCompleteDialog(
+                  context,
+                  needsEmailVerification: true,
+                ),
+                child: const Text('Complete purchase'),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Complete purchase'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Check your email'), findsOneWidget);
+    expect(
+      find.text(
+        'Enter this code to verify your email. We sent a 6-digit code so you can unlock Nordin\'s AI.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Continue'), findsOneWidget);
   });
 }

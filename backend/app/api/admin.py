@@ -41,6 +41,7 @@ class ProfileInline(admin.StackedInline):
         "pending_billing_period",
         "cancel_at_period_end",
         "current_period_end",
+        "email_verified",
         "stripe_customer_id",
         "stripe_subscription_id",
         "avatar_url",
@@ -69,6 +70,7 @@ class PastorUserAdmin(DjangoUserAdmin):
         "is_active",
         "profile__subscription_status",
         "profile__billing_period",
+        "profile__email_verified",
     )
     list_select_related = ("profile",)
     search_fields = ("username", "email", "first_name", "last_name")
@@ -143,6 +145,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "pending_billing_period",
         "is_premium_display",
         "has_premium_access_display",
+        "email_verified",
         "cancel_at_period_end",
         "current_period_end",
         "stripe_customer_id",
@@ -151,6 +154,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "subscription_status",
         "billing_period",
         "pending_billing_period",
+        "email_verified",
         "cancel_at_period_end",
     )
     search_fields = (

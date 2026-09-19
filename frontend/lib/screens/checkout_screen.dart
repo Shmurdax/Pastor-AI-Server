@@ -154,7 +154,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (userJson is Map<String, dynamic>) {
         await auth.applyUser(AuthUser.fromJson(userJson));
       }
-      if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+      if (status['status'] == 'complete' ||
+          auth.hasPremiumAccess ||
+          auth.needsEmailVerification ||
+          auth.isPremium) {
         await _handlePurchaseSuccess();
       }
     } catch (_) {
@@ -247,7 +250,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _showPurchaseCompleteAndReturn() async {
     if (!mounted) return;
-    await showPurchaseCompleteDialog(context);
+    final needsVerify = context.read<AuthController>().needsEmailVerification;
+    await showPurchaseCompleteDialog(
+      context,
+      needsEmailVerification: needsVerify,
+    );
     await _returnToChatbot();
   }
 
@@ -269,7 +276,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         } else {
           await auth.refreshMe();
         }
-        if (status['status'] == 'complete' || auth.hasPremiumAccess) {
+        if (status['status'] == 'complete' ||
+            auth.hasPremiumAccess ||
+            auth.needsEmailVerification ||
+            auth.isPremium) {
           return true;
         }
       } catch (e) {
@@ -279,7 +289,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return false;
     try {
       await context.read<AuthController>().refreshMe();
-      if (context.read<AuthController>().hasPremiumAccess) return true;
+      final refreshed = context.read<AuthController>();
+      if (refreshed.hasPremiumAccess ||
+          refreshed.needsEmailVerification ||
+          refreshed.isPremium) {
+        return true;
+      }
     } catch (_) {}
     // Fallback: payment may have completed in Stripe even if this session
     // status poll raced; sync any active Stripe subscription onto the profile.
@@ -291,7 +306,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (userJson is Map<String, dynamic>) {
         await auth.applyUser(AuthUser.fromJson(userJson));
       }
-      if (sync['synced'] == true || auth.hasPremiumAccess) return true;
+      if (sync['synced'] == true ||
+          auth.hasPremiumAccess ||
+          auth.needsEmailVerification ||
+          auth.isPremium) {
+        return true;
+      }
     } catch (e) {
       lastError ??= e;
     }

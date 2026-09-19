@@ -14,6 +14,7 @@ class AuthUser {
     this.avatarUrl,
     this.isStaff = false,
     this.isPremium = false,
+    this.emailVerified = true,
     this.subscriptionStatus = 'free',
     this.billingPeriod = '',
     this.pendingBillingPeriod = '',
@@ -27,6 +28,7 @@ class AuthUser {
   final String? avatarUrl;
   final bool isStaff;
   final bool isPremium;
+  final bool emailVerified;
   final String subscriptionStatus;
   final String billingPeriod;
   final String pendingBillingPeriod;
@@ -35,6 +37,11 @@ class AuthUser {
 
   bool get isPaidPremium => subscriptionStatus == 'active';
 
+  /// Paid members who still need the post-checkout 6-digit email code.
+  /// Staff and Google-verified accounts skip this.
+  bool get needsEmailVerification =>
+      !isStaff && (isPremium || isPaidPremium) && !emailVerified;
+
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: '${json['id']}',
         email: json['email'] as String? ?? '',
@@ -42,6 +49,7 @@ class AuthUser {
         avatarUrl: json['avatar_url'] as String?,
         isStaff: json['is_staff'] as bool? ?? false,
         isPremium: json['is_premium'] as bool? ?? false,
+        emailVerified: json['email_verified'] as bool? ?? true,
         subscriptionStatus: json['subscription_status'] as String? ?? 'free',
         billingPeriod: json['billing_period'] as String? ?? '',
         pendingBillingPeriod: json['pending_billing_period'] as String? ?? '',
@@ -56,6 +64,7 @@ class AuthUser {
         if (avatarUrl != null) 'avatar_url': avatarUrl,
         'is_staff': isStaff,
         'is_premium': isPremium,
+        'email_verified': emailVerified,
         'subscription_status': subscriptionStatus,
         'billing_period': billingPeriod,
         'pending_billing_period': pendingBillingPeriod,
@@ -70,6 +79,7 @@ class AuthUser {
     String? avatarUrl,
     bool? isStaff,
     bool? isPremium,
+    bool? emailVerified,
     String? subscriptionStatus,
     String? billingPeriod,
     String? pendingBillingPeriod,
@@ -83,6 +93,7 @@ class AuthUser {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       isStaff: isStaff ?? this.isStaff,
       isPremium: isPremium ?? this.isPremium,
+      emailVerified: emailVerified ?? this.emailVerified,
       subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
       billingPeriod: billingPeriod ?? this.billingPeriod,
       pendingBillingPeriod: pendingBillingPeriod ?? this.pendingBillingPeriod,

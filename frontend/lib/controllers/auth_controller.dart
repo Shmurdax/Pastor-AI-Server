@@ -112,9 +112,16 @@ class AuthController extends ChangeNotifier {
 
   bool get isPremium => user?.isPremium ?? false;
 
+  /// Paid members who still need to enter the emailed 6-digit code.
+  bool get needsEmailVerification => user?.needsEmailVerification ?? false;
+
   /// Paid Premium members and staff (staff inherit Premium entitlements).
-  bool get hasPremiumAccess =>
-      (user?.isStaff ?? false) || isPremium || (user?.isPaidPremium ?? false);
+  /// Email/password subscribers must verify before product APIs unlock.
+  bool get hasPremiumAccess {
+    if (user?.isStaff ?? false) return true;
+    if (!(isPremium || (user?.isPaidPremium ?? false))) return false;
+    return user?.emailVerified ?? true;
+  }
 
   Future<void> applyUser(AuthUser next) async {
     user = next;

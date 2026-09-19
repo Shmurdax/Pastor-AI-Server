@@ -461,6 +461,26 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> sendEmailCode() async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/send-email-code/')),
+      headers: _headers(json: true),
+      body: jsonEncode(const {}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyEmailCode(String code) async {
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/verify-email-code/')),
+      headers: _headers(json: true),
+      body: jsonEncode({'code': code}),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> syncSubscription() async {
     final res = await _withBillingTimeout(
       _client.post(

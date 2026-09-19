@@ -15,6 +15,8 @@ from api.auth_views import (
     LogoutView,
     MeView,
     RegisterView,
+    SendEmailCodeView,
+    VerifyEmailCodeView,
 )
 from api.billing_views import (
     BillingConfigView,
@@ -75,6 +77,8 @@ urlpatterns = [
     path('api/auth/google/', GoogleAuthView.as_view()),
     path('api/auth/me/', MeView.as_view()),
     path('api/auth/logout/', LogoutView.as_view()),
+    path('api/auth/send-email-code/', SendEmailCodeView.as_view()),
+    path('api/auth/verify-email-code/', VerifyEmailCodeView.as_view()),
 
     # Stripe billing
     path('api/billing/config/', BillingConfigView.as_view()),

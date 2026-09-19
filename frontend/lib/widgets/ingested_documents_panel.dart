@@ -231,7 +231,7 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
       thumbColor: _gold.withValues(alpha: 0.9),
       trackColor: Colors.white.withValues(alpha: 0.16),
       trackBorderColor: Colors.white24,
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 22),
       child: ListView.builder(
         controller: _scrollController,
         primary: false,

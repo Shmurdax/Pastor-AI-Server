@@ -134,6 +134,11 @@ class ApiService {
   Future<Map<String, dynamic>> changeSubscriptionPlan({required String billingPeriod}) =>
       _apiClient.changeSubscriptionPlan(billingPeriod: billingPeriod);
 
+  Future<Map<String, dynamic>> sendEmailCode() => _apiClient.sendEmailCode();
+
+  Future<Map<String, dynamic>> verifyEmailCode(String code) =>
+      _apiClient.verifyEmailCode(code);
+
   Future<Map<String, dynamic>> syncSubscription() => _apiClient.syncSubscription();
 
   Future<Map<String, dynamic>> submitResponseReport({
