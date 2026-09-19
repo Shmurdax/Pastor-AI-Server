@@ -180,21 +180,40 @@ def ensure_eval_user(email: str, password: str, name: str) -> None:
 
 
 def login(base_url: str, email: str, password: str) -> str:
-    res = requests.post(
-        f"{base_url.rstrip('/')}/api/auth/login/",
-        json={"email": email, "password": password},
-        timeout=60,
-    )
-    res.raise_for_status()
-    token = res.json()["token"]
-    me = requests.get(
-        f"{base_url.rstrip('/')}/api/auth/me/",
-        headers={"Authorization": f"Token {token}"},
-        timeout=30,
-    )
-    me.raise_for_status()
-    print(json.dumps({"login": "ok", "user": me.json().get("user")}), flush=True)
-    return token
+    last_exc: Exception | None = None
+    for attempt in range(1, 8):
+        try:
+            res = requests.post(
+                f"{base_url.rstrip('/')}/api/auth/login/",
+                json={"email": email, "password": password},
+                timeout=60,
+            )
+            if res.status_code == 429:
+                wait = min(10 * attempt, 45)
+                print(json.dumps({"login_retry": attempt, "status": 429, "wait_s": wait}), flush=True)
+                time.sleep(wait)
+                continue
+            res.raise_for_status()
+            token = res.json()["token"]
+            me = requests.get(
+                f"{base_url.rstrip('/')}/api/auth/me/",
+                headers={"Authorization": f"Token {token}"},
+                timeout=30,
+            )
+            if me.status_code == 429:
+                print(json.dumps({"login": "ok", "me": "throttled"}), flush=True)
+                return token
+            me.raise_for_status()
+            print(json.dumps({"login": "ok", "user": me.json().get("user")}), flush=True)
+            return token
+        except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
+            last_exc = exc
+            wait = min(10 * attempt, 45)
+            print(json.dumps({"login_retry": attempt, "error": str(exc)[:160], "wait_s": wait}), flush=True)
+            time.sleep(wait)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("login failed")
 
 
 def warmup(base_url: str, token: str) -> None:
