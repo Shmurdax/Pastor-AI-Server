@@ -17,7 +17,7 @@ const _brandGradient = LinearGradient(
   end: Alignment.bottomRight,
 );
 
-/// Post-checkout gate: enter the 6-digit code emailed after Premium purchase.
+/// Post-signup gate: enter the 6-digit code emailed before checkout.
 class EmailVerificationScreen extends StatefulWidget {
   const EmailVerificationScreen({
     super.key,
@@ -86,7 +86,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         _debugCode = (debug != null && debug.length == 6) ? debug : null;
         _info = userRequested
             ? 'A new code was sent to ${auth.user?.email ?? 'your email'}.'
-            : 'Enter the 6-digit code we sent to ${auth.user?.email ?? 'your email'}.';
+            : 'Enter the 6-digit code we sent to ${auth.user?.email ?? 'your email'}. '
+                'After that you can continue to payment.';
         _error = null;
       });
     } catch (e) {
@@ -98,7 +99,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         _sending = false;
         if (waiting && !userRequested) {
           _info =
-              'Enter the 6-digit code we sent to ${auth.user?.email ?? 'your email'}.';
+              'Enter the 6-digit code we sent to ${auth.user?.email ?? 'your email'}. '
+              'After that you can continue to payment.';
           _error = null;
         } else {
           _error = message.isEmpty
@@ -197,7 +199,8 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                 const SizedBox(height: 14),
                 Text(
                   _info ??
-                      'Enter this code to verify your email. We sent a 6-digit code to $email.',
+                      'Enter this code to verify your email. We sent a 6-digit code to $email. '
+                      'After that you can continue to payment.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
                     fontSize: 15,

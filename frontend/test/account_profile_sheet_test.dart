@@ -20,7 +20,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('profile sheet lists Media library above View plans', (tester) async {
+  testWidgets('profile sheet keeps Media library and omits View plans', (tester) async {
     final auth = AuthController();
     auth.user = const AuthUser(
       id: '1',
@@ -54,11 +54,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Media library'), findsOneWidget);
-    expect(find.text('View plans'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.text('Media library')).dy,
-      lessThan(tester.getTopLeft(find.text('View plans')).dy),
-    );
+    expect(find.text('View plans'), findsNothing);
   });
 
   testWidgets('account chip is visible for a signed-in user', (tester) async {

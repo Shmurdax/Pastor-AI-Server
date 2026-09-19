@@ -20,7 +20,6 @@ class AccountProfileChip extends StatelessWidget {
     required this.apiService,
     this.isMobile = false,
     this.onOpenMedia,
-    this.onOpenSubscriptions,
     this.onOpenPrayerInbox,
     this.onOpenResponseReports,
     this.onSignedOut,
@@ -29,7 +28,6 @@ class AccountProfileChip extends StatelessWidget {
   final ApiService apiService;
   final bool isMobile;
   final VoidCallback? onOpenMedia;
-  final VoidCallback? onOpenSubscriptions;
   final VoidCallback? onOpenPrayerInbox;
   final VoidCallback? onOpenResponseReports;
   final VoidCallback? onSignedOut;
@@ -52,7 +50,6 @@ class AccountProfileChip extends StatelessWidget {
             context,
             apiService: apiService,
             onOpenMedia: onOpenMedia,
-            onOpenSubscriptions: onOpenSubscriptions,
             onOpenPrayerInbox: onOpenPrayerInbox,
             onOpenResponseReports: onOpenResponseReports,
             onSignedOut: onSignedOut,
@@ -89,7 +86,6 @@ Future<void> showAccountProfileSheet(
   BuildContext context, {
   required ApiService apiService,
   VoidCallback? onOpenMedia,
-  VoidCallback? onOpenSubscriptions,
   VoidCallback? onOpenPrayerInbox,
   VoidCallback? onOpenResponseReports,
   VoidCallback? onSignedOut,
@@ -156,25 +152,6 @@ Future<void> showAccountProfileSheet(
                     label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: _navy, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(ctx).pop();
-                      if (onOpenSubscriptions != null) {
-                        onOpenSubscriptions();
-                      }
-                    },
-                    icon: const Icon(Icons.workspace_premium_outlined, color: _navy),
-                    label: Text('View plans', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _gold, width: 1.5),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

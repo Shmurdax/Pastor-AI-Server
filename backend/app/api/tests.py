@@ -1,5 +1,6 @@
 from datetime import timedelta
 from unittest.mock import patch
+import json
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -25,6 +26,7 @@ class AuthConfigViewTests(TestCase):
             res.data["google_client_id"],
             "test-google-client.apps.googleusercontent.com",
         )
+        self.assertEqual(res.data["email_delivery"], "console")
 
     @override_settings(GOOGLE_CLIENT_ID="")
     def test_returns_empty_when_not_configured(self):
@@ -32,6 +34,7 @@ class AuthConfigViewTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(res.data["google_configured"])
         self.assertEqual(res.data["google_client_id"], "")
+        self.assertEqual(res.data["email_delivery"], "console")
 
 
 class AuthCsrfSessionTests(TestCase):
@@ -1132,13 +1135,53 @@ class EmailVerificationTests(TestCase):
         self.assertIsNotNone(match)
         return match.group(1)
 
-    def test_unpaid_member_cannot_request_code(self):
+    def test_unpaid_member_can_request_code(self):
         res = self.client.post("/api/auth/send-email-code/", {}, format="json")
-        self.assertEqual(res.status_code, 403)
-        self.assertIn("Subscribe first", res.data["detail"])
-
-    def test_register_then_pay_sends_code_and_verify_unlocks_access(self):
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertFalse(res.data["already_verified"])
         from django.core import mail
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
+        self.assertIn("continue to payment", mail.outbox[0].body)
+
+    def test_register_sends_no_code_until_verify_endpoint(self):
+        from django.core import mail
+
+        guest = APIClient()
+        res = guest.post(
+            "/api/auth/register/",
+            {
+                "name": "New Member",
+                "email": "new.verify@church.org",
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertFalse(res.data["user"]["email_verified"])
+        self.assertEqual(len(mail.outbox), 0)
+
+        guest.credentials(HTTP_AUTHORIZATION=f"Token {res.data['token']}")
+        send = guest.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(send.status_code, 200, send.data)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_pay_does_not_send_code_and_verify_before_pay_unlocks_access(self):
+        from django.core import mail
+
+        send = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(send.status_code, 200, send.data)
+        code = self._code_from_inbox()
+        verified = self.client.post(
+            "/api/auth/verify-email-code/",
+            {"code": code},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200, verified.data)
+        self.assertTrue(verified.data["user"]["email_verified"])
+        self.user.profile.refresh_from_db()
+        self.assertFalse(self.user.profile.has_premium_access)
 
         pay = self.client.post(
             "/api/billing/mock-activate/",
@@ -1147,33 +1190,15 @@ class EmailVerificationTests(TestCase):
         )
         self.assertEqual(pay.status_code, 200, pay.data)
         self.assertTrue(pay.data["user"]["is_premium"])
-        self.assertFalse(pay.data["user"]["email_verified"])
-        self.user.profile.refresh_from_db()
-        self.assertTrue(self.user.profile.is_premium)
-        self.assertFalse(self.user.profile.has_premium_access)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
-
-        events = self.client.get("/api/church-events/")
-        self.assertEqual(events.status_code, 403)
-
-        code = self._code_from_inbox()
-        res = self.client.post(
-            "/api/auth/verify-email-code/",
-            {"code": code},
-            format="json",
-        )
-        self.assertEqual(res.status_code, 200, res.data)
-        self.assertTrue(res.data["user"]["email_verified"])
+        self.assertTrue(pay.data["user"]["email_verified"])
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.has_premium_access)
+        self.assertEqual(len(mail.outbox), 1)
 
         events = self.client.get("/api/church-events/")
         self.assertEqual(events.status_code, 200)
 
     def test_wrong_code_is_rejected_then_correct_code_works(self):
-        self.user.profile.subscription_status = "active"
-        self.user.profile.save(update_fields=["subscription_status"])
         send = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(send.status_code, 200, send.data)
         code = self._code_from_inbox()
@@ -1196,8 +1221,6 @@ class EmailVerificationTests(TestCase):
         self.assertTrue(self.user.profile.email_verified)
 
     def test_resend_is_rate_limited(self):
-        self.user.profile.subscription_status = "active"
-        self.user.profile.save(update_fields=["subscription_status"])
         first = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(first.status_code, 200, first.data)
         second = self.client.post("/api/auth/send-email-code/", {}, format="json")
@@ -1234,3 +1257,158 @@ class EmailVerificationTests(TestCase):
         self.assertTrue(res.data["user"]["email_verified"])
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.email_verified)
+
+
+def _rsa_service_account_info():
+    """Structurally valid Google service-account JSON with a real RSA key."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        key_path = f"{tmp}/key.pem"
+        subprocess.run(
+            [
+                "openssl",
+                "genpkey",
+                "-algorithm",
+                "RSA",
+                "-pkeyopt",
+                "rsa_keygen_bits:2048",
+                "-out",
+                key_path,
+            ],
+            check=True,
+            capture_output=True,
+        )
+        with open(key_path, encoding="utf-8") as handle:
+            private_key = handle.read()
+    return {
+        "type": "service_account",
+        "project_id": "nordins-ai",
+        "private_key_id": "local-test-key",
+        "private_key": private_key,
+        "client_email": "gmail-sender@nordins-ai.iam.gserviceaccount.com",
+        "client_id": "100000000000000000000",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": (
+            "https://www.googleapis.com/robot/v1/metadata/x509/"
+            "gmail-sender%40nordins-ai.iam.gserviceaccount.com"
+        ),
+        "universe_domain": "googleapis.com",
+    }
+
+
+class GmailApiTests(TestCase):
+    """Gmail API delivery uses Google's real OAuth + gmail.googleapis.com URLs."""
+
+    def test_unregistered_service_account_is_rejected_by_google_token_api(self):
+        from google.auth.exceptions import RefreshError
+        from google.auth.transport.requests import Request
+        from google.oauth2 import service_account
+
+        from api.gmail_send import GMAIL_SEND_SCOPE, GOOGLE_TOKEN_URI
+
+        creds = service_account.Credentials.from_service_account_info(
+            _rsa_service_account_info(),
+            scopes=[GMAIL_SEND_SCOPE],
+        )
+        with self.assertRaises(RefreshError) as caught:
+            creds.refresh(Request())
+        message = str(caught.exception).lower()
+        self.assertIn("invalid", message)
+        self.assertEqual(creds._token_uri, GOOGLE_TOKEN_URI)
+
+    def test_send_posts_to_live_gmail_api_not_a_stub_host(self):
+        import base64
+
+        from api.gmail_send import GMAIL_SEND_URL, build_raw_message, send_via_gmail_api
+
+        class _Creds:
+            valid = True
+            token = "ya29.live-gmail-access-token"
+
+            def refresh(self, _request):
+                return None
+
+        raw = build_raw_message(
+            sender="noreply@thenordins.org",
+            to_email="member@example.com",
+            subject="Your Nordin's AI verification code",
+            body="Enter this code to verify your email for Nordin's AI:\n\n    482193\n",
+        )
+        decoded = base64.urlsafe_b64decode(raw.encode("utf-8")).decode("utf-8")
+        self.assertIn("482193", decoded)
+        self.assertIn("member@example.com", decoded)
+
+        with override_settings(
+            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
+        ):
+            with patch("api.gmail_send._credentials", return_value=_Creds()):
+                with patch("api.gmail_send.requests.post") as post:
+                    post.return_value.status_code = 200
+                    post.return_value.content = b'{"id":"msg-live-1"}'
+                    post.return_value.json.return_value = {"id": "msg-live-1"}
+                    message_id = send_via_gmail_api(
+                        to_email="member@example.com",
+                        subject="Your Nordin's AI verification code",
+                        body="Enter this code to verify your email for Nordin's AI:\n\n    482193\n",
+                    )
+
+        self.assertEqual(message_id, "msg-live-1")
+        post.assert_called_once()
+        args, kwargs = post.call_args
+        self.assertEqual(args[0], GMAIL_SEND_URL)
+        self.assertTrue(args[0].startswith("https://gmail.googleapis.com/"))
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer ya29.live-gmail-access-token")
+        self.assertIn("raw", kwargs["json"])
+
+    def test_verification_email_uses_gmail_api_when_configured(self):
+        from django.core import mail
+
+        from api.email_verification import issue_and_send_verification_code
+
+        user = User.objects.create_user(
+            username="gmail.api@church.org",
+            email="gmail.api@church.org",
+            password="VerifyPass123!",
+            first_name="Gmail",
+        )
+        user.profile.email_verified = False
+        user.profile.save(update_fields=["email_verified"])
+
+        with override_settings(
+            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ):
+            with patch("api.email_verification.send_via_gmail_api", return_value="msg-2") as send:
+                code = issue_and_send_verification_code(user)
+
+        self.assertRegex(code, r"^\d{6}$")
+        send.assert_called_once()
+        self.assertEqual(send.call_args.kwargs["to_email"], "gmail.api@church.org")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_debug_code_is_omitted_when_gmail_api_is_live(self):
+        user = User.objects.create_user(
+            username="nogiveaway@church.org",
+            email="nogiveaway@church.org",
+            password="VerifyPass123!",
+        )
+        user.profile.email_verified = False
+        user.profile.save(update_fields=["email_verified"])
+        token = Token.objects.create(user=user).key
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        with override_settings(
+            DEBUG=True,
+            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
+        ):
+            with patch("api.email_verification.send_via_gmail_api", return_value="msg-3"):
+                res = client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertNotIn("debug_code", res.data)
