@@ -193,18 +193,12 @@ class _AuthenticatedAuthView(APIView):
 
 
 class SendEmailCodeView(_AuthenticatedAuthView):
-    """Email a 6-digit code after Premium checkout."""
+    """Email a 6-digit code after account creation, before checkout."""
 
     def post(self, request):
         profile = getattr(request.user, "profile", None)
         if profile is not None and profile.email_verified:
             return Response({"ok": True, "already_verified": True})
-        if profile is None or not profile.is_premium:
-            if not (request.user.is_staff or request.user.is_superuser):
-                return Response(
-                    {"detail": "Subscribe first, then verify your email."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
         try:
             code = issue_and_send_verification_code(request.user)
         except EmailVerificationError as exc:
@@ -220,7 +214,7 @@ class SendEmailCodeView(_AuthenticatedAuthView):
 
 
 class VerifyEmailCodeView(_AuthenticatedAuthView):
-    """Confirm the emailed 6-digit code and unlock Premium access."""
+    """Confirm the emailed 6-digit code so the member can continue to payment."""
 
     def post(self, request):
         raw = request.data.get("code") if hasattr(request.data, "get") else None

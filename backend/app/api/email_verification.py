@@ -1,4 +1,4 @@
-"""Issue, email, and check 6-digit post-subscription verification codes."""
+"""Issue, email, and check 6-digit post-signup verification codes."""
 
 from __future__ import annotations
 
@@ -87,7 +87,8 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> str:
         f"Hi {name},\n\n"
         "Enter this code to verify your email for Nordin's AI:\n\n"
         f"    {code}\n\n"
-        "This code expires in 10 minutes. If you did not subscribe, you can ignore this email.\n"
+        "This code expires in 10 minutes. After you verify, you can continue to payment.\n"
+        "If you did not create an account, you can ignore this email.\n"
     )
     try:
         send_mail(

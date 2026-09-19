@@ -104,9 +104,10 @@ void main() {
 
     expect(find.text('Create your account'), findsOneWidget);
     expect(
-      find.text('Create an account, then complete your subscription to get access.'),
+      find.text('Create an account, verify your email, then complete your subscription to get access.'),
       findsOneWidget,
     );
+    expect(find.text('Continue to payment'), findsOneWidget);
   });
 
   Future<void> _goBackFromRegister(WidgetTester tester) async {
@@ -229,7 +230,7 @@ void main() {
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
   });
 
-  testWidgets('paid members without a verified email enter a 6-digit code', (tester) async {
+  testWidgets('new email accounts verify before checkout', (tester) async {
     _useWideSurface(tester);
     final auth = _readyAuth(
       token: 'tok',
@@ -272,7 +273,7 @@ void main() {
     expect(find.text('Verify your email'), findsNothing);
   });
 
-  testWidgets('unpaid unverified members still see the paywall', (tester) async {
+  testWidgets('unpaid unverified members enter a code before the paywall', (tester) async {
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
@@ -285,8 +286,9 @@ void main() {
     await tester.pumpWidget(_wrap(auth));
     await tester.pump();
 
-    expect(find.text('Complete your subscription'), findsOneWidget);
-    expect(find.text('Verify your email'), findsNothing);
+    expect(find.text('Verify your email'), findsOneWidget);
+    expect(find.text('Complete your subscription'), findsNothing);
+    expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
   });
 
   testWidgets('login screen no longer offers guest access', (tester) async {

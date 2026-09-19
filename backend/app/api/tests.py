@@ -1132,13 +1132,53 @@ class EmailVerificationTests(TestCase):
         self.assertIsNotNone(match)
         return match.group(1)
 
-    def test_unpaid_member_cannot_request_code(self):
+    def test_unpaid_member_can_request_code(self):
         res = self.client.post("/api/auth/send-email-code/", {}, format="json")
-        self.assertEqual(res.status_code, 403)
-        self.assertIn("Subscribe first", res.data["detail"])
-
-    def test_register_then_pay_sends_code_and_verify_unlocks_access(self):
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertFalse(res.data["already_verified"])
         from django.core import mail
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
+        self.assertIn("continue to payment", mail.outbox[0].body)
+
+    def test_register_sends_no_code_until_verify_endpoint(self):
+        from django.core import mail
+
+        guest = APIClient()
+        res = guest.post(
+            "/api/auth/register/",
+            {
+                "name": "New Member",
+                "email": "new.verify@church.org",
+                "password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertFalse(res.data["user"]["email_verified"])
+        self.assertEqual(len(mail.outbox), 0)
+
+        guest.credentials(HTTP_AUTHORIZATION=f"Token {res.data['token']}")
+        send = guest.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(send.status_code, 200, send.data)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_pay_does_not_send_code_and_verify_before_pay_unlocks_access(self):
+        from django.core import mail
+
+        send = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(send.status_code, 200, send.data)
+        code = self._code_from_inbox()
+        verified = self.client.post(
+            "/api/auth/verify-email-code/",
+            {"code": code},
+            format="json",
+        )
+        self.assertEqual(verified.status_code, 200, verified.data)
+        self.assertTrue(verified.data["user"]["email_verified"])
+        self.user.profile.refresh_from_db()
+        self.assertFalse(self.user.profile.has_premium_access)
 
         pay = self.client.post(
             "/api/billing/mock-activate/",
@@ -1147,33 +1187,15 @@ class EmailVerificationTests(TestCase):
         )
         self.assertEqual(pay.status_code, 200, pay.data)
         self.assertTrue(pay.data["user"]["is_premium"])
-        self.assertFalse(pay.data["user"]["email_verified"])
-        self.user.profile.refresh_from_db()
-        self.assertTrue(self.user.profile.is_premium)
-        self.assertFalse(self.user.profile.has_premium_access)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
-
-        events = self.client.get("/api/church-events/")
-        self.assertEqual(events.status_code, 403)
-
-        code = self._code_from_inbox()
-        res = self.client.post(
-            "/api/auth/verify-email-code/",
-            {"code": code},
-            format="json",
-        )
-        self.assertEqual(res.status_code, 200, res.data)
-        self.assertTrue(res.data["user"]["email_verified"])
+        self.assertTrue(pay.data["user"]["email_verified"])
         self.user.profile.refresh_from_db()
         self.assertTrue(self.user.profile.has_premium_access)
+        self.assertEqual(len(mail.outbox), 1)
 
         events = self.client.get("/api/church-events/")
         self.assertEqual(events.status_code, 200)
 
     def test_wrong_code_is_rejected_then_correct_code_works(self):
-        self.user.profile.subscription_status = "active"
-        self.user.profile.save(update_fields=["subscription_status"])
         send = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(send.status_code, 200, send.data)
         code = self._code_from_inbox()
@@ -1196,8 +1218,6 @@ class EmailVerificationTests(TestCase):
         self.assertTrue(self.user.profile.email_verified)
 
     def test_resend_is_rate_limited(self):
-        self.user.profile.subscription_status = "active"
-        self.user.profile.save(update_fields=["subscription_status"])
         first = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(first.status_code, 200, first.data)
         second = self.client.post("/api/auth/send-email-code/", {}, format="json")

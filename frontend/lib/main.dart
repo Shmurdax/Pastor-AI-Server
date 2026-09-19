@@ -119,7 +119,7 @@ class SermonBrainApp extends StatelessWidget {
   }
 }
 
-/// Root router: splash → landing / paywall / chat.
+/// Root router: splash → landing / verify email / paywall / chat.
 class AppAccessGate extends StatefulWidget {
   const AppAccessGate({super.key});
 

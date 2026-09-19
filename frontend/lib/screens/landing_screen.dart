@@ -273,8 +273,8 @@ class LandingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  'Create an account, then complete checkout. You will not have access '
-                  'until your subscription is active.',
+                  'Create an account, verify your email, then complete checkout. '
+                  'You will not have access until your subscription is active.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45, height: 1.4),
                 ),

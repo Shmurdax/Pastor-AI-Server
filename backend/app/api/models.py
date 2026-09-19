@@ -52,7 +52,7 @@ class Profile(models.Model):
     )
     email_verified = models.BooleanField(
         default=True,
-        help_text="Email/password signups start unverified and must enter a code after subscribing.",
+        help_text="Email/password signups start unverified and must enter a code before checkout.",
     )
 
     def expire_canceled_subscription_if_needed(self) -> None:
@@ -142,7 +142,7 @@ class Profile(models.Model):
 
 
 class EmailVerificationCode(models.Model):
-    """One-time 6-digit email confirmation sent after a Premium purchase."""
+    """One-time 6-digit email confirmation sent after account creation."""
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

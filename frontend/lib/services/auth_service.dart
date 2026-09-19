@@ -37,10 +37,9 @@ class AuthUser {
 
   bool get isPaidPremium => subscriptionStatus == 'active';
 
-  /// Paid members who still need the post-checkout 6-digit email code.
+  /// Email/password accounts must enter the 6-digit code before checkout.
   /// Staff and Google-verified accounts skip this.
-  bool get needsEmailVerification =>
-      !isStaff && (isPremium || isPaidPremium) && !emailVerified;
+  bool get needsEmailVerification => !isStaff && !emailVerified;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) => AuthUser(
         id: '${json['id']}',
