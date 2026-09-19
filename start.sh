@@ -304,6 +304,12 @@ screen -dmS django bash -c "
   export BILLING_MOCK_CHECKOUT='${BILLING_MOCK_CHECKOUT:-}' &&
   export MAILCHIMP_API_KEY='${MAILCHIMP_API_KEY:-}' &&
   export MAILCHIMP_AUDIENCE_ID='${MAILCHIMP_AUDIENCE_ID:-}' &&
+  export EMAIL_HOST='${EMAIL_HOST:-}' &&
+  export EMAIL_PORT='${EMAIL_PORT:-587}' &&
+  export EMAIL_HOST_USER='${EMAIL_HOST_USER:-}' &&
+  export EMAIL_HOST_PASSWORD='${EMAIL_HOST_PASSWORD:-}' &&
+  export EMAIL_USE_TLS='${EMAIL_USE_TLS:-true}' &&
+  export DEFAULT_FROM_EMAIL='${DEFAULT_FROM_EMAIL:-}' &&
   export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
   export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
   export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&

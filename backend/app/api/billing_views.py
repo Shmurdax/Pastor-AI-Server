@@ -290,6 +290,7 @@ def _apply_subscription_to_profile(
     cancel_at_period_end: bool | None = None,
     current_period_end: datetime | None = None,
 ) -> None:
+    was_active = profile.subscription_status == Profile.SubscriptionStatus.ACTIVE
     update_fields = ["subscription_status"]
     profile.subscription_status = status_value
     if customer_id:
@@ -336,6 +337,27 @@ def _apply_subscription_to_profile(
         update_fields.append("current_period_end")
     profile.save(update_fields=update_fields)
     dump_persistent_postgres()
+    if (
+        status_value == Profile.SubscriptionStatus.ACTIVE
+        and not was_active
+        and not profile.email_verified
+        and not profile.user.is_staff
+        and not profile.user.is_superuser
+    ):
+        try:
+            from .email_verification import EmailVerificationError, issue_and_send_verification_code
+
+            issue_and_send_verification_code(profile.user)
+        except EmailVerificationError:
+            logger.warning(
+                "Could not email verification code after subscription for user %s",
+                profile.user_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to email verification code after subscription for user %s",
+                profile.user_id,
+            )
 
 
 def _billing_period_from_subscription(subscription: dict | stripe.Subscription) -> str:

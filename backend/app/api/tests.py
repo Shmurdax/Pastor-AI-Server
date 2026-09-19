@@ -60,6 +60,7 @@ class AuthCsrfSessionTests(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertIn("token", res.data)
         self.assertEqual(res.data["user"]["email"], "new.user@example.com")
+        self.assertFalse(res.data["user"]["email_verified"])
 
     def test_login_with_session_cookie_without_csrf(self):
         client = APIClient(enforce_csrf_checks=True)
@@ -114,6 +115,7 @@ class GoogleAuthViewTests(TestCase):
         self.assertEqual(res.data["user"]["email"], "google.user@example.com")
         self.assertEqual(res.data["user"]["name"], "Google User")
         self.assertEqual(res.data["user"]["avatar_url"], "https://example.com/avatar.png")
+        self.assertTrue(res.data["user"]["email_verified"])
 
         user = User.objects.get(username="google.user@example.com")
         self.assertFalse(user.has_usable_password())
@@ -139,6 +141,7 @@ class GoogleAuthViewTests(TestCase):
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["user"]["email"], "existing@example.com")
+        self.assertTrue(res.data["user"]["email_verified"])
         self.assertEqual(User.objects.filter(username="existing@example.com").count(), 1)
         self.assertTrue(user.has_usable_password())
 
@@ -300,6 +303,7 @@ class PremiumAccessTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(res.data["user"]["is_staff"])
         self.assertTrue(res.data["user"]["is_premium"])
+        self.assertTrue(res.data["user"]["email_verified"])
         self.assertTrue(self.premium.profile.has_premium_access)
 
     def test_staff_has_premium_access_without_subscription(self):
@@ -380,6 +384,14 @@ class ProductPaywallTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.staff_token}")
         res = self.client.get("/api/church-events/")
         self.assertEqual(res.status_code, 200)
+
+    def test_unverified_premium_is_locked_out_until_email_code(self):
+        self.premium.profile.email_verified = False
+        self.premium.profile.save(update_fields=["email_verified"])
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.get("/api/church-events/")
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.data["detail"], "Verify your email to continue.")
 
 
 @override_settings(BILLING_MOCK_CHECKOUT="true")
@@ -980,6 +992,7 @@ class AdminAddUserProfileTests(TestCase):
                 "profile-0-billing_period": "monthly",
                 "profile-0-pending_billing_period": "",
                 "profile-0-avatar_url": "",
+                "profile-0-email_verified": "on",
                 "_save": "Save",
             },
         )
@@ -1089,3 +1102,135 @@ class CreateCheckoutSessionConsentTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIn(b"$15 per month", res.content)
         self.assertIn(b"$150 per year", res.content)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    BILLING_MOCK_CHECKOUT="true",
+)
+class EmailVerificationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username="verify@church.org",
+            email="verify@church.org",
+            password="VerifyPass123!",
+            first_name="Verify",
+            last_name="Member",
+        )
+        self.user.profile.email_verified = False
+        self.user.profile.save(update_fields=["email_verified"])
+        self.token = Token.objects.create(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+
+    def _code_from_inbox(self):
+        from django.core import mail
+        import re
+
+        self.assertGreaterEqual(len(mail.outbox), 1)
+        match = re.search(r"\b(\d{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_unpaid_member_cannot_request_code(self):
+        res = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 403)
+        self.assertIn("Subscribe first", res.data["detail"])
+
+    def test_register_then_pay_sends_code_and_verify_unlocks_access(self):
+        from django.core import mail
+
+        pay = self.client.post(
+            "/api/billing/mock-activate/",
+            {"billing_period": "monthly"},
+            format="json",
+        )
+        self.assertEqual(pay.status_code, 200, pay.data)
+        self.assertTrue(pay.data["user"]["is_premium"])
+        self.assertFalse(pay.data["user"]["email_verified"])
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.is_premium)
+        self.assertFalse(self.user.profile.has_premium_access)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
+
+        events = self.client.get("/api/church-events/")
+        self.assertEqual(events.status_code, 403)
+
+        code = self._code_from_inbox()
+        res = self.client.post(
+            "/api/auth/verify-email-code/",
+            {"code": code},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["user"]["email_verified"])
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.has_premium_access)
+
+        events = self.client.get("/api/church-events/")
+        self.assertEqual(events.status_code, 200)
+
+    def test_wrong_code_is_rejected_then_correct_code_works(self):
+        self.user.profile.subscription_status = "active"
+        self.user.profile.save(update_fields=["subscription_status"])
+        send = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(send.status_code, 200, send.data)
+        code = self._code_from_inbox()
+
+        wrong = self.client.post(
+            "/api/auth/verify-email-code/",
+            {"code": "000000" if code != "000000" else "111111"},
+            format="json",
+        )
+        self.assertEqual(wrong.status_code, 400)
+        self.assertFalse(self.user.profile.has_premium_access)
+
+        ok = self.client.post(
+            "/api/auth/verify-email-code/",
+            {"code": code},
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200, ok.data)
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.email_verified)
+
+    def test_resend_is_rate_limited(self):
+        self.user.profile.subscription_status = "active"
+        self.user.profile.save(update_fields=["subscription_status"])
+        first = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(first.status_code, 200, first.data)
+        second = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(second.status_code, 429)
+
+    def test_already_verified_send_is_noop(self):
+        self.user.profile.email_verified = True
+        self.user.profile.subscription_status = "active"
+        self.user.profile.save(update_fields=["email_verified", "subscription_status"])
+        res = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["already_verified"])
+
+    def test_google_sign_in_marks_existing_unverified_user_verified(self):
+        from unittest.mock import patch
+
+        self.user.profile.email_verified = False
+        self.user.profile.save(update_fields=["email_verified"])
+        with override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com"):
+            with patch("api.auth_views.google_id_token.verify_oauth2_token") as mock_verify:
+                mock_verify.return_value = {
+                    "email": "verify@church.org",
+                    "email_verified": True,
+                    "name": "Verify Member",
+                    "picture": "",
+                }
+                guest = APIClient()
+                res = guest.post(
+                    "/api/auth/google/",
+                    {"id_token": "fake-id-token"},
+                    format="json",
+                )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["user"]["email_verified"])
+        self.user.profile.refresh_from_db()
+        self.assertTrue(self.user.profile.email_verified)

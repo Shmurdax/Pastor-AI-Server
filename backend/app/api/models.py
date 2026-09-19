@@ -50,6 +50,10 @@ class Profile(models.Model):
         default="",
         help_text="Scheduled monthly/yearly switch that takes effect at current_period_end.",
     )
+    email_verified = models.BooleanField(
+        default=True,
+        help_text="Email/password signups start unverified and must enter a code after subscribing.",
+    )
 
     def expire_canceled_subscription_if_needed(self) -> None:
         """Drop Premium after a scheduled cancel once the paid period ends."""
@@ -127,10 +131,35 @@ class Profile(models.Model):
     @property
     def has_premium_access(self) -> bool:
         """Staff inherit every Premium entitlement, plus their staff tools."""
-        return bool(self.user.is_staff or self.user.is_superuser or self.is_premium)
+        if self.user.is_staff or self.user.is_superuser:
+            return True
+        if not self.is_premium:
+            return False
+        return bool(self.email_verified)
 
     def __str__(self):
         return f"Profile({self.user.username})"
+
+
+class EmailVerificationCode(models.Model):
+    """One-time 6-digit email confirmation sent after a Premium purchase."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="email_verification_codes",
+    )
+    code_hash = models.CharField(max_length=64, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(blank=True, null=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"EmailVerificationCode({self.user_id})"
 
 
 class MediaVideo(models.Model):

@@ -229,6 +229,66 @@ void main() {
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
   });
 
+  testWidgets('paid members without a verified email enter a 6-digit code', (tester) async {
+    _useWideSurface(tester);
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '3',
+        email: 'newpaid@test.com',
+        name: 'New Paid',
+        isPremium: true,
+        emailVerified: false,
+        subscriptionStatus: 'active',
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    expect(find.text('Verify your email'), findsOneWidget);
+    expect(find.text('Verify email'), findsOneWidget);
+    expect(find.text('Resend code'), findsOneWidget);
+    expect(find.byKey(const Key('email-verification-code')), findsOneWidget);
+    expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
+    expect(find.text('Complete your subscription'), findsNothing);
+  });
+
+  testWidgets('staff skip email verification even if the flag is false', (tester) async {
+    _useWideSurface(tester);
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '9',
+        email: 'staff@test.com',
+        name: 'Staff User',
+        isStaff: true,
+        emailVerified: false,
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
+    expect(find.text('Verify your email'), findsNothing);
+  });
+
+  testWidgets('unpaid unverified members still see the paywall', (tester) async {
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '4',
+        email: 'free@test.com',
+        name: 'Free User',
+        emailVerified: false,
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    expect(find.text('Complete your subscription'), findsOneWidget);
+    expect(find.text('Verify your email'), findsNothing);
+  });
+
   testWidgets('login screen no longer offers guest access', (tester) async {
     await tester.pumpWidget(_wrap(_readyAuth(), home: const LoginScreen()));
     await tester.pump();
