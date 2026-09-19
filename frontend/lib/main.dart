@@ -1787,7 +1787,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ),
         actions: [
-          if (auth.isAuthenticated && auth.user!.isStaff)
+          if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
               child: IconButton(
@@ -1796,7 +1796,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
               ),
             ),
-          if (auth.isAuthenticated && auth.user!.isStaff)
+          if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
               child: IconButton(
