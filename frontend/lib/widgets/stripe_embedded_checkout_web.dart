@@ -23,12 +23,17 @@ class StripeEmbeddedCheckout extends StatefulWidget {
     required this.clientSecret,
     this.height = 1100,
     this.onComplete,
+    this.overlayTitle = 'Complete your Premium plan',
+    this.overlayHint =
+        'Scroll this page to reach Confirm / Subscribe at the bottom of the form.',
   });
 
   final String publishableKey;
   final String clientSecret;
   final double height;
   final VoidCallback? onComplete;
+  final String overlayTitle;
+  final String overlayHint;
 
   @override
   State<StripeEmbeddedCheckout> createState() => _StripeEmbeddedCheckoutState();
@@ -141,7 +146,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     );
 
     final title = web.HTMLHeadingElement.h1()
-      ..textContent = 'Complete your Premium plan'
+      ..textContent = widget.overlayTitle
       ..style.margin = '0'
       ..style.padding = '8px 56px 0'
       ..style.fontSize = '24px'
@@ -158,8 +163,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       ..style.backgroundColor = '#D4AF37';
 
     final hint = web.HTMLParagraphElement()
-      ..textContent =
-          'Scroll this page to reach Confirm / Subscribe at the bottom of the form.'
+      ..textContent = widget.overlayHint
       ..style.margin = '10px 0 16px'
       ..style.padding = '0 16px'
       ..style.fontSize = '13px'

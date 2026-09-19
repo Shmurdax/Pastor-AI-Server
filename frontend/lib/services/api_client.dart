@@ -461,6 +461,18 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> createPaymentMethodUpdateSession() async {
+    final res = await _withBillingTimeout(
+      _client.post(
+        Uri.parse(_resolveUrl('/api/billing/create-payment-method-session/')),
+        headers: _headers(json: true),
+        body: jsonEncode(const {}),
+      ),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> sendEmailCode() async {
     final res = await _client.post(
       Uri.parse(_resolveUrl('/api/auth/send-email-code/')),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
+import 'package:flutter_application_1/screens/update_payment_method_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -41,6 +42,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _didAutoStart) return;
         _didAutoStart = true;
+        if (context.read<AuthController>().user?.subscriptionStatus ==
+            'past_due') {
+          _openPaymentMethodUpdate();
+          return;
+        }
         _openCheckout();
       });
     }
@@ -60,11 +66,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
     );
   }
 
+  Future<void> _openPaymentMethodUpdate() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const UpdatePaymentMethodScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     final isMobile = MediaQuery.of(context).size.width < 700;
     final email = auth.user?.email ?? 'your account';
+    final pastDue = auth.user?.subscriptionStatus == 'past_due';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -108,7 +123,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Complete your subscription',
+                  pastDue
+                      ? 'Update your payment method'
+                      : 'Complete your subscription',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
                     fontSize: isMobile ? 28 : 34,
@@ -120,8 +137,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 Center(child: Container(height: 2, width: 48, color: _gold)),
                 const SizedBox(height: 14),
                 Text(
-                  'Signed in as $email. Choose a plan to unlock Nordin\'s AI. '
-                  'Nothing in the app is available until payment is complete.',
+                  pastDue
+                      ? 'Signed in as $email. The card on file could not be charged. '
+                          'Add a new card to keep Premium without starting a second subscription.'
+                      : 'Signed in as $email. Choose a plan to unlock Nordin\'s AI. '
+                          'Nothing in the app is available until payment is complete.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
                     fontSize: 15,
@@ -187,7 +207,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: FilledButton(
-                    onPressed: _openCheckout,
+                    onPressed: pastDue ? _openPaymentMethodUpdate : _openCheckout,
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
@@ -198,7 +218,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       ),
                     ),
                     child: Text(
-                      'Continue to checkout',
+                      pastDue ? 'Update payment method' : 'Continue to checkout',
                       style: GoogleFonts.figtree(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,

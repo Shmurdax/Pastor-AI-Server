@@ -11,12 +11,17 @@ class StripeEmbeddedCheckout extends StatelessWidget {
     required this.clientSecret,
     this.height = 480,
     this.onComplete,
+    this.overlayTitle = 'Complete your Premium plan',
+    this.overlayHint =
+        'Scroll this page to reach Confirm / Subscribe at the bottom of the form.',
   });
 
   final String publishableKey;
   final String clientSecret;
   final double height;
   final VoidCallback? onComplete;
+  final String overlayTitle;
+  final String overlayHint;
 
   @override
   Widget build(BuildContext context) {

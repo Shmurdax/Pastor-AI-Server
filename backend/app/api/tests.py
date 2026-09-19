@@ -1499,3 +1499,197 @@ class GmailApiTests(TestCase):
         self.assertEqual(res.status_code, 200, res.data)
         self.assertTrue(res.data["emailed"])
         self.assertNotIn("debug_code", res.data)
+
+
+@override_settings(
+    BILLING_MOCK_CHECKOUT="false",
+    STRIPE_SECRET_KEY="sk_test_payment_method",
+    STRIPE_PUBLISHABLE_KEY="pk_test_payment_method",
+    PUBLIC_APP_URL="https://example.test",
+)
+class PaymentMethodUpdateTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/billing/create-payment-method-session/"
+        self.member = User.objects.create_user(
+            username="free@church.org",
+            email="free@church.org",
+            password="MemberPass123!",
+            first_name="Free",
+            last_name="Member",
+        )
+        self.premium = User.objects.create_user(
+            username="premium@church.org",
+            email="premium@church.org",
+            password="PremiumPass123!",
+            first_name="Paid",
+            last_name="Member",
+        )
+        profile = self.premium.profile
+        profile.subscription_status = "active"
+        profile.billing_period = "monthly"
+        profile.stripe_customer_id = "cus_pm_test"
+        profile.stripe_subscription_id = "sub_pm_test"
+        profile.save(
+            update_fields=[
+                "subscription_status",
+                "billing_period",
+                "stripe_customer_id",
+                "stripe_subscription_id",
+            ]
+        )
+        self.member_token = Token.objects.create(user=self.member).key
+        self.premium_token = Token.objects.create(user=self.premium).key
+
+    def test_free_member_cannot_update_payment_method(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.member_token}")
+        res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_mock_premium_without_stripe_customer_is_rejected(self):
+        profile = self.premium.profile
+        profile.stripe_customer_id = ""
+        profile.save(update_fields=["stripe_customer_id"])
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("no Stripe card on file", res.data["detail"])
+
+    def test_creates_setup_checkout_session(self):
+        session = {"id": "cs_setup_1", "client_secret": "seti_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+            res = self.client.post(
+                self.url,
+                {},
+                format="json",
+                HTTP_ORIGIN="https://dev.thenordins.org",
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["session_id"], "cs_setup_1")
+        self.assertEqual(res.data["client_secret"], "seti_secret")
+        kwargs = create.call_args.kwargs
+        self.assertEqual(kwargs["mode"], "setup")
+        self.assertEqual(kwargs["ui_mode"], "embedded_page")
+        self.assertEqual(kwargs["customer"], "cus_pm_test")
+        self.assertEqual(kwargs["currency"], "usd")
+        self.assertTrue(
+            kwargs["return_url"].startswith(
+                "https://dev.thenordins.org/?billing=payment_updated"
+            )
+        )
+        self.assertEqual(kwargs["metadata"]["purpose"], "payment_method_update")
+
+    def test_past_due_member_can_update_payment_method(self):
+        profile = self.premium.profile
+        profile.subscription_status = "past_due"
+        profile.save(update_fields=["subscription_status"])
+        session = {"id": "cs_setup_past", "client_secret": "seti_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+            res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+
+    def test_session_status_sets_default_payment_method(self):
+        setup_session = {
+            "id": "cs_setup_done",
+            "mode": "setup",
+            "status": "complete",
+            "client_reference_id": str(self.premium.id),
+            "customer": "cus_pm_test",
+            "setup_intent": "seti_123",
+        }
+        setup_intent = {"id": "seti_123", "payment_method": "pm_new_card"}
+        invoices = {"data": [{"id": "in_open_1"}]}
+        subscription = {
+            "id": "sub_pm_test",
+            "status": "active",
+            "cancel_at_period_end": False,
+            "current_period_end": 1893456000,
+            "items": {"data": []},
+            "schedule": None,
+        }
+        with patch(
+            "api.billing_views.stripe.checkout.Session.retrieve",
+            return_value=setup_session,
+        ), patch(
+            "api.billing_views.stripe.SetupIntent.retrieve",
+            return_value=setup_intent,
+        ), patch(
+            "api.billing_views.stripe.Customer.modify"
+        ) as modify_customer, patch(
+            "api.billing_views.stripe.Subscription.modify"
+        ) as modify_sub, patch(
+            "api.billing_views.stripe.Invoice.list",
+            return_value=invoices,
+        ), patch(
+            "api.billing_views.stripe.Invoice.pay"
+        ) as pay_invoice, patch(
+            "api.billing_views.stripe.Subscription.retrieve",
+            return_value=subscription,
+        ):
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+            res = self.client.get(
+                "/api/billing/session-status/",
+                {"session_id": "cs_setup_done"},
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["payment_method_updated"])
+        self.assertEqual(res.data["status"], "complete")
+        self.assertEqual(res.data["user"]["subscription_status"], "active")
+        modify_customer.assert_called_once_with(
+            "cus_pm_test",
+            invoice_settings={"default_payment_method": "pm_new_card"},
+        )
+        modify_sub.assert_called_once_with(
+            "sub_pm_test",
+            default_payment_method="pm_new_card",
+        )
+        pay_invoice.assert_called_once_with("in_open_1")
+
+    def test_setup_webhook_does_not_treat_session_as_new_subscription(self):
+        from api.billing_views import StripeWebhookView
+
+        view = StripeWebhookView()
+        session = {
+            "id": "cs_setup_hook",
+            "mode": "setup",
+            "status": "complete",
+            "customer": "cus_pm_test",
+            "setup_intent": "seti_hook",
+            "metadata": {"user_id": str(self.premium.id)},
+        }
+        setup_intent = {"id": "seti_hook", "payment_method": "pm_hook"}
+        invoices = {"data": []}
+        subscription = {
+            "id": "sub_pm_test",
+            "status": "active",
+            "cancel_at_period_end": False,
+            "items": {"data": []},
+            "schedule": None,
+        }
+        with patch(
+            "api.billing_views.stripe.SetupIntent.retrieve",
+            return_value=setup_intent,
+        ), patch(
+            "api.billing_views.stripe.Customer.modify"
+        ) as modify_customer, patch(
+            "api.billing_views.stripe.Subscription.modify"
+        ), patch(
+            "api.billing_views.stripe.Invoice.list",
+            return_value=invoices,
+        ), patch(
+            "api.billing_views.stripe.Subscription.retrieve",
+            return_value=subscription,
+        ):
+            view._on_setup_completed(session)
+        modify_customer.assert_called_once()
+        self.premium.profile.refresh_from_db()
+        self.assertEqual(self.premium.profile.billing_period, "monthly")
+        self.assertEqual(self.premium.profile.subscription_status, "active")
