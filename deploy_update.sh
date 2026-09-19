@@ -71,7 +71,7 @@ else
   warn "VIMEO_ACCESS_TOKEN / VIMEO_FOLDER_ID not set — skipping folder media sync"
 fi
 
-log "Publishing backend embedded Vimeo videos into the media catalog"
+log "Publishing Vimeo folder embeds + backend embedded videos into the media catalog"
 python manage.py sync_embedded_media 2>&1 | tee -a "$LOG_DIR/deploy-vimeo-sync.log" \
   || warn "Embedded media catalog sync failed (continuing deploy)"
 

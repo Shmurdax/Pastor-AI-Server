@@ -2,6 +2,7 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import User
 from django.forms.models import BaseInlineFormSet
+from django.utils.html import format_html
 
 from core.persist_db import dump_persistent_postgres
 
@@ -184,6 +185,7 @@ class MediaVideoAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "vimeo_id",
+        "privacy_hash",
         "access_tier",
         "access_tier_manual",
         "is_published",
@@ -191,14 +193,32 @@ class MediaVideoAdmin(admin.ModelAdmin):
         "synced_at",
     )
     list_filter = ("access_tier", "is_published", "access_tier_manual")
-    search_fields = ("title", "vimeo_id", "description")
-    readonly_fields = ("synced_at", "created_at", "updated_at")
+    search_fields = ("title", "vimeo_id", "description", "privacy_hash")
+    readonly_fields = ("embed_url", "synced_at", "created_at", "updated_at")
     ordering = ("-published_at",)
+
+    @admin.display(description="Embed URL")
+    def embed_url(self, obj):
+        video_id = (obj.vimeo_id or "").strip()
+        if not video_id:
+            return ""
+        hash_ = (obj.privacy_hash or "").strip()
+        url = (
+            f"https://player.vimeo.com/video/{video_id}?h={hash_}"
+            if hash_
+            else f"https://player.vimeo.com/video/{video_id}"
+        )
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener">{}</a>',
+            url,
+            url,
+        )
 
     def save_model(self, request, obj, form, change):
         if change and "access_tier" in form.changed_data:
             obj.access_tier_manual = True
         super().save_model(request, obj, form, change)
+        dump_persistent_postgres()
 
 
 admin.site.unregister(User)

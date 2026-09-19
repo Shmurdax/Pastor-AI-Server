@@ -8,15 +8,22 @@ unions those two catalogs so Premium members see the same Vimeo embeds.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone as dt_timezone
+from pathlib import Path
 from typing import Any
 
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework.fields import DateTimeField
 
 from api.models import MediaVideo
 from api.serializers import MediaVideoSerializer
 from core.embedded_videos import EmbeddedVideo, list_embedded_videos
+
+VIMEO_FOLDER_CATALOG_PATH = (
+    Path(__file__).resolve().parent / "data" / "vimeo_folder_24205069.json"
+)
 
 
 def duration_label(seconds: int) -> str:
@@ -118,3 +125,50 @@ def ensure_media_videos_from_embedded() -> dict[str, int]:
         created += 1
         existing.add(video.vimeo_id)
     return {"embedded": len(videos), "created": created}
+
+
+def load_committed_vimeo_folder_catalog(path: Path | None = None) -> dict[str, int]:
+    """Upsert MediaVideo rows from the committed Vimeo folder embed dump."""
+    catalog_path = path or VIMEO_FOLDER_CATALOG_PATH
+    empty = {"loaded": 0, "created": 0, "updated": 0}
+    if not catalog_path.is_file():
+        return empty
+    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    videos = payload.get("videos") or payload.get("results") or []
+    if not isinstance(videos, list):
+        return empty
+    now = timezone.now()
+    created = updated = 0
+    for item in videos:
+        if not isinstance(item, dict):
+            continue
+        vimeo_id = str(item.get("vimeo_id") or "").strip()
+        if not vimeo_id:
+            continue
+        published = parse_datetime(str(item.get("published_at") or "")) or now
+        defaults = {
+            "privacy_hash": str(item.get("privacy_hash") or "").strip(),
+            "title": (str(item.get("title") or f"Vimeo {vimeo_id}").strip() or f"Vimeo {vimeo_id}")[:300],
+            "description": str(item.get("description") or ""),
+            "published_at": _aware(published),
+            "duration_seconds": int(item.get("duration_seconds") or 0),
+            "thumbnail_url": str(item.get("thumbnail_url") or "").strip()[:200],
+            "is_published": True,
+            "synced_at": now,
+        }
+        access = str(item.get("access_tier") or MediaVideo.AccessTier.PREMIUM).strip()
+        obj, was_created = MediaVideo.objects.update_or_create(
+            vimeo_id=vimeo_id,
+            defaults=defaults,
+        )
+        if not obj.access_tier_manual and access in {
+            choice.value for choice in MediaVideo.AccessTier
+        }:
+            if obj.access_tier != access:
+                obj.access_tier = access
+                obj.save(update_fields=["access_tier", "updated_at"])
+        if was_created:
+            created += 1
+        else:
+            updated += 1
+    return {"loaded": len(videos), "created": created, "updated": updated}

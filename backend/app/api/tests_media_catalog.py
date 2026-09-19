@@ -9,7 +9,12 @@ from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from api.media_catalog import ensure_media_videos_from_embedded, public_media_catalog
+from api.media_catalog import (
+    VIMEO_FOLDER_CATALOG_PATH,
+    ensure_media_videos_from_embedded,
+    load_committed_vimeo_folder_catalog,
+    public_media_catalog,
+)
 from api.models import MediaVideo
 from api.vimeo_sync import sync_vimeo_media
 from core.embedded_videos import EmbeddedVideo
@@ -146,6 +151,65 @@ class PublicMediaCatalogTests(TestCase):
         self.assertTrue(all(row["is_published"] for row in catalog))
         even = next(row for row in catalog if row["vimeo_id"] == "100000000")
         self.assertEqual(even["privacy_hash"], "abc123")
+
+    def test_committed_folder_json_upserts_embed_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            catalog = Path(tmp) / "folder.json"
+            catalog.write_text(
+                json.dumps(
+                    {
+                        "videos": [
+                            {
+                                "vimeo_id": "898217873",
+                                "privacy_hash": "1cea8cfd54",
+                                "title": "January 4",
+                                "published_at": "2023-12-27T23:20:00Z",
+                                "duration_seconds": 900,
+                                "embed_url": "https://player.vimeo.com/video/898217873?h=1cea8cfd54",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = load_committed_vimeo_folder_catalog(catalog)
+            again = load_committed_vimeo_folder_catalog(catalog)
+        self.assertEqual(result["created"], 1)
+        self.assertEqual(again["created"], 0)
+        self.assertEqual(again["updated"], 1)
+        row = MediaVideo.objects.get(vimeo_id="898217873")
+        self.assertEqual(row.privacy_hash, "1cea8cfd54")
+        self.assertEqual(row.title, "January 4")
+        self.assertTrue(row.is_published)
+
+    def test_missing_folder_json_is_a_noop(self):
+        result = load_committed_vimeo_folder_catalog(Path("/tmp/does-not-exist-folder.json"))
+        self.assertEqual(result, {"loaded": 0, "created": 0, "updated": 0})
+        self.assertEqual(MediaVideo.objects.count(), 0)
+
+    def test_committed_folder_json_contains_every_live_vimeo_embed(self):
+        self.assertTrue(VIMEO_FOLDER_CATALOG_PATH.is_file())
+        payload = json.loads(VIMEO_FOLDER_CATALOG_PATH.read_text(encoding="utf-8"))
+        videos = payload["videos"]
+        self.assertEqual(payload["count"], 369)
+        self.assertEqual(len(videos), 369)
+        titles = {item["title"] for item in videos}
+        self.assertIn("January 4", titles)
+        self.assertIn("December 31", titles)
+        self.assertTrue(
+            all(
+                str(item.get("embed_url") or "").startswith("https://player.vimeo.com/video/")
+                and str(item.get("privacy_hash") or "").strip()
+                for item in videos
+            )
+        )
+        result = load_committed_vimeo_folder_catalog()
+        self.assertEqual(result["loaded"], 369)
+        self.assertEqual(result["created"], 369)
+        january = MediaVideo.objects.get(vimeo_id="898217873")
+        self.assertEqual(january.title, "January 4")
+        self.assertEqual(january.privacy_hash, "1cea8cfd54")
+        self.assertEqual(MediaVideo.objects.filter(is_published=True).count(), 369)
 
 
 class VimeoSyncUnpublishGuardTests(TestCase):
