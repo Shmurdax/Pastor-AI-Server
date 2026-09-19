@@ -11,6 +11,7 @@ Configure via environment (see config.env.example / tokens.env.example):
 """
 
 from datetime import datetime, timedelta, timezone as dt_timezone
+from urllib.parse import urlparse
 
 import logging
 
@@ -55,21 +56,26 @@ def _ensure_stripe() -> None:
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
-def subscription_consent_message(period: str) -> str:
+def subscription_consent_message(period: str, *, terms_url: str = "") -> str:
     """Period-aware acknowledgment shown on Stripe Checkout."""
     if (period or "").lower() == Profile.BillingPeriod.YEARLY:
-        return (
+        message = (
             "I acknowledge I am subscribing to a yearly Premium plan "
             "($150/year) that renews until I cancel."
         )
-    return (
-        "I acknowledge I am subscribing to a monthly Premium plan "
-        "($15/month) that renews until I cancel."
-    )
+    else:
+        message = (
+            "I acknowledge I am subscribing to a monthly Premium plan "
+            "($15/month) that renews until I cancel."
+        )
+    if terms_url:
+        message = f"{message.rstrip('.')} ([Terms]({terms_url}))."
+    return message
 
 
-def _checkout_consent_kwargs(period: str) -> dict:
-    message = subscription_consent_message(period)
+def _checkout_consent_kwargs(period: str, app_url: str = "") -> dict:
+    terms_url = f"{app_url.rstrip('/')}/subscription-terms/" if app_url else ""
+    message = subscription_consent_message(period, terms_url=terms_url)
     return {
         "consent_collection": {"terms_of_service": "required"},
         "custom_text": {
@@ -219,18 +225,29 @@ def _stripe_error_response(exc) -> Response:
     return Response({"detail": str(detail)}, status=code)
 
 
+def _origin_from_request(request) -> str:
+    """Scheme+host the member is actually browsing, if the browser sent one."""
+    candidates = [
+        (request.headers.get("Origin") or "").strip(),
+        (request.headers.get("Referer") or "").strip(),
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        parsed = urlparse(raw)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}"
+    return ""
+
+
 def _public_app_url(request) -> str:
+    """Checkout return URL: current browser origin, then PUBLIC_APP_URL."""
+    origin = _origin_from_request(request)
+    if origin:
+        return origin
     configured = (getattr(settings, "PUBLIC_APP_URL", "") or "").rstrip("/")
     if configured:
         return configured
-    origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
-    if origin:
-        # Referer may include a path — keep scheme+host only.
-        from urllib.parse import urlparse
-
-        parsed = urlparse(origin)
-        if parsed.scheme and parsed.netloc:
-            return f"{parsed.scheme}://{parsed.netloc}"
     return request.build_absolute_uri("/").rstrip("/")
 
 
@@ -637,7 +654,7 @@ class CreateCheckoutSessionView(_AuthenticatedBillingView):
                         "billing_period": period,
                     }
                 },
-                **_checkout_consent_kwargs(period),
+                **_checkout_consent_kwargs(period, app_url),
             }
             try:
                 session = stripe.checkout.Session.create(**session_kwargs)
@@ -652,8 +669,11 @@ class CreateCheckoutSessionView(_AuthenticatedBillingView):
                     "Stripe TOS URL missing; showing consent text without a required checkbox"
                 )
                 session_kwargs.pop("consent_collection", None)
+                terms_url = f"{app_url.rstrip('/')}/subscription-terms/" if app_url else ""
                 session_kwargs["custom_text"] = {
-                    "submit": {"message": subscription_consent_message(period)},
+                    "submit": {
+                        "message": subscription_consent_message(period, terms_url=terms_url)
+                    },
                 }
                 session = stripe.checkout.Session.create(**session_kwargs)
         except stripe.error.StripeError as exc:
