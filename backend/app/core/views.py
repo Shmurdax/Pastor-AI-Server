@@ -492,12 +492,26 @@ def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
     return grounding_repair_steer(report, quotes, nkjv), budget
 
 
-def _rag_grounding_fallback(prepared, answer: str) -> str:
+def _missing_required_quotes(prepared, answer: str) -> bool:
+    docs = prepared.get("docs") or []
+    if not docs:
+        return False
+    query = str(prepared.get("topic_query") or "")
+    has_bible_notes = any(_is_bible_source(_doc_source_name(doc)) for doc in docs)
+    return answer_missing_required_quotes(
+        answer,
+        query=query,
+        has_reference_notes=True,
+        has_bible_notes=has_bible_notes,
+    )
+
+
+def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> str:
     docs = prepared.get("docs") or []
     if not docs:
         return ""
     report, _sermon, _bible = _rag_check_report(prepared, answer)
-    if report.ok:
+    if report.ok and not force:
         return ""
     quotes, nkjv = _grounding_snippets(prepared)
     if not quotes and not nkjv:
@@ -513,12 +527,15 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     if not docs:
         return answer
     report, _sermon, _bible = _rag_check_report(prepared, answer)
-    if report.ok:
+    missing_quotes = _missing_required_quotes(prepared, answer)
+    if report.ok and not missing_quotes:
         return answer
-    stripped = strip_ungrounded_spans(answer, report)
-    if stripped:
-        answer = compact_teaching_answer(stripped)
-    fallback = _rag_grounding_fallback(prepared, answer)
+    if not report.ok:
+        stripped = strip_ungrounded_spans(answer, report)
+        if stripped:
+            answer = compact_teaching_answer(stripped)
+        missing_quotes = True
+    fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
     if fallback and fallback not in (answer or ""):
         answer = (answer or "").rstrip() + "\n\n" + fallback
     return compact_teaching_answer(answer)

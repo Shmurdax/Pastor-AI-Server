@@ -233,6 +233,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("verify_answer_grounding", source)
         self.assertIn("_rag_grounding_fallback", source)
         self.assertIn("_finalize_teaching_answer", source)
+        self.assertIn("_missing_required_quotes", source)
         self.assertIn("skip_rewrite_repair", source)
         self.assertIn("compact_teaching_answer", source)
         self.assertIn("QUOTE_CONTINUE_STEER", source)
