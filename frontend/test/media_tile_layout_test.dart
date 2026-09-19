@@ -70,9 +70,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(tester.takeException(), isNull);
-    expect(find.text("Nordin's"), findsOneWidget);
-    expect(find.text('The NORDINS'), findsNothing);
-    expect(find.text('Daily Devotionals from The NORDINS'), findsNothing);
+    expect(find.text('The NORDINS'), findsOneWidget);
+    expect(find.text('Daily Devotionals from The NORDINS'), findsOneWidget);
+    expect(find.text("Nordin's"), findsNothing);
     expect(find.textContaining('This library hosts Daily Devotionals'), findsNothing);
     expect(find.text('Unlock with Premium'), findsNothing);
     expect(find.text('Welcome to Media'), findsOneWidget);

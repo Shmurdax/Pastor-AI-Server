@@ -692,13 +692,23 @@ class _CreatorHeader extends StatelessWidget {
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Text(
-              "Nordin's",
-              style: GoogleFonts.figtree(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: _navy,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'The NORDINS',
+                  style: GoogleFonts.figtree(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: _navy,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  MediaCatalog.creatorTagline,
+                  style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
+                ),
+              ],
             ),
           ),
         ],
