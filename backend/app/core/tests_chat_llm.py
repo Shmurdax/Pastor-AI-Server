@@ -340,7 +340,11 @@ class VllmUrlResolutionTests(unittest.TestCase):
             source,
         )
         self.assertIn("keeping the first answer", source)
-        self.assertIn("AIMessage(content=msg.ai_response or \"\")", source)
+        self.assertIn("sanitize_history_text(msg.ai_response or \"\")", source)
+        self.assertIn("sanitize_chat_answer", source)
+        self.assertIn("looks_like_rewrite_leak", source)
+        self.assertIn("language_generation_reminder", source)
+        self.assertIn("_retry_if_cjk_leak", source)
         self.assertIn("looks_like_brief_social", source)
         self.assertIn("CONVERSATIONAL_STEER", source)
         self.assertIn("Skipping Qdrant for brief social message", source)

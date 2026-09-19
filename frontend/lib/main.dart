@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_history_merge.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_sanitize.dart';
 import 'package:flutter_application_1/chat_session_store.dart';
 import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
@@ -21,16 +22,15 @@ import 'package:flutter_application_1/screens/paywall_screen.dart';
 import 'package:flutter_application_1/screens/pdf_viewer_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
-import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/ingested_documents_panel.dart';
 import 'package:flutter_application_1/models/ingested_document.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
+import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
-import 'package:flutter_application_1/widgets/language_selector.dart';
-import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
+import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -53,6 +53,9 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
+/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Events /
+/// Media on one row without feeling oversized.
+const _compactSidebarWidth = 310.0;
 
 /// Prevents Material 3 stretch / glow from painting grey at the viewport edge on web.
 class _NoOverscrollScrollBehavior extends MaterialScrollBehavior {
@@ -343,6 +346,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     duration: const Duration(milliseconds: 900),
   )..repeat(reverse: true);
 
+  late final AnimationController _libraryDrawerController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
+
   late final Animation<double> _wobbleAnimation =
       Tween<double>(begin: 0.7, end: 1.2).animate(
     CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
@@ -426,7 +434,11 @@ final bibleRefRegex = RegExp(
     final key = msg['localKey'] as String?;
     if (key == 'responseCancelled') return _s.responseCancelled;
     if (key == 'serverError') return _s.serverError;
-    return (msg['text'] as String?) ?? '';
+    final text = (msg['text'] as String?) ?? '';
+    if (msg['role'] == 'ai') {
+      return sanitizeVisibleChatText(text, language: _languageCode);
+    }
+    return text;
   }
 
   Future<void> _retranslateThreadForLanguage(String language) async {
@@ -465,7 +477,10 @@ final bibleRefRegex = RegExp(
       setState(() {
         for (var i = 0; i < aiIndexes.length; i++) {
           if (i >= translated.length) break;
-          final next = translated[i].trim();
+          final next = sanitizeVisibleChatText(
+            translated[i].trim(),
+            language: language,
+          );
           if (next.isEmpty) continue;
           _messages[aiIndexes[i]] = {
             ..._messages[aiIndexes[i]],
@@ -976,6 +991,7 @@ final bibleRefRegex = RegExp(
     }
     _sessions.disposeAll(cancelledText: '');
     _pulseController.dispose();
+    _libraryDrawerController.dispose();
     _scrollController.dispose();
     _controller.dispose();
     _chatFocusNode.dispose();
@@ -1185,9 +1201,7 @@ final bibleRefRegex = RegExp(
 
         if (isVideo) {
           if (vimeoId.isNotEmpty) {
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.of(context).pop();
-            }
+            _closeLibraryDrawer(jump: true);
             await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => MediaLibraryScreen(
@@ -1346,30 +1360,26 @@ final bibleRefRegex = RegExp(
     );
   }
 
-  void _openSubscriptions() {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SubscriptionsScreen()),
-    );
-  }
-
   void _openMedia() {
     // TODO: gate on Premium subscription.
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer(jump: true);
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
     );
   }
 
   void _openChurchEvents() {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer();
     setState(() => _eventsNavPanelOpen = true);
+  }
+
+  void _closeLibraryDrawer({bool jump = false}) {
+    if (_libraryDrawerController.isDismissed) return;
+    if (jump) {
+      _libraryDrawerController.value = 0;
+    } else {
+      _libraryDrawerController.reverse();
+    }
   }
 
   void _closeChurchEventsPanel() {
@@ -1391,9 +1401,7 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _openIngestedPdf(IngestedDocumentItem document) async {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer(jump: true);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1528,7 +1536,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw += delta;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      sanitizeVisibleChatText(runtime.streamRaw, language: _languageCode),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     // Refresh the visible thread and/or sidebar generating indicators.
@@ -1542,7 +1552,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw = text;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      sanitizeVisibleChatText(runtime.streamRaw, language: _languageCode),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     setState(() {});
@@ -1617,9 +1629,26 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     await _persistSessionId();
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
 
-    final answer = _boldBibleReferences(
-      (data['answer'] as String?) ?? runtime.streamRaw,
+    final streamed = sanitizeVisibleChatText(
+      runtime.streamRaw,
+      language: _languageCode,
     );
+    final serverAnswer = sanitizeVisibleChatText(
+      (data['answer'] as String?) ?? '',
+      language: _languageCode,
+    );
+    final streamedHadCjk = hasUnexpectedCjk(
+      runtime.streamRaw,
+      language: _languageCode,
+    );
+    final looksLikeClip = !streamedHadCjk &&
+        streamed.isNotEmpty &&
+        serverAnswer.isNotEmpty &&
+        streamed.startsWith(serverAnswer) &&
+        serverAnswer.length < streamed.length &&
+        serverAnswer.length >= (streamed.length * 0.7).round();
+    final raw = looksLikeClip || serverAnswer.isEmpty ? streamed : serverAnswer;
+    final answer = _boldBibleReferences(raw.isNotEmpty ? raw : streamed);
     final messageId = data['message_id'];
     setState(() {
       if (!mounted || !_isCurrentStream(runtime, epoch)) return;
@@ -1722,11 +1751,20 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final prayerFabRight = isMobile ? 10.0 : 20.0;
     _scheduleInputAreaMeasure();
 
-    return Scaffold(
+    if (!isMobileOrTablet && !_libraryDrawerController.isDismissed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _libraryDrawerController.isDismissed) return;
+        _libraryDrawerController.value = 0;
+      });
+    }
+
+    final scaffold = Scaffold(
       key: _scaffoldKey,
       backgroundColor: Colors.white,
-      drawer: isMobileOrTablet ? Drawer(child: _buildSidebar(isMobile: true)) : null,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leadingWidth: isMobileOrTablet ? 56 : 0,
+        leading: isMobileOrTablet ? const SizedBox.shrink() : null,
         centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -1749,7 +1787,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ),
         actions: [
-          LanguageSelector(isMobile: isMobile),
           if (auth.isAuthenticated && auth.user!.isStaff)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
@@ -1768,42 +1805,43 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 icon: const Icon(Icons.flag_outlined, color: _navy),
               ),
             ),
-          if (auth.isAuthenticated)
-            AccountProfileChip(
-              apiService: _apiService,
-              isMobile: isMobile,
-              onOpenMedia: _openMedia,
-              onOpenPrayerInbox: _openPrayerInbox,
-              onOpenResponseReports: _openResponseReportsInbox,
-              onSignedOut: () {
-                if (!mounted) return;
-                _sessions.disposeAll(cancelledText: _s.responseCancelled);
-                setState(() {
-                  _sessions.startNewChat(const Uuid().v4());
-                  _chatHistoryEntries = [];
-                  _sidebarPanel = _SidebarPanel.sermonLibrary;
-                  _showBackToBottomButton = false;
-                });
-                _persistSessionId();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(_s.signedOut)),
-                );
-              },
-            ),
-          if (!isMobile)
+          AppBarIdentityCluster(
+            isMobile: isMobile,
+            account: auth.isAuthenticated
+                ? AccountProfileChip(
+                    apiService: _apiService,
+                    isMobile: isMobile,
+                    dense: isMobile,
+                    onOpenMedia: _openMedia,
+                    onOpenPrayerInbox: _openPrayerInbox,
+                    onOpenResponseReports: _openResponseReportsInbox,
+                    onSignedOut: () {
+                      if (!mounted) return;
+                      _sessions.disposeAll(cancelledText: _s.responseCancelled);
+                      setState(() {
+                        _sessions.startNewChat(const Uuid().v4());
+                        _chatHistoryEntries = [];
+                        _sidebarPanel = _SidebarPanel.sermonLibrary;
+                        _showBackToBottomButton = false;
+                      });
+                      _persistSessionId();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(_s.signedOut)),
+                      );
+                    },
+                  )
+                : null,
+          ),
+          if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
-                  _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store")),
+                  _buildNavButton(_s.chat, _focusChatNav),
                   _buildNavButton(_s.events, _openChurchEvents),
-                  NordinsAiNavMenu(
-                    onAiHome: _focusChatNav,
-                    onMedia: _openMedia,
-                    onSubscribe: _openSubscriptions,
-                  ),
+                  _buildNavButton(_s.media, _openMedia),
                   const SizedBox(width: 40),
                 ],
               ),
@@ -1867,6 +1905,22 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ],
       ),
+    );
+
+    if (!isMobileOrTablet) return scaffold;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        scaffold,
+        SermonLibrarySlidePanel(
+          animation: _libraryDrawerController,
+          panelWidth: _compactSidebarWidth,
+          openTooltip: _s.openSermonLibrary,
+          closeTooltip: _s.closeSermonLibrary,
+          panel: _buildSidebar(isMobile: true),
+        ),
+      ],
     );
   }
 
@@ -2086,7 +2140,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     return Container(
       width: isMobile ? double.infinity : 320,
       margin: isMobile ? EdgeInsets.zero : const EdgeInsets.only(left: 20, bottom: _layoutBottomInsetDesktop, top: 20),
-      padding: const EdgeInsets.all(24),
+      padding: isMobile
+          ? const EdgeInsets.fromLTRB(16, 24, 16, 24)
+          : const EdgeInsets.all(24),
       decoration: BoxDecoration(
         borderRadius: isMobile ? BorderRadius.zero : BorderRadius.circular(32),
         gradient: const LinearGradient(
@@ -2100,22 +2156,42 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile) ...[
-              Wrap(spacing: 4, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
-                _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
-                _buildNavButton(_s.events, _openChurchEvents, textColor: Colors.white),
-                NordinsAiNavMenu(
-                  onAiHome: () {
-                    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-                      Navigator.of(context).pop();
-                    }
-                    _focusChatNav();
-                  },
-                  onMedia: _openMedia,
-                  onSubscribe: _openSubscriptions,
-                  textColor: Colors.white,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildNavButton(
+                      _s.home,
+                      () => _launchUrl("https://thenordins.org/"),
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.chat,
+                      () {
+                        _closeLibraryDrawer();
+                        _focusChatNav();
+                      },
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.events,
+                      _openChurchEvents,
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                    _buildNavButton(
+                      _s.media,
+                      _openMedia,
+                      textColor: Colors.white,
+                      horizontalPadding: 6,
+                    ),
+                  ],
                 ),
-              ]),
+              ),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),
             ],
@@ -2134,17 +2210,48 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           Row(
                             children: [
                               Expanded(
-                                child: Text(_s.sermonLibrary,
-                                    style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                              ),
-                              IconButton(
-                                tooltip: _s.browseAllDocuments,
-                                onPressed: () => _toggleIngestedDocs(),
-                                icon: Icon(
-                                  _ingestedDocsOpen ? Icons.chevron_left : Icons.chevron_right,
-                                  color: _gold,
+                                child: Text(
+                                  _s.sermonLibrary,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.figtree(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                visualDensity: VisualDensity.compact,
+                              ),
+                              Tooltip(
+                                message: _s.browseAllDocuments,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _toggleIngestedDocs(),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _s.fullLibrary,
+                                            style: GoogleFonts.figtree(
+                                              color: const Color(0xFFB8B8B8),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          Icon(
+                                            _ingestedDocsOpen
+                                                ? Icons.chevron_left
+                                                : Icons.chevron_right,
+                                            color: _gold,
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -2615,7 +2722,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            _s.welcomeBody,
+                            isMobile
+                                ? '${_s.welcomeBody} ${_s.welcomeMobileLibraryHint}'
+                                : '${_s.welcomeBody} ${_s.welcomeBibleVerify}',
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),
@@ -2924,7 +3033,12 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
     );
   }
 
-  Widget _buildNavButton(String label, VoidCallback onTap, {Color textColor = Colors.black}) {
+  Widget _buildNavButton(
+    String label,
+    VoidCallback onTap, {
+    Color textColor = Colors.black,
+    double horizontalPadding = 10.0,
+  }) {
     bool isHovered = false;
     return StatefulBuilder(
       builder: (context, setState) => MouseRegion(
@@ -2934,7 +3048,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
         child: GestureDetector(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: Stack(
               clipBehavior: Clip.none,
               children: [

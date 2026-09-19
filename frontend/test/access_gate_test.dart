@@ -209,8 +209,50 @@ void main() {
     await tester.pump();
 
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
+    expect(
+      find.textContaining('Please verify insights with your Bible.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Reference the arrow in the top left'),
+      findsNothing,
+    );
     expect(find.text('Complete your subscription'), findsNothing);
     expect(find.text('Get started'), findsNothing);
+  });
+
+  testWidgets('mobile welcome box mentions the top-left library arrow', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '1',
+        email: 'paid@test.com',
+        name: 'Paid User',
+        isPremium: true,
+        subscriptionStatus: 'active',
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
+    expect(
+      find.textContaining('Reference the arrow in the top left'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('The AI may occasionally produce inaccurate information.'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Please verify insights with your Bible.'),
+      findsNothing,
+    );
   });
 
   testWidgets('staff open chat without a paid subscription', (tester) async {

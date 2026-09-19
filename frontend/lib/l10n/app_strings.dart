@@ -30,6 +30,9 @@ class AppStrings {
   String get downloadPdf => _t('downloadPdf');
   String get closeDocumentsCatalog => _t('closeDocumentsCatalog');
   String get browseAllDocuments => _t('browseAllDocuments');
+  String get fullLibrary => _t('fullLibrary');
+  String get openSermonLibrary => _t('openSermonLibrary');
+  String get closeSermonLibrary => _t('closeSermonLibrary');
   String get retry => _t('retry');
   String get lastQuestionSources => _t('lastQuestionSources');
   String get previousChats => _t('previousChats');
@@ -50,6 +53,8 @@ class AppStrings {
 
   String get welcomeTitle => _t('welcomeTitle');
   String get welcomeBody => _t('welcomeBody');
+  String get welcomeBibleVerify => _t('welcomeBibleVerify');
+  String get welcomeMobileLibraryHint => _t('welcomeMobileLibraryHint');
   String get howCanIHelp => _t('howCanIHelp');
   String get listeningHint => _t('listeningHint');
   String get askWithVoice => _t('askWithVoice');
@@ -119,6 +124,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Download',
     'closeDocumentsCatalog': 'Close documents catalog',
     'browseAllDocuments': 'Browse all documents',
+    'fullLibrary': 'Full Library',
+    'openSermonLibrary': 'Open sermon library',
+    'closeSermonLibrary': 'Close sermon library',
     'retry': 'Retry',
     'lastQuestionSources': "Last Question's Sources",
     'previousChats': 'Previous Chats',
@@ -141,7 +149,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat deleted',
     'welcomeTitle': "Welcome to the Nordin's AI Assistant",
     'welcomeBody':
-        "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information. Please verify insights with your Bible.",
+        "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information.",
+    'welcomeBibleVerify': 'Please verify insights with your Bible.',
+    'welcomeMobileLibraryHint':
+        'Reference the arrow in the top left to access the sermon library and media link.',
     'howCanIHelp': 'How can I help you?',
     'listeningHint': 'Listening… speak your question',
     'askWithVoice': 'Ask with voice',
@@ -202,6 +213,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Descargar',
     'closeDocumentsCatalog': 'Cerrar catálogo de documentos',
     'browseAllDocuments': 'Ver todos los documentos',
+    'fullLibrary': 'Biblioteca completa',
+    'openSermonLibrary': 'Abrir biblioteca de sermones',
+    'closeSermonLibrary': 'Cerrar biblioteca de sermones',
     'retry': 'Reintentar',
     'lastQuestionSources': 'Fuentes de la última pregunta',
     'previousChats': 'Chats anteriores',
@@ -225,7 +239,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat eliminado',
     'welcomeTitle': 'Bienvenido al Asistente de IA de Nordin',
     'welcomeBody':
-        'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente. Verifica las ideas con tu Biblia.',
+        'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente.',
+    'welcomeBibleVerify': 'Verifica las ideas con tu Biblia.',
+    'welcomeMobileLibraryHint':
+        'Consulta la flecha en la esquina superior izquierda para abrir la biblioteca de sermones y el enlace de media.',
     'howCanIHelp': '¿En qué puedo ayudarte?',
     'listeningHint': 'Escuchando… habla tu pregunta',
     'askWithVoice': 'Preguntar con la voz',
@@ -287,6 +304,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Télécharger',
     'closeDocumentsCatalog': 'Fermer le catalogue de documents',
     'browseAllDocuments': 'Parcourir tous les documents',
+    'fullLibrary': 'Bibliothèque complète',
+    'openSermonLibrary': 'Ouvrir la bibliothèque de sermons',
+    'closeSermonLibrary': 'Fermer la bibliothèque de sermons',
     'retry': 'Réessayer',
     'lastQuestionSources': 'Sources de la dernière question',
     'previousChats': 'Discussions précédentes',
@@ -310,7 +330,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Discussion supprimée',
     'welcomeTitle': "Bienvenue sur l'assistant IA de Nordin",
     'welcomeBody':
-        "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes. Vérifiez les insights avec votre Bible.",
+        "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes.",
+    'welcomeBibleVerify': 'Vérifiez les insights avec votre Bible.',
+    'welcomeMobileLibraryHint':
+        'Utilisez la flèche en haut à gauche pour accéder à la bibliothèque de sermons et au lien Média.',
     'howCanIHelp': 'Comment puis-je vous aider ?',
     'listeningHint': 'Écoute… posez votre question',
     'askWithVoice': 'Demander à la voix',
@@ -372,6 +395,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Baixar',
     'closeDocumentsCatalog': 'Fechar catálogo de documentos',
     'browseAllDocuments': 'Ver todos os documentos',
+    'fullLibrary': 'Biblioteca completa',
+    'openSermonLibrary': 'Abrir biblioteca de sermões',
+    'closeSermonLibrary': 'Fechar biblioteca de sermões',
     'retry': 'Tentar de novo',
     'lastQuestionSources': 'Fontes da última pergunta',
     'previousChats': 'Chats anteriores',
@@ -395,7 +421,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat excluído',
     'welcomeTitle': 'Bem-vindo ao Assistente de IA da Nordin',
     'welcomeBody':
-        'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas. Verifique os insights com a sua Bíblia.',
+        'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas.',
+    'welcomeBibleVerify': 'Verifique os insights com a sua Bíblia.',
+    'welcomeMobileLibraryHint':
+        'Use a seta no canto superior esquerdo para acessar a biblioteca de sermões e o link de mídia.',
     'howCanIHelp': 'Como posso ajudar você?',
     'listeningHint': 'Ouvindo… fale sua pergunta',
     'askWithVoice': 'Perguntar com a voz',
@@ -457,6 +486,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Herunterladen',
     'closeDocumentsCatalog': 'Dokumentenkatalog schließen',
     'browseAllDocuments': 'Alle Dokumente durchsuchen',
+    'fullLibrary': 'Vollständige Bibliothek',
+    'openSermonLibrary': 'Predigtbibliothek öffnen',
+    'closeSermonLibrary': 'Predigtbibliothek schließen',
     'retry': 'Erneut versuchen',
     'lastQuestionSources': 'Quellen der letzten Frage',
     'previousChats': 'Frühere Chats',
@@ -480,7 +512,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat gelöscht',
     'welcomeTitle': 'Willkommen beim Nordin KI-Assistenten',
     'welcomeBody':
-        'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen. Bitte prüfen Sie Erkenntnisse anhand Ihrer Bibel.',
+        'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen.',
+    'welcomeBibleVerify': 'Bitte prüfen Sie Erkenntnisse anhand Ihrer Bibel.',
+    'welcomeMobileLibraryHint':
+        'Verwenden Sie den Pfeil oben links, um die Predigtbibliothek und den Media-Link zu öffnen.',
     'howCanIHelp': 'Wie kann ich Ihnen helfen?',
     'listeningHint': 'Hört zu… sprechen Sie Ihre Frage',
     'askWithVoice': 'Mit Stimme fragen',
@@ -541,6 +576,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': '다운로드',
     'closeDocumentsCatalog': '문서 목록 닫기',
     'browseAllDocuments': '모든 문서 보기',
+    'fullLibrary': '전체 라이브러리',
+    'openSermonLibrary': '설교 라이브러리 열기',
+    'closeSermonLibrary': '설교 라이브러리 닫기',
     'retry': '다시 시도',
     'lastQuestionSources': '최근 질문의 출처',
     'previousChats': '이전 채팅',
@@ -559,7 +597,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': '채팅이 삭제되었습니다',
     'welcomeTitle': "Nordin's AI 어시스턴트에 오신 것을 환영합니다",
     'welcomeBody':
-        '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있으니 성경으로 확인해 주세요.',
+        '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있습니다.',
+    'welcomeBibleVerify': '성경으로 확인해 주세요.',
+    'welcomeMobileLibraryHint':
+        '왼쪽 위 화살표를 눌러 설교 라이브러리와 미디어 링크에 접근하세요.',
     'howCanIHelp': '무엇을 도와드릴까요?',
     'listeningHint': '듣는 중… 질문을 말씀해 주세요',
     'askWithVoice': '음성으로 질문',
@@ -617,6 +658,9 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': '下载',
     'closeDocumentsCatalog': '关闭文档目录',
     'browseAllDocuments': '浏览全部文档',
+    'fullLibrary': '完整资料库',
+    'openSermonLibrary': '打开讲道资料库',
+    'closeSermonLibrary': '关闭讲道资料库',
     'retry': '重试',
     'lastQuestionSources': '上一个问题的来源',
     'previousChats': '历史对话',
@@ -635,7 +679,10 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': '对话已删除',
     'welcomeTitle': '欢迎使用 Nordin AI 助手',
     'welcomeBody':
-        '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息，请用圣经核实见解。',
+        '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息。',
+    'welcomeBibleVerify': '请用圣经核实见解。',
+    'welcomeMobileLibraryHint':
+        '点击左上角箭头即可打开讲道资料库和媒体链接。',
     'howCanIHelp': '我能为您做什么？',
     'listeningHint': '正在聆听…请说出您的问题',
     'askWithVoice': '语音提问',
