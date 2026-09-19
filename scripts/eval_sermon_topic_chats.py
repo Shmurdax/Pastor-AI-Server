@@ -218,12 +218,72 @@ def chat_once(base_url: str, token: str, query: str, session_id: str) -> dict:
     }
     headers = {"Authorization": f"Token {token}", "Accept": "application/json"}
     url = f"{base_url.rstrip('/')}/api/chat/"
-    res = requests.post(url, headers=headers, json=payload, timeout=480)
-    if res.status_code == 429:
-        time.sleep(8)
-        res = requests.post(url, headers=headers, json=payload, timeout=480)
+    last_exc: Exception | None = None
+    for attempt in range(1, 6):
+        try:
+            res = requests.post(url, headers=headers, json=payload, timeout=480)
+            if res.status_code in {429, 500, 502, 503, 504}:
+                wait = min(8 * attempt, 40)
+                print(
+                    json.dumps(
+                        {
+                            "retry": attempt,
+                            "status": res.status_code,
+                            "wait_s": wait,
+                            "session_id": session_id,
+                        }
+                    ),
+                    flush=True,
+                )
+                time.sleep(wait)
+                last_exc = requests.HTTPError(
+                    f"{res.status_code} for {url}", response=res
+                )
+                continue
+            res.raise_for_status()
+            return res.json()
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            wait = min(8 * attempt, 40)
+            print(
+                json.dumps(
+                    {
+                        "retry": attempt,
+                        "error": type(exc).__name__,
+                        "wait_s": wait,
+                        "session_id": session_id,
+                    }
+                ),
+                flush=True,
+            )
+            time.sleep(wait)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("chat_once failed without an exception")
+
+
+def fetch_session_pairs(base_url: str, token: str, session_id: str) -> list[tuple[str, str]]:
+    res = requests.get(
+        f"{base_url.rstrip('/')}/api/chat/history/",
+        headers={"Authorization": f"Token {token}"},
+        timeout=60,
+    )
     res.raise_for_status()
-    return res.json()
+    pairs: list[tuple[str, str]] = []
+    for entry in res.json().get("entries") or []:
+        if str(entry.get("sessionId") or "") != session_id:
+            continue
+        pending_user = ""
+        for msg in entry.get("messages") or []:
+            role = msg.get("role")
+            text = str(msg.get("text") or "")
+            if role == "user":
+                pending_user = text
+            elif role == "ai" and pending_user:
+                pairs.append((pending_user, text))
+                pending_user = ""
+        break
+    return pairs
 
 
 def retrieve_docs(query: str, prior_user: list[str], prior_ai: list[str]):
@@ -411,92 +471,56 @@ def write_report(results: dict, report_path: Path) -> None:
     report_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def run_eval(base_url: str, token: str, out_path: Path) -> dict:
-    warmup(base_url, token)
-    results = {"chats": [], "totals": {}}
+def _score_turn(
+    chat: dict, turn_n: int, query: str, answer: str, sources, prior_user, prior_ai, elapsed: float
+) -> dict:
+    try:
+        docs, topic_query, search_queries = retrieve_docs(query, prior_user, prior_ai)
+        rag = rag_score(answer, docs)
+    except Exception as exc:
+        topic_query = query
+        search_queries = [query]
+        rag = {
+            "ok": False,
+            "error": str(exc),
+            "invented_quotes": [],
+            "invented_scripture": [],
+            "missing_nkjv_refs": [],
+            "retrieved_doc_count": 0,
+            "sermon_doc_count": 0,
+            "bible_doc_count": 0,
+        }
+    ctx = context_score(chat, turn_n, answer, prior_ai)
+    return {
+        "turn": turn_n,
+        "query": query,
+        "elapsed_s": elapsed,
+        "synopsis": synopsis(answer),
+        "answer_chars": len(answer),
+        "sources": (sources or [])[:8],
+        "topic_query": topic_query,
+        "search_queries": search_queries,
+        "rag": rag,
+        "context": ctx,
+    }
+
+
+def _dump(results: dict, out_path: Path) -> None:
+    total = 0
     rag_ok = 0
     ctx_ok = 0
-    total = 0
-    for chat in CHATS:
-        session_id = str(uuid.uuid4())
-        row = {
-            "id": chat["id"],
-            "title": chat["title"],
-            "session_id": session_id,
-            "turns": [],
-        }
-        prior_user: list[str] = []
-        prior_ai: list[str] = []
-        print(f"=== {chat['title']} session={session_id} ===", flush=True)
-        for i, query in enumerate(chat["queries"], start=1):
-            started = time.time()
-            payload = chat_once(base_url, token, query, session_id)
-            answer = str(payload.get("answer") or "")
-            sources = payload.get("sources") or []
-            elapsed = round(time.time() - started, 1)
-            try:
-                docs, topic_query, search_queries = retrieve_docs(
-                    query, prior_user, prior_ai
-                )
-                rag = rag_score(answer, docs)
-            except Exception as exc:
-                topic_query = query
-                search_queries = [query]
-                rag = {
-                    "ok": False,
-                    "error": str(exc),
-                    "invented_quotes": [],
-                    "invented_scripture": [],
-                    "missing_nkjv_refs": [],
-                    "retrieved_doc_count": 0,
-                    "sermon_doc_count": 0,
-                    "bible_doc_count": 0,
-                }
-            ctx = context_score(chat, i, answer, prior_ai)
-            total += 1
-            rag_ok += int(bool(rag.get("ok")))
-            ctx_ok += int(bool(ctx.get("stayed_on_topic")))
-            turn = {
-                "turn": i,
-                "query": query,
-                "elapsed_s": elapsed,
-                "synopsis": synopsis(answer),
-                "answer_chars": len(answer),
-                "sources": sources[:8],
-                "topic_query": topic_query,
-                "search_queries": search_queries,
-                "rag": rag,
-                "context": ctx,
-            }
-            row["turns"].append(turn)
-            prior_user.append(query)
-            prior_ai.append(answer)
-            print(
-                json.dumps(
-                    {
-                        "chat": chat["id"],
-                        "turn": i,
-                        "elapsed_s": elapsed,
-                        "rag_ok": rag.get("ok"),
-                        "context_ok": ctx.get("stayed_on_topic"),
-                        "synopsis": turn["synopsis"][:180],
-                    }
-                ),
-                flush=True,
-            )
-            time.sleep(1.5)
-        last = row["turns"][-1] if row["turns"] else {}
-        row["after_10"] = {
-            "rag_ok_count": sum(1 for t in row["turns"] if t["rag"].get("ok")),
-            "context_ok_count": sum(
-                1 for t in row["turns"] if t["context"].get("stayed_on_topic")
-            ),
-            "final_recap_on_topic": bool(
-                last.get("context", {}).get("stayed_on_topic")
-            ),
+    for chat in results.get("chats") or []:
+        turns = chat.get("turns") or []
+        last = turns[-1] if turns else {}
+        chat["after_10"] = {
+            "rag_ok_count": sum(1 for t in turns if t["rag"].get("ok")),
+            "context_ok_count": sum(1 for t in turns if t["context"].get("stayed_on_topic")),
+            "final_recap_on_topic": bool(last.get("context", {}).get("stayed_on_topic")),
             "final_recap_seed_hits": last.get("context", {}).get("recap_seed_hit_count"),
         }
-        results["chats"].append(row)
+        total += len(turns)
+        rag_ok += chat["after_10"]["rag_ok_count"]
+        ctx_ok += chat["after_10"]["context_ok_count"]
     results["totals"] = {
         "queries": total,
         "rag_ok": rag_ok,
@@ -506,13 +530,93 @@ def run_eval(base_url: str, token: str, out_path: Path) -> dict:
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    report_path = out_path.with_name(out_path.stem + "_report.md")
-    write_report(results, report_path)
+    write_report(results, out_path.with_name(out_path.stem + "_report.md"))
+
+
+def run_eval(
+    base_url: str,
+    token: str,
+    out_path: Path,
+    *,
+    only_ids: list[str] | None = None,
+    session_ids: dict[str, str] | None = None,
+) -> dict:
+    warmup(base_url, token)
+    results = {"chats": [], "totals": {}}
+    selected = CHATS
+    if only_ids:
+        want = {item.strip() for item in only_ids if item.strip()}
+        selected = [chat for chat in CHATS if chat["id"] in want]
+        missing = want - {chat["id"] for chat in selected}
+        if missing:
+            raise SystemExit(f"unknown chat ids: {sorted(missing)}")
+    session_ids = session_ids or {}
+    for chat in selected:
+        session_id = session_ids.get(chat["id"]) or str(uuid.uuid4())
+        row = {
+            "id": chat["id"],
+            "title": chat["title"],
+            "session_id": session_id,
+            "turns": [],
+        }
+        prior_user: list[str] = []
+        prior_ai: list[str] = []
+        existing_pairs = []
+        if chat["id"] in session_ids:
+            try:
+                existing_pairs = fetch_session_pairs(base_url, token, session_id)
+            except Exception as exc:
+                print(json.dumps({"history_error": str(exc)}), flush=True)
+        print(f"=== {chat['title']} session={session_id} ===", flush=True)
+        for i, query in enumerate(chat["queries"], start=1):
+            replay = None
+            if i <= len(existing_pairs):
+                prev_q, prev_a = existing_pairs[i - 1]
+                if prev_q.strip() == query.strip() or True:
+                    replay = (prev_a, [])
+            started = time.time()
+            if replay:
+                answer, sources = replay
+                elapsed = 0.0
+                print(
+                    json.dumps({"chat": chat["id"], "turn": i, "replayed": True}),
+                    flush=True,
+                )
+            else:
+                payload = chat_once(base_url, token, query, session_id)
+                answer = str(payload.get("answer") or "")
+                sources = payload.get("sources") or []
+                elapsed = round(time.time() - started, 1)
+            turn = _score_turn(
+                chat, i, query, answer, sources, prior_user, prior_ai, elapsed
+            )
+            row["turns"].append(turn)
+            prior_user.append(query)
+            prior_ai.append(answer)
+            results_view = {"chats": results["chats"] + [row], "totals": {}}
+            _dump(results_view, out_path)
+            print(
+                json.dumps(
+                    {
+                        "chat": chat["id"],
+                        "turn": i,
+                        "elapsed_s": elapsed,
+                        "rag_ok": turn["rag"].get("ok"),
+                        "context_ok": turn["context"].get("stayed_on_topic"),
+                        "synopsis": turn["synopsis"][:180],
+                    }
+                ),
+                flush=True,
+            )
+            if not replay:
+                time.sleep(1.5)
+        results["chats"].append(row)
+        _dump(results, out_path)
     print(
         json.dumps(
             {
                 "wrote": str(out_path),
-                "report": str(report_path),
+                "report": str(out_path.with_name(out_path.stem + "_report.md")),
                 "totals": results["totals"],
             }
         ),
@@ -534,15 +638,41 @@ def main() -> int:
         "--out",
         default="/workspace/pastor-ai/logs/grokbot_topic_eval.json",
     )
+    parser.add_argument(
+        "--only",
+        default="",
+        help="Comma-separated chat ids to run (default: all).",
+    )
+    parser.add_argument(
+        "--session",
+        action="append",
+        default=[],
+        metavar="ID=UUID",
+        help="Reuse an existing session, e.g. prayer-life=uuid. Repeatable.",
+    )
     args = parser.parse_args()
     if not args.password:
         print("EVAL_PASSWORD / --password is required", file=sys.stderr)
         return 2
+    session_ids = {}
+    for item in args.session:
+        chat_id, _, sid = item.partition("=")
+        if not chat_id or not sid:
+            print(f"invalid --session {item!r}; expected id=uuid", file=sys.stderr)
+            return 2
+        session_ids[chat_id.strip()] = sid.strip()
+    only_ids = [part.strip() for part in args.only.split(",") if part.strip()]
     _django_setup()
     if not args.skip_setup:
         ensure_eval_user(args.email, args.password, args.name)
     token = login(args.base_url, args.email, args.password)
-    run_eval(args.base_url, token, Path(args.out))
+    run_eval(
+        args.base_url,
+        token,
+        Path(args.out),
+        only_ids=only_ids or None,
+        session_ids=session_ids,
+    )
     return 0
 
 
