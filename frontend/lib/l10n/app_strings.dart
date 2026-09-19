@@ -142,7 +142,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat deleted',
     'welcomeTitle': "Welcome to the Nordin's AI Assistant",
     'welcomeBody':
-        "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information. Please verify insights with your Bible.",
+        "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information.",
     'welcomeMobileLibraryHint':
         'Reference the arrow in the top left to access the sermon library and media link.',
     'howCanIHelp': 'How can I help you?',
@@ -228,7 +228,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat eliminado',
     'welcomeTitle': 'Bienvenido al Asistente de IA de Nordin',
     'welcomeBody':
-        'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente. Verifica las ideas con tu Biblia.',
+        'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente.',
     'welcomeMobileLibraryHint':
         'Consulta la flecha en la esquina superior izquierda para abrir la biblioteca de sermones y el enlace de media.',
     'howCanIHelp': '¿En qué puedo ayudarte?',
@@ -315,7 +315,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Discussion supprimée',
     'welcomeTitle': "Bienvenue sur l'assistant IA de Nordin",
     'welcomeBody':
-        "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes. Vérifiez les insights avec votre Bible.",
+        "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes.",
     'welcomeMobileLibraryHint':
         'Utilisez la flèche en haut à gauche pour accéder à la bibliothèque de sermons et au lien Média.',
     'howCanIHelp': 'Comment puis-je vous aider ?',
@@ -402,7 +402,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat excluído',
     'welcomeTitle': 'Bem-vindo ao Assistente de IA da Nordin',
     'welcomeBody':
-        'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas. Verifique os insights com a sua Bíblia.',
+        'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas.',
     'welcomeMobileLibraryHint':
         'Use a seta no canto superior esquerdo para acessar a biblioteca de sermões e o link de mídia.',
     'howCanIHelp': 'Como posso ajudar você?',
@@ -489,7 +489,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat gelöscht',
     'welcomeTitle': 'Willkommen beim Nordin KI-Assistenten',
     'welcomeBody':
-        'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen. Bitte prüfen Sie Erkenntnisse anhand Ihrer Bibel.',
+        'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen.',
     'welcomeMobileLibraryHint':
         'Verwenden Sie den Pfeil oben links, um die Predigtbibliothek und den Media-Link zu öffnen.',
     'howCanIHelp': 'Wie kann ich Ihnen helfen?',
@@ -570,7 +570,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': '채팅이 삭제되었습니다',
     'welcomeTitle': "Nordin's AI 어시스턴트에 오신 것을 환영합니다",
     'welcomeBody':
-        '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있으니 성경으로 확인해 주세요.',
+        '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있습니다.',
     'welcomeMobileLibraryHint':
         '왼쪽 위 화살표를 눌러 설교 라이브러리와 미디어 링크에 접근하세요.',
     'howCanIHelp': '무엇을 도와드릴까요?',
@@ -648,7 +648,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': '对话已删除',
     'welcomeTitle': '欢迎使用 Nordin AI 助手',
     'welcomeBody':
-        '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息，请用圣经核实见解。',
+        '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息。',
     'welcomeMobileLibraryHint':
         '点击左上角箭头即可打开讲道资料库和媒体链接。',
     'howCanIHelp': '我能为您做什么？',

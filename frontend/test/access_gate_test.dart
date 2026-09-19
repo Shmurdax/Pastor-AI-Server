@@ -241,7 +241,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Please verify insights with your Bible.'),
+      find.textContaining('The AI may occasionally produce inaccurate information.'),
       findsOneWidget,
     );
   });
