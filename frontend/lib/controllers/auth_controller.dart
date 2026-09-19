@@ -112,11 +112,11 @@ class AuthController extends ChangeNotifier {
 
   bool get isPremium => user?.isPremium ?? false;
 
-  /// Paid members who still need to enter the emailed 6-digit code.
+  /// Signed-in email/password users who still need the 6-digit email code.
   bool get needsEmailVerification => user?.needsEmailVerification ?? false;
 
   /// Paid Premium members and staff (staff inherit Premium entitlements).
-  /// Email/password subscribers must verify before product APIs unlock.
+  /// Email/password subscribers must verify before checkout and product APIs.
   bool get hasPremiumAccess {
     if (user?.isStaff ?? false) return true;
     if (!(isPremium || (user?.isPaidPremium ?? false))) return false;

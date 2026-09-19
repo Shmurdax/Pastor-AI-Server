@@ -24,6 +24,9 @@ _SECRET_KEYS = {
     "RUNPOD_API_KEY",
     "VLLM_API_KEY",
     "WHISPER_API_KEY",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "GMAIL_SERVICE_ACCOUNT_JSON",
 }
 
 # Pod templates keep stale GPU routing. tokens.env / config.env on the volume

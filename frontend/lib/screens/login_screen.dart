@@ -378,7 +378,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Create an account, then complete your subscription to get access.',
+                    'Create an account, verify your email, then complete your subscription to get access.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                   ),
@@ -465,7 +465,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
-                            'Create account',
+                            'Continue to payment',
                             style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                   ),

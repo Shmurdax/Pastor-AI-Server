@@ -44,7 +44,8 @@ void main() {
     expect(find.text('Verify your email'), findsOneWidget);
     expect(
       find.text(
-        'Enter this code to verify your email. We sent a 6-digit code to newpaid@test.com.',
+        'Enter this code to verify your email. We sent a 6-digit code to newpaid@test.com. '
+        'After that you can continue to payment.',
       ),
       findsOneWidget,
     );
