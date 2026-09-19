@@ -529,6 +529,131 @@ def _pending_from_stripe_subscription(subscription, current_period: str) -> str 
     return _pending_billing_period_from_schedule(schedule, current_period)
 
 
+def _can_update_payment_method(profile: Profile) -> bool:
+    """Active and past-due Stripe subscribers can replace the card on file."""
+    return profile.subscription_status in {
+        Profile.SubscriptionStatus.ACTIVE,
+        Profile.SubscriptionStatus.PAST_DUE,
+    }
+
+
+def _retry_open_invoices(customer_id: str) -> None:
+    """Retry unpaid invoices after a card update (expired-card / past_due)."""
+    if not customer_id:
+        return
+    try:
+        invoices = stripe.Invoice.list(customer=customer_id, status="open", limit=5)
+    except stripe.error.StripeError:
+        logger.exception("Failed to list open invoices for customer %s", customer_id)
+        return
+    for invoice in _stripe_get(invoices, "data") or []:
+        invoice_id = _id_or_value(invoice)
+        if not invoice_id:
+            continue
+        try:
+            stripe.Invoice.pay(invoice_id)
+        except stripe.error.StripeError:
+            logger.exception(
+                "Failed to retry open invoice %s after payment method update",
+                invoice_id,
+            )
+
+
+def _refresh_profile_subscription_from_stripe(profile: Profile) -> None:
+    """Pull subscription status after a card update may have paid a past-due invoice."""
+    sub_id = (profile.stripe_subscription_id or "").strip()
+    if not sub_id:
+        return
+    try:
+        subscription = stripe.Subscription.retrieve(
+            sub_id,
+            expand=["items.data.price"],
+        )
+    except stripe.error.StripeError:
+        logger.exception(
+            "Failed to refresh subscription %s after payment method update",
+            sub_id,
+        )
+        return
+
+    stripe_status = _stripe_get(subscription, "status") or ""
+    if stripe_status in {"active", "trialing"}:
+        status_value = Profile.SubscriptionStatus.ACTIVE
+    elif stripe_status == "past_due":
+        status_value = Profile.SubscriptionStatus.PAST_DUE
+    else:
+        return
+
+    actual_period = _billing_period_from_subscription(subscription)
+    pending = _pending_from_stripe_subscription(
+        subscription, actual_period or profile.billing_period
+    )
+    apply_kwargs = {
+        "status_value": status_value,
+        "customer_id": profile.stripe_customer_id,
+        "subscription_id": sub_id,
+        "billing_period": actual_period or profile.billing_period,
+        "cancel_at_period_end": bool(
+            _stripe_get(subscription, "cancel_at_period_end")
+        ),
+        "current_period_end": _datetime_from_stripe_ts(
+            _subscription_current_period_end_ts(subscription)
+        ),
+    }
+    if pending is not None:
+        apply_kwargs["pending_billing_period"] = pending
+    _apply_subscription_to_profile(profile, **apply_kwargs)
+
+
+def _apply_default_payment_method_from_setup_session(
+    session,
+    profile: Profile | None = None,
+) -> str:
+    """Attach the collected card as the default for the customer and subscription."""
+    setup_intent = _stripe_get(session, "setup_intent")
+    setup_id = _id_or_value(setup_intent)
+    payment_method_id = _id_or_value(_stripe_get(setup_intent, "payment_method"))
+    if setup_id and not payment_method_id:
+        setup_intent = stripe.SetupIntent.retrieve(setup_id)
+        payment_method_id = _id_or_value(_stripe_get(setup_intent, "payment_method"))
+    if not payment_method_id:
+        raise ValueError("Checkout setup session is missing a payment method.")
+
+    customer_id = _stripe_get(session, "customer") or ""
+    if not isinstance(customer_id, str):
+        customer_id = _id_or_value(customer_id)
+    if not customer_id and profile is not None:
+        customer_id = (profile.stripe_customer_id or "").strip()
+    if not customer_id:
+        raise ValueError("Checkout setup session is missing a customer.")
+
+    stripe.Customer.modify(
+        customer_id,
+        invoice_settings={"default_payment_method": payment_method_id},
+    )
+    subscription_id = ""
+    if profile is not None:
+        subscription_id = (profile.stripe_subscription_id or "").strip()
+    if subscription_id:
+        try:
+            stripe.Subscription.modify(
+                subscription_id,
+                default_payment_method=payment_method_id,
+            )
+        except stripe.error.StripeError:
+            logger.exception(
+                "Failed to set default payment method on subscription %s",
+                subscription_id,
+            )
+    _retry_open_invoices(customer_id)
+    if profile is not None:
+        if customer_id and not profile.stripe_customer_id:
+            profile.stripe_customer_id = customer_id
+            profile.save(update_fields=["stripe_customer_id"])
+        _refresh_profile_subscription_from_stripe(profile)
+    return payment_method_id
+
+
 class BillingConfigView(APIView):
     """Public config the Flutter checkout page needs (publishable key only)."""
 
@@ -720,6 +845,24 @@ class CheckoutSessionStatusView(_AuthenticatedBillingView):
 
         profile = _get_or_create_profile(request.user)
         payment_status = _stripe_get(session, "status")
+        if payment_status == "complete" and _stripe_get(session, "mode") == "setup":
+            try:
+                _apply_default_payment_method_from_setup_session(session, profile)
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except stripe.error.StripeError as exc:
+                return _stripe_error_response(exc)
+            user = User.objects.select_related("profile").get(pk=request.user.pk)
+            return Response(
+                {
+                    "status": payment_status,
+                    "payment_method_updated": True,
+                    "user": UserSerializer(user).data,
+                }
+            )
         if payment_status == "complete":
             metadata = _stripe_get(session, "metadata") or {}
             period = _stripe_get(metadata, "billing_period") or ""
@@ -918,6 +1061,82 @@ class ChangePlanView(_AuthenticatedBillingView):
         return Response({"ok": True, "user": UserSerializer(user).data})
 
 
+class CreatePaymentMethodUpdateSessionView(_AuthenticatedBillingView):
+    """Embedded Checkout in setup mode so a member can replace the card on file."""
+
+    def post(self, request):
+        if not _stripe_configured():
+            return Response(
+                {
+                    "detail": (
+                        "Stripe is not configured. Set STRIPE_SECRET_KEY and "
+                        "STRIPE_PUBLISHABLE_KEY on the server."
+                    )
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        profile = _get_or_create_profile(request.user)
+        profile.expire_canceled_subscription_if_needed()
+        if not _can_update_payment_method(profile):
+            return Response(
+                {
+                    "detail": (
+                        "You need an active Premium subscription to update "
+                        "your payment method."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        customer_id = (profile.stripe_customer_id or "").strip()
+        if not customer_id:
+            return Response(
+                {
+                    "detail": (
+                        "This Premium account has no Stripe card on file. "
+                        "Payment method updates are available for Stripe subscriptions."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _ensure_stripe()
+        app_url = _public_app_url(request)
+        return_url = (
+            f"{app_url}/?billing=payment_updated&session_id={{CHECKOUT_SESSION_ID}}"
+        )
+        try:
+            session = stripe.checkout.Session.create(
+                ui_mode="embedded_page",
+                mode="setup",
+                currency="usd",
+                customer=customer_id,
+                client_reference_id=str(request.user.id),
+                return_url=return_url,
+                metadata={
+                    "user_id": str(request.user.id),
+                    "purpose": "payment_method_update",
+                },
+                setup_intent_data={
+                    "metadata": {
+                        "user_id": str(request.user.id),
+                        "purpose": "payment_method_update",
+                    }
+                },
+            )
+        except stripe.error.StripeError as exc:
+            return _stripe_error_response(exc)
+
+        return Response(
+            {
+                "client_secret": session["client_secret"],
+                "session_id": session["id"],
+                "publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
+            }
+        )
+
+
 class SyncSubscriptionView(_AuthenticatedBillingView):
     """Pull an active Stripe subscription onto the local profile.
 
@@ -1031,7 +1250,10 @@ class StripeWebhookView(APIView):
 
         try:
             if event_type == "checkout.session.completed":
-                self._on_checkout_completed(data_object)
+                if _stripe_get(data_object, "mode") == "setup":
+                    self._on_setup_completed(data_object)
+                else:
+                    self._on_checkout_completed(data_object)
             elif event_type in {
                 "customer.subscription.created",
                 "customer.subscription.updated",
@@ -1065,6 +1287,22 @@ class StripeWebhookView(APIView):
         if customer_id:
             return Profile.objects.filter(stripe_customer_id=customer_id).select_related("user").first()
         return None
+
+    def _on_setup_completed(self, session) -> None:
+        profile = self._profile_for_stripe_object(session)
+        if profile is None:
+            logger.warning(
+                "setup checkout.session.completed with no matching user: %s",
+                _stripe_get(session, "id"),
+            )
+            return
+        try:
+            _apply_default_payment_method_from_setup_session(session, profile)
+        except ValueError:
+            logger.exception(
+                "Setup checkout session %s is missing payment method details",
+                _stripe_get(session, "id"),
+            )
 
     def _on_checkout_completed(self, session) -> None:
         profile = self._profile_for_stripe_object(session)

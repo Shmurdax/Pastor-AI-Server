@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
+import 'package:flutter_application_1/screens/update_payment_method_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/brand_gradient.dart';
@@ -157,6 +158,32 @@ Future<void> showAccountProfileSheet(
                     ),
                   ),
                 ),
+                if (user.canManagePaymentMethod) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const UpdatePaymentMethodScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.credit_card, color: _navy),
+                      label: Text(
+                        'Update payment method',
+                        style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _navy, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
                 if (user.isPaidPremium && !user.cancelAtPeriodEnd) ...[
                   const SizedBox(height: 12),
                   SizedBox(

@@ -37,6 +37,10 @@ class AuthUser {
 
   bool get isPaidPremium => subscriptionStatus == 'active';
 
+  /// Active and past-due members can replace the card Stripe bills.
+  bool get canManagePaymentMethod =>
+      subscriptionStatus == 'active' || subscriptionStatus == 'past_due';
+
   /// Email/password accounts must enter the 6-digit code before checkout.
   /// Staff and Google-verified accounts skip this.
   bool get needsEmailVerification => !isStaff && !emailVerified;
