@@ -57,8 +57,24 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('STORE')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('CHAT')),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('EVENTS')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('MEDIA')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('STORE')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text("NORDIN'S AI")),
+      findsNothing,
     );
     expect(find.byType(AppHamburgerNav), findsNothing);
   });
@@ -79,6 +95,16 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.menu)),
       findsOneWidget,
     );
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pumpAndSettle();
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('Events'), findsOneWidget);
+    expect(find.text('Media'), findsOneWidget);
+    expect(find.text('Store'), findsNothing);
+    expect(find.text('Subscribe'), findsNothing);
+    expect(find.text("NORDIN'S AI"), findsNothing);
   });
 
   testWidgets('chat header hides top-right nav at tablet width', (tester) async {

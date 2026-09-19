@@ -8,7 +8,6 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
-import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -452,16 +451,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
-                  _NavButton(label: s.store, onTap: () => _launchUrl('https://thenordins.org/store')),
+                  _NavButton(label: s.chat, onTap: _goToAiHome),
                   _NavButton(
                     label: s.events,
                     onTap: () => _toggleEvents(open: true),
                     active: _eventsOpen,
                   ),
-                  NordinsAiNavMenu(
-                    onAiHome: _goToAiHome,
-                    onMedia: () => _toggleEvents(open: false),
-                    onSubscribe: _openSubscriptions,
+                  _NavButton(
+                    label: s.media,
+                    onTap: () => _toggleEvents(open: false),
                     active: true,
                   ),
                   const SizedBox(width: 40),
@@ -472,11 +470,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             AppHamburgerNav(
               isMobile: isMobile,
               onHome: () => _launchUrl('https://thenordins.org/'),
-              onStore: () => _launchUrl('https://thenordins.org/store'),
-              onEvents: () => _toggleEvents(open: true),
               onChat: _goToAiHome,
+              onEvents: () => _toggleEvents(open: true),
               onMedia: () => _toggleEvents(open: false),
-              onSubscribe: _openSubscriptions,
             ),
         ],
       ),

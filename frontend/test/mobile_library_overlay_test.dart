@@ -19,7 +19,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('mobile library overlay covers tabs below NORDIN\'S AI', (tester) async {
+  testWidgets('mobile library overlay covers tabs below the drawer nav links', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -54,7 +54,9 @@ void main() {
 
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
-    expect(find.text("NORDIN'S AI").hitTestable(), findsWidgets);
+    expect(find.text('HOME').hitTestable(), findsOneWidget);
+    expect(find.text('CHAT').hitTestable(), findsOneWidget);
+    expect(find.text('MEDIA').hitTestable(), findsOneWidget);
 
     await tester.tap(find.byTooltip('Browse all documents'));
     await tester.pump();
@@ -63,7 +65,9 @@ void main() {
     expect(find.text('Sermons').hitTestable(), findsNothing);
     expect(find.text('Sermon Library').hitTestable(), findsNothing);
     expect(find.text('New Chat').hitTestable(), findsNothing);
-    expect(find.text("NORDIN'S AI").hitTestable(), findsWidgets);
+    expect(find.text('HOME').hitTestable(), findsOneWidget);
+    expect(find.text('CHAT').hitTestable(), findsOneWidget);
+    expect(find.text('MEDIA').hitTestable(), findsOneWidget);
 
     await tester.tap(find.byTooltip('Close documents catalog'));
     await tester.pump();

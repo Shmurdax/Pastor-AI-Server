@@ -21,7 +21,6 @@ import 'package:flutter_application_1/screens/paywall_screen.dart';
 import 'package:flutter_application_1/screens/pdf_viewer_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
-import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/ingested_documents_panel.dart';
 import 'package:flutter_application_1/models/ingested_document.dart';
@@ -30,7 +29,6 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/language_selector.dart';
-import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -1326,15 +1324,6 @@ final bibleRefRegex = RegExp(
     );
   }
 
-  void _openSubscriptions() {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const SubscriptionsScreen()),
-    );
-  }
-
   void _openMedia() {
     // TODO: gate on Premium subscription.
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
@@ -1777,13 +1766,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
-                  _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store")),
+                  _buildNavButton(_s.chat, _focusChatNav),
                   _buildNavButton(_s.events, _openChurchEvents),
-                  NordinsAiNavMenu(
-                    onAiHome: _focusChatNav,
-                    onMedia: _openMedia,
-                    onSubscribe: _openSubscriptions,
-                  ),
+                  _buildNavButton(_s.media, _openMedia),
                   const SizedBox(width: 40),
                 ],
               ),
@@ -2082,19 +2067,14 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             if (isMobile) ...[
               Wrap(spacing: 4, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/"), textColor: Colors.white),
-                _buildNavButton(_s.store, () => _launchUrl("https://thenordins.org/store"), textColor: Colors.white),
+                _buildNavButton(_s.chat, () {
+                  if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+                    Navigator.of(context).pop();
+                  }
+                  _focusChatNav();
+                }, textColor: Colors.white),
                 _buildNavButton(_s.events, _openChurchEvents, textColor: Colors.white),
-                NordinsAiNavMenu(
-                  onAiHome: () {
-                    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-                      Navigator.of(context).pop();
-                    }
-                    _focusChatNav();
-                  },
-                  onMedia: _openMedia,
-                  onSubscribe: _openSubscriptions,
-                  textColor: Colors.white,
-                ),
+                _buildNavButton(_s.media, _openMedia, textColor: Colors.white),
               ]),
               const SizedBox(height: 16),
               Container(height: 1, color: Colors.white24),

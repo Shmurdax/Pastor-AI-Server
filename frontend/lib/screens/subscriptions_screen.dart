@@ -13,7 +13,6 @@ import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
-import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -460,19 +459,17 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     onTap: () => _launchUrl('https://thenordins.org/'),
                   ),
                   _NavButton(
-                    label: s.store,
-                    onTap: () => _launchUrl('https://thenordins.org/store'),
+                    label: s.chat,
+                    onTap: _goToAiHome,
                   ),
                   _NavButton(
                     label: s.events,
                     onTap: () => _toggleEvents(open: true),
                     active: _eventsOpen,
                   ),
-                  NordinsAiNavMenu(
-                    onAiHome: _goToAiHome,
-                    onMedia: _openMedia,
-                    onSubscribe: () => _toggleEvents(open: false),
-                    active: true,
+                  _NavButton(
+                    label: s.media,
+                    onTap: _openMedia,
                   ),
                   const SizedBox(width: 40),
                 ],
@@ -482,11 +479,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             AppHamburgerNav(
               isMobile: isMobile,
               onHome: () => _launchUrl('https://thenordins.org/'),
-              onStore: () => _launchUrl('https://thenordins.org/store'),
-              onEvents: () => _toggleEvents(open: true),
               onChat: _goToAiHome,
+              onEvents: () => _toggleEvents(open: true),
               onMedia: _openMedia,
-              onSubscribe: () => _toggleEvents(open: false),
             ),
         ],
       ),

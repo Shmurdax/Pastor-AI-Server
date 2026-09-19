@@ -5,26 +5,22 @@ import 'package:provider/provider.dart';
 
 const _navy = Color(0xFF1B264F);
 
-/// Compact replacement for the top-right Home / Store / Events / Nordin's AI
+/// Compact replacement for the top-right Home / Chat / Events / Media
 /// row on viewports narrower than 1024px.
 class AppHamburgerNav extends StatelessWidget {
   const AppHamburgerNav({
     super.key,
     required this.onHome,
-    required this.onStore,
-    required this.onEvents,
     required this.onChat,
+    required this.onEvents,
     required this.onMedia,
-    required this.onSubscribe,
     this.isMobile = false,
   });
 
   final VoidCallback onHome;
-  final VoidCallback onStore;
-  final VoidCallback onEvents;
   final VoidCallback onChat;
+  final VoidCallback onEvents;
   final VoidCallback onMedia;
-  final VoidCallback onSubscribe;
   final bool isMobile;
 
   @override
@@ -51,15 +47,9 @@ class AppHamburgerNav extends StatelessWidget {
         ),
         menuChildren: [
           _MenuRow(label: s.home, icon: Icons.home_outlined, onPressed: onHome),
-          _MenuRow(label: s.store, icon: Icons.storefront_outlined, onPressed: onStore),
-          _MenuRow(label: s.events, icon: Icons.event_outlined, onPressed: onEvents),
           _MenuRow(label: s.chat, icon: Icons.chat_bubble_outline, onPressed: onChat),
+          _MenuRow(label: s.events, icon: Icons.event_outlined, onPressed: onEvents),
           _MenuRow(label: s.media, icon: Icons.video_library_outlined, onPressed: onMedia),
-          _MenuRow(
-            label: s.subscribe,
-            icon: Icons.workspace_premium_outlined,
-            onPressed: onSubscribe,
-          ),
         ],
         builder: (context, controller, child) {
           return IconButton(
