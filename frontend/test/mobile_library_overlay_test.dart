@@ -56,7 +56,19 @@ void main() {
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
     expect(find.text('HOME').hitTestable(), findsOneWidget);
     expect(find.text('CHAT').hitTestable(), findsOneWidget);
+    expect(find.text('EVENTS').hitTestable(), findsOneWidget);
     expect(find.text('MEDIA').hitTestable(), findsOneWidget);
+
+    final home = tester.getCenter(find.text('HOME'));
+    final chat = tester.getCenter(find.text('CHAT'));
+    final events = tester.getCenter(find.text('EVENTS'));
+    final media = tester.getCenter(find.text('MEDIA'));
+    expect((home.dy - chat.dy).abs(), lessThan(2));
+    expect((home.dy - events.dy).abs(), lessThan(2));
+    expect((home.dy - media.dy).abs(), lessThan(2));
+    expect(home.dx, lessThan(chat.dx));
+    expect(chat.dx, lessThan(events.dx));
+    expect(events.dx, lessThan(media.dx));
 
     await tester.tap(find.byTooltip('Browse all documents'));
     await tester.pump();
