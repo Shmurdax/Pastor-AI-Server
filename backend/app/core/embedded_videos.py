@@ -87,6 +87,10 @@ class CatalogEntry:
     watch_url: str = ""
     featured: bool = False
     published_at: Optional[datetime] = None
+    duration_seconds: int = 0
+    thumbnail_url: str = ""
+    access_tier: str = "premium"
+    description: str = ""
 
 
 @dataclass
@@ -115,6 +119,12 @@ class EmbeddedVideo:
     whisper_model: Optional[str] = None
     transcript_source: Optional[str] = None
     segments: list[TranscriptSegmentView] = field(default_factory=list)
+    privacy_hash: str = ""
+    published_at: Optional[datetime] = None
+    duration_seconds: int = 0
+    thumbnail_url: str = ""
+    access_tier: str = "premium"
+    description: str = ""
 
     @property
     def embed_src(self) -> str:
@@ -379,6 +389,10 @@ def _load_catalog() -> tuple[dict[str, CatalogEntry], dict[str, list[CatalogEntr
             watch_url=(existing.watch_url if existing else ""),
             featured=bool(existing and existing.featured),
             published_at=row.published_at,
+            duration_seconds=int(row.duration_seconds or 0),
+            thumbnail_url=(row.thumbnail_url or "").strip(),
+            access_tier=(row.access_tier or "premium").strip() or "premium",
+            description=row.description or "",
         )
         if not catalog[vimeo_id].watch_url:
             catalog[vimeo_id].watch_url = vimeo_watch_url(vimeo_id, privacy_hash=privacy_hash)
@@ -595,6 +609,9 @@ def _build_embedded_video(
         source_name = media_path.name
     has_transcript = bool(segments) if include_segments else sidecar_path is not None
     privacy_hash = (entry.privacy_hash if entry else "") or ""
+    published_at = entry.published_at if entry else None
+    if published_at is None and document is not None:
+        published_at = document.created_at
     watch_url = (
         (entry.watch_url if entry and entry.watch_url else "")
         or vimeo_watch_url(vimeo_id, privacy_hash=privacy_hash)
@@ -619,6 +636,12 @@ def _build_embedded_video(
         whisper_model=str(payload.get("whisper_model") or "") or None if payload else None,
         transcript_source=sidecar_path.name if sidecar_path and has_transcript else None,
         segments=segments,
+        privacy_hash=privacy_hash,
+        published_at=published_at,
+        duration_seconds=int(entry.duration_seconds if entry else 0),
+        thumbnail_url=(entry.thumbnail_url if entry else "") or "",
+        access_tier=(entry.access_tier if entry else "") or "premium",
+        description=(entry.description if entry else "") or "",
     )
     return video
 

@@ -187,6 +187,17 @@ def sync_vimeo_media(
         raise VimeoSyncError("VIMEO_FOLDER_ID is not configured")
 
     remote = _fetch_folder_videos(token, folder_id, user_id=user_id)
+    if not remote:
+        logger.warning(
+            "Vimeo folder returned no videos; leaving existing MediaVideo rows unchanged"
+        )
+        return {
+            "fetched": 0,
+            "created": 0,
+            "updated": 0,
+            "unpublished": 0,
+        }
+
     now = datetime.now(timezone.utc)
     seen_ids: set[str] = set()
     created = updated = 0
@@ -230,9 +241,20 @@ def sync_vimeo_media(
         else:
             updated += 1
 
-    # Soft-hide videos removed from the folder
+    # Soft-hide folder videos that disappeared remotely, but keep rows that
+    # still have an admin Embedded Videos match (ingested sermon downloads).
+    protected_ids: set[str] = set()
+    try:
+        from core.embedded_videos import list_embedded_videos
+
+        protected_ids = {item.vimeo_id for item in list_embedded_videos()}
+    except Exception:
+        logger.exception("Could not load embedded videos while unpublishing stale folder rows")
+
     unpublished = 0
     for row in MediaVideo.objects.filter(is_published=True).exclude(vimeo_id__in=seen_ids):
+        if row.vimeo_id in protected_ids:
+            continue
         row.is_published = False
         row.synced_at = now
         row.save(update_fields=["is_published", "synced_at", "updated_at"])

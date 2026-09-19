@@ -163,6 +163,5 @@ VIMEO_FREE_PREVIEW_ID=...      # optional: one free intro video id
 cd backend/app && python manage.py sync_vimeo_media
 ```
 
-`deploy_update.sh` runs this sync after migrate when the token and folder id are set.
-Public catalog: `GET /api/media/`.
+`deploy_update.sh` runs this sync after migrate when the token and folder id are set, then publishes admin **Embedded Videos** (ingested sermon downloads already matched to Vimeo ids) into the same catalog. `GET /api/media/` returns that union so the Flutter media page lists the backend embeds even when folder sync is not configured.
 

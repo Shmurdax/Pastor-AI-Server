@@ -50,4 +50,23 @@ void main() {
       expect(item.isLockedForUser(hasPremiumAccess: false), isTrue);
     }
   });
+
+  test('API Vimeo embeds are playable in the media catalog', () {
+    final item = MediaItem.fromApiJson({
+      'id': '403856658',
+      'vimeo_id': '403856658',
+      'privacy_hash': '6bce8bb9e6',
+      'title': 'April 10',
+      'description': '',
+      'published_at': '2024-04-10T12:00:00Z',
+      'duration_label': '12:04',
+      'access_tier': 'premium',
+      'is_published': true,
+    });
+    expect(item.vimeoId, '403856658');
+    expect(item.vimeoPrivacyHash, '6bce8bb9e6');
+    expect(item.isPlayable, isTrue);
+    expect(item.isLockedForUser(hasPremiumAccess: true), isFalse);
+    expect(item.isLockedForUser(hasPremiumAccess: false), isTrue);
+  });
 }

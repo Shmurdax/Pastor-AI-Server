@@ -51,6 +51,11 @@ class MediaItem {
 
   bool get isLocked => accessTier == MediaAccessTier.premium && !isPlayable;
 
+  bool isLockedForUser({required bool hasPremiumAccess}) {
+    if (accessTier != MediaAccessTier.premium) return false;
+    return !hasPremiumAccess;
+  }
+
   factory MediaItem.fromApiJson(Map<String, dynamic> json) {
     final tierRaw = (json['access_tier'] as String? ?? 'premium').toLowerCase();
     final tier = tierRaw == 'free_preview'

@@ -68,8 +68,12 @@ if [[ -n "${VIMEO_ACCESS_TOKEN:-}" && -n "${VIMEO_FOLDER_ID:-${VIMEO_SHOWCASE_ID
   python manage.py sync_vimeo_media 2>&1 | tee -a "$LOG_DIR/deploy-vimeo-sync.log" \
     || warn "Vimeo media sync failed (continuing deploy)"
 else
-  warn "VIMEO_ACCESS_TOKEN / VIMEO_FOLDER_ID not set — skipping media sync"
+  warn "VIMEO_ACCESS_TOKEN / VIMEO_FOLDER_ID not set — skipping folder media sync"
 fi
+
+log "Publishing backend embedded Vimeo videos into the media catalog"
+python manage.py sync_embedded_media 2>&1 | tee -a "$LOG_DIR/deploy-vimeo-sync.log" \
+  || warn "Embedded media catalog sync failed (continuing deploy)"
 
 if [[ -z "${GOOGLE_CLIENT_ID:-}" ]]; then
   warn "GOOGLE_CLIENT_ID is empty in config.env — Google Sign-In will return 503"

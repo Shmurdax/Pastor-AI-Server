@@ -13,11 +13,10 @@ from api.permissions import HasPremiumAccess
 
 from core.models import PrayerRequest, ChurchEvent, ResponseReport
 
-from .models import MediaVideo
+from .media_catalog import public_media_catalog
 from .serializers import (
     ChurchEventSerializer,
     ChurchEventWriteSerializer,
-    MediaVideoSerializer,
     PrayerRequestSerializer,
     PrayerRequestStaffUpdateSerializer,
     ResponseReportSerializer,
@@ -134,14 +133,10 @@ class ResponseReportDetailAPI(APIView):
 
 
 class MediaVideoListAPI(APIView):
-    """GET /api/media/ — Premium list of published Daily Devotionals."""
+    """GET /api/media/ — Premium Daily Devotionals (folder sync + embedded Vimeo)."""
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
 
     def get(self, request):
-        qs = MediaVideo.objects.filter(is_published=True).order_by(
-            "-published_at",
-            "title",
-        )
-        return Response({"results": MediaVideoSerializer(qs, many=True).data})
+        return Response({"results": public_media_catalog()})

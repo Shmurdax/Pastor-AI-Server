@@ -123,7 +123,7 @@ Anyone with Premium (or staff) can submit a prayer from the chat screen (the pra
 
 ### Media
 
-**Nordin's AI → Media** is the Daily Devotionals library. Treat it as a front-end shell until real videos are wired in. The media API requires Premium (or staff).
+**Nordin's AI → Media** is the Daily Devotionals library. Premium members and staff see the same Vimeo embeds as **Embedded Videos** in Django admin (ingested sermon downloads matched to Vimeo ids), plus any published videos synced from the Vimeo folder. The media API requires Premium (or staff).
 
 ---
 

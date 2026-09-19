@@ -35,7 +35,8 @@ double mediaGridChildAspectRatio({
 }
 
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
-/// Catalog loads from GET /api/media/ (Vimeo sync); falls back to local mock.
+/// Catalog loads from GET /api/media/ (Vimeo folder sync + admin Embedded Videos).
+/// Falls back to the local mock catalog only when the API request fails.
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({
     super.key,
@@ -87,7 +88,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       final items = await _apiService.listMediaVideos();
       if (!mounted) return;
       setState(() {
-        _catalogItems = items.isNotEmpty ? items : List<MediaItem>.from(MediaCatalog.allItems);
+        _catalogItems = items;
         _catalogLoading = false;
       });
     } catch (_) {
