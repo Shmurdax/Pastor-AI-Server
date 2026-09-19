@@ -202,16 +202,19 @@ class SendEmailCodeView(_AuthenticatedAuthView):
         if profile is not None and profile.email_verified:
             return Response({"ok": True, "already_verified": True})
         try:
-            code = issue_and_send_verification_code(request.user)
+            issued = issue_and_send_verification_code(request.user)
         except EmailVerificationError as exc:
             return Response({"detail": str(exc)}, status=exc.status)
         payload = {
             "ok": True,
             "already_verified": False,
             "email": request.user.email,
+            "emailed": issued.emailed,
         }
-        if settings.DEBUG and email_delivery_mode() == "console":
-            payload["debug_code"] = code
+        # Temporary: show the 6-digit code on the verification screen until
+        # Workspace Gmail sending is live. Keep it in DEBUG even when mail works.
+        if settings.DEBUG or not issued.emailed:
+            payload["debug_code"] = issued.code
         return Response(payload)
 
 
