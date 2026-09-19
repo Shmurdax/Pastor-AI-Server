@@ -1439,7 +1439,6 @@ final bibleRefRegex = RegExp(
       context,
       apiService: _apiService,
       onOpenMedia: _openMedia,
-      onOpenSubscriptions: _openSubscriptions,
       onOpenPrayerInbox: _openPrayerInbox,
       onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
@@ -1754,7 +1753,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               apiService: _apiService,
               isMobile: isMobile,
               onOpenMedia: _openMedia,
-              onOpenSubscriptions: _openSubscriptions,
               onOpenPrayerInbox: _openPrayerInbox,
               onOpenResponseReports: _openResponseReportsInbox,
               onSignedOut: () {
