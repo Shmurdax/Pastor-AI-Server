@@ -487,12 +487,21 @@ def looks_like_followup(query: str) -> bool:
 
 
 def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]] = None) -> str:
-    """Blend the last user turn into retrieval so follow-ups keep the topic."""
+    """Blend the opening topic and latest user turn into retrieval."""
     current_q = (current or "").strip()
-    last_prior = _last_prior_user(current_q, prior_user_queries)
-    if last_prior and current_q:
-        return f"{last_prior} {current_q}"
-    return current_q or last_prior
+    priors = [str(item).strip() for item in (prior_user_queries or []) if str(item or "").strip()]
+    if current_q:
+        priors = [item for item in priors if item.lower() != current_q.lower()]
+    if not priors:
+        return current_q
+    first_prior = priors[0]
+    last_prior = priors[-1]
+    parts = [first_prior]
+    if last_prior.lower() != first_prior.lower():
+        parts.append(last_prior)
+    if current_q:
+        parts.append(current_q)
+    return " ".join(parts)
 
 
 def _last_prior_user(current_q: str, prior_user_queries: Optional[Iterable[str]]) -> str:

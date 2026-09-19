@@ -252,13 +252,17 @@ def fit_chat_budget(
         sys_text = prefix + notes
 
     def drop_oldest_history(keep_at_least: int) -> None:
+        """Drop later exchanges first so the opening user/AI turn can stay pinned."""
         nonlocal history_msgs
         keep_at_least = max(0, int(keep_at_least))
+        pinned = min(2, len(history_msgs))
         while history_msgs and over_budget(sys_text) and len(history_msgs) > keep_at_least:
-            if len(history_msgs) >= 2:
-                history_msgs = history_msgs[2:]
+            if len(history_msgs) > pinned + 2:
+                history_msgs = history_msgs[:pinned] + history_msgs[pinned + 2 :]
+            elif len(history_msgs) > pinned and len(history_msgs) > keep_at_least:
+                history_msgs = history_msgs[:pinned]
             else:
-                history_msgs = history_msgs[1:]
+                break
 
     if notes_are_usable(notes):
         target_notes = min(len(notes), _MIN_NOTES_CHARS)

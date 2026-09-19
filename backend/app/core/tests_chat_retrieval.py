@@ -121,6 +121,20 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("marriage", anchor.lower())
         self.assertIn("week one", anchor.lower())
 
+    def test_topic_anchor_keeps_opening_question_after_later_turns(self):
+        anchor = topic_anchor_query(
+            "What topic did we start this chat with?",
+            [
+                "How should a believer walk in humility like Jesus washing the disciples feet?",
+                "Give me a 3 point sermon on that topic.",
+                "Recap the original humility teaching in four sentences.",
+            ],
+        )
+        lowered = anchor.lower()
+        self.assertIn("washing", lowered)
+        self.assertIn("humility", lowered)
+        self.assertIn("what topic did we start", lowered)
+
     def test_followup_quote_ask_still_anchors_to_prior_topic(self):
         queries = expand_search_queries(
             "Can you give me quotes from Pastor Don for week one?",

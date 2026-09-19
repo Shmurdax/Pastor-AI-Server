@@ -174,6 +174,37 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertGreaterEqual(completion, 128)
         self.assertIn("sermon chunk", fitted)
 
+    def test_fit_chat_budget_pins_opening_exchange_on_tight_window(self):
+        env = {"CHAT_CONTEXT_WINDOW": "4096", "VLLM_MAX_MODEL_LEN": "4096"}
+        system = "REFERENCE NOTES:\n" + ("sermon chunk " * 400)
+        history = [
+            type(
+                "Msg",
+                (),
+                {
+                    "content": "How should a believer walk in humility like Jesus washing the disciples feet?"
+                },
+            )(),
+            type("Msg", (), {"content": ("humility teaching about serving others " * 50)})(),
+        ]
+        for i in range(12):
+            history.append(
+                type("Msg", (), {"content": f"follow up {i} about serving and pride in leadership"})()
+            )
+            history.append(
+                type("Msg", (), {"content": ("later pastoral answer with headings and quotes " * 50)})()
+            )
+        _fitted, hist, completion, used = fit_chat_budget(
+            system,
+            history,
+            "What topic did we start this chat with?",
+            1024,
+            env=env,
+        )
+        blob = "\n".join(m.content for m in hist)
+        self.assertIn("washing the disciples feet", blob)
+        self.assertLessEqual(used + completion + 96, 4096)
+
     def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
         from pathlib import Path
 
@@ -185,6 +216,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertNotIn("{{V1}}", EMPTY_REFERENCE_NOTES)
         self.assertIn("NOTES_MARKER", source)
         self.assertIn("MAX_HISTORY_TURNS", source)
+        self.assertIn("first_row", source)
         self.assertIn("CHAT_MAX_HISTORY_TURNS", source)
         self.assertIn("answer_char_count", source)
         self.assertIn('os.getenv("CHAT_MAX_HISTORY_CHARS", "20000")', source)

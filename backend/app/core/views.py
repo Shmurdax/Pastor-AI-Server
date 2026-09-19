@@ -950,6 +950,20 @@ class ChatAPIView(APIView):
                 db_messages = db_messages.exclude(id=target_message.id)
 
             history_rows = list(db_messages[:MAX_HISTORY_TURNS])
+            first_row = (
+                ChatMessage.objects.filter(session_id=session_id)
+                .order_by("timestamp")
+                .first()
+            )
+            if regenerate and target_message and first_row and first_row.id == target_message.id:
+                first_row = (
+                    ChatMessage.objects.filter(session_id=session_id)
+                    .exclude(id=target_message.id)
+                    .order_by("timestamp")
+                    .first()
+                )
+            if first_row and all(row.id != first_row.id for row in history_rows):
+                history_rows.append(first_row)
             prior_user_queries = [row.user_query for row in reversed(history_rows)]
             prior_ai_texts = [row.ai_response for row in reversed(history_rows)]
             if regenerate and target_message and target_message.ai_response:
@@ -1098,15 +1112,15 @@ class ChatAPIView(APIView):
 
             history_messages = []
             current_chars = 0
-
-            for msg in history_rows:
-                if len(history_messages) >= MAX_HISTORY_TURNS * 2:
-                    break
+            for index, msg in enumerate(reversed(history_rows)):
                 exchange = f"{msg.user_query} {msg.ai_response}"
-                if current_chars + len(exchange) > MAX_HISTORY_CHARS:
+                # Always keep the opening exchange, even when later turns fill the char budget.
+                if index > 0 and len(history_messages) >= MAX_HISTORY_TURNS * 2:
                     break
-                history_messages.insert(0, AIMessage(content=msg.ai_response or ""))
-                history_messages.insert(0, HumanMessage(content=msg.user_query))
+                if index > 0 and current_chars + len(exchange) > MAX_HISTORY_CHARS:
+                    break
+                history_messages.append(HumanMessage(content=msg.user_query))
+                history_messages.append(AIMessage(content=msg.ai_response or ""))
                 current_chars += len(exchange)
 
             biblical_names = find_biblical_character_names(user_query_llm)
