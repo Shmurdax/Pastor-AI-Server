@@ -274,6 +274,38 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
     return result as JSObject;
   }
 
+  /// Stripe's iframe needs `allow="payment"` for Apple Pay, Link, and Amazon Pay.
+  /// Setting it on the mount div does nothing; copy it onto injected iframes.
+  Future<void> _allowPaymentOnStripeIframes() async {
+    const paymentAllow = 'payment *';
+    for (var attempt = 0; attempt < 40; attempt++) {
+      if (!mounted) return;
+      final scopes = <web.Element>[];
+      final mount = web.document.getElementById(_elementId);
+      if (mount != null) scopes.add(mount);
+      final overlay = _overlay;
+      if (overlay != null) scopes.add(overlay);
+      var found = false;
+      for (final scope in scopes) {
+        final iframes = scope.getElementsByTagName('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+          final node = iframes.item(i);
+          if (node is! web.HTMLIFrameElement) continue;
+          found = true;
+          final current = node.getAttribute('allow') ?? '';
+          if (!current.contains('payment')) {
+            node.setAttribute(
+              'allow',
+              current.trim().isEmpty ? paymentAllow : '$current; $paymentAllow',
+            );
+          }
+        }
+      }
+      if (found) return;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> _mountCheckout() async {
     try {
       if (widget.publishableKey.isEmpty || widget.clientSecret.isEmpty) {
@@ -306,6 +338,7 @@ class _StripeEmbeddedCheckoutState extends State<StripeEmbeddedCheckout> {
       final checkout = await _createEmbeddedCheckout(stripe, options);
       _checkout = checkout;
       checkout.callMethod('mount'.toJS, '#$_elementId'.toJS);
+      unawaited(_allowPaymentOnStripeIframes());
 
       _overlay?.scrollTop = 0;
 

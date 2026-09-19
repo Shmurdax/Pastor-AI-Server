@@ -1056,6 +1056,8 @@ class CreateCheckoutSessionConsentTests(TestCase):
         message = kwargs["custom_text"]["terms_of_service_acceptance"]["message"]
         self.assertIn("monthly Premium plan", message)
         self.assertIn("$15/month", message)
+        self.assertIn("https://example.test/subscription-terms/", message)
+        self.assertTrue(kwargs["return_url"].startswith("https://example.test/"))
 
     def test_yearly_session_consent_names_yearly_price(self):
         session = {"id": "cs_2", "client_secret": "cs_secret"}
@@ -1075,6 +1077,26 @@ class CreateCheckoutSessionConsentTests(TestCase):
         ]
         self.assertIn("yearly Premium plan", message)
         self.assertIn("$150/year", message)
+        self.assertIn("https://example.test/subscription-terms/", message)
+
+    def test_checkout_return_url_follows_browser_origin_not_public_app_url(self):
+        session = {"id": "cs_origin", "client_secret": "cs_secret"}
+        with patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token}")
+            res = self.client.post(
+                "/api/billing/create-checkout-session/",
+                {"billing_period": "monthly"},
+                format="json",
+                HTTP_ORIGIN="https://dev.thenordins.org",
+            )
+        self.assertEqual(res.status_code, 200, res.data)
+        kwargs = create.call_args.kwargs
+        self.assertTrue(kwargs["return_url"].startswith("https://dev.thenordins.org/"))
+        message = kwargs["custom_text"]["terms_of_service_acceptance"]["message"]
+        self.assertIn("https://dev.thenordins.org/subscription-terms/", message)
 
     def test_missing_tos_url_falls_back_to_submit_text(self):
         import stripe
@@ -1099,6 +1121,7 @@ class CreateCheckoutSessionConsentTests(TestCase):
         second = create.call_args_list[1].kwargs
         self.assertNotIn("consent_collection", second)
         self.assertIn("monthly Premium plan", second["custom_text"]["submit"]["message"])
+        self.assertIn("https://example.test/subscription-terms/", second["custom_text"]["submit"]["message"])
 
     def test_subscription_terms_page_is_public(self):
         res = self.client.get("/subscription-terms/")

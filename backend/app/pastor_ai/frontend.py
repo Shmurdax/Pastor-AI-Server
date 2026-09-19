@@ -190,7 +190,10 @@ def serve_frontend(request, path: str = ""):
             file_path.read_text(encoding="utf-8"),
             content_type="text/html; charset=utf-8",
         )
-        return _apply_cache_headers(response)
+        _apply_cache_headers(response)
+        # Express wallets (Apple Pay, Link, Amazon Pay) need Payment Request.
+        response["Permissions-Policy"] = "payment=*"
+        return response
 
     response = FileResponse(open(file_path, "rb"), content_type=content_type or "application/octet-stream")
     _apply_cache_headers(response)

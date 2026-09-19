@@ -25,6 +25,7 @@ class VimeoEmbedFrameTests(TestCase):
         self.assertContains(embed, "vimeo relay")
         self.assertEqual(home.status_code, 200)
         self.assertEqual(home["X-Frame-Options"], "DENY")
+        self.assertEqual(home["Permissions-Policy"], "payment=*")
         self.assertNotContains(home, "/api/chat/warmup/")
         self.assertNotContains(home, "__pastorVllmWarmup")
 
