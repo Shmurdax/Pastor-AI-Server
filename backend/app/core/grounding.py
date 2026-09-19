@@ -78,6 +78,26 @@ def looks_like_scripture_blob(text: str) -> bool:
     return bool(parse_verse_refs(blob[:400]) and len(parse_verse_refs(blob[:800])) >= 2)
 
 
+_HEADING_QUOTE_RE = re.compile(r"^\s*#{1,6}\s+\S")
+_SENTENCE_END_RE = re.compile(r"[.!?…]")
+
+
+def looks_like_heading_quote(text: str) -> bool:
+    """True for sermon titles / markdown headings, not spoken teaching."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return True
+    if cleaned.startswith("#") or _HEADING_QUOTE_RE.match(cleaned):
+        return True
+    if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(cleaned):
+        words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
+        if 2 <= len(words) <= 12:
+            titled = sum(1 for word in words if word[:1].isupper())
+            if titled >= max(2, len(words) - 1):
+                return True
+    return False
+
+
 def snippet_query_score(text: str, query: str) -> float:
     q_words = {
         word
@@ -94,7 +114,11 @@ def select_query_grounded_quotes(
     quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12
 ) -> list[str]:
     ranked = sorted(
-        (item.strip() for item in quotes if item and str(item).strip()),
+        (
+            item.strip()
+            for item in quotes
+            if item and str(item).strip() and not looks_like_heading_quote(item)
+        ),
         key=lambda item: snippet_query_score(item, query),
         reverse=True,
     )
@@ -147,6 +171,8 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
             cleaned = " ".join(item.split())
             key = normalize_grounding_text(cleaned)
             if len(cleaned) < 12 or key in seen:
+                continue
+            if looks_like_heading_quote(cleaned):
                 continue
             seen.add(key)
             quotes.append(cleaned)
@@ -332,6 +358,13 @@ _RETRIEVAL_HEADER_RE = re.compile(
 _RETRIEVAL_DISCLAIMER_RE = re.compile(
     r"(?is)\n*\s*I can only teach from these retrieved lines\.[^\n]*"
 )
+_TITLE_WEAVE_RE = re.compile(
+    r'(?is)\s*Pastor Don(?: and Susan)? Nordin(?: also)? teach(?:es)?,?\s*"[#][^"]*"'
+)
+_META_OPENER_RE = re.compile(
+    r"(?is)^\s*(?:certainly|sure)[!.,]?\s+"
+    r"here(?:'s| is)\s+.{0,160}?based on the provided (?:scripture and )?notes[:.]?\s*"
+)
 _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
 
 
@@ -355,6 +388,8 @@ def strip_retrieval_meta(answer: str) -> str:
     if dump:
         text = text[: dump.start()].rstrip()
     text = _RETRIEVAL_DISCLAIMER_RE.sub("", text)
+    text = _TITLE_WEAVE_RE.sub("", text)
+    text = _META_OPENER_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -365,7 +400,11 @@ def grounded_fallback_answer(
     nkjv_pairs: Iterable[tuple[str, str]],
 ) -> str:
     """Attributed Pastor Don / NKJV sentences with no retrieval labels."""
-    quote_list = [_clip_excerpt(item) for item in quotes if item and str(item).strip()][:2]
+    quote_list = [
+        _clip_excerpt(item)
+        for item in quotes
+        if item and str(item).strip() and not looks_like_heading_quote(item)
+    ][:2]
     quote_list = [item for item in quote_list if item]
     nkjv_list = [
         (ref, _clip_excerpt(text, 240))

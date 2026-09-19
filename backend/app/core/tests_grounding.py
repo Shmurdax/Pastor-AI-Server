@@ -6,6 +6,7 @@ from core.grounding import (
     collect_allowed_sermon_quotes,
     grounded_fallback_answer,
     lookup_nkjv_verses,
+    looks_like_heading_quote,
     strip_retrieval_meta,
     verify_answer_grounding,
     weave_into_answer,
@@ -125,6 +126,27 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("Psalm 34:18", woven)
         self.assertLess(woven.find("We sit with the grieving"), woven.find("Stand when the pressure"))
         self.assertNotIn("From the retrieved notes", woven)
+
+    def test_heading_quotes_are_not_woven(self):
+        self.assertTrue(looks_like_heading_quote("# God Was with Him"))
+        self.assertTrue(looks_like_heading_quote("# Jesus as the Word"))
+        self.assertFalse(
+            looks_like_heading_quote("We sit with the grieving and we pray.")
+        )
+        text = grounded_fallback_answer(
+            ["# God Was with Him", "We sit with the grieving and we pray."],
+            [],
+        )
+        self.assertNotIn("# God Was with Him", text)
+        self.assertIn("We sit with the grieving", text)
+        dumped = (
+            'Certainly! Here\'s a short teaching on the armor of God based on the provided scripture and notes:.\n\n'
+            'Pastor Don Nordin teaches, "# God Was with Him"'
+        )
+        cleaned = strip_retrieval_meta(dumped)
+        self.assertNotIn("Certainly", cleaned)
+        self.assertNotIn("provided scripture and notes", cleaned)
+        self.assertNotIn("# God Was with Him", cleaned)
 
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans
