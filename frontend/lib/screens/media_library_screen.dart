@@ -560,7 +560,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                       : 'Free preview · Subscribe to unlock the full library',
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),
-                            const SizedBox(height: 84),
                           ],
                         ),
                       ),
@@ -612,7 +611,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                   )
                 else if (items.length == 1)
                   SliverPadding(
-                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 48, isMobile ? 16 : 32, 32),
+                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 8, isMobile ? 16 : 32, 32),
                     sliver: SliverToBoxAdapter(
                       child: Center(
                         child: ConstrainedBox(
@@ -627,7 +626,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                   )
                 else if (useGrid)
                   SliverPadding(
-                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 48, isMobile ? 16 : 32, 32),
+                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 0, isMobile ? 16 : 32, 32),
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: screenWidth >= 1100 ? 3 : 2,
@@ -651,7 +650,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                   )
                 else
                   SliverPadding(
-                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 48, isMobile ? 16 : 32, 32),
+                    padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 0, isMobile ? 16 : 32, 32),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) => Padding(
