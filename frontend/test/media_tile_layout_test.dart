@@ -72,5 +72,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Welcome to Media'), findsOneWidget);
     expect(find.text('Morning Devotional — Faith Over Fear'), findsOneWidget);
+    expect(find.text('Video'), findsNothing);
+    expect(find.text('Premium'), findsWidgets);
   });
 }

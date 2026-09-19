@@ -1020,11 +1020,6 @@ class _MediaPostCard extends StatelessWidget {
                           color: _gold.withValues(alpha: 0.95),
                         ),
                       ),
-                      const Positioned(
-                        left: 10,
-                        top: 10,
-                        child: _Badge(label: 'Video'),
-                      ),
                       if (item.accessTier == MediaAccessTier.premium)
                         Positioned(
                           right: 10,
