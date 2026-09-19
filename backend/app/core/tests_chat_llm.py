@@ -345,6 +345,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("CONVERSATIONAL_STEER", source)
         self.assertIn("Skipping Qdrant for brief social message", source)
         self.assertIn("Skipping Qdrant for opening-recall", source)
+        self.assertIn("has_prior_turns", source)
+        self.assertIn("not has_prior_turns and not query_in_scope", source)
         self.assertIn(
             "looks_like_opening_recall",
             Path(__file__).with_name("scope_gate.py").read_text(encoding="utf-8"),

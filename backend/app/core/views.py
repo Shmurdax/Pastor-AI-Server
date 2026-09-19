@@ -930,7 +930,12 @@ class ChatAPIView(APIView):
                     .first()
                 )
 
-            if not query_in_scope(llm, user_query_llm):
+            # Follow-ups in an existing thread skip the LLM scope classifier.
+            # "Recap the original Joseph teaching" and "How does the great fish
+            # complete the lesson?" have no Bible/church keywords, so the gate
+            # sometimes answers NO and the redirect skips RAG.
+            has_prior_turns = ChatMessage.objects.filter(session_id=session_id).exists()
+            if not has_prior_turns and not query_in_scope(llm, user_query_llm):
                 out_of_scope_reply = generate_out_of_scope_reply(
                     llm, user_query_llm, language="en"
                 )
