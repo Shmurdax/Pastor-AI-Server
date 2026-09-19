@@ -1139,11 +1139,19 @@ class EmailVerificationTests(TestCase):
         res = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
         self.assertFalse(res.data["already_verified"])
+        self.assertTrue(res.data["emailed"])
         from django.core import mail
 
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
         self.assertIn("continue to payment", mail.outbox[0].body)
+
+    def test_debug_code_is_returned_in_debug(self):
+        with override_settings(DEBUG=True):
+            res = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["emailed"])
+        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
 
     def test_register_sends_no_code_until_verify_endpoint(self):
         from django.core import mail
@@ -1385,17 +1393,18 @@ class GmailApiTests(TestCase):
             EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         ):
             with patch("api.email_verification.send_via_gmail_api", return_value="msg-2") as send:
-                code = issue_and_send_verification_code(user)
+                issued = issue_and_send_verification_code(user)
 
-        self.assertRegex(code, r"^\d{6}$")
+        self.assertRegex(issued.code, r"^\d{6}$")
+        self.assertTrue(issued.emailed)
         send.assert_called_once()
         self.assertEqual(send.call_args.kwargs["to_email"], "gmail.api@church.org")
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_debug_code_is_omitted_when_gmail_api_is_live(self):
+    def test_debug_code_is_returned_in_debug_even_when_gmail_sends(self):
         user = User.objects.create_user(
-            username="nogiveaway@church.org",
-            email="nogiveaway@church.org",
+            username="onscreen@church.org",
+            email="onscreen@church.org",
             password="VerifyPass123!",
         )
         user.profile.email_verified = False
@@ -1411,4 +1420,59 @@ class GmailApiTests(TestCase):
             with patch("api.email_verification.send_via_gmail_api", return_value="msg-3"):
                 res = client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["emailed"])
+        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
+
+    def test_gmail_send_failure_still_returns_onscreen_code(self):
+        from api.gmail_send import GmailSendError
+
+        user = User.objects.create_user(
+            username="fallback@church.org",
+            email="fallback@church.org",
+            password="VerifyPass123!",
+        )
+        user.profile.email_verified = False
+        user.profile.save(update_fields=["email_verified"])
+        token = Token.objects.create(user=user).key
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        with override_settings(
+            DEBUG=False,
+            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
+        ):
+            with patch(
+                "api.email_verification.send_via_gmail_api",
+                side_effect=GmailSendError("Google could not send the verification email."),
+            ):
+                res = client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertFalse(res.data["emailed"])
+        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
+
+        code = res.data["debug_code"]
+        verified = client.post("/api/auth/verify-email-code/", {"code": code}, format="json")
+        self.assertEqual(verified.status_code, 200, verified.data)
+        self.assertTrue(verified.data["user"]["email_verified"])
+
+    def test_debug_code_is_omitted_in_production_when_gmail_sends(self):
+        user = User.objects.create_user(
+            username="nogiveaway@church.org",
+            email="nogiveaway@church.org",
+            password="VerifyPass123!",
+        )
+        user.profile.email_verified = False
+        user.profile.save(update_fields=["email_verified"])
+        token = Token.objects.create(user=user).key
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+        with override_settings(
+            DEBUG=False,
+            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
+        ):
+            with patch("api.email_verification.send_via_gmail_api", return_value="msg-4"):
+                res = client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["emailed"])
         self.assertNotIn("debug_code", res.data)
