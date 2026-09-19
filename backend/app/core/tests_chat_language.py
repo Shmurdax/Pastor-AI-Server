@@ -2,6 +2,7 @@ import unittest
 
 from .chat_language import (
     language_display_name,
+    language_generation_reminder,
     language_reply_instruction,
     normalize_chat_language,
 )
@@ -39,3 +40,9 @@ class ChatLanguageTests(unittest.TestCase):
         self.assertIn("Spanish", text)
         self.assertIn("NKJV", text)
         self.assertNotIn("Write your entire reply in English.", text)
+
+    def test_generation_reminder_locks_english(self):
+        text = language_generation_reminder("en")
+        self.assertIn("Write the reply only in English", text)
+        self.assertIn("Chinese", text)
+        self.assertEqual(language_generation_reminder("zh"), "")

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/chat_history_merge.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
+import 'package:flutter_application_1/chat_sanitize.dart';
 import 'package:flutter_application_1/chat_session_store.dart';
 import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
@@ -426,7 +427,11 @@ final bibleRefRegex = RegExp(
     final key = msg['localKey'] as String?;
     if (key == 'responseCancelled') return _s.responseCancelled;
     if (key == 'serverError') return _s.serverError;
-    return (msg['text'] as String?) ?? '';
+    final text = (msg['text'] as String?) ?? '';
+    if (msg['role'] == 'ai') {
+      return sanitizeVisibleChatText(text, language: _languageCode);
+    }
+    return text;
   }
 
   Future<void> _retranslateThreadForLanguage(String language) async {
@@ -465,7 +470,10 @@ final bibleRefRegex = RegExp(
       setState(() {
         for (var i = 0; i < aiIndexes.length; i++) {
           if (i >= translated.length) break;
-          final next = translated[i].trim();
+          final next = sanitizeVisibleChatText(
+            translated[i].trim(),
+            language: language,
+          );
           if (next.isEmpty) continue;
           _messages[aiIndexes[i]] = {
             ..._messages[aiIndexes[i]],
@@ -1528,7 +1536,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw += delta;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      sanitizeVisibleChatText(runtime.streamRaw, language: _languageCode),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     // Refresh the visible thread and/or sidebar generating indicators.
@@ -1542,7 +1552,9 @@ final bibleRefRegex = RegExp(
     final runtime = _sessions.peek(boundSessionId) ?? _sessions.ensure(boundSessionId);
     if (!_isCurrentStream(runtime, epoch)) return;
     runtime.streamRaw = text;
-    final display = _boldBibleReferences(runtime.streamRaw);
+    final display = _boldBibleReferences(
+      sanitizeVisibleChatText(runtime.streamRaw, language: _languageCode),
+    );
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
     applyChatStreamDelta(runtime.messages, display);
     setState(() {});
@@ -1617,9 +1629,26 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     await _persistSessionId();
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
 
-    final answer = _boldBibleReferences(
-      (data['answer'] as String?) ?? runtime.streamRaw,
+    final streamed = sanitizeVisibleChatText(
+      runtime.streamRaw,
+      language: _languageCode,
     );
+    final serverAnswer = sanitizeVisibleChatText(
+      (data['answer'] as String?) ?? '',
+      language: _languageCode,
+    );
+    final streamedHadCjk = hasUnexpectedCjk(
+      runtime.streamRaw,
+      language: _languageCode,
+    );
+    final looksLikeClip = !streamedHadCjk &&
+        streamed.isNotEmpty &&
+        serverAnswer.isNotEmpty &&
+        streamed.startsWith(serverAnswer) &&
+        serverAnswer.length < streamed.length &&
+        serverAnswer.length >= (streamed.length * 0.7).round();
+    final raw = looksLikeClip || serverAnswer.isEmpty ? streamed : serverAnswer;
+    final answer = _boldBibleReferences(raw.isNotEmpty ? raw : streamed);
     final messageId = data['message_id'];
     setState(() {
       if (!mounted || !_isCurrentStream(runtime, epoch)) return;
