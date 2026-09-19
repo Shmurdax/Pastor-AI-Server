@@ -323,6 +323,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                       disabledBackgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
                       foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -342,6 +343,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                             style: GoogleFonts.figtree(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
+                              color: Colors.white,
                             ),
                           ),
                   ),

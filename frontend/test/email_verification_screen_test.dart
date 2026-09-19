@@ -66,6 +66,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('email-verification-code')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('Verify email')).style?.color,
+      Colors.white,
+    );
 
     await tester.enterText(find.byKey(const Key('email-verification-code')), '12ab34');
     await tester.pump();
