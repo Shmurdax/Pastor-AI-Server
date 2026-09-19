@@ -35,19 +35,22 @@ double mediaGridChildAspectRatio({
 }
 
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
-/// Catalog loads from GET /api/media/ (Vimeo sync); falls back to local mock.
+/// Catalog loads from GET /api/media/ (Vimeo sync).
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({
     super.key,
     this.openVimeoId,
     this.openSeekSeconds,
-  });
+    @visibleForTesting ApiService? apiService,
+  }) : _injectedApi = apiService;
 
   /// When set, open this Vimeo episode after the catalog loads (chat source tap).
   final String? openVimeoId;
 
   /// Optional start offset in seconds for [openVimeoId] (Vimeo `#t=` seek).
   final int? openSeekSeconds;
+
+  final ApiService? _injectedApi;
 
   @override
   State<MediaLibraryScreen> createState() => _MediaLibraryScreenState();
@@ -56,12 +59,12 @@ class MediaLibraryScreen extends StatefulWidget {
 class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   static const _filterYears = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019];
 
-  final _apiService = ApiService();
+  late final ApiService _apiService = widget._injectedApi ?? ApiService();
   final _searchController = TextEditingController();
   bool _eventsOpen = false;
   bool _catalogLoading = true;
   bool _openedInitialVideo = false;
-  List<MediaItem> _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
+  List<MediaItem> _catalogItems = const [];
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   MediaAccessTier? _tierFilter;
@@ -73,7 +76,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCatalog();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadCatalog();
+    });
   }
 
   @override
@@ -83,17 +88,19 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   Future<void> _loadCatalog() async {
+    final auth = context.read<AuthController>();
+    _apiService.setAccessToken(auth.token);
     try {
       final items = await _apiService.listMediaVideos();
       if (!mounted) return;
       setState(() {
-        _catalogItems = items.isNotEmpty ? items : List<MediaItem>.from(MediaCatalog.allItems);
+        _catalogItems = items;
         _catalogLoading = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
+        _catalogItems = const [];
         _catalogLoading = false;
       });
     }
@@ -553,7 +560,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                     ),
                   ),
                 ),
-                if (items.isEmpty)
+                if (!_catalogLoading && items.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(

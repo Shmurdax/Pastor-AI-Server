@@ -1,12 +1,63 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
+import 'package:flutter_application_1/services/api_client.dart';
+import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+ApiService _mediaApi({
+  required String token,
+  required List<Map<String, dynamic>> results,
+  List<String>? capturedAuthHeaders,
+}) {
+  return ApiService(
+    apiClient: ApiClient(
+      client: MockClient((request) async {
+        if (capturedAuthHeaders != null) {
+          capturedAuthHeaders.add(request.headers['Authorization'] ?? '');
+        }
+        if (request.url.path.contains('media')) {
+          return http.Response(
+            jsonEncode({'results': results}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('{"detail":"not mocked"}', 404);
+      }),
+    ),
+  );
+}
+
+Map<String, dynamic> _videoJson({
+  required int id,
+  required String vimeoId,
+  required String title,
+  String accessTier = 'premium',
+}) {
+  return {
+    'id': id,
+    'vimeo_id': vimeoId,
+    'privacy_hash': 'abc123',
+    'title': title,
+    'description': 'Daily devotional',
+    'published_at': '2026-08-12T22:34:00Z',
+    'duration_seconds': 600,
+    'duration_label': '10:00',
+    'thumbnail_url': '',
+    'access_tier': accessTier,
+    'is_published': true,
+  };
+}
 
 void main() {
   test('media grid tiles keep most of their height for the 16:9 video', () {
@@ -63,9 +114,33 @@ void main() {
           ChangeNotifierProvider<AuthController>.value(value: auth),
           ChangeNotifierProvider(create: (_) => LocaleController()),
         ],
-        child: const MaterialApp(home: MediaLibraryScreen()),
+        child: MaterialApp(
+          home: MediaLibraryScreen(
+            apiService: _mediaApi(
+              token: 'test-token',
+              results: [
+                _videoJson(
+                  id: 1,
+                  vimeoId: '1217796650',
+                  title: 'Copy of January 4',
+                ),
+                _videoJson(
+                  id: 2,
+                  vimeoId: '898217873',
+                  title: 'January 4',
+                ),
+                _videoJson(
+                  id: 3,
+                  vimeoId: '494579763',
+                  title: 'December 31',
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+    await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -75,9 +150,64 @@ void main() {
     expect(find.text("Nordin's"), findsNothing);
     expect(find.textContaining('This library hosts Daily Devotionals'), findsNothing);
     expect(find.text('Unlock with Premium'), findsNothing);
-    expect(find.text('Welcome to Media'), findsOneWidget);
-    expect(find.text('Morning Devotional — Faith Over Fear'), findsOneWidget);
+    expect(find.text('Copy of January 4'), findsOneWidget);
+    expect(find.text('January 4'), findsOneWidget);
+    expect(find.text('Welcome to Media'), findsNothing);
+    expect(find.text('Morning Devotional — Faith Over Fear'), findsNothing);
     expect(find.text('Video'), findsNothing);
     expect(find.text('Premium'), findsWidgets);
+  });
+
+  testWidgets('media catalog sends the session token to GET /api/media/', (tester) async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    GoogleFonts.config.allowRuntimeFetching = false;
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final auth = AuthController(restoreSession: false);
+    auth.token = 'subscriber-token';
+    auth.sessionReady = true;
+    auth.user = const AuthUser(
+      id: '9',
+      email: 'sub@test.com',
+      name: 'Subscriber',
+      isPremium: true,
+      subscriptionStatus: 'active',
+    );
+    final capturedAuth = <String>[];
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
+        child: MaterialApp(
+          home: MediaLibraryScreen(
+            apiService: _mediaApi(
+              token: 'subscriber-token',
+              capturedAuthHeaders: capturedAuth,
+              results: [
+                _videoJson(
+                  id: 12,
+                  vimeoId: '1217796650',
+                  title: 'Copy of January 4',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(capturedAuth, isNotEmpty);
+    expect(capturedAuth.first, 'Token subscriber-token');
+    expect(find.text('Copy of January 4'), findsOneWidget);
+    expect(find.text('Welcome to Media'), findsNothing);
   });
 }
