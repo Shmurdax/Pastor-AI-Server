@@ -4,10 +4,11 @@ const brandPink = Color(0xFFa1375a);
 const brandNavy = Color(0xFF1B264F);
 
 /// Red / purple brand wash used on CTAs, chat bubbles, and staff inbox headers.
+/// Left-to-right so a short header still shows the red, not only navy.
 const brandGradient = LinearGradient(
   colors: [brandPink, brandNavy],
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
+  begin: Alignment.centerLeft,
+  end: Alignment.centerRight,
 );
 
 PreferredSizeWidget brandGradientAppBar({
@@ -20,10 +21,13 @@ PreferredSizeWidget brandGradientAppBar({
     elevation: 0,
     scrolledUnderElevation: 0,
     surfaceTintColor: Colors.transparent,
+    forceMaterialTransparency: true,
     title: title,
     actions: actions,
-    flexibleSpace: const DecoratedBox(
-      decoration: BoxDecoration(gradient: brandGradient),
+    flexibleSpace: const SizedBox.expand(
+      child: DecoratedBox(
+        decoration: BoxDecoration(gradient: brandGradient),
+      ),
     ),
   );
 }

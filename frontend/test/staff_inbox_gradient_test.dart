@@ -21,9 +21,14 @@ class _FakeApiService extends ApiService {
 }
 
 bool _usesBrandGradient(Widget widget) {
-  if (widget is! DecoratedBox) return false;
-  final decoration = widget.decoration;
-  return decoration is BoxDecoration && decoration.gradient == brandGradient;
+  if (widget is DecoratedBox) {
+    final decoration = widget.decoration;
+    return decoration is BoxDecoration && decoration.gradient == brandGradient;
+  }
+  if (widget is SizedBox && widget.child != null) {
+    return _usesBrandGradient(widget.child!);
+  }
+  return false;
 }
 
 void main() {
@@ -43,7 +48,6 @@ void main() {
 
     expect(find.text('Prayer inbox'), findsOneWidget);
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
-    expect(appBar.flexibleSpace, isA<DecoratedBox>());
     expect(_usesBrandGradient(appBar.flexibleSpace!), isTrue);
   });
 
@@ -57,7 +61,6 @@ void main() {
 
     expect(find.text('Response reports'), findsOneWidget);
     final appBar = tester.widget<AppBar>(find.byType(AppBar));
-    expect(appBar.flexibleSpace, isA<DecoratedBox>());
     expect(_usesBrandGradient(appBar.flexibleSpace!), isTrue);
   });
 
