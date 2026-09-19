@@ -61,6 +61,8 @@ from .grounding import (
     grounded_fallback_answer,
     grounding_repair_steer,
     lookup_nkjv_verses,
+    select_query_grounded_nkjv,
+    select_query_grounded_quotes,
     split_docs_for_grounding,
     verify_answer_grounding,
     verse_refs_for_lookup,
@@ -434,7 +436,7 @@ def _rag_check_report(prepared, answer: str):
     docs = prepared.get("docs") or []
     sermon, bible = split_docs_for_grounding(docs)
     report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
-    logger.info(
+    logger.warning(
         "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s",
         report.ok,
         len(report.invented_quotes),
@@ -444,16 +446,24 @@ def _rag_check_report(prepared, answer: str):
     return report, sermon, bible
 
 
+def _grounding_snippets(prepared):
+    docs = prepared.get("docs") or []
+    sermon, bible = split_docs_for_grounding(docs)
+    query = str(prepared.get("topic_query") or "")
+    quotes = select_query_grounded_quotes(collect_allowed_sermon_quotes(sermon), query)
+    nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
+    return quotes, nkjv
+
+
 def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
     """Follow each teaching reply with a RAG check against retrieved notes."""
     docs = prepared.get("docs") or []
     if not docs:
         return None, 0
-    report, sermon, bible = _rag_check_report(prepared, answer)
+    report, _sermon, _bible = _rag_check_report(prepared, answer)
     if report.ok:
         return None, 0
-    quotes = collect_allowed_sermon_quotes(sermon)
-    nkjv = collect_allowed_nkjv(bible)
+    quotes, nkjv = _grounding_snippets(prepared)
     if not quotes and not nkjv:
         return None, 0
     budget = quote_repair_token_budget(
@@ -468,14 +478,13 @@ def _rag_grounding_fallback(prepared, answer: str) -> str:
     docs = prepared.get("docs") or []
     if not docs:
         return ""
-    report, sermon, bible = _rag_check_report(prepared, answer)
+    report, _sermon, _bible = _rag_check_report(prepared, answer)
     if report.ok:
         return ""
-    quotes = collect_allowed_sermon_quotes(sermon)
-    nkjv = collect_allowed_nkjv(bible)
+    quotes, nkjv = _grounding_snippets(prepared)
     if not quotes and not nkjv:
         return ""
-    logger.warning("RAG check still failing; appending extractive notes")
+    logger.warning("RAG check still failing; appending on-topic retrieved excerpts")
     return grounded_fallback_answer(quotes, nkjv)
 
 

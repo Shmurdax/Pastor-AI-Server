@@ -130,7 +130,51 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("Psalm 34:18", steer)
         self.assertIn("Do not say Certainly", steer)
 
-    def test_split_docs_for_grounding_separates_bible(self):
+    def test_scripture_blobs_are_not_sermon_quotes(self):
+        from core.grounding import collect_allowed_sermon_quotes, looks_like_scripture_blob
+
+        self.assertTrue(
+            looks_like_scripture_blob(
+                "Proverbs 20:5-8 (NKJV): Counsel in the heart of man is like deep water."
+            )
+        )
+        docs = [
+            _doc(
+                "Proverbs 20:5-8 (NKJV): Counsel in the heart of man is like deep water. "
+                "A king who sits on the throne of judgment scatters all evil with his eyes.",
+                source="notes.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                'Pastor Don said, "Faith is acting on what God already promised."',
+                source="faith.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="Faith is acting on what God already promised.",
+            ),
+        ]
+        quotes = collect_allowed_sermon_quotes(docs)
+        self.assertTrue(any("already promised" in item for item in quotes), quotes)
+        self.assertFalse(any("Proverbs" in item for item in quotes), quotes)
+
+    def test_selects_query_overlap_quotes(self):
+        from core.grounding import select_query_grounded_nkjv, select_query_grounded_quotes
+
+        quotes = select_query_grounded_quotes(
+            [
+                "Comfort the child and stay in the kitchen with them.",
+                "Faith is acting on what God already promised when you pray.",
+            ],
+            "How does Pastor Don connect faith to prayer?",
+        )
+        self.assertEqual(quotes, ["Faith is acting on what God already promised when you pray."])
+        nkjv = select_query_grounded_nkjv(
+            [
+                ("Proverbs 20:5", "Counsel in the heart of man is like deep water."),
+                ("Hebrews 11:1", "Faith is the substance of things hoped for."),
+            ],
+            "How does Pastor Don connect faith to prayer?",
+        )
+        self.assertEqual(nkjv[0][0], "Hebrews 11:1")
         from core.grounding import split_docs_for_grounding
 
         docs = [

@@ -44,6 +44,84 @@ def _is_bible_doc(doc: Any) -> bool:
     return is_bible_source(metadata_source_hint(doc) or str(meta.get("source") or ""))
 
 
+_SCRIPTURE_HINT_RE = re.compile(
+    r"\b(?:nkjv|kjv)\b|\b(?:psalm|proverbs|matthew|john|james|timothy|corinthians)\b\s+\d+",
+    re.IGNORECASE,
+)
+_QUERY_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "does",
+        "don",
+        "for",
+        "how",
+        "nordin",
+        "of",
+        "pastor",
+        "someone",
+        "susan",
+        "the",
+        "to",
+        "what",
+        "when",
+        "whose",
+    }
+)
+
+
+def looks_like_scripture_blob(text: str) -> bool:
+    blob = text or ""
+    if _SCRIPTURE_HINT_RE.search(blob) and parse_verse_refs(blob[:1200]):
+        return True
+    return bool(parse_verse_refs(blob[:400]) and len(parse_verse_refs(blob[:800])) >= 2)
+
+
+def snippet_query_score(text: str, query: str) -> float:
+    q_words = {
+        word
+        for word in normalize_grounding_text(query).split()
+        if word not in _QUERY_STOPWORDS and len(word) > 2
+    }
+    t_words = set(normalize_grounding_text(text).split())
+    if not q_words or not t_words:
+        return 0.0
+    return len(q_words & t_words) / len(q_words)
+
+
+def select_query_grounded_quotes(
+    quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12
+) -> list[str]:
+    ranked = sorted(
+        (item.strip() for item in quotes if item and str(item).strip()),
+        key=lambda item: snippet_query_score(item, query),
+        reverse=True,
+    )
+    picked = [item for item in ranked if snippet_query_score(item, query) >= min_score]
+    return picked[:limit]
+
+
+def select_query_grounded_nkjv(
+    pairs: Iterable[tuple[str, str]],
+    query: str,
+    *,
+    limit: int = 1,
+    min_score: float = 0.12,
+) -> list[tuple[str, str]]:
+    ranked = sorted(
+        [(str(ref), str(text).strip()) for ref, text in pairs if text and str(text).strip()],
+        key=lambda item: snippet_query_score(f"{item[0]} {item[1]}", query),
+        reverse=True,
+    )
+    picked = [
+        item
+        for item in ranked
+        if snippet_query_score(f"{item[0]} {item[1]}", query) >= min_score
+    ]
+    return picked[:limit]
+
+
 def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> list[str]:
     """Exact lines the model may quote as Pastor Don / Susan."""
     quotes: list[str] = []
@@ -57,11 +135,13 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
             continue
         stored = str(meta.get("quote_text") or "").strip()
         body = spoken_text_without_timestamps(chunk_text(doc))
+        if looks_like_scripture_blob(body) and not stored:
+            continue
         candidates = []
-        if stored:
+        if stored and not looks_like_scripture_blob(stored):
             candidates.extend(part.strip() for part in stored.split(" | ") if part.strip())
         candidates.extend(extract_quote_spans(body))
-        if body and len(body) >= 40:
+        if body and len(body) >= 40 and not looks_like_scripture_blob(body):
             candidates.append(body)
         for item in candidates:
             cleaned = " ".join(item.split())
