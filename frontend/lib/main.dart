@@ -51,9 +51,9 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
-/// Phone/tablet sermon-library drawer. Wider than Material's 304 default so
-/// Home / Chat / Events / Media stay on one row.
-const _compactSidebarWidth = 360.0;
+/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Events /
+/// Media on one row without feeling oversized.
+const _compactSidebarWidth = 310.0;
 
 /// Prevents Material 3 stretch / glow from painting grey at the viewport edge on web.
 class _NoOverscrollScrollBehavior extends MaterialScrollBehavior {
