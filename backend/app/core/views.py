@@ -437,11 +437,13 @@ def _rag_check_report(prepared, answer: str):
     sermon, bible = split_docs_for_grounding(docs)
     report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
     logger.warning(
-        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s",
+        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s sample_quotes=%s sample_refs=%s",
         report.ok,
         len(report.invented_quotes),
         len(report.invented_scripture),
         len(report.missing_nkjv_refs),
+        report.invented_quotes[:2],
+        report.missing_nkjv_refs[:5],
     )
     return report, sermon, bible
 
@@ -451,7 +453,11 @@ def _grounding_snippets(prepared):
     sermon, bible = split_docs_for_grounding(docs)
     query = str(prepared.get("topic_query") or "")
     quotes = select_query_grounded_quotes(collect_allowed_sermon_quotes(sermon), query)
+    if not quotes:
+        quotes = collect_allowed_sermon_quotes(sermon, limit=2)
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
+    if not nkjv:
+        nkjv = collect_allowed_nkjv(bible, limit=1)
     return quotes, nkjv
 
 
