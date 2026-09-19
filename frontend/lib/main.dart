@@ -2161,17 +2161,48 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           Row(
                             children: [
                               Expanded(
-                                child: Text(_s.sermonLibrary,
-                                    style: GoogleFonts.figtree(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                              ),
-                              IconButton(
-                                tooltip: _s.browseAllDocuments,
-                                onPressed: () => _toggleIngestedDocs(),
-                                icon: Icon(
-                                  _ingestedDocsOpen ? Icons.chevron_left : Icons.chevron_right,
-                                  color: _gold,
+                                child: Text(
+                                  _s.sermonLibrary,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.figtree(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                visualDensity: VisualDensity.compact,
+                              ),
+                              Tooltip(
+                                message: _s.browseAllDocuments,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => _toggleIngestedDocs(),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _s.fullLibrary,
+                                            style: GoogleFonts.figtree(
+                                              color: const Color(0xFFB8B8B8),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          Icon(
+                                            _ingestedDocsOpen
+                                                ? Icons.chevron_left
+                                                : Icons.chevron_right,
+                                            color: _gold,
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),

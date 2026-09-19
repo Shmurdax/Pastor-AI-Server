@@ -61,6 +61,7 @@ void main() {
 
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
+    expect(find.text('Full Library').hitTestable(), findsOneWidget);
     expect(find.text('HOME').hitTestable(), findsOneWidget);
     expect(find.text('CHAT').hitTestable(), findsOneWidget);
     expect(find.text('EVENTS').hitTestable(), findsOneWidget);
@@ -92,6 +93,7 @@ void main() {
     await tester.pump();
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
+    expect(find.text('Full Library').hitTestable(), findsOneWidget);
     expect(find.text('All documents').hitTestable(), findsNothing);
   });
 

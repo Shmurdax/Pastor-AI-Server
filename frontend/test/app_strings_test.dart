@@ -41,6 +41,7 @@ void main() {
       expect(s.welcomeMobileLibraryHint.isNotEmpty, isTrue, reason: lang.code);
       expect(s.openSermonLibrary.isNotEmpty, isTrue, reason: lang.code);
       expect(s.closeSermonLibrary.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.fullLibrary.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
       expect(s.mentionsVerse('John 3:16').contains('John 3:16'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name
