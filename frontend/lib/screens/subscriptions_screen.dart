@@ -438,7 +438,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
         ),
         actions: [
-          if (auth.isAuthenticated && auth.user!.isStaff)
+          if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
               child: IconButton(
