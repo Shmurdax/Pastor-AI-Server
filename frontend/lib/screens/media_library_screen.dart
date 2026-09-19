@@ -484,7 +484,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _CreatorHeader(onSubscribe: _openSubscriptions),
+                            _CreatorHeader(),
                             const SizedBox(height: 28),
                             _SearchBar(
                               controller: _searchController,
@@ -671,13 +671,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 }
 
 class _CreatorHeader extends StatelessWidget {
-  const _CreatorHeader({required this.onSubscribe});
-
-  final VoidCallback onSubscribe;
+  const _CreatorHeader();
 
   @override
   Widget build(BuildContext context) {
-    final stats = MediaCatalog.stats;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -685,109 +682,24 @@ class _CreatorHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _navy.withValues(alpha: 0.08)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Image.asset(
-                'assets/images/nordins_transparent_logo.png',
-                width: 72,
-                height: 72,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'The NORDINS',
-                      style: GoogleFonts.figtree(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: _navy,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      MediaCatalog.creatorTagline,
-                      style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              _StatChip(
-                icon: Icons.video_library_outlined,
-                label: '${stats.totalPosts} posts on Patreon',
-              ),
-              _StatChip(
-                icon: Icons.people_outline,
-                label: '${stats.memberCount} members',
-              ),
-              _StatChip(
-                icon: Icons.workspace_premium_outlined,
-                label: 'Starting at ${stats.startingPriceLabel}',
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'This library hosts Daily Devotionals from The NORDINS Patreon. '
-            'Full catalog sync is coming soon — browse, filter, and search now '
-            'to preview the experience.',
-            style: GoogleFonts.figtree(fontSize: 14, height: 1.5, color: Colors.black87),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onSubscribe,
-            icon: const Icon(Icons.lock_open_outlined, size: 18),
-            label: Text(
-              'Unlock with Premium',
-              style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: _navy,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _gold.withValues(alpha: 0.45)),
-      ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: _navy),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: _navy),
+          Image.asset(
+            'assets/images/nordins_transparent_logo.png',
+            width: 72,
+            height: 72,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              "Nordin's",
+              style: GoogleFonts.figtree(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: _navy,
+              ),
+            ),
           ),
         ],
       ),
