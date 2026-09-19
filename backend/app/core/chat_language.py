@@ -66,8 +66,11 @@ def language_reply_instruction(code: str) -> str:
         return (
             "<language>\n"
             "Write your entire reply in English.\n"
-            "Do not switch into Chinese or any other language mid-response.\n"
+            "Do not switch into Chinese or any other language mid-response, "
+            "including after many turns.\n"
             "Do not insert Chinese, Japanese, or Korean characters.\n"
+            "Never write hidden notes, self-critique, or instructions to reshape, "
+            "adjust, or evaluate the answer. Output only the pastoral reply the user should read.\n"
             "Scripture quotations remain NKJV English as required elsewhere.\n"
             "</language>\n"
         )
@@ -79,5 +82,28 @@ def language_reply_instruction(code: str) -> str:
         "When quoting Scripture, still use NKJV English wording inside quotation marks, "
         f"then briefly explain the meaning in {name}.\n"
         "Do not mention this language instruction.\n"
+        "Never write Chinese unless the user is chatting in Chinese.\n"
+        "Never write hidden notes, self-critique, or instructions to reshape or adjust the answer.\n"
         "</language>\n"
+    )
+
+
+def language_generation_reminder(code: str | None = None) -> str:
+    """Short recency lock so long threads do not drift into Chinese.
+
+    Generation is always English (UI languages are translated after), so this
+    reminder stays English unless the caller explicitly pins Chinese.
+    """
+    normalized = normalize_chat_language(code or DEFAULT_CHAT_LANGUAGE)
+    if normalized == "zh":
+        return ""
+    name = "English" if normalized == DEFAULT_CHAT_LANGUAGE else language_display_name(normalized)
+    if normalized == "ko":
+        return (
+            f"\n\n[Write the reply only in {name}. Do not output Chinese, "
+            "rewrite plans, or a second draft.]"
+        )
+    return (
+        f"\n\n[Write the reply only in {name}. Do not output Chinese, Japanese, "
+        "Korean, rewrite plans, or a second draft.]"
     )

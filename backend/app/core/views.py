@@ -30,7 +30,18 @@ from qdrant_client import QdrantClient
 # Import the model
 from .embeddings_utils import get_embeddings
 from .models import ChatMessage, IngestedDocument, PrayerRequest, ResponseReport
-from .chat_language import language_reply_instruction, normalize_chat_language
+from .chat_language import (
+    language_generation_reminder,
+    language_reply_instruction,
+    normalize_chat_language,
+)
+from .chat_sanitize import (
+    looks_like_rewrite_leak,
+    recover_english_generation,
+    sanitize_chat_answer,
+    sanitize_history_text,
+    sanitize_stream_delta,
+)
 from .chat_llm import (
     CHAT_FREQUENCY_PENALTY,
     CHAT_PRESENCE_PENALTY,
@@ -375,9 +386,10 @@ def _iter_chat_tokens(bound_llm, messages):
 def _continuation_messages(messages, first_answer: str, steer: str | None = None):
     if not steer:
         steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
+    reminder = language_generation_reminder()
     return list(messages) + [
-        AIMessage(content=first_answer),
-        HumanMessage(content=steer),
+        AIMessage(content=sanitize_chat_answer(first_answer)),
+        HumanMessage(content=steer + reminder),
     ]
 
 
@@ -390,7 +402,10 @@ def _usable_extra(answer: str, extra: str) -> str:
     raw = (extra or "").strip()
     if not raw:
         return ""
-    extra = novel_continuation(answer, raw)
+    if looks_like_rewrite_leak(raw):
+        logger.info("Dropped a continuation that leaked CJK or rewrite notes")
+        return ""
+    extra = novel_continuation(answer, sanitize_chat_answer(raw))
     if raw and not extra:
         logger.info("Dropped a second-pass continue dump after a finished answer")
         return ""
@@ -652,6 +667,7 @@ def _save_ai_response(
     allow_create: bool = True,
 ):
     last_error = None
+    answer = sanitize_chat_answer(answer)
     for attempt in range(2):
         close_old_connections()
         try:
@@ -931,8 +947,10 @@ class ChatAPIView(APIView):
                 )
 
             if not query_in_scope(llm, user_query_llm):
-                out_of_scope_reply = generate_out_of_scope_reply(
-                    llm, user_query_llm, language="en"
+                out_of_scope_reply = sanitize_chat_answer(
+                    generate_out_of_scope_reply(
+                        llm, user_query_llm, language="en"
+                    )
                 )
                 saved_message = _save_ai_response(
                     regenerate=regenerate,
@@ -1129,7 +1147,9 @@ class ChatAPIView(APIView):
             history_chars = 0
             for msg in selected_rows:
                 history_messages.append(HumanMessage(content=msg.user_query))
-                history_messages.append(AIMessage(content=msg.ai_response or ""))
+                history_messages.append(
+                    AIMessage(content=sanitize_history_text(msg.ai_response or ""))
+                )
                 history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
             logger.warning(
                 "Chat history pinned opening=%r turns=%s chars=%s session=%s",
@@ -1184,6 +1204,7 @@ class ChatAPIView(APIView):
                     + "\nUser question:\n"
                     + user_query_llm.strip()
                 )
+            human_content = f"{human_content}{language_generation_reminder()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -1319,6 +1340,23 @@ class ChatAPIView(APIView):
                 logger.exception("Smaller-budget chat stream also failed")
             raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
 
+        def _retry_if_cjk_leak(prepared, first_raw: str) -> tuple[str, bool]:
+            answer, leaked = recover_english_generation(first_raw)
+            if not leaked:
+                return answer, False
+            logger.warning("Chat reply leaked CJK or rewrite notes; retrying once")
+            try:
+                retry_raw = "".join(_generate_tokens(prepared))
+            except Exception:
+                logger.exception("CJK leak retry failed; sanitizing the first answer")
+                retry_raw = ""
+            recovered, still_leaked = recover_english_generation(first_raw, retry_raw)
+            if still_leaked:
+                logger.warning(
+                    "CJK leak retry still mixed scripts; keeping the English lead-in"
+                )
+            return recovered, still_leaked
+
         if want_stream:
             def produce_events():
                 emit_live = chat_language == "en"
@@ -1328,19 +1366,46 @@ class ChatAPIView(APIView):
                     yield from _immediate_sse(prepared["payload"])
                     return
                 first_raw_parts = []
+                painted_parts = []
+                leak_started = False
                 for text in _generate_tokens(prepared):
                     first_raw_parts.append(text)
-                    if emit_live:
-                        yield _sse({"type": "delta", "text": text})
+                    raw_so_far = "".join(first_raw_parts)
+                    if leak_started:
+                        if live_history:
+                            live_history.publish(
+                                sanitize_chat_answer(raw_so_far), streaming=True
+                            )
+                        continue
+                    if looks_like_rewrite_leak(raw_so_far):
+                        leak_started = True
+                        recovered_now = sanitize_chat_answer(raw_so_far)
+                        painted_parts = [recovered_now]
+                        if emit_live:
+                            yield _sse({"type": "replace", "text": recovered_now})
+                        if live_history:
+                            live_history.publish(recovered_now, streaming=True)
+                        continue
+                    visible = sanitize_stream_delta(text)
+                    if visible:
+                        painted_parts.append(visible)
+                        if emit_live:
+                            yield _sse({"type": "delta", "text": visible})
                     if live_history:
-                        live_history.publish("".join(first_raw_parts), streaming=True)
+                        live_history.publish("".join(painted_parts), streaming=True)
                 first_raw = "".join(first_raw_parts)
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
-                answer = first_raw
+                answer, leaked = _retry_if_cjk_leak(prepared, first_raw)
+                painted = "".join(painted_parts)
+                if emit_live and answer != painted:
+                    yield _sse({"type": "replace", "text": answer})
+                if live_history:
+                    live_history.publish(answer, streaming=True)
                 expansion_pass = 0
                 while (
-                    answer_needs_expansion(answer, query=user_query_llm)
+                    not leaked
+                    and answer_needs_expansion(answer, query=user_query_llm)
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
@@ -1365,8 +1430,10 @@ class ChatAPIView(APIView):
                     answer = _join_continuation(answer, extra)
                     if live_history:
                         live_history.publish(answer, streaming=True)
-                repair_steer, repair_budget = _claim_repair_plan(
-                    prepared, answer, query=user_query_llm
+                repair_steer, repair_budget = (
+                    (None, 0) if leaked else _claim_repair_plan(
+                        prepared, answer, query=user_query_llm
+                    )
                 )
                 if repair_steer:
                     extra_parts = []
@@ -1387,8 +1454,10 @@ class ChatAPIView(APIView):
                         answer = _join_continuation(answer, extra)
                         if live_history:
                             live_history.publish(answer, streaming=True)
-                quote_steer, quote_budget = _quote_repair_plan(
-                    prepared, answer, query=user_query_llm
+                quote_steer, quote_budget = (
+                    (None, 0) if leaked else _quote_repair_plan(
+                        prepared, answer, query=user_query_llm
+                    )
                 )
                 if quote_steer:
                     extra_parts = []
@@ -1409,8 +1478,10 @@ class ChatAPIView(APIView):
                         answer = _join_continuation(answer, extra)
                         if live_history:
                             live_history.publish(answer, streaming=True)
-                grounding_steer, grounding_budget = _grounding_repair_plan(
-                    prepared, answer
+                grounding_steer, grounding_budget = (
+                    (None, 0) if leaked else _grounding_repair_plan(
+                        prepared, answer
+                    )
                 )
                 if grounding_steer:
                     extra_parts = []
@@ -1431,19 +1502,23 @@ class ChatAPIView(APIView):
                         answer = _join_continuation(answer, extra)
                         if live_history:
                             live_history.publish(answer, streaming=True)
-                finish_extra = _finish_incomplete_extra(prepared, answer)
+                finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
                     if emit_live:
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
                     answer = _join_continuation(answer, finish_extra)
-                final_answer = _finalize_teaching_answer(prepared, answer)
+                final_answer = sanitize_chat_answer(
+                    _finalize_teaching_answer(prepared, answer)
+                )
                 if emit_live:
                     prefix = (answer or "").rstrip()
                     if final_answer.startswith(prefix):
                         extra = final_answer[len(prefix) :].strip()
                         if extra:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
+                    elif final_answer != prefix:
+                        yield _sse({"type": "replace", "text": final_answer})
                 answer = final_answer
                 response_sources = _response_sources(
                     prepared["docs"],
@@ -1500,11 +1575,13 @@ class ChatAPIView(APIView):
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
+            answer, leaked = _retry_if_cjk_leak(prepared, answer)
             if live_history:
                 live_history.publish(answer, streaming=True)
             expansion_pass = 0
             while (
-                answer_needs_expansion(answer, query=user_query_llm)
+                not leaked
+                and answer_needs_expansion(answer, query=user_query_llm)
                 and expansion_pass < MAX_EXPANSION_PASSES
             ):
                 expansion_pass += 1
@@ -1544,8 +1621,10 @@ class ChatAPIView(APIView):
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
-            repair_steer, repair_budget = _claim_repair_plan(
-                prepared, answer, query=user_query_llm
+            repair_steer, repair_budget = (
+                (None, 0) if leaked else _claim_repair_plan(
+                    prepared, answer, query=user_query_llm
+                )
             )
             if repair_steer:
                 try:
@@ -1572,8 +1651,10 @@ class ChatAPIView(APIView):
                 extra_text = _usable_extra(answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
-            quote_steer, quote_budget = _quote_repair_plan(
-                prepared, answer, query=user_query_llm
+            quote_steer, quote_budget = (
+                (None, 0) if leaked else _quote_repair_plan(
+                    prepared, answer, query=user_query_llm
+                )
             )
             if quote_steer:
                 try:
@@ -1600,7 +1681,9 @@ class ChatAPIView(APIView):
                 extra_text = _usable_extra(answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
-            grounding_steer, grounding_budget = _grounding_repair_plan(prepared, answer)
+            grounding_steer, grounding_budget = (
+                (None, 0) if leaked else _grounding_repair_plan(prepared, answer)
+            )
             if grounding_steer:
                 try:
                     extra = prepared["llm"].bind(max_tokens=grounding_budget).invoke(
@@ -1626,10 +1709,10 @@ class ChatAPIView(APIView):
                 extra_text = _usable_extra(answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
-            finish_extra = _finish_incomplete_extra(prepared, answer)
+            finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
-            answer = _finalize_teaching_answer(prepared, answer)
+            answer = sanitize_chat_answer(_finalize_teaching_answer(prepared, answer))
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,
