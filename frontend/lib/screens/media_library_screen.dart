@@ -6,8 +6,6 @@ import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
-import 'package:flutter_application_1/widgets/language_selector.dart';
-import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -443,37 +441,26 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           ),
         ),
         actions: [
-          LanguageSelector(isMobile: isMobile),
-          if (!isMobile)
+          if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
-                  _NavButton(label: s.store, onTap: () => _launchUrl('https://thenordins.org/store')),
+                  _NavButton(label: s.chat, onTap: _goToAiHome),
                   _NavButton(
                     label: s.events,
                     onTap: () => _toggleEvents(open: true),
                     active: _eventsOpen,
                   ),
-                  NordinsAiNavMenu(
-                    onAiHome: _goToAiHome,
-                    onMedia: () => _toggleEvents(open: false),
-                    onSubscribe: _openSubscriptions,
+                  _NavButton(
+                    label: s.media,
+                    onTap: () => _toggleEvents(open: false),
                     active: true,
                   ),
                   const SizedBox(width: 40),
                 ],
-              ),
-            ),
-          if (isMobile)
-            Padding(
-              padding: const EdgeInsets.only(top: 20.0, right: 4),
-              child: IconButton(
-                tooltip: s.events,
-                onPressed: () => _toggleEvents(open: true),
-                icon: Icon(Icons.event_outlined, color: _eventsOpen ? _gold : _navy),
               ),
             ),
         ],
@@ -497,7 +484,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _CreatorHeader(onSubscribe: _openSubscriptions),
+                            _CreatorHeader(),
                             const SizedBox(height: 28),
                             _SearchBar(
                               controller: _searchController,
@@ -684,13 +671,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 }
 
 class _CreatorHeader extends StatelessWidget {
-  const _CreatorHeader({required this.onSubscribe});
-
-  final VoidCallback onSubscribe;
+  const _CreatorHeader();
 
   @override
   Widget build(BuildContext context) {
-    final stats = MediaCatalog.stats;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -698,109 +682,34 @@ class _CreatorHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _navy.withValues(alpha: 0.08)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Image.asset(
-                'assets/images/nordins_transparent_logo.png',
-                width: 72,
-                height: 72,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'The NORDINS',
-                      style: GoogleFonts.figtree(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: _navy,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      MediaCatalog.creatorTagline,
-                      style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              _StatChip(
-                icon: Icons.video_library_outlined,
-                label: '${stats.totalPosts} posts on Patreon',
-              ),
-              _StatChip(
-                icon: Icons.people_outline,
-                label: '${stats.memberCount} members',
-              ),
-              _StatChip(
-                icon: Icons.workspace_premium_outlined,
-                label: 'Starting at ${stats.startingPriceLabel}',
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'This library hosts Daily Devotionals from The NORDINS Patreon. '
-            'Full catalog sync is coming soon — browse, filter, and search now '
-            'to preview the experience.',
-            style: GoogleFonts.figtree(fontSize: 14, height: 1.5, color: Colors.black87),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onSubscribe,
-            icon: const Icon(Icons.lock_open_outlined, size: 18),
-            label: Text(
-              'Unlock with Premium',
-              style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: _navy,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _gold.withValues(alpha: 0.45)),
-      ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: _navy),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.figtree(fontSize: 12, fontWeight: FontWeight.w600, color: _navy),
+          Image.asset(
+            'assets/images/nordins_transparent_logo.png',
+            width: 72,
+            height: 72,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'The NORDINS',
+                  style: GoogleFonts.figtree(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: _navy,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  MediaCatalog.creatorTagline,
+                  style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1019,11 +928,6 @@ class _MediaPostCard extends StatelessWidget {
                           size: compact ? 48 : 64,
                           color: _gold.withValues(alpha: 0.95),
                         ),
-                      ),
-                      const Positioned(
-                        left: 10,
-                        top: 10,
-                        child: _Badge(label: 'Video'),
                       ),
                       if (item.accessTier == MediaAccessTier.premium)
                         Positioned(

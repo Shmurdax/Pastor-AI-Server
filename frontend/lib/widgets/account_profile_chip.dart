@@ -20,6 +20,7 @@ class AccountProfileChip extends StatelessWidget {
     super.key,
     required this.apiService,
     this.isMobile = false,
+    this.dense = false,
     this.onOpenMedia,
     this.onOpenPrayerInbox,
     this.onOpenResponseReports,
@@ -28,6 +29,8 @@ class AccountProfileChip extends StatelessWidget {
 
   final ApiService apiService;
   final bool isMobile;
+  /// Drops outer AppBar padding so this can stack above the language globe.
+  final bool dense;
   final VoidCallback? onOpenMedia;
   final VoidCallback? onOpenPrayerInbox;
   final VoidCallback? onOpenResponseReports;
@@ -40,7 +43,9 @@ class AccountProfileChip extends StatelessWidget {
     if (!auth.isAuthenticated || user == null) return const SizedBox.shrink();
 
     return Padding(
-      padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),
+      padding: dense
+          ? EdgeInsets.zero
+          : EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),
       child: Material(
         color: const Color(0xFFF8F4E8),
         shape: const StadiumBorder(),
