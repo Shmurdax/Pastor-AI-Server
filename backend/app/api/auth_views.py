@@ -11,6 +11,11 @@ from rest_framework.views import APIView
 
 from core.persist_db import dump_persistent_postgres
 
+from .email_verification import (
+    EmailVerificationError,
+    issue_and_send_verification_code,
+    verify_email_code,
+)
 from .serializers import (
     GoogleAuthSerializer,
     LoginSerializer,
@@ -163,9 +168,15 @@ class GoogleAuthView(APIView):
                 user.save(update_fields=["first_name", "last_name"])
 
         profile = getattr(user, "profile", None)
+        update_fields = []
         if profile is not None and picture and profile.avatar_url != picture:
             profile.avatar_url = picture
-            profile.save(update_fields=["avatar_url"])
+            update_fields.append("avatar_url")
+        if profile is not None and not profile.email_verified:
+            profile.email_verified = True
+            update_fields.append("email_verified")
+        if profile is not None and update_fields:
+            profile.save(update_fields=update_fields)
 
         token, _ = Token.objects.get_or_create(user=user)
         if created:
@@ -174,3 +185,48 @@ class GoogleAuthView(APIView):
             {"token": token.key, "user": UserSerializer(user).data},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class _AuthenticatedAuthView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class SendEmailCodeView(_AuthenticatedAuthView):
+    """Email a 6-digit code after Premium checkout."""
+
+    def post(self, request):
+        profile = getattr(request.user, "profile", None)
+        if profile is not None and profile.email_verified:
+            return Response({"ok": True, "already_verified": True})
+        if profile is None or not profile.is_premium:
+            if not (request.user.is_staff or request.user.is_superuser):
+                return Response(
+                    {"detail": "Subscribe first, then verify your email."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        try:
+            code = issue_and_send_verification_code(request.user)
+        except EmailVerificationError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        payload = {
+            "ok": True,
+            "already_verified": False,
+            "email": request.user.email,
+        }
+        if settings.DEBUG:
+            payload["debug_code"] = code
+        return Response(payload)
+
+
+class VerifyEmailCodeView(_AuthenticatedAuthView):
+    """Confirm the emailed 6-digit code and unlock Premium access."""
+
+    def post(self, request):
+        raw = request.data.get("code") if hasattr(request.data, "get") else None
+        try:
+            verify_email_code(request.user, str(raw or ""))
+        except EmailVerificationError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        dump_persistent_postgres()
+        return Response({"ok": True, "user": UserSerializer(request.user).data})

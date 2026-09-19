@@ -295,3 +295,21 @@ MAILCHIMP_AUDIENCE_ID = (
     os.environ.get("MAILCHIMP_AUDIENCE_ID", "") or _load_dotenv_value("MAILCHIMP_AUDIENCE_ID")
 )
 
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "") or _load_dotenv_value("EMAIL_HOST")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "") or _load_dotenv_value("EMAIL_PORT") or "587")
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "") or _load_dotenv_value("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = (
+    os.environ.get("EMAIL_HOST_PASSWORD", "") or _load_dotenv_value("EMAIL_HOST_PASSWORD")
+)
+_email_tls_raw = os.environ.get("EMAIL_USE_TLS", "") or _load_dotenv_value("EMAIL_USE_TLS") or "true"
+EMAIL_USE_TLS = _email_tls_raw.strip().lower() in {"1", "true", "yes", "on"}
+DEFAULT_FROM_EMAIL = (
+    os.environ.get("DEFAULT_FROM_EMAIL", "")
+    or _load_dotenv_value("DEFAULT_FROM_EMAIL")
+    or "Nordin's AI <noreply@thenordins.org>"
+)
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+

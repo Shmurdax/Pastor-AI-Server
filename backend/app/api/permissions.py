@@ -14,5 +14,14 @@ class HasPremiumAccess(BasePermission):
             return False
         profile = getattr(user, "profile", None)
         if profile is not None:
-            return bool(profile.has_premium_access)
+            allowed = bool(profile.has_premium_access)
+            if (
+                not allowed
+                and profile.is_premium
+                and not profile.email_verified
+                and not getattr(user, "is_staff", False)
+                and not getattr(user, "is_superuser", False)
+            ):
+                self.message = "Verify your email to continue."
+            return allowed
         return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))

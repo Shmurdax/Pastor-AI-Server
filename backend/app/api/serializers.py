@@ -9,12 +9,14 @@ from .models import MediaVideo
 
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
-    { id, email, name, avatar_url, is_staff, is_premium, subscription_status,
-      billing_period, pending_billing_period, cancel_at_period_end, current_period_end }
+    { id, email, name, avatar_url, is_staff, is_premium, email_verified,
+      subscription_status, billing_period, pending_billing_period,
+      cancel_at_period_end, current_period_end }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     is_premium = serializers.SerializerMethodField()
+    email_verified = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     pending_billing_period = serializers.SerializerMethodField()
@@ -30,6 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
             "avatar_url",
             "is_staff",
             "is_premium",
+            "email_verified",
             "subscription_status",
             "billing_period",
             "pending_billing_period",
@@ -58,6 +61,12 @@ class UserSerializer(serializers.ModelSerializer):
             return True
         profile = self._profile(obj)
         return bool(profile and profile.is_premium)
+
+    def get_email_verified(self, obj):
+        if obj.is_staff or obj.is_superuser:
+            return True
+        profile = self._profile(obj)
+        return bool(profile and profile.email_verified)
 
     def get_subscription_status(self, obj):
         profile = self._profile(obj)
@@ -111,6 +120,10 @@ class RegisterSerializer(serializers.Serializer):
             first_name=first_name,
             last_name=last_name,
         )
+        profile = getattr(user, "profile", None)
+        if profile is not None and profile.email_verified:
+            profile.email_verified = False
+            profile.save(update_fields=["email_verified"])
         return user
 
 

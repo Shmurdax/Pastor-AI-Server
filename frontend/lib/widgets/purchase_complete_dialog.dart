@@ -6,17 +6,27 @@ const _gold = Color(0xFFD4AF37);
 
 /// Shown only after a successful Premium purchase.
 /// Closing it (button, barrier tap, or back) returns control to the caller,
-/// which should pop back to the chatbot.
-Future<void> showPurchaseCompleteDialog(BuildContext context) {
+/// which should pop back to the chatbot or the email verification gate.
+Future<void> showPurchaseCompleteDialog(
+  BuildContext context, {
+  bool needsEmailVerification = false,
+}) {
   return showDialog<void>(
     context: context,
     barrierDismissible: true,
-    builder: (ctx) => const PurchaseCompleteDialog(),
+    builder: (ctx) => PurchaseCompleteDialog(
+      needsEmailVerification: needsEmailVerification,
+    ),
   );
 }
 
 class PurchaseCompleteDialog extends StatelessWidget {
-  const PurchaseCompleteDialog({super.key});
+  const PurchaseCompleteDialog({
+    super.key,
+    this.needsEmailVerification = false,
+  });
+
+  final bool needsEmailVerification;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +44,15 @@ class PurchaseCompleteDialog extends StatelessWidget {
               color: _gold.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_circle, color: _gold, size: 40),
+            child: Icon(
+              needsEmailVerification ? Icons.mark_email_unread : Icons.check_circle,
+              color: _gold,
+              size: 40,
+            ),
           ),
           const SizedBox(height: 16),
           Text(
-            'Purchase complete',
+            needsEmailVerification ? 'Check your email' : 'Purchase complete',
             textAlign: TextAlign.center,
             style: GoogleFonts.figtree(
               color: _navy,
@@ -49,7 +63,9 @@ class PurchaseCompleteDialog extends StatelessWidget {
         ],
       ),
       content: Text(
-        'Welcome to Premium. Unlimited chat history and member media are unlocked.',
+        needsEmailVerification
+            ? 'Enter this code to verify your email. We sent a 6-digit code so you can unlock Nordin\'s AI.'
+            : 'Welcome to Premium. Unlimited chat history and member media are unlocked.',
         textAlign: TextAlign.center,
         style: GoogleFonts.figtree(
           fontSize: 15,
@@ -71,7 +87,7 @@ class PurchaseCompleteDialog extends StatelessWidget {
               ),
             ),
             child: Text(
-              'Back to chatbot',
+              'Continue',
               style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
