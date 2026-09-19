@@ -71,7 +71,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('The NORDINS'), findsOneWidget);
-    expect(find.text('Daily Devotionals from The NORDINS'), findsOneWidget);
+    expect(find.text("Daily Devotionals from The Nordin's"), findsOneWidget);
     expect(find.text("Nordin's"), findsNothing);
     expect(find.textContaining('This library hosts Daily Devotionals'), findsNothing);
     expect(find.text('Unlock with Premium'), findsNothing);
