@@ -6,8 +6,6 @@ import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
-import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
-import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -443,19 +441,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           ),
         ),
         actions: [
-          AppBarIdentityCluster(
-            isMobile: isMobile,
-            menu: isMobileOrTablet
-                ? AppHamburgerNav(
-                    isMobile: isMobile,
-                    dense: isMobile,
-                    onHome: () => _launchUrl('https://thenordins.org/'),
-                    onChat: _goToAiHome,
-                    onEvents: () => _toggleEvents(open: true),
-                    onMedia: () => _toggleEvents(open: false),
-                  )
-                : null,
-          ),
           if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),

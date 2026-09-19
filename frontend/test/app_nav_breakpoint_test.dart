@@ -5,6 +5,7 @@ import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
+import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -78,9 +79,10 @@ void main() {
       findsNothing,
     );
     expect(find.byType(AppHamburgerNav), findsNothing);
+    expect(find.byType(LanguageSelector), findsNothing);
   });
 
-  testWidgets('media header hides top-right nav at 1023px and shows hamburger', (tester) async {
+  testWidgets('media header hides top-right nav at 1023px without hamburger or language', (tester) async {
     await pumpMedia(tester, const Size(1023, 900));
 
     expect(
@@ -91,21 +93,13 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.text('STORE')),
       findsNothing,
     );
-    expect(find.byType(AppHamburgerNav), findsOneWidget);
+    expect(find.byType(AppHamburgerNav), findsNothing);
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.menu)),
-      findsOneWidget,
+      findsNothing,
     );
-
-    await tester.tap(find.byIcon(Icons.menu));
-    await tester.pumpAndSettle();
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Chat'), findsOneWidget);
-    expect(find.text('Events'), findsOneWidget);
-    expect(find.text('Media'), findsOneWidget);
-    expect(find.text('Store'), findsNothing);
-    expect(find.text('Subscribe'), findsNothing);
-    expect(find.text("NORDIN'S AI"), findsNothing);
+    expect(find.byType(LanguageSelector), findsNothing);
+    expect(find.byIcon(Icons.language), findsNothing);
   });
 
   testWidgets('chat header hides top-right nav at tablet width', (tester) async {
