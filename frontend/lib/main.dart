@@ -1867,7 +1867,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         SermonLibrarySlidePanel(
           animation: _libraryDrawerController,
           panelWidth: _compactSidebarWidth,
-          toolbarHeight: 100,
           openTooltip: _s.openSermonLibrary,
           closeTooltip: _s.closeSermonLibrary,
           panel: _buildSidebar(isMobile: true),

@@ -14,12 +14,12 @@ class SermonLibrarySlidePanel extends StatelessWidget {
     required this.panel,
     required this.openTooltip,
     required this.closeTooltip,
-    this.toolbarHeight = 100,
   });
 
   static const handleKey = Key('sermon-library-handle');
   static const handleWidth = 40.0;
   static const handleHeight = 96.0;
+  static const handleRadius = 12.0;
   static const _flingVelocity = 280.0;
 
   final AnimationController animation;
@@ -27,7 +27,6 @@ class SermonLibrarySlidePanel extends StatelessWidget {
   final Widget panel;
   final String openTooltip;
   final String closeTooltip;
-  final double toolbarHeight;
 
   bool get _isOpen => animation.value >= 0.5;
 
@@ -64,9 +63,6 @@ class SermonLibrarySlidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.paddingOf(context).top;
-    final handleTop = topInset + ((toolbarHeight - handleHeight) / 2).clamp(0.0, 40.0);
-
     return SizedBox.expand(
       child: AnimatedBuilder(
         animation: animation,
@@ -101,15 +97,12 @@ class SermonLibrarySlidePanel extends StatelessWidget {
                         child: child,
                       ),
                     ),
-                    Padding(
-                      padding: EdgeInsets.only(top: handleTop),
-                      child: _LibraryHandle(
-                        isOpen: isOpen,
-                        tooltip: isOpen ? closeTooltip : openTooltip,
-                        onTap: _toggle,
-                        onDragUpdate: _onDragUpdate,
-                        onDragEnd: _onDragEnd,
-                      ),
+                    _LibraryHandle(
+                      isOpen: isOpen,
+                      tooltip: isOpen ? closeTooltip : openTooltip,
+                      onTap: _toggle,
+                      onDragUpdate: _onDragUpdate,
+                      onDragEnd: _onDragEnd,
                     ),
                   ],
                 ),
@@ -158,7 +151,10 @@ class _LibraryHandle extends StatelessWidget {
             height: SermonLibrarySlidePanel.handleHeight,
             decoration: const BoxDecoration(
               gradient: brandGradient,
-              borderRadius: BorderRadius.zero,
+              borderRadius: BorderRadius.only(
+                topRight: Radius.circular(SermonLibrarySlidePanel.handleRadius),
+                bottomRight: Radius.circular(SermonLibrarySlidePanel.handleRadius),
+              ),
               boxShadow: [
                 BoxShadow(
                   color: Color(0x38000000),
