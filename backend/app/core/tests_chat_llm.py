@@ -344,6 +344,11 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("looks_like_brief_social", source)
         self.assertIn("CONVERSATIONAL_STEER", source)
         self.assertIn("Skipping Qdrant for brief social message", source)
+        self.assertIn("Skipping Qdrant for opening-recall", source)
+        self.assertIn(
+            "looks_like_opening_recall",
+            Path(__file__).with_name("scope_gate.py").read_text(encoding="utf-8"),
+        )
         self.assertIn("prepared[\"messages\"] = trimmed", source)
         self.assertNotIn("min_tokens", source)
         self.assertNotIn('"No relevant sermon notes found."', source)

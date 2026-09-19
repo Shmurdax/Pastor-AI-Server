@@ -460,6 +460,9 @@ class ScopeGateParserTests(unittest.TestCase):
         self.assertTrue(always_in_scope_query("What about abortion?"))
         self.assertTrue(always_in_scope_query("What is the meaning of life?"))
         self.assertTrue(always_in_scope_query("What is my purpose in life?"))
+        self.assertTrue(always_in_scope_query("What topic did we start this chat with?"))
+        self.assertTrue(always_in_scope_query("What Bible story did we start this chat with?"))
+        self.assertTrue(always_in_scope_query("Hello how are you today?"))
         self.assertFalse(always_in_scope_query("Write a Python sort function"))
         self.assertFalse(always_in_scope_query("Who won the game last night?"))
 

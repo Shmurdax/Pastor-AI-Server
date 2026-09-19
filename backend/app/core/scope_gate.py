@@ -120,6 +120,14 @@ def always_in_scope_query(user_query_llm: str) -> bool:
     text = (user_query_llm or "").strip()
     if not text:
         return False
+    # Import lazily: chat_system_prompt must not import this module at load time.
+    from .chat_system_prompt import looks_like_brief_social, looks_like_opening_recall
+
+    # Meta "what did we start this chat with?" has no Bible/church keywords, so the
+    # LLM gate sometimes answers NO and the out-of-scope redirect replaces the
+    # opening story with generic faith talk. Greetings are already supposed to be YES.
+    if looks_like_opening_recall(text) or looks_like_brief_social(text):
+        return True
     return any(p.search(text) for p in _ALWAYS_IN_SCOPE_PATTERNS)
 
 
@@ -151,7 +159,7 @@ def query_in_scope(llm, user_query_llm: str) -> bool:
         )
         return True
     if not parsed:
-        logger.info("Scope gate rejected query (preview): %s", (user_query_llm or "")[:240])
+        logger.warning("Scope gate rejected query (preview): %s", (user_query_llm or "")[:240])
     return parsed
 
 
