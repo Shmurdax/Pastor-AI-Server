@@ -989,15 +989,20 @@ class ChatAPIView(APIView):
             )
 
             brief_social = looks_like_brief_social(user_query_llm)
+            opening_recall = looks_like_opening_recall(user_query_llm)
             # Pure greetings should not pull sermon notes—those notes trigger
             # quote/timestamp dumps. Informational questions keep full RAG.
-            if brief_social:
+            # "What did we start this chat with?" must not retrieve an unrelated
+            # sermon theme (parenting, generic wisdom) that then becomes the recap.
+            if brief_social or opening_recall:
                 search_queries = [user_query_llm]
                 docs = []
                 context = ""
                 teaching_claims = []
-                logger.debug(
-                    "Skipping Qdrant for brief social message (session=%s)",
+                logger.warning(
+                    "Skipping Qdrant for brief social message (session=%s)"
+                    if brief_social
+                    else "Skipping Qdrant for opening-recall (session=%s)",
                     session_id[:18],
                 )
             else:
@@ -1173,6 +1178,12 @@ class ChatAPIView(APIView):
             human_content = user_query_llm
             if brief_social:
                 human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
+            elif opening_recall and opening_text:
+                human_content = (
+                    format_opening_recall_steer(opening_text)
+                    + "\nUser question:\n"
+                    + user_query_llm.strip()
+                )
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages

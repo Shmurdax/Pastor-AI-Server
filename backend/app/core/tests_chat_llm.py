@@ -296,6 +296,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("OPENING_RECALL_STEER", source)
         self.assertIn("looks_like_opening_recall", source)
         self.assertIn("format_opening_recall_steer", source)
+        self.assertIn("brief_social or opening_recall", source)
         self.assertIn("pin_query=user_query_llm", source)
         self.assertIn('query=prepared.get("topic_query") or user_query_llm', source)
         self.assertIn("_claim_repair_plan", source)
