@@ -571,9 +571,8 @@ def run_eval(
         for i, query in enumerate(chat["queries"], start=1):
             replay = None
             if i <= len(existing_pairs):
-                prev_q, prev_a = existing_pairs[i - 1]
-                if prev_q.strip() == query.strip() or True:
-                    replay = (prev_a, [])
+                _prev_q, prev_a = existing_pairs[i - 1]
+                replay = (prev_a, [])
             started = time.time()
             if replay:
                 answer, sources = replay
