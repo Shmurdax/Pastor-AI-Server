@@ -2613,7 +2613,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            _s.welcomeBody,
+                            isMobile
+                                ? '${_s.welcomeBody} ${_s.welcomeMobileLibraryHint}'
+                                : _s.welcomeBody,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),
