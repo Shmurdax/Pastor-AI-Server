@@ -35,8 +35,8 @@ double mediaGridChildAspectRatio({
 }
 
 /// Patreon-style media library for The NORDINS Daily Devotionals (video).
-/// Catalog loads from GET /api/media/ (Vimeo folder sync + admin Embedded Videos).
-/// Falls back to the local mock catalog only when the API request fails.
+/// Catalog loads from GET /api/media/ (Vimeo folder 24205069 embeds).
+/// Premium sessions never fall back to the 9 local MP4 placeholders.
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({
     super.key,
@@ -62,7 +62,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   bool _eventsOpen = false;
   bool _catalogLoading = true;
   bool _openedInitialVideo = false;
-  List<MediaItem> _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
+  String? _catalogToken;
+  List<MediaItem> _catalogItems = const <MediaItem>[];
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   MediaAccessTier? _tierFilter;
@@ -72,9 +73,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   bool get _hasPremiumAccess => context.watch<AuthController>().hasPremiumAccess;
 
   @override
-  void initState() {
-    super.initState();
-    _loadCatalog();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final token = context.read<AuthController>().token;
+    if (token != _catalogToken) {
+      _catalogToken = token;
+      _loadCatalog();
+    }
   }
 
   @override
@@ -84,6 +89,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   Future<void> _loadCatalog() async {
+    final auth = context.read<AuthController>();
+    _apiService.setAccessToken(auth.token);
     try {
       final items = await _apiService.listMediaVideos();
       if (!mounted) return;
@@ -94,7 +101,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _catalogItems = List<MediaItem>.from(MediaCatalog.allItems);
+        // Authenticated Premium members must not fall back to the 9 mock
+        // MP4 placeholders — that hides the live Vimeo folder catalog.
+        _catalogItems = auth.hasPremiumAccess
+            ? const <MediaItem>[]
+            : List<MediaItem>.from(MediaCatalog.allItems);
         _catalogLoading = false;
       });
     }
@@ -554,7 +565,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                     ),
                   ),
                 ),
-                if (items.isEmpty)
+                if (_catalogLoading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (items.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
