@@ -103,6 +103,8 @@ from .chat_system_prompt import (
     FINISH_STEER,
     LIBRARY_PULL_STEER,
     FOLLOWUP_STEER,
+    OPENING_RECALL_STEER,
+    format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
     QUOTE_CONTINUE_STEER,
     answer_char_count,
@@ -117,6 +119,7 @@ from .chat_system_prompt import (
     join_continuation,
     looks_like_brief_social,
     looks_like_continue_dump,
+    looks_like_opening_recall,
     novel_continuation,
     skip_rewrite_repair,
 )
@@ -1123,7 +1126,7 @@ class ChatAPIView(APIView):
                 history_messages.append(HumanMessage(content=msg.user_query))
                 history_messages.append(AIMessage(content=msg.ai_response or ""))
                 history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
-            logger.info(
+            logger.warning(
                 "Chat history pinned opening=%r turns=%s chars=%s session=%s",
                 (selected_rows[0].user_query[:120] if selected_rows else ""),
                 len(selected_rows),
@@ -1134,10 +1137,17 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
+            opening_text = (first_row.user_query or "").strip() if first_row else ""
+            if looks_like_opening_recall(user_query_llm) and opening_text:
+                followup_block = format_opening_recall_steer(opening_text)
+            elif prior_user_queries:
+                followup_block = FOLLOWUP_STEER
+            else:
+                followup_block = ""
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + (LIBRARY_PULL_STEER if looks_like_library_pull(user_query_llm) else "")
-                + (FOLLOWUP_STEER if prior_user_queries else "")
+                + followup_block
                 + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"

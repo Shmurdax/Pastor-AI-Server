@@ -3,6 +3,7 @@ import unittest
 from .chat_system_prompt import (
     FINISH_STEER,
     FOLLOWUP_STEER,
+    OPENING_RECALL_STEER,
     MAX_EXPANSION_PASSES,
     MIN_TEACHING_CHARS,
     MIN_TEACHING_WORDS,
@@ -12,7 +13,9 @@ from .chat_system_prompt import (
     biblical_characters_instruction,
     build_chat_system_prompt,
     find_biblical_character_names,
+    format_opening_recall_steer,
     looks_like_brief_social,
+    looks_like_opening_recall,
     query_expects_long_answer,
 )
 from .document_cleanup import (
@@ -96,6 +99,15 @@ class ChatSystemPromptTests(unittest.TestCase):
             "According to Pastor Don's sermons, what is the main purpose of the church?"
         ))
         self.assertFalse(query_expects_long_answer("Hello how are you today?"))
+        self.assertTrue(looks_like_opening_recall("What topic did we start this chat with?"))
+        self.assertTrue(looks_like_opening_recall("What Bible story did we start this chat with?"))
+        self.assertFalse(looks_like_opening_recall("Teach on Esther standing before the king."))
+        self.assertFalse(query_expects_long_answer("What topic did we start this chat with?"))
+        self.assertIn("{opening}", OPENING_RECALL_STEER)
+        self.assertIn("Esther standing before the king", format_opening_recall_steer(
+            "Teach on Esther standing before the king."
+        ))
+        self.assertNotIn("{opening}", format_opening_recall_steer("Teach on Esther."))
         short = (
             "According to Pastor Don's sermon, the main purpose of the church is to "
             "feed the flock spiritually, as emphasized in John 21:15-17."

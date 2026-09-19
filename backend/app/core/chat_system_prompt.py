@@ -316,9 +316,27 @@ def looks_like_brief_social(query: str) -> bool:
     return bool(_BRIEF_QUERY_RE.match((query or "").strip()))
 
 
+_OPENING_RECALL_RE = re.compile(
+    r"(?is)\b("
+    r"what topic did we start|"
+    r"what (?:bible )?story did we start|"
+    r"what did we start this (?:chat|conversation|thread) with|"
+    r"what (?:was|is) the (?:first|original|opening) (?:topic|question|story|passage)|"
+    r"remind me what we started"
+    r")\b"
+)
+
+
+def looks_like_opening_recall(query: str) -> bool:
+    """True when the user is asking what this chat started with."""
+    return bool(_OPENING_RECALL_RE.search(query or ""))
+
+
 def query_expects_long_answer(query: str) -> bool:
     """True for teaching/informational questions (the default product mode)."""
-    return not looks_like_brief_social(query)
+    if looks_like_brief_social(query) or looks_like_opening_recall(query):
+        return False
+    return True
 
 
 LIBRARY_PULL_STEER = (
@@ -338,6 +356,21 @@ FOLLOWUP_STEER = (
     "as a new question from the notes. Do not invent a recap.\n"
     "</follow_up>\n"
 )
+
+OPENING_RECALL_STEER = (
+    "<opening_recall>\n"
+    "The user is asking what this chat started with. The first user question was:\n"
+    "{opening}\n"
+    "Name that opening topic or Bible story plainly. Chat history is the source of "
+    "truth for this question. Do not replace it with a different theme from "
+    "REFERENCE NOTES such as parenting or generic Christian living.\n"
+    "</opening_recall>\n"
+)
+
+
+def format_opening_recall_steer(opening: str) -> str:
+    text = (opening or "").strip() or "(the first question in this chat)"
+    return OPENING_RECALL_STEER.replace("{opening}", text)
 
 
 CONVERSATIONAL_STEER = (
