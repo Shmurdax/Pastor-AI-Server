@@ -18,7 +18,8 @@ class SermonLibrarySlidePanel extends StatelessWidget {
   });
 
   static const handleKey = Key('sermon-library-handle');
-  static const handleSize = 42.0;
+  static const handleWidth = 40.0;
+  static const handleHeight = 96.0;
   static const _flingVelocity = 280.0;
 
   final AnimationController animation;
@@ -64,7 +65,7 @@ class SermonLibrarySlidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
-    final handleTop = topInset + ((toolbarHeight - handleSize) / 2).clamp(8.0, 40.0);
+    final handleTop = topInset + ((toolbarHeight - handleHeight) / 2).clamp(0.0, 40.0);
 
     return SizedBox.expand(
       child: AnimatedBuilder(
@@ -88,7 +89,7 @@ class SermonLibrarySlidePanel extends StatelessWidget {
                 left: -panelWidth * (1 - progress),
                 top: 0,
                 bottom: 0,
-                width: panelWidth + handleSize + 12,
+                width: panelWidth + handleWidth + 12,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -153,23 +154,23 @@ class _LibraryHandle extends StatelessWidget {
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: Container(
-            width: SermonLibrarySlidePanel.handleSize,
-            height: SermonLibrarySlidePanel.handleSize,
-            decoration: BoxDecoration(
+            width: SermonLibrarySlidePanel.handleWidth,
+            height: SermonLibrarySlidePanel.handleHeight,
+            decoration: const BoxDecoration(
               gradient: brandGradient,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.zero,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
+                  color: Color(0x38000000),
                   blurRadius: 8,
-                  offset: const Offset(1, 2),
+                  offset: Offset(2, 1),
                 ),
               ],
             ),
             child: Icon(
               isOpen ? Icons.arrow_back_rounded : Icons.arrow_forward_rounded,
               color: _gold,
-              size: 22,
+              size: 26,
             ),
           ),
         ),

@@ -132,6 +132,11 @@ void main() {
     expect(find.text('Sermon Library').hitTestable(), findsNothing);
     expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
 
+    final closedHandle = tester.getRect(find.byKey(SermonLibrarySlidePanel.handleKey));
+    expect(closedHandle.left, closeTo(0, 0.5));
+    expect(closedHandle.height, closeTo(SermonLibrarySlidePanel.handleHeight, 1));
+    expect(closedHandle.width, closeTo(SermonLibrarySlidePanel.handleWidth, 1));
+
     await tester.drag(
       find.byKey(SermonLibrarySlidePanel.handleKey),
       const Offset(220, 0),
@@ -153,9 +158,8 @@ void main() {
 
     expect(find.text('Sermon Library').hitTestable(), findsNothing);
     expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.byKey(SermonLibrarySlidePanel.handleKey)).dx,
-      closeTo(0, 2),
-    );
+    final closedAgain = tester.getRect(find.byKey(SermonLibrarySlidePanel.handleKey));
+    expect(closedAgain.left, closeTo(0, 0.5));
+    expect(closedAgain.height, closeTo(SermonLibrarySlidePanel.handleHeight, 1));
   });
 }
