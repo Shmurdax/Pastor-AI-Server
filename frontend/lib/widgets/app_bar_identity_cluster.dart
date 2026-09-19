@@ -5,7 +5,8 @@ import 'package:flutter_application_1/widgets/language_selector.dart';
 ///
 /// On desktop the language picker sits in the action row. When it collapses
 /// to the globe + dropdown, it stacks under the account chip so the logo
-/// keeps the extra horizontal room.
+/// keeps the extra horizontal room. The account chip keeps the same top
+/// inset it had in the single-row header.
 class AppBarIdentityCluster extends StatelessWidget {
   const AppBarIdentityCluster({
     super.key,
@@ -17,6 +18,8 @@ class AppBarIdentityCluster extends StatelessWidget {
   final bool isMobile;
   final Widget? account;
   final Widget? menu;
+
+  static const _accountTopInset = 20.0;
 
   @override
   Widget build(BuildContext context) {
@@ -34,9 +37,9 @@ class AppBarIdentityCluster extends StatelessWidget {
     }
 
     final stacked = Padding(
-      padding: const EdgeInsets.only(top: 6, right: 8, bottom: 4),
+      padding: const EdgeInsets.only(top: _accountTopInset, right: 8),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -50,7 +53,7 @@ class AppBarIdentityCluster extends StatelessWidget {
     if (account != null && menu != null) {
       return Row(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           menu!,
           stacked,

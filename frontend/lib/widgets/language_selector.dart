@@ -93,7 +93,7 @@ class LanguageSelector extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: isMobile ? 8 : 12,
-                vertical: 8,
+                vertical: dense ? 4 : 8,
               ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),

@@ -58,10 +58,12 @@ void main() {
     expect(find.byIcon(Icons.language), findsOneWidget);
     expect(find.text('English'), findsNothing);
 
+    final appBar = tester.getRect(find.byType(AppBar));
     final account = tester.getRect(find.byType(AccountProfileChip));
     final language = tester.getRect(find.byType(LanguageSelector));
     expect(language.top, greaterThan(account.bottom - 2));
     expect((language.right - account.right).abs(), lessThan(16));
+    expect(account.top - appBar.top, closeTo(20, 6));
   });
 
   testWidgets('desktop keeps language beside the account chip', (tester) async {
