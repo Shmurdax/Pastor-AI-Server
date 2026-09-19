@@ -41,6 +41,7 @@ from .chat_llm import (
     NOTES_MARKER,
     fit_chat_budget,
     get_chat_llm,
+    select_pinned_history_rows,
 )
 from .chat_sse import (
     ChatGenerationError,
@@ -1110,18 +1111,25 @@ class ChatAPIView(APIView):
                 search_queries,
             )
 
+            selected_rows = select_pinned_history_rows(
+                history_rows,
+                first_row=first_row,
+                max_turns=MAX_HISTORY_TURNS,
+                max_chars=MAX_HISTORY_CHARS,
+            )
             history_messages = []
-            current_chars = 0
-            for index, msg in enumerate(reversed(history_rows)):
-                exchange = f"{msg.user_query} {msg.ai_response}"
-                # Always keep the opening exchange, even when later turns fill the char budget.
-                if index > 0 and len(history_messages) >= MAX_HISTORY_TURNS * 2:
-                    break
-                if index > 0 and current_chars + len(exchange) > MAX_HISTORY_CHARS:
-                    break
+            history_chars = 0
+            for msg in selected_rows:
                 history_messages.append(HumanMessage(content=msg.user_query))
                 history_messages.append(AIMessage(content=msg.ai_response or ""))
-                current_chars += len(exchange)
+                history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
+            logger.info(
+                "Chat history pinned opening=%r turns=%s chars=%s session=%s",
+                (selected_rows[0].user_query[:120] if selected_rows else ""),
+                len(selected_rows),
+                history_chars,
+                session_id[:18],
+            )
 
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:

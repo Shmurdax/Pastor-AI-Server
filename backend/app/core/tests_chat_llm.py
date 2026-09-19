@@ -15,6 +15,7 @@ from core.chat_llm import (
     resolve_vllm_api_key,
     resolve_vllm_model,
     resolve_vllm_url,
+    select_pinned_history_rows,
     vllm_is_remote,
     vllm_url_is_local,
 )
@@ -205,6 +206,40 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("washing the disciples feet", blob)
         self.assertLessEqual(used + completion + 96, 4096)
 
+    def test_select_pinned_history_keeps_opening_and_newest(self):
+        from datetime import datetime, timedelta
+
+        start = datetime(2026, 1, 1)
+        rows = []
+        for index in range(12):
+            rows.append(
+                type(
+                    "Row",
+                    (),
+                    {
+                        "id": index + 1,
+                        "timestamp": start + timedelta(minutes=index),
+                        "user_query": f"turn {index} query about the opening story",
+                        "ai_response": f"turn {index} answer " + ("pastoral teaching " * 60),
+                    },
+                )()
+            )
+        window = list(reversed(rows))[:10]
+        selected = select_pinned_history_rows(
+            window,
+            first_row=rows[0],
+            max_turns=10,
+            max_chars=5000,
+        )
+        queries = [row.user_query for row in selected]
+        self.assertTrue(queries[0].startswith("turn 0 query"))
+        self.assertTrue(any(query.startswith("turn 11 query") for query in queries))
+        self.assertFalse(any(query.startswith("turn 1 query") for query in queries))
+        self.assertLessEqual(len(selected), 10)
+        used = sum(len(f"{row.user_query} {row.ai_response}") for row in selected)
+        self.assertLessEqual(used, 5000 + len(f"{rows[0].user_query} {rows[0].ai_response}"))
+        self.assertEqual(len({row.id for row in selected}), len(selected))
+
     def test_chat_view_uses_get_chat_llm_not_placeholder_key(self):
         from pathlib import Path
 
@@ -246,6 +281,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertNotIn("LENGTH_STEER", source)
         self.assertIn('identity = f"u:{user.pk}"', source)
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
+        self.assertIn("select_pinned_history_rows", source)
         self.assertIn("select_diverse_docs", source)
         self.assertIn("select_chat_source_chips", source)
         self.assertNotIn("def _unique_sources", source)

@@ -199,6 +199,58 @@ def _clip_notes(notes: str, keep: int) -> str:
     return clipped
 
 
+def _history_row_sort_key(row):
+    return (getattr(row, "timestamp", None), getattr(row, "id", 0) or 0)
+
+
+def _history_exchange_chars(row) -> int:
+    return len(f"{getattr(row, 'user_query', '') or ''} {getattr(row, 'ai_response', '') or ''}")
+
+
+def select_pinned_history_rows(
+    rows,
+    *,
+    first_row=None,
+    max_turns: int = 10,
+    max_chars: int = 20000,
+):
+    """Keep the opening ChatMessage, then the newest later turns that fit.
+
+    `rows` may be newest-first (as loaded from the database). The opening row is
+    always kept even when it alone exceeds `max_chars`. Remaining budget is
+    spent on the most recent turns so follow-ups do not lose the latest context.
+    """
+    by_id = {}
+    for row in list(rows or []):
+        if row is None:
+            continue
+        row_id = getattr(row, "id", None)
+        if row_id is None:
+            continue
+        by_id[row_id] = row
+    if first_row is not None and getattr(first_row, "id", None) is not None:
+        by_id[first_row.id] = first_row
+    ordered = sorted(by_id.values(), key=_history_row_sort_key)
+    if not ordered:
+        return []
+    max_turns = max(1, int(max_turns))
+    max_chars = max(0, int(max_chars))
+    opening = ordered[0]
+    selected = [opening]
+    used_chars = _history_exchange_chars(opening)
+    kept_rest = []
+    for row in reversed(ordered[1:]):
+        if len(selected) + len(kept_rest) >= max_turns:
+            break
+        extra = _history_exchange_chars(row)
+        if used_chars + extra > max_chars:
+            continue
+        kept_rest.append(row)
+        used_chars += extra
+    kept_rest.reverse()
+    return selected + kept_rest
+
+
 def fit_chat_budget(
     system_filled: str,
     history_messages,
