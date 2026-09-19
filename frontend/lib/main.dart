@@ -27,8 +27,8 @@ import 'package:flutter_application_1/models/ingested_document.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
+import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
-import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -1723,7 +1723,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ),
         actions: [
-          LanguageSelector(isMobile: isMobile),
           if (auth.isAuthenticated && auth.user!.isStaff)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
@@ -1742,28 +1741,33 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 icon: const Icon(Icons.flag_outlined, color: _navy),
               ),
             ),
-          if (auth.isAuthenticated)
-            AccountProfileChip(
-              apiService: _apiService,
-              isMobile: isMobile,
-              onOpenMedia: _openMedia,
-              onOpenPrayerInbox: _openPrayerInbox,
-              onOpenResponseReports: _openResponseReportsInbox,
-              onSignedOut: () {
-                if (!mounted) return;
-                _sessions.disposeAll(cancelledText: _s.responseCancelled);
-                setState(() {
-                  _sessions.startNewChat(const Uuid().v4());
-                  _chatHistoryEntries = [];
-                  _sidebarPanel = _SidebarPanel.sermonLibrary;
-                  _showBackToBottomButton = false;
-                });
-                _persistSessionId();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(_s.signedOut)),
-                );
-              },
-            ),
+          AppBarIdentityCluster(
+            isMobile: isMobile,
+            account: auth.isAuthenticated
+                ? AccountProfileChip(
+                    apiService: _apiService,
+                    isMobile: isMobile,
+                    dense: isMobile,
+                    onOpenMedia: _openMedia,
+                    onOpenPrayerInbox: _openPrayerInbox,
+                    onOpenResponseReports: _openResponseReportsInbox,
+                    onSignedOut: () {
+                      if (!mounted) return;
+                      _sessions.disposeAll(cancelledText: _s.responseCancelled);
+                      setState(() {
+                        _sessions.startNewChat(const Uuid().v4());
+                        _chatHistoryEntries = [];
+                        _sidebarPanel = _SidebarPanel.sermonLibrary;
+                        _showBackToBottomButton = false;
+                      });
+                      _persistSessionId();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(_s.signedOut)),
+                      );
+                    },
+                  )
+                : null,
+          ),
           if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),

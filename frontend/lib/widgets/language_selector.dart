@@ -11,10 +11,13 @@ class LanguageSelector extends StatelessWidget {
   const LanguageSelector({
     super.key,
     this.isMobile = false,
+    this.dense = false,
     this.textColor = _navy,
   });
 
   final bool isMobile;
+  /// Drops outer AppBar padding so this can sit under the account chip.
+  final bool dense;
   final Color textColor;
 
   Future<void> _openPicker(BuildContext context) async {
@@ -74,10 +77,12 @@ class LanguageSelector extends StatelessWidget {
     final s = locale.strings;
 
     return Padding(
-      padding: EdgeInsets.only(
-        top: isMobile ? 20 : 45,
-        right: isMobile ? 4 : 8,
-      ),
+      padding: dense
+          ? const EdgeInsets.only(top: 4)
+          : EdgeInsets.only(
+              top: isMobile ? 20 : 45,
+              right: isMobile ? 4 : 8,
+            ),
       child: Tooltip(
         message: s.language,
         child: Material(

@@ -10,7 +10,7 @@ import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
-import 'package:flutter_application_1/widgets/language_selector.dart';
+import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -428,7 +428,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
         ),
         actions: [
-          LanguageSelector(isMobile: isMobile),
           if (auth.isAuthenticated && auth.user!.isStaff)
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
@@ -438,16 +437,31 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 icon: const Icon(Icons.volunteer_activism_outlined, color: _navy),
               ),
             ),
-          if (auth.isAuthenticated)
-            AccountProfileChip(
-              apiService: _apiService,
-              isMobile: isMobile,
-              onOpenMedia: _openMedia,
-              onOpenPrayerInbox: _openPrayerInbox,
-              onSignedOut: () {
-                if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-            ),
+          AppBarIdentityCluster(
+            isMobile: isMobile,
+            account: auth.isAuthenticated
+                ? AccountProfileChip(
+                    apiService: _apiService,
+                    isMobile: isMobile,
+                    dense: isMobile,
+                    onOpenMedia: _openMedia,
+                    onOpenPrayerInbox: _openPrayerInbox,
+                    onSignedOut: () {
+                      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                  )
+                : null,
+            menu: isMobileOrTablet
+                ? AppHamburgerNav(
+                    isMobile: isMobile,
+                    dense: isMobile,
+                    onHome: () => _launchUrl('https://thenordins.org/'),
+                    onChat: _goToAiHome,
+                    onEvents: () => _toggleEvents(open: true),
+                    onMedia: _openMedia,
+                  )
+                : null,
+          ),
           if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
@@ -474,14 +488,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   const SizedBox(width: 40),
                 ],
               ),
-            )
-          else
-            AppHamburgerNav(
-              isMobile: isMobile,
-              onHome: () => _launchUrl('https://thenordins.org/'),
-              onChat: _goToAiHome,
-              onEvents: () => _toggleEvents(open: true),
-              onMedia: _openMedia,
             ),
         ],
       ),
