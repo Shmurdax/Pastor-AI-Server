@@ -64,9 +64,11 @@ from .grounding import (
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
     split_docs_for_grounding,
+    strip_retrieval_meta,
     strip_ungrounded_spans,
     verify_answer_grounding,
     verse_refs_for_lookup,
+    weave_into_answer,
 )
 from .teaching_claims import (
     claim_repair_steer,
@@ -516,13 +518,13 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     quotes, nkjv = _grounding_snippets(prepared)
     if not quotes and not nkjv:
         return ""
-    logger.warning("RAG check still failing; appending on-topic retrieved excerpts")
+    logger.warning("RAG check still failing; weaving on-topic Pastor Don excerpts into the reply")
     return grounded_fallback_answer(quotes, nkjv)
 
 
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Collapse duplicate outlines, drop invented quotes, then append notes if needed."""
-    answer = compact_teaching_answer(answer)
+    """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
+    answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     if not docs:
         return answer
@@ -537,7 +539,7 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         missing_quotes = True
     fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
     if fallback and fallback not in (answer or ""):
-        answer = (answer or "").rstrip() + "\n\n" + fallback
+        answer = weave_into_answer(answer, fallback)
     return compact_teaching_answer(answer)
 
 

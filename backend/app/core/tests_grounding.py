@@ -6,7 +6,9 @@ from core.grounding import (
     collect_allowed_sermon_quotes,
     grounded_fallback_answer,
     lookup_nkjv_verses,
+    strip_retrieval_meta,
     verify_answer_grounding,
+    weave_into_answer,
 )
 
 
@@ -86,7 +88,43 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertIn("We sit with the grieving", text)
         self.assertIn("Psalm 34:18", text)
+        self.assertIn("Pastor Don Nordin teaches", text)
         self.assertNotIn("dog heaven", text.lower())
+        self.assertNotIn("From the retrieved notes", text)
+        self.assertNotIn("I can only teach from these retrieved lines", text)
+        self.assertNotIn("teach from the retrieved sermons", text)
+
+    def test_strip_retrieval_meta_drops_notes_dump(self):
+        dumped = (
+            "Faith is trust in God, not a feeling.\n\n"
+            "From the retrieved notes:\n\n"
+            "Pastor Don and Susan Nordin teach from the retrieved sermons:\n\n"
+            '"We sit with the grieving and we pray."\n\n'
+            "I can only teach from these retrieved lines. Ask another question "
+            "if you want a different passage or sermon."
+        )
+        cleaned = strip_retrieval_meta(dumped)
+        self.assertIn("Faith is trust in God", cleaned)
+        self.assertNotIn("From the retrieved notes", cleaned)
+        self.assertNotIn("I can only teach from these retrieved lines", cleaned)
+
+    def test_weave_into_answer_folds_quotes_into_opening(self):
+        answer = (
+            "**Faith Over Fear**\n\n"
+            "Faith is trust in God rather than a feeling.\n\n"
+            "Stand when the pressure comes."
+        )
+        snippet = grounded_fallback_answer(
+            ["We sit with the grieving and we pray."],
+            [("Psalm 34:18", "The Lord is near to those who have a broken heart.")],
+        )
+        woven = weave_into_answer(answer, snippet)
+        self.assertTrue(woven.startswith("**Faith Over Fear**"), woven)
+        self.assertIn("Faith is trust in God", woven)
+        self.assertIn("We sit with the grieving", woven)
+        self.assertIn("Psalm 34:18", woven)
+        self.assertLess(woven.find("We sit with the grieving"), woven.find("Stand when the pressure"))
+        self.assertNotIn("From the retrieved notes", woven)
 
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans

@@ -317,31 +317,93 @@ def strip_ungrounded_spans(answer: str, report: GroundingReport | None) -> str:
     return text.strip()
 
 
+_RETRIEVAL_DUMP_RE = re.compile(
+    r"(?im)^\s*from the retrieved notes:\s*$"
+)
+_RETRIEVAL_HEADER_RE = re.compile(
+    r"(?im)^\s*(?:"
+    r"from the retrieved notes:|"
+    r"pastor don and susan nordin teach from the retrieved sermons:|"
+    r"the retrieved sermon notes do not include a usable pastor don or susan quotation.*|"
+    r"no nkjv verse from the retrieved bible document applies.*|"
+    r"scripture \(nkjv\):"
+    r")\s*$"
+)
+_RETRIEVAL_DISCLAIMER_RE = re.compile(
+    r"(?is)\n*\s*I can only teach from these retrieved lines\.[^\n]*"
+)
+_HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
+
+
+def _clip_excerpt(text: str, limit: int = 280) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    cut = cleaned[:limit]
+    for sep in (". ", "; "):
+        idx = cut.rfind(sep)
+        if idx >= 80:
+            return cut[: idx + 1].strip()
+    trimmed = cut.rsplit(" ", 1)[0].strip()
+    return (trimmed or cut).rstrip(".,;:") + "…"
+
+
+def strip_retrieval_meta(answer: str) -> str:
+    """Drop labeled retrieval dumps so the user only sees the teaching reply."""
+    text = answer or ""
+    dump = _RETRIEVAL_DUMP_RE.search(text)
+    if dump:
+        text = text[: dump.start()].rstrip()
+    text = _RETRIEVAL_DISCLAIMER_RE.sub("", text)
+    text = _RETRIEVAL_HEADER_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def grounded_fallback_answer(
     quotes: Iterable[str],
     nkjv_pairs: Iterable[tuple[str, str]],
 ) -> str:
-    quote_list = [item.strip() for item in quotes if item and item.strip()][:2]
-    nkjv_list = [(ref, text) for ref, text in nkjv_pairs if text and text.strip()][:1]
-    parts: list[str] = ["From the retrieved notes:"]
+    """Attributed Pastor Don / NKJV sentences with no retrieval labels."""
+    quote_list = [_clip_excerpt(item) for item in quotes if item and str(item).strip()][:2]
+    quote_list = [item for item in quote_list if item]
+    nkjv_list = [
+        (ref, _clip_excerpt(text, 240))
+        for ref, text in nkjv_pairs
+        if text and str(text).strip()
+    ][:1]
+    sentences: list[str] = []
     if quote_list:
-        parts.append("Pastor Don and Susan Nordin teach from the retrieved sermons:")
-        for quote in quote_list:
-            parts.append(f'"{quote}"')
-    else:
-        parts.append(
-            "The retrieved sermon notes do not include a usable Pastor Don or Susan quotation for this question."
-        )
+        sentences.append(f'Pastor Don Nordin teaches, "{quote_list[0]}"')
+        if len(quote_list) > 1:
+            sentences.append(f'Pastor Don and Susan Nordin also teach, "{quote_list[1]}"')
     if nkjv_list:
-        parts.append("Scripture (NKJV):")
-        for ref, wording in nkjv_list:
-            parts.append(f'{ref} (NKJV): "{wording}"')
-    else:
-        parts.append("No NKJV verse from the retrieved Bible document applies in this turn.")
-    parts.append(
-        "I can only teach from these retrieved lines. Ask another question if you want a different passage or sermon."
-    )
-    return "\n\n".join(parts)
+        ref, wording = nkjv_list[0]
+        sentences.append(f'{ref} (NKJV) says, "{wording}"')
+    return " ".join(sentences).strip()
+
+
+def weave_into_answer(answer: str, snippet: str) -> str:
+    """Fold attributed quotes into the opening teaching, not a footer dump."""
+    text = strip_retrieval_meta(answer or "")
+    extra = (snippet or "").strip()
+    if not extra:
+        return text
+    if extra in text:
+        return text
+    if not text:
+        return extra
+    blocks = re.split(r"(\n\n+)", text)
+    for index, block in enumerate(blocks):
+        body = block.strip()
+        if not body or block.startswith("\n"):
+            continue
+        if _HEADING_BLOCK_RE.match(body) and "\n" not in body:
+            continue
+        joiner = " " if body[-1:] in '.!?"\'”’)' else ". "
+        blocks[index] = block.rstrip() + joiner + extra
+        return "".join(blocks).strip()
+    return f"{text.rstrip()}\n\n{extra}"
 
 
 def verse_refs_for_lookup(user_query: str, docs: Iterable[Any], *, limit: int = 8) -> list[tuple[str, int, int]]:
