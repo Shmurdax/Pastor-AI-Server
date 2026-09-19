@@ -30,6 +30,8 @@ class AppStrings {
   String get downloadPdf => _t('downloadPdf');
   String get closeDocumentsCatalog => _t('closeDocumentsCatalog');
   String get browseAllDocuments => _t('browseAllDocuments');
+  String get openSermonLibrary => _t('openSermonLibrary');
+  String get closeSermonLibrary => _t('closeSermonLibrary');
   String get retry => _t('retry');
   String get lastQuestionSources => _t('lastQuestionSources');
   String get previousChats => _t('previousChats');
@@ -121,6 +123,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Download',
     'closeDocumentsCatalog': 'Close documents catalog',
     'browseAllDocuments': 'Browse all documents',
+    'openSermonLibrary': 'Open sermon library',
+    'closeSermonLibrary': 'Close sermon library',
     'retry': 'Retry',
     'lastQuestionSources': "Last Question's Sources",
     'previousChats': 'Previous Chats',
@@ -207,6 +211,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Descargar',
     'closeDocumentsCatalog': 'Cerrar catálogo de documentos',
     'browseAllDocuments': 'Ver todos los documentos',
+    'openSermonLibrary': 'Abrir biblioteca de sermones',
+    'closeSermonLibrary': 'Cerrar biblioteca de sermones',
     'retry': 'Reintentar',
     'lastQuestionSources': 'Fuentes de la última pregunta',
     'previousChats': 'Chats anteriores',
@@ -295,6 +301,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Télécharger',
     'closeDocumentsCatalog': 'Fermer le catalogue de documents',
     'browseAllDocuments': 'Parcourir tous les documents',
+    'openSermonLibrary': 'Ouvrir la bibliothèque de sermons',
+    'closeSermonLibrary': 'Fermer la bibliothèque de sermons',
     'retry': 'Réessayer',
     'lastQuestionSources': 'Sources de la dernière question',
     'previousChats': 'Discussions précédentes',
@@ -383,6 +391,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Baixar',
     'closeDocumentsCatalog': 'Fechar catálogo de documentos',
     'browseAllDocuments': 'Ver todos os documentos',
+    'openSermonLibrary': 'Abrir biblioteca de sermões',
+    'closeSermonLibrary': 'Fechar biblioteca de sermões',
     'retry': 'Tentar de novo',
     'lastQuestionSources': 'Fontes da última pergunta',
     'previousChats': 'Chats anteriores',
@@ -471,6 +481,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': 'Herunterladen',
     'closeDocumentsCatalog': 'Dokumentenkatalog schließen',
     'browseAllDocuments': 'Alle Dokumente durchsuchen',
+    'openSermonLibrary': 'Predigtbibliothek öffnen',
+    'closeSermonLibrary': 'Predigtbibliothek schließen',
     'retry': 'Erneut versuchen',
     'lastQuestionSources': 'Quellen der letzten Frage',
     'previousChats': 'Frühere Chats',
@@ -558,6 +570,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': '다운로드',
     'closeDocumentsCatalog': '문서 목록 닫기',
     'browseAllDocuments': '모든 문서 보기',
+    'openSermonLibrary': '설교 라이브러리 열기',
+    'closeSermonLibrary': '설교 라이브러리 닫기',
     'retry': '다시 시도',
     'lastQuestionSources': '최근 질문의 출처',
     'previousChats': '이전 채팅',
@@ -637,6 +651,8 @@ const Map<String, Map<String, String>> _tables = {
     'downloadPdf': '下载',
     'closeDocumentsCatalog': '关闭文档目录',
     'browseAllDocuments': '浏览全部文档',
+    'openSermonLibrary': '打开讲道资料库',
+    'closeSermonLibrary': '关闭讲道资料库',
     'retry': '重试',
     'lastQuestionSources': '上一个问题的来源',
     'previousChats': '历史对话',

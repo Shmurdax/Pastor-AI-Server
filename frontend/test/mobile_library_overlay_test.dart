@@ -3,6 +3,7 @@ import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -47,10 +48,16 @@ void main() {
     );
     await tester.pump();
 
-    final scaffoldState = tester.state<ScaffoldState>(find.byType(Scaffold).first);
-    scaffoldState.openDrawer();
+    expect(find.byKey(SermonLibrarySlidePanel.handleKey), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.menu), findsNothing);
+
+    await tester.tap(find.byKey(SermonLibrarySlidePanel.handleKey));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(SermonLibrarySlidePanel.handleKey), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
 
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
@@ -86,5 +93,69 @@ void main() {
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
     expect(find.text('All documents').hitTestable(), findsNothing);
+  });
+
+  testWidgets('library handle drag opens and closes the attached panel', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final animation = AnimationController(
+      vsync: const TestVSync(),
+      duration: const Duration(milliseconds: 280),
+    );
+    addTearDown(animation.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              const ColoredBox(color: Colors.white),
+              SermonLibrarySlidePanel(
+                animation: animation,
+                panelWidth: 310,
+                openTooltip: 'Open sermon library',
+                closeTooltip: 'Close sermon library',
+                panel: const ColoredBox(
+                  color: Color(0xFFa1375a),
+                  child: Center(child: Text('Sermon Library')),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Sermon Library').hitTestable(), findsNothing);
+    expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(SermonLibrarySlidePanel.handleKey),
+      const Offset(220, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
+    expect(find.byKey(SermonLibrarySlidePanel.handleKey), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsOneWidget);
+
+    final handle = tester.getTopLeft(find.byKey(SermonLibrarySlidePanel.handleKey));
+    expect(handle.dx, closeTo(310, 2));
+
+    await tester.drag(
+      find.byKey(SermonLibrarySlidePanel.handleKey),
+      const Offset(-220, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sermon Library').hitTestable(), findsNothing);
+    expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(SermonLibrarySlidePanel.handleKey)).dx,
+      closeTo(0, 2),
+    );
   });
 }

@@ -29,6 +29,7 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
+import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -338,6 +339,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     vsync: this,
     duration: const Duration(milliseconds: 900),
   )..repeat(reverse: true);
+
+  late final AnimationController _libraryDrawerController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
 
   late final Animation<double> _wobbleAnimation =
       Tween<double>(begin: 0.7, end: 1.2).animate(
@@ -957,6 +963,7 @@ final bibleRefRegex = RegExp(
     }
     _sessions.disposeAll(cancelledText: '');
     _pulseController.dispose();
+    _libraryDrawerController.dispose();
     _scrollController.dispose();
     _controller.dispose();
     _chatFocusNode.dispose();
@@ -1166,9 +1173,7 @@ final bibleRefRegex = RegExp(
 
         if (isVideo) {
           if (vimeoId.isNotEmpty) {
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.of(context).pop();
-            }
+            _closeLibraryDrawer(jump: true);
             await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => MediaLibraryScreen(
@@ -1329,19 +1334,24 @@ final bibleRefRegex = RegExp(
 
   void _openMedia() {
     // TODO: gate on Premium subscription.
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer(jump: true);
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
     );
   }
 
   void _openChurchEvents() {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer();
     setState(() => _eventsNavPanelOpen = true);
+  }
+
+  void _closeLibraryDrawer({bool jump = false}) {
+    if (_libraryDrawerController.isDismissed) return;
+    if (jump) {
+      _libraryDrawerController.value = 0;
+    } else {
+      _libraryDrawerController.reverse();
+    }
   }
 
   void _closeChurchEventsPanel() {
@@ -1363,9 +1373,7 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _openIngestedPdf(IngestedDocumentItem document) async {
-    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-      Navigator.of(context).pop();
-    }
+    _closeLibraryDrawer(jump: true);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1694,13 +1702,20 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final prayerFabRight = isMobile ? 10.0 : 20.0;
     _scheduleInputAreaMeasure();
 
-    return Scaffold(
+    if (!isMobileOrTablet && !_libraryDrawerController.isDismissed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _libraryDrawerController.isDismissed) return;
+        _libraryDrawerController.value = 0;
+      });
+    }
+
+    final scaffold = Scaffold(
       key: _scaffoldKey,
       backgroundColor: Colors.white,
-      drawer: isMobileOrTablet
-          ? Drawer(width: _compactSidebarWidth, child: _buildSidebar(isMobile: true))
-          : null,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leadingWidth: isMobileOrTablet ? 56 : 0,
+        leading: isMobileOrTablet ? const SizedBox.shrink() : null,
         centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
@@ -1841,6 +1856,23 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           ),
         ],
       ),
+    );
+
+    if (!isMobileOrTablet) return scaffold;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        scaffold,
+        SermonLibrarySlidePanel(
+          animation: _libraryDrawerController,
+          panelWidth: _compactSidebarWidth,
+          toolbarHeight: 100,
+          openTooltip: _s.openSermonLibrary,
+          closeTooltip: _s.closeSermonLibrary,
+          panel: _buildSidebar(isMobile: true),
+        ),
+      ],
     );
   }
 
@@ -2091,9 +2123,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     _buildNavButton(
                       _s.chat,
                       () {
-                        if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-                          Navigator.of(context).pop();
-                        }
+                        _closeLibraryDrawer();
                         _focusChatNav();
                       },
                       textColor: Colors.white,

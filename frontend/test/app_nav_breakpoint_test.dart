@@ -5,6 +5,7 @@ import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
+import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -138,6 +139,8 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.text('HOME')),
       findsNothing,
     );
-    expect(find.byTooltip('Open navigation menu'), findsOneWidget);
+    expect(find.byKey(SermonLibrarySlidePanel.handleKey), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
+    expect(find.byTooltip('Open navigation menu'), findsNothing);
   });
 }
