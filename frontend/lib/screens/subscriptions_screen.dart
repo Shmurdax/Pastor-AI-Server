@@ -12,6 +12,7 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/language_selector.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
 import 'package:flutter_application_1/widgets/nordins_ai_nav_menu.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -448,7 +449,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
               },
             ),
-          if (!isMobile)
+          if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
               child: Row(
@@ -476,18 +477,16 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   const SizedBox(width: 40),
                 ],
               ),
-            ),
-          if (isMobile)
-            Padding(
-              padding: const EdgeInsets.only(top: 20.0, right: 4),
-              child: IconButton(
-                tooltip: s.events,
-                onPressed: () => _toggleEvents(open: true),
-                icon: Icon(
-                  Icons.event_outlined,
-                  color: _eventsOpen ? _gold : _navy,
-                ),
-              ),
+            )
+          else
+            AppHamburgerNav(
+              isMobile: isMobile,
+              onHome: () => _launchUrl('https://thenordins.org/'),
+              onStore: () => _launchUrl('https://thenordins.org/store'),
+              onEvents: () => _toggleEvents(open: true),
+              onChat: _goToAiHome,
+              onMedia: _openMedia,
+              onSubscribe: () => _toggleEvents(open: false),
             ),
         ],
       ),

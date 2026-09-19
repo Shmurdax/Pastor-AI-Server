@@ -1770,7 +1770,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 );
               },
             ),
-          if (!isMobile)
+          if (!isMobileOrTablet)
             Padding(
               padding: const EdgeInsets.only(top: 45.0),
               child: Row(
