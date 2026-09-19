@@ -7,6 +7,7 @@ import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
+import 'package:flutter_application_1/screens/update_payment_method_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
@@ -178,6 +179,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CheckoutScreen(billingPeriod: _billingPeriod),
+      ),
+    );
+  }
+
+  void _openPaymentMethodUpdate() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const UpdatePaymentMethodScreen(),
       ),
     );
   }
@@ -374,6 +383,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final auth = context.watch<AuthController>();
     final s = context.watch<LocaleController>().strings;
     final paid = auth.user?.isPaidPremium == true;
+    final canUpdatePayment = auth.user?.canManagePaymentMethod == true;
     final cancelScheduled = paid && (auth.user?.cancelAtPeriodEnd ?? false);
     final currentPeriod = auth.user?.billingPeriod ?? '';
     final pendingPeriod = auth.user?.pendingBillingPeriod ?? '';
@@ -574,8 +584,30 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                           style: GoogleFonts.figtree(fontSize: 14, color: _navy, height: 1.45),
                         ),
                       ],
-                      if (paid && !cancelScheduled) ...[
+                      if (canUpdatePayment) ...[
                         const SizedBox(height: 28),
+                        Center(
+                          child: TextButton(
+                            onPressed: _openPaymentMethodUpdate,
+                            child: Text(
+                              'Update payment method',
+                              style: GoogleFonts.figtree(
+                                color: _navy,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Replace a card that is expired or about to expire. '
+                          'Future renewals use the new card.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
+                        ),
+                      ],
+                      if (paid && !cancelScheduled) ...[
+                        const SizedBox(height: 12),
                         Center(
                           child: TextButton(
                             onPressed: _unsubscribe,

@@ -145,7 +145,8 @@ class _AppAccessGateState extends State<AppAccessGate> {
   Future<void> _handleBillingReturnIfNeeded() async {
     if (!kIsWeb || _handlingBillingReturn) return;
     final uri = Uri.base;
-    if (uri.queryParameters['billing'] != 'success') return;
+    final billing = uri.queryParameters['billing'];
+    if (billing != 'success' && billing != 'payment_updated') return;
     final sessionId = uri.queryParameters['session_id'];
     if (sessionId == null || sessionId.isEmpty) return;
 
@@ -167,7 +168,11 @@ class _AppAccessGateState extends State<AppAccessGate> {
           } else {
             await auth.refreshMe();
           }
-          if (auth.hasPremiumAccess || auth.needsEmailVerification || auth.isPremium) {
+          if (status['status'] == 'complete' ||
+              status['payment_method_updated'] == true ||
+              auth.hasPremiumAccess ||
+              auth.needsEmailVerification ||
+              auth.isPremium) {
             break;
           }
         } catch (_) {
@@ -499,7 +504,11 @@ final bibleRefRegex = RegExp(
     final uri = Uri.base;
     final billing = uri.queryParameters['billing'];
     final sessionId = uri.queryParameters['session_id'];
-    if (billing != 'success' || sessionId == null || sessionId.isEmpty) return;
+    if ((billing != 'success' && billing != 'payment_updated') ||
+        sessionId == null ||
+        sessionId.isEmpty) {
+      return;
+    }
 
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated) return;
@@ -519,6 +528,7 @@ final bibleRefRegex = RegExp(
             await auth.refreshMe();
           }
           if (status['status'] == 'complete' ||
+              status['payment_method_updated'] == true ||
               auth.hasPremiumAccess ||
               auth.needsEmailVerification ||
               auth.isPremium) {
@@ -532,6 +542,16 @@ final bibleRefRegex = RegExp(
       // Trim/expand history cap after premium unlock.
       await _reloadChatHistory();
       if (!mounted) return;
+      if (billing == 'payment_updated' &&
+          (status?['status'] == 'complete' ||
+              status?['payment_method_updated'] == true)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your payment method was updated.'),
+          ),
+        );
+        return;
+      }
       final complete = status?['status'] == 'complete' ||
           auth.hasPremiumAccess ||
           auth.needsEmailVerification ||
