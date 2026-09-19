@@ -2615,7 +2615,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                           Text(
                             isMobile
                                 ? '${_s.welcomeBody} ${_s.welcomeMobileLibraryHint}'
-                                : _s.welcomeBody,
+                                : '${_s.welcomeBody} ${_s.welcomeBibleVerify}',
                             textAlign: TextAlign.center,
                             style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                           ),

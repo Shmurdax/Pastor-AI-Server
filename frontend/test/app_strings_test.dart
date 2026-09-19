@@ -37,6 +37,7 @@ void main() {
       expect(s.allDocuments.isNotEmpty, isTrue, reason: lang.code);
       expect(s.viewOnly.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeTitle.isNotEmpty, isTrue, reason: lang.code);
+      expect(s.welcomeBibleVerify.isNotEmpty, isTrue, reason: lang.code);
       expect(s.welcomeMobileLibraryHint.isNotEmpty, isTrue, reason: lang.code);
       expect(s.deleteChatBody('X').contains('X'), isTrue, reason: lang.code);
       expect(s.mentionsVerse('John 3:16').contains('John 3:16'), isTrue, reason: lang.code);

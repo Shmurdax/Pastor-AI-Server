@@ -50,6 +50,7 @@ class AppStrings {
 
   String get welcomeTitle => _t('welcomeTitle');
   String get welcomeBody => _t('welcomeBody');
+  String get welcomeBibleVerify => _t('welcomeBibleVerify');
   String get welcomeMobileLibraryHint => _t('welcomeMobileLibraryHint');
   String get howCanIHelp => _t('howCanIHelp');
   String get listeningHint => _t('listeningHint');
@@ -143,6 +144,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': "Welcome to the Nordin's AI Assistant",
     'welcomeBody':
         "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information.",
+    'welcomeBibleVerify': 'Please verify insights with your Bible.',
     'welcomeMobileLibraryHint':
         'Reference the arrow in the top left to access the sermon library and media link.',
     'howCanIHelp': 'How can I help you?',
@@ -229,6 +231,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': 'Bienvenido al Asistente de IA de Nordin',
     'welcomeBody':
         'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente.',
+    'welcomeBibleVerify': 'Verifica las ideas con tu Biblia.',
     'welcomeMobileLibraryHint':
         'Consulta la flecha en la esquina superior izquierda para abrir la biblioteca de sermones y el enlace de media.',
     'howCanIHelp': '¿En qué puedo ayudarte?',
@@ -316,6 +319,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': "Bienvenue sur l'assistant IA de Nordin",
     'welcomeBody':
         "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes.",
+    'welcomeBibleVerify': 'Vérifiez les insights avec votre Bible.',
     'welcomeMobileLibraryHint':
         'Utilisez la flèche en haut à gauche pour accéder à la bibliothèque de sermons et au lien Média.',
     'howCanIHelp': 'Comment puis-je vous aider ?',
@@ -403,6 +407,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': 'Bem-vindo ao Assistente de IA da Nordin',
     'welcomeBody':
         'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas.',
+    'welcomeBibleVerify': 'Verifique os insights com a sua Bíblia.',
     'welcomeMobileLibraryHint':
         'Use a seta no canto superior esquerdo para acessar a biblioteca de sermões e o link de mídia.',
     'howCanIHelp': 'Como posso ajudar você?',
@@ -490,6 +495,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': 'Willkommen beim Nordin KI-Assistenten',
     'welcomeBody':
         'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen.',
+    'welcomeBibleVerify': 'Bitte prüfen Sie Erkenntnisse anhand Ihrer Bibel.',
     'welcomeMobileLibraryHint':
         'Verwenden Sie den Pfeil oben links, um die Predigtbibliothek und den Media-Link zu öffnen.',
     'howCanIHelp': 'Wie kann ich Ihnen helfen?',
@@ -571,6 +577,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': "Nordin's AI 어시스턴트에 오신 것을 환영합니다",
     'welcomeBody':
         '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있습니다.',
+    'welcomeBibleVerify': '성경으로 확인해 주세요.',
     'welcomeMobileLibraryHint':
         '왼쪽 위 화살표를 눌러 설교 라이브러리와 미디어 링크에 접근하세요.',
     'howCanIHelp': '무엇을 도와드릴까요?',
@@ -649,6 +656,7 @@ const Map<String, Map<String, String>> _tables = {
     'welcomeTitle': '欢迎使用 Nordin AI 助手',
     'welcomeBody':
         '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息。',
+    'welcomeBibleVerify': '请用圣经核实见解。',
     'welcomeMobileLibraryHint':
         '点击左上角箭头即可打开讲道资料库和媒体链接。',
     'howCanIHelp': '我能为您做什么？',

@@ -209,6 +209,10 @@ void main() {
 
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsOneWidget);
     expect(
+      find.textContaining('Please verify insights with your Bible.'),
+      findsOneWidget,
+    );
+    expect(
       find.textContaining('Reference the arrow in the top left'),
       findsNothing,
     );
@@ -243,6 +247,10 @@ void main() {
     expect(
       find.textContaining('The AI may occasionally produce inaccurate information.'),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining('Please verify insights with your Bible.'),
+      findsNothing,
     );
   });
 
