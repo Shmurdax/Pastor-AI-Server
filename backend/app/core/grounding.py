@@ -601,6 +601,7 @@ def repair_empty_nkjv_citations(
         ),
         text,
     )
+    text = re.sub(r"(?i)\(\s*NLT\s*\)", "(NKJV)", text)
     pieces: list[str] = []
     cursor = 0
     for match in _EMPTY_NKJV_CITE_RE.finditer(text):
@@ -849,7 +850,12 @@ def ensure_topical_nkjv(
 
 _NLT_CITE_RE = re.compile(
     r"(?i)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
-    r"\s*\(\s*NLT\s*\)\s*[:,]?\s*(?:says\s*,\s*)?[\"“][^\"”]{0,400}[\"”]?"
+    r"\s*\(\s*NLT\s*\)"
+    r"(?:"
+    r"\s*[:,]?\s*(?:says\s*,\s*)?[\"“][^\"”]{0,400}[\"”]?"
+    r"|\s+(?:outlines|states|says|teaches\s+that|reminds\s+us|promises|instructs|"
+    r"encourages\s+us|highlights|emphasizes|we see)[^.?\n]{0,180}[.?]?"
+    r")?"
 )
 
 

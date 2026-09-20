@@ -657,6 +657,20 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("Leviticus 27:30-34 (NKJV)", filled)
         self.assertNotIn("NLT", filled)
         self.assertNotIn("This verse highlights", filled)
+        outlined = repair_empty_nkjv_citations(
+            "Leviticus 27:30-34 (NLT) outlines the requirement to give a tenth of all produce to the Lord. "
+            "This passage underscores the significance of tithing as a commandment.",
+            [
+                (
+                    "Leviticus 27:30",
+                    "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the Lord's.",
+                )
+            ],
+        )
+        self.assertNotIn("NLT", outlined)
+        self.assertIn("Leviticus 27:30-34 (NKJV) says,", outlined)
+        self.assertIn("tithe of the land", outlined)
+        self.assertIn("This passage underscores", outlined)
         refs = verse_refs_for_lookup("Create sermon notes on worship.", [])
         joined = " ".join(f"{book} {chapter}:{verse}" for book, chapter, verse in refs)
         self.assertTrue("22" in joined or "12" in joined or "4" in joined, refs)
