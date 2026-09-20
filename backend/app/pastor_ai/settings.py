@@ -221,7 +221,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": os.getenv("DRF_THROTTLE_ANON", "30/minute"),
-        "user": os.getenv("DRF_THROTTLE_USER", "120/minute"),
+        "user": os.getenv("DRF_THROTTLE_USER", "300/minute"),
     },
 }
 

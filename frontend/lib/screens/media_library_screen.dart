@@ -63,6 +63,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   bool _catalogLoading = true;
   bool _openedInitialVideo = false;
   String? _catalogToken;
+  int _catalogRetryCount = 0;
   List<MediaItem> _catalogItems = const <MediaItem>[];
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
@@ -97,9 +98,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       setState(() {
         _catalogItems = items;
         _catalogLoading = false;
+        _catalogRetryCount = 0;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      final message = error.toString().toLowerCase();
+      final throttled = message.contains('throttl') || message.contains('429');
+      final canRetry = throttled &&
+          auth.hasPremiumAccess &&
+          (auth.token ?? '').isNotEmpty &&
+          _catalogRetryCount < 2;
+      if (canRetry) {
+        _catalogRetryCount += 1;
+        Future<void>.delayed(Duration(seconds: _catalogRetryCount), () {
+          if (mounted) _loadCatalog();
+        });
+        return;
+      }
       setState(() {
         // Authenticated Premium members must not fall back to the 9 mock
         // MP4 placeholders — that hides the live Vimeo folder catalog.

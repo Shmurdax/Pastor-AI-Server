@@ -290,6 +290,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _chatHistoryEntries = [];
   Timer? _liveHistoryTimer;
   bool _liveHistoryPollInFlight = false;
+  DateTime? _liveHistoryBackoffUntil;
+  static const _liveHistoryPollInterval = Duration(seconds: 2);
   /// When true, do not steal the visible thread for a different live session.
   bool _holdCurrentSession = false;
 
@@ -712,13 +714,15 @@ final bibleRefRegex = RegExp(
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated) return;
     unawaited(_pollLiveChatHistory());
-    _liveHistoryTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
+    _liveHistoryTimer = Timer.periodic(_liveHistoryPollInterval, (_) {
       unawaited(_pollLiveChatHistory());
     });
   }
 
   Future<void> _pollLiveChatHistory() async {
     if (!mounted || _liveHistoryPollInFlight) return;
+    final backoff = _liveHistoryBackoffUntil;
+    if (backoff != null && DateTime.now().isBefore(backoff)) return;
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated) return;
     _liveHistoryPollInFlight = true;
@@ -793,6 +797,10 @@ final bibleRefRegex = RegExp(
       await _tokenStorage.saveChatHistory(_historyStorageId, merged);
     } catch (e) {
       debugPrint('Live chat history poll failed: $e');
+      final message = e.toString().toLowerCase();
+      if (message.contains('throttl') || message.contains('429')) {
+        _liveHistoryBackoffUntil = DateTime.now().add(const Duration(seconds: 8));
+      }
     } finally {
       _liveHistoryPollInFlight = false;
     }
@@ -1363,9 +1371,14 @@ final bibleRefRegex = RegExp(
   void _openMedia() {
     // TODO: gate on Premium subscription.
     _closeLibraryDrawer(jump: true);
-    Navigator.of(context).push(
+    _liveHistoryTimer?.cancel();
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
-    );
+    )
+        .whenComplete(() {
+      if (mounted) _startLiveHistoryPolling();
+    });
   }
 
   void _openChurchEvents() {

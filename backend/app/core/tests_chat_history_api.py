@@ -65,6 +65,14 @@ class ChatHistoryAPITests(TestCase):
         self.assertEqual(len(put.data["entries"]), 1)
         self.assertEqual(put.data["entries"][0]["sessionId"], "ok")
 
+    def test_history_polling_does_not_trip_global_user_throttle(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+        for _ in range(130):
+            res = self.client.get("/api/chat/history/")
+            self.assertEqual(res.status_code, 200)
+        media = self.client.get("/api/media/")
+        self.assertNotEqual(media.status_code, 429)
+
 
 class LiveChatHistoryTests(TestCase):
     def setUp(self):

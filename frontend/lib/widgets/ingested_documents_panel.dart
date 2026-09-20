@@ -39,6 +39,7 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
   final _scrollController = ScrollController();
   bool _loading = true;
   String? _error;
+  int _loadAttempts = 0;
   List<IngestedDocumentItem> _documents = const [];
 
   AppStrings get _s => widget.strings;
@@ -77,9 +78,19 @@ class _IngestedDocumentsPanelState extends State<IngestedDocumentsPanel> {
       setState(() {
         _documents = docs;
         _loading = false;
+        _loadAttempts = 0;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      final message = error.toString().toLowerCase();
+      final throttled = message.contains('throttl') || message.contains('429');
+      if (throttled && _loadAttempts < 2) {
+        _loadAttempts += 1;
+        Future<void>.delayed(Duration(seconds: _loadAttempts), () {
+          if (mounted) _load();
+        });
+        return;
+      }
       setState(() {
         _error = _s.ingestedDocumentsLoadFailed;
         _loading = false;

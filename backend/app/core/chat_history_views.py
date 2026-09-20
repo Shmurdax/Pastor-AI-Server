@@ -50,6 +50,10 @@ class ChatHistoryAPIView(APIView):
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    # The Flutter home page polls this while Media / sermon-library GETs share
+    # the global UserRateThrottle bucket. Exempt history so a live poll cannot
+    # 429 `/api/media/` and `/api/ingested-documents/` empty.
+    throttle_classes = []
 
     def get(self, request):
         row = UserChatHistory.objects.filter(user=request.user).first()
