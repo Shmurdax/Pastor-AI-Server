@@ -233,6 +233,84 @@ class GroundingTests(unittest.TestCase):
         self.assertTrue(any("already promised" in item for item in quotes), quotes)
         self.assertFalse(any("Proverbs" in item for item in quotes), quotes)
 
+    def test_god_speech_is_not_a_pastor_quote(self):
+        docs = [
+            _doc(
+                "God has a plan for your life. Before you were born, I sanctified you "
+                "and appointed you as My spokesman to the world.",
+                source="purpose.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="Before you were born, I sanctified you and appointed you as My spokesman to the world.",
+            ),
+            _doc(
+                'Pastor Don said, "There can be only one logical explanation for the precision of these relationships."',
+                source="design.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="There can be only one logical explanation for the precision of these relationships.",
+            ),
+        ]
+        quotes = collect_allowed_sermon_quotes(docs)
+        self.assertTrue(any("logical explanation" in item for item in quotes), quotes)
+        self.assertFalse(any("sanctified you" in item.lower() for item in quotes), quotes)
+        self.assertFalse(any("spokesman" in item.lower() for item in quotes), quotes)
+
+    def test_verify_flags_scripture_wrapped_as_pastor_don(self):
+        sermon = [
+            _doc(
+                "God has an eternal plan for your life.",
+                source="notes.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="God has an eternal plan for your life.",
+            )
+        ]
+        nkjv = [
+            _doc(
+                "Before I formed you in the womb I knew you; Before you were born I sanctified you; "
+                "I ordained you a prophet to the nations.",
+                source="nkjv-bible.pdf",
+                chunk_kind="bible_verse",
+                book="jeremiah",
+                chapter=1,
+                verse_start=5,
+                verse_end=5,
+                verse_ref="Jeremiah 1:5",
+                quote_text=(
+                    "Before I formed you in the womb I knew you; Before you were born I sanctified you; "
+                    "I ordained you a prophet to the nations."
+                ),
+            )
+        ]
+        bad = (
+            'Additionally, he emphasizes, "Before you were born, I sanctified you and '
+            'appointed you as My spokesman to the world."'
+        )
+        report = verify_answer_grounding(bad, sermon_docs=sermon, nkjv_docs=nkjv)
+        self.assertFalse(report.ok)
+        self.assertTrue(report.misattributed_quotes, report)
+
+        from core.grounding import repair_speaker_attributions
+
+        fixed = repair_speaker_attributions(bad, nkjv_docs=nkjv)
+        self.assertNotIn("he emphasizes", fixed.lower())
+        self.assertNotIn("pastor don", fixed.lower())
+        self.assertIn("Lord", fixed)
+        self.assertIn("sanctified you", fixed)
+        ok = verify_answer_grounding(fixed, sermon_docs=sermon, nkjv_docs=nkjv)
+        self.assertTrue(ok.ok, ok)
+        self.assertFalse(ok.misattributed_quotes)
+
+    def test_fallback_skips_god_speech(self):
+        text = grounded_fallback_answer(
+            [
+                "Before you were born, I sanctified you and appointed you as My spokesman to the world.",
+                "God has an eternal plan for your life.",
+            ],
+            [("Jeremiah 1:5", "Before I formed you in the womb I knew you.")],
+        )
+        self.assertNotIn("sanctified you", text)
+        self.assertIn("eternal plan", text)
+        self.assertIn("Jeremiah 1:5", text)
+
     def test_selects_query_overlap_quotes(self):
         from core.grounding import select_query_grounded_nkjv, select_query_grounded_quotes
 

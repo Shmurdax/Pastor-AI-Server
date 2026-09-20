@@ -71,6 +71,9 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("at least two word-for-word quotation-marked excerpts", prompt)
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
+        self.assertIn("<speaker_attribution>", prompt)
+        self.assertIn("Keep four voices distinct", prompt)
+        self.assertIn("Never write Pastor Don teaches", prompt)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
         self.assertIn("Do not invent a recap", FOLLOWUP_STEER)
         self.assertNotIn("2000 characters", prompt)
@@ -235,6 +238,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not repeat headings", QUOTE_CONTINUE_STEER)
+        self.assertIn("Never wrap Scripture", QUOTE_CONTINUE_STEER)
         from .chat_system_prompt import skip_rewrite_repair
         self.assertTrue(skip_rewrite_repair(paraphrase))
         self.assertTrue(skip_rewrite_repair(quoted))

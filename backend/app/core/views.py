@@ -73,6 +73,8 @@ from .grounding import (
     grounded_fallback_answer,
     grounding_repair_steer,
     lookup_nkjv_verses,
+    nkjv_corpus,
+    repair_speaker_attributions,
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
     split_docs_for_grounding,
@@ -468,13 +470,16 @@ def _rag_check_report(prepared, answer: str):
     sermon, bible = split_docs_for_grounding(docs)
     report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
     logger.warning(
-        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s sample_quotes=%s sample_refs=%s",
+        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s "
+        "misattributed=%s sample_quotes=%s sample_refs=%s sample_misattributed=%s",
         report.ok,
         len(report.invented_quotes),
         len(report.invented_scripture),
         len(report.missing_nkjv_refs),
+        len(report.misattributed_quotes),
         report.invented_quotes[:2],
         report.missing_nkjv_refs[:5],
+        report.misattributed_quotes[:2],
     )
     return report, sermon, bible
 
@@ -483,9 +488,13 @@ def _grounding_snippets(prepared):
     docs = prepared.get("docs") or []
     sermon, bible = split_docs_for_grounding(docs)
     query = str(prepared.get("topic_query") or "")
-    quotes = select_query_grounded_quotes(collect_allowed_sermon_quotes(sermon), query)
+    bible_text = nkjv_corpus(bible)
+    quotes = select_query_grounded_quotes(
+        collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text),
+        query,
+    )
     if not quotes:
-        quotes = collect_allowed_sermon_quotes(sermon, limit=2)
+        quotes = collect_allowed_sermon_quotes(sermon, limit=2, bible_corpus=bible_text)
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
     if not nkjv:
         nkjv = collect_allowed_nkjv(bible, limit=1)
@@ -547,6 +556,8 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     docs = prepared.get("docs") or []
     if not docs:
         return answer
+    sermon, bible = split_docs_for_grounding(docs)
+    answer = repair_speaker_attributions(answer, nkjv_docs=bible)
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
@@ -556,10 +567,13 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         if stripped:
             answer = compact_teaching_answer(stripped)
         missing_quotes = True
+        answer = repair_speaker_attributions(answer, nkjv_docs=bible)
     fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
     if fallback and fallback not in (answer or ""):
         answer = weave_into_answer(answer, fallback)
-    return compact_teaching_answer(answer)
+    return compact_teaching_answer(
+        repair_speaker_attributions(answer, nkjv_docs=bible)
+    )
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:

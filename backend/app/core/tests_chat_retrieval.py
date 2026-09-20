@@ -725,9 +725,23 @@ class ChatRetrievalTests(unittest.TestCase):
             _doc("Second chunk", source="nkjv-bible.pdf", title="NKJV Bible"),
         ]
         notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
-        self.assertIn("[Note 1 | Walking in Love]", notes)
-        self.assertIn("[Note 2 | NKJV Bible]", notes)
+        self.assertIn("[Note 1 | SERMON (Pastor Don / Susan) | Walking in Love]", notes)
+        self.assertIn("[Note 2 | SCRIPTURE (NKJV) | NKJV Bible]", notes)
         self.assertIn("First chunk", notes)
+
+    def test_format_notes_tags_god_speech_inside_sermon(self):
+        docs = [
+            _doc(
+                "God has a plan for your life. Before you were born, I sanctified you "
+                "and appointed you as My spokesman to the world. Stay faithful.",
+                source="purpose.pdf",
+                title="Purpose",
+            )
+        ]
+        notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
+        self.assertIn("SERMON (Pastor Don / Susan)", notes)
+        self.assertIn("not Pastor Don", notes)
+        self.assertIn("Before you were born, I sanctified you", notes)
 
     def test_uniqueness_instruction_lists_prior_material(self):
         text = uniqueness_instruction(

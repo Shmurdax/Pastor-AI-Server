@@ -207,7 +207,10 @@ QUOTE_CONTINUE_STEER = (
     "Write only missing quotation-marked excerpts from Pastor Don or Susan that "
     "actually appear in REFERENCE NOTES, attributed in ordinary sentences "
     "(Pastor Don Nordin teaches, \"...\"), and one NKJV verse from those notes "
-    "if unused. Two excerpts and one verse are enough. Then stop."
+    "if unused. Two excerpts and one verse are enough. "
+    "Never wrap Scripture, NKJV wording, or first-person God or Jesus speech as "
+    "Pastor Don or Susan. If the line is the Lord speaking, cite it as Scripture "
+    "with the verse reference. Then stop."
 )
 QUOTE_CONTINUE_MIN_TOKENS = 160
 
@@ -893,6 +896,25 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
         "REFERENCE NOTES are empty should you say you do not have material for this question.\n"
         "</source_material>\n\n"
+
+        "<speaker_attribution>\n"
+        "Keep four voices distinct. Never blur them.\n"
+        "1. Pastor Don Nordin and Susan Nordin speaking in their own pastoral voice.\n"
+        "2. NKJV Scripture they cite, always with the verse reference.\n"
+        "3. God, Jesus, or the Holy Spirit speaking in Scripture (first-person I, such as "
+        "Before you were born, I sanctified you).\n"
+        "4. Other biblical characters.\n"
+        "Word-for-word Pastor Don or Susan excerpts must be lines they themselves said or wrote, "
+        "not verses they quoted. When they cite Scripture, write it as Scripture: "
+        "Jeremiah 1:5 (NKJV) says, \"...\" or The Lord said, \"...\".\n"
+        "Never write Pastor Don teaches, \"Before you were born, I sanctified you\" or any other "
+        "divine first-person speech. Never write he emphasizes, he teaches, or she said before a "
+        "quotation unless the speaker is Pastor Don, Susan, or another clearly identified human "
+        "in the notes. If the quoted words are God or Jesus, name God or Jesus.\n"
+        "If Pastor Don is quoting Jeremiah or any other verse, say Pastor Don teaches from "
+        "Jeremiah 1:5, where the Lord says, \"...\".\n"
+        "If you are not sure who is speaking, paraphrase without quotation marks rather than guessing.\n"
+        "</speaker_attribution>\n\n"
 
         "<response_policy>\n"
         "Answer the user's question. Match their request: an outline, an expansion of the last points, "

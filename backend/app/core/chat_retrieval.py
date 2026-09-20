@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
+from .speaker_attribution import annotate_scripture_in_sermon
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BIBLE_SOURCE_MARKERS = (
@@ -1846,7 +1848,17 @@ def format_reference_notes(
         text = chunk_text(doc)
         if not text:
             continue
-        block = f"[Note {index} | {label}]\n{text}"
+        meta = getattr(doc, "metadata", None) or {}
+        kind = str(meta.get("chunk_kind") or "").lower()
+        bible = kind.startswith("bible") or is_bible_source(
+            metadata_source_hint(doc) or str(meta.get("source") or "")
+        )
+        if bible:
+            role = "SCRIPTURE (NKJV)"
+        else:
+            role = "SERMON (Pastor Don / Susan)"
+            text = annotate_scripture_in_sermon(text)
+        block = f"[Note {index} | {role} | {label}]\n{text}"
         extra = (2 if blocks else 0) + len(block)
         if used + extra > max_chars:
             remain = max_chars - used - (2 if blocks else 0)

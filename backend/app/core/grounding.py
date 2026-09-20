@@ -10,12 +10,19 @@ from typing import Any, Callable, Iterable, Optional
 from .bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs
 from .chat_retrieval import (
     chunk_text,
-    extract_used_quotes,
     extract_used_verse_refs,
     is_bible_source,
     metadata_source_hint,
 )
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
+from .speaker_attribution import (
+    is_pastor_own_voice,
+    known_verse_ref,
+    looks_like_divine_speech,
+    looks_like_scripture_wording,
+    quoted_spans_with_voice,
+    rewrite_misattributed_quotes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,10 +153,16 @@ def select_query_grounded_nkjv(
     return picked[:limit]
 
 
-def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> list[str]:
+def collect_allowed_sermon_quotes(
+    docs: Iterable[Any],
+    *,
+    limit: int = 12,
+    bible_corpus: str = "",
+) -> list[str]:
     """Exact lines the model may quote as Pastor Don / Susan."""
     quotes: list[str] = []
     seen: set[str] = set()
+    bible = bible_corpus or ""
     for doc in docs or []:
         if _is_bible_doc(doc):
             continue
@@ -162,7 +175,9 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
         if looks_like_scripture_blob(body) and not stored:
             continue
         candidates = []
-        if stored and not looks_like_scripture_blob(stored):
+        if stored and not looks_like_scripture_blob(stored) and is_pastor_own_voice(
+            stored, bible_corpus=bible
+        ):
             candidates.extend(part.strip() for part in stored.split(" | ") if part.strip())
         candidates.extend(extract_quote_spans(body))
         if body and len(body) >= 40 and not looks_like_scripture_blob(body):
@@ -173,6 +188,8 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
             if len(cleaned) < 12 or key in seen:
                 continue
             if looks_like_heading_quote(cleaned):
+                continue
+            if not is_pastor_own_voice(cleaned, bible_corpus=bible):
                 continue
             seen.add(key)
             quotes.append(cleaned)
@@ -267,6 +284,7 @@ class GroundingReport:
     invented_quotes: list[str] = field(default_factory=list)
     invented_scripture: list[str] = field(default_factory=list)
     missing_nkjv_refs: list[str] = field(default_factory=list)
+    misattributed_quotes: list[str] = field(default_factory=list)
 
 
 def verify_answer_grounding(
@@ -295,13 +313,23 @@ def verify_answer_grounding(
 
     invented_quotes: list[str] = []
     invented_scripture: list[str] = []
-    for span in extract_used_quotes([answer]):
+    misattributed_quotes: list[str] = []
+    voiced = quoted_spans_with_voice(answer)
+    for span, voice in voiced:
         in_notes = text_is_grounded(span, notes)
         in_bible = text_is_grounded(span, bible)
+        scripture_like = looks_like_scripture_wording(span, bible) or in_bible
+        if voice == "pastor" and scripture_like:
+            misattributed_quotes.append(span)
+            continue
         if in_notes or in_bible:
             continue
+        if voice == "scripture" and (
+            known_verse_ref(span) or looks_like_divine_speech(span)
+        ):
+            continue
         lowered = (span or "").lower()
-        if "nkjv" in lowered or parse_verse_refs(span):
+        if "nkjv" in lowered or parse_verse_refs(span) or voice == "scripture":
             invented_scripture.append(span)
         else:
             invented_quotes.append(span)
@@ -318,12 +346,18 @@ def verify_answer_grounding(
         elif not bible.strip():
             missing_refs.append(ref)
 
-    ok = not invented_quotes and not invented_scripture and not missing_refs
+    ok = (
+        not invented_quotes
+        and not invented_scripture
+        and not missing_refs
+        and not misattributed_quotes
+    )
     return GroundingReport(
         ok=ok,
         invented_quotes=invented_quotes,
         invented_scripture=invented_scripture,
         missing_nkjv_refs=missing_refs,
+        misattributed_quotes=misattributed_quotes,
     )
 
 
@@ -403,7 +437,10 @@ def grounded_fallback_answer(
     quote_list = [
         _clip_excerpt(item)
         for item in quotes
-        if item and str(item).strip() and not looks_like_heading_quote(item)
+        if item
+        and str(item).strip()
+        and not looks_like_heading_quote(item)
+        and is_pastor_own_voice(item)
     ][:2]
     quote_list = [item for item in quote_list if item]
     nkjv_list = [
@@ -559,12 +596,14 @@ def lookup_nkjv_verses(
 
 
 GROUNDING_REPAIR_STEER = (
-    "A RAG check found quotations or verses that are not in the retrieved notes. "
+    "A RAG check found quotations or verses that are not in the retrieved notes, "
+    "or Scripture / the Lord's words wrapped as Pastor Don quotes. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
     "Do not repeat headings, numbered points, or rewrite the sermon already on screen. "
     "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
-    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
-    "and one ALLOWED NKJV verse if that list is not empty."
+    "Never attribute NKJV wording or first-person God/Jesus speech to Pastor Don or Susan. "
+    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed as Pastor Don or Susan) "
+    "and one ALLOWED NKJV verse if that list is not empty, cited as Scripture."
 )
 
 
@@ -589,6 +628,10 @@ def grounding_repair_steer(
         parts.append("Drop these ungrounded quotations:")
         for span in report.invented_quotes[:4]:
             parts.append(f'- "{(span or "")[:220]}"')
+    if report.misattributed_quotes:
+        parts.append("These quotations are Scripture or the Lord speaking — do not wrap them as Pastor Don:")
+        for span in report.misattributed_quotes[:4]:
+            parts.append(f'- "{(span or "")[:220]}"')
     dropped = list(report.invented_scripture) + list(report.missing_nkjv_refs)
     if dropped:
         parts.append("Drop these ungrounded Scripture lines or refs:")
@@ -610,3 +653,16 @@ def grounding_repair_steer(
             parts.append(f'- {ref}: "{wording[:240]}"')
     parts.append("Then stop.")
     return "\n".join(parts)
+
+
+def repair_speaker_attributions(
+    answer: str,
+    *,
+    nkjv_docs: Iterable[Any] = (),
+) -> str:
+    """Rewrite Pastor Don / he-teaches wraps that are actually Scripture."""
+    return rewrite_misattributed_quotes(
+        answer or "",
+        bible_corpus=nkjv_corpus(nkjv_docs),
+        nkjv_pairs=collect_allowed_nkjv(nkjv_docs),
+    )
