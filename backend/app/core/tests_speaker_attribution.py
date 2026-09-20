@@ -418,6 +418,57 @@ class SpeakerAttributionTests(unittest.TestCase):
             found,
         )
 
+    def test_satan_and_peter_verses_are_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "All these things I will give You if You will '
+            'fall down and worship me." Pastor Don and Susan Nordin also teach, '
+            '"But you are a chosen generation, a royal priesthood, a holy nation, '
+            'His own special people, that you may proclaim the praises of Him who '
+            'called you out of darkness into His marvelous light." Pastor Don teaches, '
+            '"Behold the lamb of God which taketh away the sins of the world."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(
+            any("worship me" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+        self.assertFalse(
+            any("chosen generation" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+        self.assertFalse(
+            any("lamb of god" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+        self.assertIn("Matthew 4:9", fixed)
+        self.assertIn("1 Peter 2:9", fixed)
+        self.assertIn("John 1:29", fixed)
+        self.assertNotIn("records the Lord saying", fixed)
+
+    def test_dictionary_slides_are_not_pastor_voice(self):
+        self.assertFalse(
+            is_pastor_own_voice(
+                "Reliance on the integrity, strength, ability, surety, etc., of a person or thing; confidence."
+            )
+        )
+        self.assertFalse(
+            is_pastor_own_voice(
+                "A place set apart or suited for the offering of prayer and worship."
+            )
+        )
+        text = (
+            'Pastor Don and Susan Nordin also teach, "A place set apart or suited for the '
+            'offering of prayer and worship." Pastor Don teaches, "The church must be a house of prayer."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotIn("place set apart", fixed.lower())
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertTrue(
+            any("house of prayer" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

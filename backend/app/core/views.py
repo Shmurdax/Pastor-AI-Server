@@ -256,6 +256,32 @@ def visible_chat_source_docs(docs):
     ]
 
 
+def prefer_library_sermon_hits(scored_hits):
+    """When sermon-library notes exist, drop hidden knowledge books from RAG."""
+    hidden_hashes, hidden_names = hidden_library_matchers()
+    if not hidden_hashes and not hidden_names:
+        return list(scored_hits or [])
+    library = []
+    bible = []
+    for item in scored_hits or []:
+        doc = item[0]
+        if _is_bible_source(_doc_source_name(doc)):
+            bible.append(item)
+        elif chunk_is_in_library(
+            doc, hidden_hashes=hidden_hashes, hidden_names=hidden_names
+        ):
+            library.append(item)
+    if library:
+        return library + bible
+    return list(scored_hits or [])
+
+
+def prefer_library_sermon_docs(docs):
+    """Keep hidden books only when no sermon-library notes were retrieved."""
+    hits = prefer_library_sermon_hits([(doc, 1.0) for doc in list(docs or [])])
+    return [doc for doc, _score in hits]
+
+
 def _file_response_for_document(document: IngestedDocument, *, download: bool = False):
     source_name = document.source_name or ""
     file_path = ingested_media_path(source_name, document.source_kind)
@@ -1091,6 +1117,7 @@ class ChatAPIView(APIView):
                     topic_query,
                     retrieval_k=RETRIEVAL_K,
                 )
+                scored_hits = prefer_library_sermon_hits(scored_hits)
                 before_threshold = scored_hits
                 scored_hits = apply_retrieval_threshold(
                     scored_hits,
@@ -1156,6 +1183,7 @@ class ChatAPIView(APIView):
                         or _doc_source_name(doc)
                     ),
                 )
+                docs = prefer_library_sermon_docs(docs)
                 context = format_reference_notes(
                     docs,
                     _doc_source_label,

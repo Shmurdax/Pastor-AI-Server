@@ -152,6 +152,18 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("a gentle answer turns away wrath", "Proverbs 15:1"),
     ("a soft answer turns away wrath", "Proverbs 15:1"),
     ("a harsh word stirs up anger", "Proverbs 15:1"),
+    ("all these things i will give you if you will fall down and worship me", "Matthew 4:9"),
+    ("if you will fall down and worship me", "Matthew 4:9"),
+    ("fall down and worship me", "Matthew 4:9"),
+    ("you are a chosen generation, a royal priesthood", "1 Peter 2:9"),
+    ("but you are a chosen generation", "1 Peter 2:9"),
+    ("a royal priesthood, a holy nation", "1 Peter 2:9"),
+    ("his own special people, that you may proclaim the praises", "1 Peter 2:9"),
+    ("called you out of darkness into his marvelous light", "1 Peter 2:9"),
+    ("behold the lamb of god which taketh away the sin", "John 1:29"),
+    ("behold the lamb of god which takes away the sin", "John 1:29"),
+    ("behold! the lamb of god who takes away the sin of the world", "John 1:29"),
+    ("behold the lamb of god", "John 1:29"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -208,6 +220,12 @@ _DICTIONARY_RE = re.compile(
     r"(?i)(?:instrument|device|tool)\s+used for(?: moving the bolt)?"
     r"|locking or unlocking something"
     r"|thus locking or unlocking"
+    r"|reliance on the integrity"
+    r"|confident expectation of something"
+    r"|a place set apart or suited for"
+    r"|comes from the greek word"
+    r"|the greek word"
+    r"|rely upon or have confidence in"
 )
 _SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
 _BROKEN_START_RE = re.compile(
@@ -246,6 +264,10 @@ _BIBLICAL_PASSAGE_RE = re.compile(
     r"|for this reason a man shall leave his father"
     r"|the two shall become one flesh"
     r"|if any (?:man|person) (?:will|would) come after me"
+    r"|fall down and worship me"
+    r"|you are a chosen generation"
+    r"|a royal priesthood, a holy nation"
+    r"|behold(?:!)? the lamb of god"
     r")"
 )
 _SENTENCE_END_RE = re.compile(r"[.!?…]")
@@ -460,6 +482,9 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Daniel 10:12",
         "Romans 12:6",
         "Ecclesiastes 12:13",
+        "1 Peter 2:9",
+        "Matthew 4:9",
+        "John 1:29",
     }
 )
 
@@ -771,7 +796,8 @@ def drop_nonteaching_pastor_wraps(answer: str) -> str:
     )
     cleaned = re.sub(
         r'(?i)(?:^|(?<=\s))Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? '
-        r'(?:teaches|emphasizes|advises|encourages|explains),(?!\s*[\"“])\s*(?:\.\s*)?',
+        r'(?:teaches|emphasizes|advises|encourages|explains|reminds us),'
+        r'(?!\s*[\"“])\s*(?:\.\s*)?',
         "",
         cleaned,
     )

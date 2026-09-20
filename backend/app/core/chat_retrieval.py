@@ -587,7 +587,7 @@ _TOPIC_NARROWERS = {
     "marriage": frozenset({"family"}),
 }
 _TOPIC_CORE = {
-    "parenting": ("parenting",),
+    "parenting": ("parenting", "child-rearing", "childrearing"),
     "marriage": ("marriage", "married", "husband", "wife"),
     "worship": ("worship", "worshiping", "worshipping", "praise", "praises"),
     "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
@@ -606,6 +606,15 @@ _TITLE_TOPIC_BLOCKLIST = {
         "gomer",
         "prevail for the lost",
         "palm sunday",
+        "trust the lord",
+    ),
+}
+# When core words like "parenting" are missing, still require both sides of the
+# topic (parents AND children) so a trust sermon that mentions "parents" drops.
+_TOPIC_PAIR_REQUIREMENTS = {
+    "parenting": (
+        frozenset({"parenting", "parent", "parents"}),
+        frozenset({"child", "children", "child-rearing", "childrearing", "raising"}),
     ),
 }
 
@@ -1218,6 +1227,18 @@ def pin_docs_to_strong_title_matches(
     return pinned
 
 
+def _hit_matches_topic_pairs(doc: Any, groups: tuple[frozenset[str], ...]) -> bool:
+    """True when the chunk names each required side of a topic pair."""
+    hay = _metadata_search_blob(doc)
+    token_set: set[str] = set()
+    for group in groups:
+        token_set.update(group)
+    return all(
+        any(_focus_token_in_blob(token, hay, token_set) for token in group)
+        for group in groups
+    )
+
+
 def filter_hits_by_topic(
     scored_hits: list[tuple[Any, float]],
     query: str,
@@ -1270,8 +1291,28 @@ def filter_hits_by_topic(
         ]
         if core_hits:
             return core_hits
+    pair_keys = [key for key in present_keys if key in _TOPIC_PAIR_REQUIREMENTS]
+    if pair_keys:
+        pair_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if all(
+                _hit_matches_topic_pairs(doc, _TOPIC_PAIR_REQUIREMENTS[key])
+                for key in pair_keys
+            )
+        ]
+        if pair_hits:
+            return pair_hits
+        titled = [
+            (doc, score)
+            for doc, score in scored_hits
+            if title_overlap_score(doc, (core or required_topic_synonyms(query))) > 0
+        ]
+        if titled:
+            return titled
+        # Do not fall through to a single "parent" mention in an unrelated sermon.
     required = required_topic_synonyms(query)
-    if required:
+    if required and not pair_keys:
         required_hits = [
             (doc, score)
             for doc, score in scored_hits
@@ -1402,14 +1443,12 @@ def extract_used_quotes(texts: Iterable[str], *, limit: int = 10) -> list[str]:
 
 
 def extract_used_verse_refs(texts: Iterable[str], *, limit: int = 12) -> list[str]:
+    from .bible_refs import scripture_refs_from_text
+
     found: list[str] = []
     seen: set[str] = set()
     for text in texts:
-        for match in _VERSE_RE.finditer(text or ""):
-            book = re.sub(r"\s+", " ", match.group(1)).strip()
-            if book.lower() not in {b.lower() for b in _BIBLE_BOOKS}:
-                continue
-            ref = f"{book} {match.group(2)}:{match.group(3)}"
+        for ref in scripture_refs_from_text(text or "", limit=limit):
             key = ref.lower()
             if key in seen:
                 continue

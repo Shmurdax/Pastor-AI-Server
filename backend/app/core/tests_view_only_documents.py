@@ -252,6 +252,36 @@ class HiddenLibraryChatSourceTests(TestCase):
         self.assertNotIn("giver", labels)
         self.assertNotIn("king james", labels)
 
+    def test_hidden_marriage_book_is_dropped_when_sermon_notes_exist(self):
+        from core.views import prefer_library_sermon_docs, prefer_library_sermon_hits
+
+        sermon = _make_doc(title="Home Improvement", source_name="home-improvement.pdf", file_hash="h" * 64)
+        book = _make_doc(
+            title="The Passage of Marriage",
+            source_name="The Passage of Marriage.pdf",
+            file_hash="p" * 64,
+            in_library=False,
+        )
+        bible = _make_doc(
+            title="New King James Version",
+            source_name="nkjv.pdf",
+            file_hash="n" * 64,
+            in_library=False,
+        )
+        sermon_chunk = self._chunk(source=sermon.source_name, file_hash=sermon.file_hash, title=sermon.title)
+        book_chunk = self._chunk(source=book.source_name, file_hash=book.file_hash, title=book.title)
+        bible_chunk = self._chunk(source=bible.source_name, file_hash=bible.file_hash, title=bible.title)
+        hits = prefer_library_sermon_hits(
+            [(book_chunk, 0.99), (sermon_chunk, 0.84), (bible_chunk, 0.80)]
+        )
+        titles = [doc.metadata["title"] for doc, _score in hits]
+        self.assertIn("Home Improvement", titles)
+        self.assertNotIn("The Passage of Marriage", titles)
+        self.assertIn("New King James Version", titles)
+        docs = prefer_library_sermon_docs([book_chunk, sermon_chunk, bible_chunk])
+        kept_titles = [doc.metadata["title"] for doc in docs]
+        self.assertEqual(kept_titles, ["Home Improvement", "New King James Version"])
+
     def test_unmatched_chunks_still_appear_as_sources(self):
         from core.views import visible_chat_source_docs
 

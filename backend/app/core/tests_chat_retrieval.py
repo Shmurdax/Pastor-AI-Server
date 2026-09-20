@@ -589,6 +589,37 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(any("lexicon" in item.lower() for item in quotes))
         self.assertTrue(any(item.lower().startswith("ezekiel 18:4") for item in verses))
 
+    def test_extracts_in_luke_verse_prefix(self):
+        verses = extract_used_verse_refs(
+            ["In Luke 19:45-48 (NKJV), we see Jesus entering the temple."]
+        )
+        self.assertTrue(any(item.lower().startswith("luke 19:45") for item in verses), verses)
+
+    def test_parenting_notes_are_not_trust_sermon_with_parent_mention(self):
+        query = "Create sermon notes on parenting and raising children."
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        trust = _doc(
+            "Reliance on the integrity of a person. Parents should trust God in every season.",
+            source="trust.pdf",
+            title="It Is Time to Believe",
+        )
+        blocked = _doc(
+            "Parents and children should wait on God together.",
+            source="trust-lord.pdf",
+            title="It Is Time to Trust the Lord Empowerment 2020",
+        )
+        kept = filter_hits_by_topic(
+            [(trust, 0.94), (blocked, 0.93), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
     def test_select_diverse_docs_spreads_sources(self):
         scored = [
             (_doc("gay identity teaching from sermon A " * 8, source="sermon-a.pdf"), 0.92),

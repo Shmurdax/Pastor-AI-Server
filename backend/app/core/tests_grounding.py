@@ -507,6 +507,21 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("Certainly", cleaned)
         self.assertIn("Marriage is a developmental process", cleaned)
 
+    def test_in_luke_we_see_is_filled_with_nkjv_wording(self):
+        from core.grounding import repair_empty_nkjv_citations
+
+        filled = repair_empty_nkjv_citations(
+            "In Luke 19:45-48 (NKJV), we see Jesus entering the temple and driving out those who were buying.",
+            [
+                (
+                    "Luke 19:45",
+                    "Then He went into the temple and began to drive out those who bought and sold in it.",
+                )
+            ],
+        )
+        self.assertIn('Luke 19:45-48 (NKJV) says, "Then He went into the temple', filled)
+        self.assertNotIn("we see Jesus", filled)
+
 
 if __name__ == "__main__":
     unittest.main()
