@@ -16,9 +16,13 @@ from .bible_refs import parse_verse_refs
 from .quote_chunking import split_sentences
 
 _QUOTE_RE = re.compile(r'([\"“])(.{12,400}?)([\"”])')
+# Opening quote with no closer before the line ends — the model often drops the
+# closing mark, which used to skip rewrite entirely.
+_UNCLOSED_QUOTE_RE = re.compile(r'([\"“])([^\"”\n]{12,}?)(?=\s*(?:\n|$))')
 _MARKUP_RE = re.compile(r"[*_`>#]+")
 _SPACE_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s']+", re.UNICODE)
+_DESTROY_STEM_RE = re.compile(r"\bdestroy(?:ed)?\b")
 
 _DIVINE_SPEECH_RE = re.compile(
     r"(?i)\b(?:"
@@ -51,6 +55,8 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("i sanctified you and appointed you", "Jeremiah 1:5"),
     ("prophet to the nations", "Jeremiah 1:5"),
     ("destroy the works of the devil", "1 John 3:8"),
+    ("destroyed the works of the devil", "1 John 3:8"),
+    ("he destroyed the devil", "1 John 3:8"),
     ("for god so loved the world", "John 3:16"),
     ("the lord is my shepherd", "Psalm 23:1"),
     ("i am the way, the truth", "John 14:6"),
@@ -134,19 +140,35 @@ def normalize_speaker_text(text: str) -> str:
     return _SPACE_RE.sub(" ", folded).strip()
 
 
+def _fragment_variants(fragment: str) -> tuple[str, ...]:
+    """NKJV infinitive vs model past tense (destroy / destroyed)."""
+    variants = [fragment]
+    if _DESTROY_STEM_RE.search(fragment):
+        as_past = _DESTROY_STEM_RE.sub("destroyed", fragment)
+        as_base = _DESTROY_STEM_RE.sub("destroy", fragment)
+        for item in (as_past, as_base):
+            if item not in variants:
+                variants.append(item)
+    return tuple(variants)
+
+
+def _text_contains_fragment(folded: str, fragment: str) -> bool:
+    return any(item in folded for item in _fragment_variants(fragment))
+
+
 def looks_like_divine_speech(text: str) -> bool:
     """True for first-person God / Jesus commissioning and covenant speech."""
     sample = text or ""
     if _DIVINE_SPEECH_RE.search(sample):
         return True
     folded = normalize_speaker_text(sample)
-    return any(fragment in folded for fragment, _ref in _KNOWN_VERSE_FRAGMENTS)
+    return any(_text_contains_fragment(folded, fragment) for fragment, _ref in _KNOWN_VERSE_FRAGMENTS)
 
 
 def known_verse_ref(text: str) -> str:
     folded = normalize_speaker_text(text)
     for fragment, ref in _KNOWN_VERSE_FRAGMENTS:
-        if fragment in folded:
+        if _text_contains_fragment(folded, fragment):
             return ref
     return ""
 
@@ -230,6 +252,7 @@ def match_nkjv_ref(span: str, nkjv_pairs: Iterable[tuple[str, str]]) -> str:
 _NARRATOR_OR_APOSTLE_REFS = frozenset(
     {
         "Galatians 2:20",
+        "1 John 3:8",
         "Genesis 14:18",
         "Genesis 14:19",
         "Hebrews 7:1",
@@ -292,12 +315,49 @@ def quoted_span_voice(prefix: str) -> str:
     return "unknown"
 
 
+def _closed_quote(quoted: str) -> str:
+    text = (quoted or "").rstrip()
+    if text and text[-1] not in '"”':
+        return text + '"'
+    return text
+
+
+def _ranges_overlap(start: int, end: int, occupied: list[tuple[int, int]]) -> bool:
+    return any(not (end <= left or start >= right) for left, right in occupied)
+
+
+def _iter_quote_matches(text: str) -> list[tuple[int, int, str, str]]:
+    """Closed quotes, then pastor-led unclosed quotes that end at a newline."""
+    sample = text or ""
+    occupied: list[tuple[int, int]] = []
+    items: list[tuple[int, int, str, str]] = []
+
+    for match in _UNCLOSED_QUOTE_RE.finditer(sample):
+        prefix = sample[: match.start()]
+        if _leadin_match(prefix) is None:
+            continue
+        span = " ".join(match.group(2).split()).strip()
+        if len(span) < 12:
+            continue
+        items.append((match.start(), match.end(), span, _closed_quote(match.group(0))))
+        occupied.append((match.start(), match.end()))
+
+    for match in _QUOTE_RE.finditer(sample):
+        if _ranges_overlap(match.start(), match.end(), occupied):
+            continue
+        span = " ".join(match.group(2).split()).strip()
+        items.append((match.start(), match.end(), span, match.group(0)))
+        occupied.append((match.start(), match.end()))
+
+    items.sort(key=lambda item: item[0])
+    return items
+
+
 def quoted_spans_with_voice(answer: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     text = answer or ""
-    for match in _QUOTE_RE.finditer(text):
-        span = " ".join(match.group(2).split()).strip()
-        found.append((span, quoted_span_voice(text[: match.start()])))
+    for start, _end, span, _quoted in _iter_quote_matches(text):
+        found.append((span, quoted_span_voice(text[:start])))
     return found
 
 
@@ -305,10 +365,8 @@ def pastor_attributed_quotes(answer: str) -> list[tuple[str, str]]:
     """Return (quote, lead-in) pairs wrapped as Pastor Don / he-teaches speech."""
     text = answer or ""
     found: list[tuple[str, str]] = []
-    for match in _QUOTE_RE.finditer(text):
-        span = " ".join(match.group(2).split()).strip()
-        prefix = text[: match.start()]
-        lead = _leadin_match(prefix)
+    for start, _end, span, _quoted in _iter_quote_matches(text):
+        lead = _leadin_match(text[:start])
         if lead is None:
             continue
         found.append((span, lead.group(0)))
@@ -329,16 +387,15 @@ def rewrite_misattributed_quotes(
     pieces: list[str] = []
     cursor = 0
     changed = False
-    for match in _QUOTE_RE.finditer(text):
-        span = " ".join(match.group(2).split()).strip()
-        prefix = text[: match.start()]
+    for start, end, span, quoted in _iter_quote_matches(text):
+        prefix = text[:start]
         lead = _leadin_match(prefix)
         if lead is None:
             continue
         if not looks_like_scripture_wording(span, bible_corpus):
             continue
         window = _clause_tail(prefix)
-        abs_start = match.start() - len(window) + lead.start()
+        abs_start = start - len(window) + lead.start()
         if abs_start < cursor:
             continue
         opener = ""
@@ -350,8 +407,8 @@ def rewrite_misattributed_quotes(
         replacement = opener + scripture_leadin_for(span, pairs)
         pieces.append(text[cursor:abs_start])
         pieces.append(replacement)
-        pieces.append(match.group(0))
-        cursor = match.end()
+        pieces.append(quoted)
+        cursor = end
         changed = True
     if not changed:
         return text

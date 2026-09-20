@@ -311,6 +311,32 @@ class GroundingTests(unittest.TestCase):
         self.assertTrue(ok.ok, ok)
         self.assertFalse(ok.misattributed_quotes)
 
+    def test_verify_flags_unclosed_scripture_wrapped_as_pastor(self):
+        nkjv = [
+            _doc(
+                "Before I formed you in the womb I knew you; Before you were born I sanctified you; "
+                "I ordained you a prophet to the nations.",
+                source="nkjv-bible.pdf",
+                chunk_kind="bible_verse",
+                book="jeremiah",
+                chapter=1,
+                verse_start=5,
+                verse_end=5,
+                verse_ref="Jeremiah 1:5",
+            )
+        ]
+        bad = (
+            'Pastor Don Nordin teaches, "Before you were born, I sanctified you '
+            "and appointed you as My spokesman to the world.\n"
+        )
+        report = verify_answer_grounding(bad, sermon_docs=[], nkjv_docs=nkjv)
+        self.assertTrue(report.misattributed_quotes, report)
+        from core.grounding import repair_speaker_attributions
+
+        fixed = repair_speaker_attributions(bad, nkjv_docs=nkjv)
+        self.assertNotIn("Pastor Don", fixed)
+        self.assertIn("Jeremiah 1:5", fixed)
+
     def test_fallback_skips_god_speech(self):
         text = grounded_fallback_answer(
             [

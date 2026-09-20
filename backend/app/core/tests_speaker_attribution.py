@@ -3,7 +3,9 @@ import unittest
 from core.speaker_attribution import (
     annotate_scripture_in_sermon,
     is_pastor_own_voice,
+    known_verse_ref,
     looks_like_divine_speech,
+    looks_like_scripture_wording,
     pastor_attributed_quotes,
     rewrite_misattributed_quotes,
 )
@@ -82,13 +84,60 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertIn("Pastor Don Nordin teaches", fixed)
         self.assertIn("Jeremiah 1:5", fixed)
         self.assertIn("Lord", fixed)
+        self.assertIn("1 John 3:8", fixed)
+        remaining = pastor_attributed_quotes(fixed)
+        for span, leadin in remaining:
+            folded = span.lower()
+            self.assertFalse(
+                looks_like_divine_speech(span),
+                f"still wrapped as pastor: {leadin!r} {span!r}",
+            )
+            self.assertNotIn("works of the devil", folded)
+            self.assertNotIn("sanctified you", folded)
+
+    def test_rewrites_unclosed_pastor_god_speech(self):
+        text = (
+            "We must assist you in realizing that God has an eternal plan for your life.\n\n"
+            'Pastor Don Nordin teaches, "Destroyed the works of the devil."\n'
+            'Pastor Don Nordin teaches, "Before you were born, I sanctified you '
+            "and appointed you as My spokesman to the world.\n"
+            "These statements highlight God's intentional design."
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotRegex(
+            fixed,
+            r'(?i)pastor don[^\n"]{0,80}"Before you were born',
+        )
+        self.assertNotRegex(
+            fixed,
+            r'(?i)pastor don[^\n"]{0,80}"Destroyed the works',
+        )
+        self.assertIn("Jeremiah 1:5", fixed)
+        self.assertIn("1 John 3:8", fixed)
+        self.assertIn("Lord", fixed)
         remaining = pastor_attributed_quotes(fixed)
         for span, leadin in remaining:
             self.assertFalse(
                 looks_like_divine_speech(span),
                 f"still wrapped as pastor: {leadin!r} {span!r}",
             )
-            self.assertNotIn("destroy the works of the devil", span.lower())
+
+    def test_destroyed_works_matches_1_john(self):
+        span = "Destroyed the works of the devil."
+        self.assertTrue(looks_like_scripture_wording(span))
+        self.assertEqual(known_verse_ref(span), "1 John 3:8")
+
+    def test_finds_unclosed_pastor_quotes(self):
+        text = (
+            'Pastor Don Nordin teaches, "Before you were born, I sanctified you '
+            "and appointed you as My spokesman to the world.\n"
+        )
+        pairs = pastor_attributed_quotes(text)
+        self.assertTrue(pairs, pairs)
+        self.assertIn("sanctified you", pairs[0][0].lower())
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotIn("Pastor Don", fixed)
+        self.assertIn("Jeremiah 1:5", fixed)
 
     def test_rewrites_jesus_and_prophet_quotes_wrapped_as_pastor(self):
         samples = {
