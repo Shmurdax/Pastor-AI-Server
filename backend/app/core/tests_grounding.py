@@ -1089,6 +1089,27 @@ class GroundingTests(unittest.TestCase):
         topical = ensure_topical_nkjv(text, query, [])
         self.assertTrue(has_quoted_nkjv(repaired) or has_quoted_nkjv(topical), repaired + "\n---\n" + topical)
 
+    def test_isaac_story_query_keeps_moriah_verse_not_tithe_psalm(self):
+        from core.chat_retrieval import required_topic_synonyms
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query, topic_hint_ref_keys
+
+        query = "What does Pastor Don say about Abraham offering Isaac?"
+        syn = required_topic_synonyms(query)
+        self.assertNotIn("tithe", syn)
+        self.assertNotIn("tithing", syn)
+        keys = topic_hint_ref_keys(query)
+        self.assertTrue(any("|22|2" in key for key in keys), keys)
+        self.assertFalse(any("|24|1" in key for key in keys), keys)
+        text = (
+            'Pastor Don Nordin teaches, "Abraham’s willingness to offer Isaac shows trust." '
+            'Psalm 24:1 (NKJV) says, "The earth is the LORD\'s, and all its fullness."'
+        )
+        filled = ensure_topical_nkjv(text, query, [])
+        self.assertIn("Genesis 22:2", filled)
+        self.assertIn("Isaac", filled)
+        self.assertNotIn("Psalm 24:1", filled)
+        self.assertTrue(nkjv_matches_query(filled, query), filled)
+
 
 if __name__ == "__main__":
     unittest.main()

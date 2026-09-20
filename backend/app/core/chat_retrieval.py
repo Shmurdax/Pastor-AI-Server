@@ -575,7 +575,7 @@ _TOPIC_SYNONYMS = {
     ),
     "rest": ("sabbath", "resting"),
     "spirit": ("spirit", "ghost"),
-    "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offerings"),
     "purpose": ("purpose", "calling", "destiny"),
     "grace": ("grace", "gracious"),
 }
@@ -590,7 +590,7 @@ _TOPIC_CORE = {
     "parenting": ("parenting", "child-rearing", "childrearing"),
     "marriage": ("marriage", "married", "husband", "wife"),
     "worship": ("worship", "worshiping", "worshipping", "praise", "praises"),
-    "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offerings"),
     "temptation": ("temptation", "tempt", "tempted"),
     "humility": ("humility", "humble"),
     "evangelism": ("evangelism", "evangelize", "witness", "gospel"),
@@ -611,6 +611,23 @@ _TITLE_TOPIC_BLOCKLIST = {
         "living the good life",
         "community",
     ),
+    "isaac": (
+        "tithe",
+        "tithing",
+        "stewardship",
+        "melchizedek",
+        "nextsteps",
+    ),
+    "well": (
+        "gehazi",
+        "shunammite",
+        "elisha",
+        "naaman",
+    ),
+}
+_STORY_TITLE_TOPICS = {
+    "isaac": ("isaac", "moriah"),
+    "well": ("woman at the well", "at the well"),
 }
 # When core words like "parenting" are missing, still require both sides of the
 # topic (parents AND children) so a trust sermon that mentions "parents" drops.
@@ -1289,6 +1306,9 @@ def filter_hits_by_topic(
     present_keys = [
         key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
     ]
+    present_keys.extend(
+        key for key, synonyms in _STORY_TITLE_TOPICS.items() if _query_has_synonym(query, synonyms)
+    )
     blocked = set()
     for key in present_keys:
         blocked.update(_TITLE_TOPIC_BLOCKLIST.get(key, ()))

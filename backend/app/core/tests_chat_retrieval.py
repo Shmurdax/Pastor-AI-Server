@@ -1426,6 +1426,26 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         self.assertEqual([doc.metadata["source"] for doc in pinned], ["abundance.pdf"])
 
+    def test_isaac_story_drops_tithing_titles(self):
+        query = "What does Pastor Don say about Abraham offering Isaac?"
+        tithe = _doc(
+            "Abraham paid tithe to Melchizedek 430 years before the Law.",
+            source="nextsteps.pdf",
+            title="Nextsteps 101",
+        )
+        isaac = _doc(
+            "Abraham offered Isaac on Mount Moriah as an act of trust.",
+            source="moriah.pdf",
+            title="The Offering of Isaac",
+        )
+        kept = filter_hits_by_topic(
+            [(tithe, 0.97), (isaac, 0.80)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["moriah.pdf"])
+
 
 if __name__ == "__main__":
     unittest.main()

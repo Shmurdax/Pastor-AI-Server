@@ -220,6 +220,12 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("on some have compassion, making a difference", "Jude 1:22"),
     ("i will restore double to you", "Zechariah 9:12"),
     ("even today i declare i will restore double", "Zechariah 9:12"),
+    ("every man is tempted when he is drawn away of his own lust", "James 1:14"),
+    ("drawn away of his own lust and enticed", "James 1:14"),
+    ("led of the spirit into the wilderness to be tempted", "Matthew 4:1"),
+    ("led up by the spirit into the wilderness", "Matthew 4:1"),
+    ("at the name of jesus every knee shall bow", "Philippians 2:10"),
+    ("every knee shall bow, and every tongue confess", "Philippians 2:10"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -305,7 +311,7 @@ _BOOK_AUTHORITY_RE = re.compile(
 )
 _SLIDE_DIRECTION_RE = re.compile(
     r"(?i)\bleave on screen\b"
-    r"|\bplace on screen\b"
+    r"|\bplace on (?:the )?screen\b"
     r"|\bdenotes ppt\b"
     r"|\binstructions to technician\b"
 )
@@ -469,6 +475,10 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if _GENERIC_PROVERB_RE.search(sample):
         return True
+    if re.search(r"(?i)\bstate farm\b", sample):
+        return True
+    if re.search(r"(?i)words like:\s*$", sample.strip(" \"“”'")):
+        return True
     if _SLIDE_CHECKBOX_RE.search(sample):
         return True
     if looks_like_broken_excerpt(sample):
@@ -602,6 +612,8 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Jude 1:22",
         "Jude 1:23",
         "Zechariah 9:12",
+        "James 1:14",
+        "Philippians 2:10",
     }
 )
 

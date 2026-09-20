@@ -555,6 +555,10 @@ _TEACHINGS_PROVIDED_RE = re.compile(
 _AS_THIS_OBSERVATION_RE = re.compile(
     r"(?i)\bAs This (?:observation highlights|journey)\b[^.?\n]*[.?]?\s*"
 )
+_NO_TEACHING_DISCLAIMER_RE = re.compile(
+    r"(?is)Pastor Don does not specifically teach about.{0,160}?(?:\.|$)\s*"
+    r"(?:However, we can draw parallels.{0,240}?(?:\.|$)\s*)?"
+)
 _EMPTY_EXCERPT_RE = re.compile(r"(?im)^\s*\*?Excerpt\*?:\s*$")
 _EMPTY_QUOTES_RE = re.compile(r'[\"“]\s*[\"”]')
 _CERTAINLY_OPENER_RE = re.compile(
@@ -727,6 +731,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
     text = _CERTAINLY_OPENER_RE.sub("", text)
     text = _AS_THIS_OBSERVATION_RE.sub("", text)
+    text = _NO_TEACHING_DISCLAIMER_RE.sub("", text)
     text = _TEACHINGS_PROVIDED_RE.sub("", text)
     text = _EMPTY_EXCERPT_RE.sub("", text)
     text = _EMPTY_QUOTES_RE.sub("", text)
@@ -793,6 +798,9 @@ def ensure_pastor_quote_wrap(answer: str, quotes: Iterable[str] = ()) -> str:
                 and not known_verse_ref(cleaned)
                 and not parse_verse_refs(cleaned[:200])
                 and not looks_like_heading_quote(cleaned)
+                and not cleaned.lower().rstrip(".\"'”’ ").endswith("words like")
+                and not cleaned.endswith("like:")
+                and not cleaned.endswith("like:.")
             ):
                 candidates.append(cleaned)
                 break
@@ -951,14 +959,18 @@ def _topic_synonym_map() -> dict:
 def topic_hint_ref_keys(query: str) -> set[str]:
     from .chat_retrieval import _query_has_synonym
 
-    keys: set[str] = set()
+    story_keys: set[str] = set()
+    other_keys: set[str] = set()
     synonyms_by_topic = _topic_synonym_map()
     for topic, hint in _TOPIC_VERSE_HINTS.items():
         synonyms = synonyms_by_topic.get(topic)
         if synonyms and _query_has_synonym(query or "", synonyms):
-            for book, chapter, verse in parse_verse_refs(hint):
-                keys.add(_ref_key(book, chapter, verse))
-    return keys
+            parsed = {_ref_key(book, chapter, verse) for book, chapter, verse in parse_verse_refs(hint)}
+            if topic in _STORY_SYNONYMS:
+                story_keys.update(parsed)
+            else:
+                other_keys.update(parsed)
+    return story_keys or other_keys
 
 
 def topical_nkjv_fallback_pairs(query: str) -> list[tuple[str, str]]:
