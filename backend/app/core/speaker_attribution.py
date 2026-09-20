@@ -136,6 +136,13 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("let us use them: if prophecy", "Romans 12:6"),
     ("let us hear the conclusion of the whole matter", "Ecclesiastes 12:13"),
     ("fear god and keep his commandments for this is the whole duty of man", "Ecclesiastes 12:13"),
+    ("go and marry a prostitute", "Hosea 1:2"),
+    ("go, take yourself a wife of harlotry", "Hosea 1:2"),
+    ("go take yourself a wife of harlotry", "Hosea 1:2"),
+    ("children of harlotry", "Hosea 1:2"),
+    ("the land has committed great harlotry", "Hosea 1:2"),
+    ("this will illustrate the way my people have been untrue", "Hosea 1:2"),
+    ("openly committing adultery against the lord by worshiping other gods", "Hosea 1:2"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -223,6 +230,9 @@ _BIBLICAL_PASSAGE_RE = re.compile(
     r"|i will go to my father"
     r"|he will send (?:the )?holy spirit"
     r"|greater works than these"
+    r"|go(?:\s+and)?\s+(?:marry a prostitute|take(?:\s+yourself)?\s+a\s+wife of harlotry)"
+    r"|this will illustrate the way my people have been untrue"
+    r"|children of harlotry"
     r")"
 )
 _SENTENCE_END_RE = re.compile(r"[.!?…]")

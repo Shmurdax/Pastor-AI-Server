@@ -541,13 +541,52 @@ _TOPIC_SYNONYMS = {
     "faith": ("faith", "faithful", "believe", "believes", "believing", "unbelief"),
     "prayer": ("prayer", "pray", "praying", "prayed", "intercession", "intercede"),
     "marriage": ("marriage", "married", "husband", "wife", "spouses", "wedding"),
+    "parenting": (
+        "parenting",
+        "parent",
+        "parents",
+        "raising",
+        "child-rearing",
+        "childrearing",
+    ),
     "family": ("family", "families", "children", "parent", "parents"),
+    "worship": (
+        "worship",
+        "worshiping",
+        "worshipping",
+        "worshiper",
+        "worshipper",
+        "praise",
+        "praises",
+        "praising",
+        "adoration",
+    ),
+    "temptation": ("temptation", "tempt", "tempted", "tempting", "tempter"),
+    "hope": ("hope", "hoping", "hoped", "hopeful", "suffering", "suffer", "trial", "trials"),
+    "church": ("church", "churches", "congregation", "congregations"),
+    "humility": ("humility", "humble", "humbled", "humbles"),
+    "evangelism": (
+        "evangelism",
+        "evangelize",
+        "evangelizing",
+        "witness",
+        "witnessing",
+        "soulwinning",
+        "gospel",
+    ),
+    "rest": ("sabbath", "resting"),
     "spirit": ("spirit", "ghost"),
     "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
     "purpose": ("purpose", "calling", "destiny"),
     "grace": ("grace", "gracious"),
 }
 _GENERIC_TOPIC_KEYS = frozenset({"prayer", "faith", "grace", "spirit", "purpose"})
+# When a more specific family-life topic is named, do not treat incidental
+# "children" mentions (Hosea, the lost, etc.) as on-topic parenting notes.
+_TOPIC_NARROWERS = {
+    "parenting": frozenset({"family"}),
+    "marriage": frozenset({"family"}),
+}
 
 
 def _query_has_synonym(text: str, synonyms: Iterable[str]) -> bool:
@@ -585,8 +624,12 @@ def required_topic_synonyms(query: str) -> frozenset[str]:
     present: list[str] = [
         key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
     ]
-    specific = [key for key in present if key not in _GENERIC_TOPIC_KEYS]
-    keys = specific or present
+    drop: set[str] = set()
+    for key in present:
+        drop.update(_TOPIC_NARROWERS.get(key, ()))
+    narrowed = [key for key in present if key not in drop]
+    specific = [key for key in narrowed if key not in _GENERIC_TOPIC_KEYS]
+    keys = specific or narrowed or present
     found: set[str] = set()
     for key in keys:
         found.update(_TOPIC_SYNONYMS[key])

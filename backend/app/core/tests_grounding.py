@@ -189,8 +189,10 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("He explains", cleaned)
         self.assertNotIn("• Pastor Don", cleaned)
         self.assertIn("land. As I wait", cleaned)
-        self.assertIn("Romans 10:17 (NKJV) says,", cleaned)
+        self.assertIn("Romans 10:17", cleaned)
+        self.assertRegex(cleaned, r"Romans 10:17 \(NKJV\) teaches that faith comes")
         self.assertNotIn("it states,", cleaned.lower())
+        self.assertNotIn("states, This", cleaned)
 
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans
@@ -414,6 +416,66 @@ class GroundingTests(unittest.TestCase):
         sermon, bible = split_docs_for_grounding(docs)
         self.assertEqual(len(sermon), 1)
         self.assertEqual(len(bible), 1)
+
+    def test_empty_nkjv_leadins_are_rewritten_and_filled(self):
+        from core.grounding import repair_empty_nkjv_citations, strip_retrieval_meta
+
+        worship = (
+            "Psalm 22:3 (NKJV) states, This verse highlights that God is enthroned "
+            "in the praises of His people. Proverbs 3:5-6 (NKJV) reminds us, "
+            "This passage encourages us to rely on God."
+        )
+        cleaned = strip_retrieval_meta(worship)
+        self.assertNotIn("states,", cleaned.lower())
+        self.assertNotIn("reminds us,", cleaned.lower())
+        self.assertIn("Psalm 22:3 (NKJV) teaches that God is enthroned", cleaned)
+        filled = repair_empty_nkjv_citations(
+            worship,
+            [
+                (
+                    "Psalm 22:3",
+                    "But You are holy, Enthroned in the praises of Israel.",
+                )
+            ],
+        )
+        self.assertIn('Psalm 22:3 (NKJV) says, "But You are holy', filled)
+        self.assertNotIn("states, This verse", filled)
+
+    def test_mixed_worship_notes_keep_pastor_sentences(self):
+        from core.grounding import collect_allowed_sermon_quotes
+
+        docs = [
+            _doc(
+                "Oddly enough, when things are going well, we often have a tendency to "
+                "worship our own successes rather than worshiping God. Psalm 22:3 (NKJV) "
+                "But You are holy, Enthroned in the praises of Israel. A time of crisis "
+                "should drive us to worship God more fervently instead of turning away.",
+                source="worship.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        quotes = collect_allowed_sermon_quotes(docs)
+        joined = " ".join(quotes)
+        self.assertTrue(
+            "successes" in joined or "crisis" in joined,
+            quotes,
+        )
+        self.assertFalse(any("Enthroned" in item for item in quotes), quotes)
+
+    def test_fallback_picks_on_topic_quote_when_score_is_low(self):
+        from core.grounding import select_query_grounded_quotes
+
+        quotes = select_query_grounded_quotes(
+            [
+                "Comfort the child and stay in the kitchen with them.",
+                "Worship is a jamming device against the enemy when we lift God up.",
+            ],
+            "Create sermon notes on worship.",
+        )
+        self.assertEqual(
+            quotes,
+            ["Worship is a jamming device against the enemy when we lift God up."],
+        )
 
 
 if __name__ == "__main__":

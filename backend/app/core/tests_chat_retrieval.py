@@ -748,6 +748,32 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("complementarian", texts)
         self.assertNotIn("thirty things", texts)
 
+    def test_parenting_notes_are_not_hosea_prayer_sermon(self):
+        from core.chat_retrieval import filter_hits_by_topic, required_topic_synonyms
+
+        query = "Create sermon notes on parenting and raising children."
+        required = required_topic_synonyms(query)
+        self.assertTrue(any("parent" in item for item in required), required)
+        self.assertNotIn("children", required)
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Parenting",
+        )
+        hosea_prayer = _doc(
+            "Go and marry a prostitute, so some of her children will be born to you from other men. "
+            "Hosea prayed persistently for Gomer and visualized her salvation.",
+            source="prayers-lost.pdf",
+            title="Prayers That Prevail for the Lost",
+        )
+        kept = filter_hits_by_topic(
+            [(hosea_prayer, 0.94), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
     def test_novelty_skips_already_quoted_chunk_when_alternatives_exist(self):
         used_quote = "I am not sure how the term Gay became part of the lexicon"
         used_verse = "Ezekiel 18:4"

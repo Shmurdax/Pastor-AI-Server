@@ -253,6 +253,15 @@ class ChatSystemPromptTests(unittest.TestCase):
                 with_verse, query=query, has_reference_notes=True, has_bible_notes=True
             )
         )
+        nkjv_only = (
+            paraphrase
+            + '\n\n1 Corinthians 7:37 (NKJV) says, "Nevertheless he who stands steadfast in his heart."'
+        )
+        self.assertTrue(
+            answer_missing_required_quotes(
+                nkjv_only, query=query, has_reference_notes=True
+            )
+        )
 
     def test_join_continuation_strips_restarted_opening(self):
         from .chat_system_prompt import CONTINUE_STEER, join_continuation

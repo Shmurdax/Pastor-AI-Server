@@ -83,6 +83,7 @@ from .grounding import (
     verify_answer_grounding,
     verse_refs_for_lookup,
     weave_into_answer,
+    repair_empty_nkjv_citations,
 )
 from .teaching_claims import (
     claim_repair_steer,
@@ -557,10 +558,11 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
+    sermon, bible = split_docs_for_grounding(docs)
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
     answer = _speaker_repaired(prepared, answer)
     if not docs:
         return answer
-    sermon, bible = split_docs_for_grounding(docs)
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
@@ -574,6 +576,7 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
     if fallback and fallback not in (answer or ""):
         answer = weave_into_answer(answer, fallback)
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
     return compact_teaching_answer(
         repair_speaker_attributions(answer, nkjv_docs=bible)
     )

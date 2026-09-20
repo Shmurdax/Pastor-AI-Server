@@ -309,6 +309,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("repair_speaker_attributions", source)
         self.assertIn("weave_into_answer", source)
         self.assertIn("strip_retrieval_meta", source)
+        self.assertIn("repair_empty_nkjv_citations", source)
         self.assertIn("_missing_required_quotes", source)
         self.assertNotIn("appending on-topic retrieved excerpts", source)
         self.assertNotIn("then append notes if needed", source)

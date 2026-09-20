@@ -13,8 +13,10 @@ from .chat_retrieval import (
     extract_used_verse_refs,
     is_bible_source,
     metadata_source_hint,
+    query_focus_tokens,
+    required_topic_synonyms,
 )
-from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
+from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
 from .speaker_attribution import (
     is_pastor_own_voice,
     known_verse_ref,
@@ -75,6 +77,16 @@ _QUERY_STOPWORDS = frozenset(
         "what",
         "when",
         "whose",
+        "create",
+        "sermon",
+        "notes",
+        "about",
+        "based",
+        "outline",
+        "teach",
+        "teaches",
+        "says",
+        "say",
     }
 )
 
@@ -105,6 +117,9 @@ def snippet_query_score(text: str, query: str) -> float:
         for word in normalize_grounding_text(query).split()
         if word not in _QUERY_STOPWORDS and len(word) > 2
     }
+    q_words.update(str(token).lower() for token in query_focus_tokens(query) if len(str(token)) > 2)
+    q_words.update(str(token).lower() for token in required_topic_synonyms(query) if len(str(token)) > 2)
+    q_words = {word for word in q_words if word not in _QUERY_STOPWORDS}
     t_words = set(normalize_grounding_text(text).split())
     if not q_words or not t_words:
         return 0.0
@@ -124,6 +139,9 @@ def select_query_grounded_quotes(
         reverse=True,
     )
     picked = [item for item in ranked if snippet_query_score(item, query) >= min_score]
+    if not picked:
+        positive = [item for item in ranked if snippet_query_score(item, query) > 0]
+        picked = positive or ranked
     return picked[:limit]
 
 
@@ -144,7 +162,44 @@ def select_query_grounded_nkjv(
         for item in ranked
         if snippet_query_score(f"{item[0]} {item[1]}", query) >= min_score
     ]
+    if not picked:
+        positive = [
+            item
+            for item in ranked
+            if snippet_query_score(f"{item[0]} {item[1]}", query) > 0
+        ]
+        picked = positive or ranked
     return picked[:limit]
+
+
+_MIXED_PASTOR_MIN_CHARS = 100
+
+
+def _pastor_sentences_from_mixed_notes(body: str, *, bible_corpus: str = "") -> list[str]:
+    """Keep spoken teaching from a chunk that also cites verses."""
+    sentences = split_sentences(body) or [body]
+    pastor: list[str] = []
+    verse_sentences = 0
+    for sentence in sentences:
+        cleaned = " ".join(sentence.split()).strip()
+        if len(cleaned) < 40:
+            continue
+        if (
+            looks_like_scripture_blob(cleaned)
+            or parse_verse_refs(cleaned[:400])
+            or looks_like_scripture_wording(cleaned, bible_corpus)
+            or looks_like_heading_quote(cleaned)
+        ):
+            verse_sentences += 1
+            continue
+        if is_pastor_own_voice(cleaned, bible_corpus=bible_corpus):
+            pastor.append(cleaned)
+    pastor_chars = sum(len(item) for item in pastor)
+    if pastor_chars < _MIXED_PASTOR_MIN_CHARS:
+        return []
+    if verse_sentences and pastor_chars < 160 and verse_sentences >= len(pastor):
+        return []
+    return pastor
 
 
 def collect_allowed_sermon_quotes(
@@ -166,22 +221,30 @@ def collect_allowed_sermon_quotes(
             continue
         stored = str(meta.get("quote_text") or "").strip()
         body = spoken_text_without_timestamps(chunk_text(doc))
-        if looks_like_scripture_blob(body) and not stored:
-            continue
-        candidates = []
-        if stored and not looks_like_scripture_blob(stored) and is_pastor_own_voice(
-            stored, bible_corpus=bible
-        ):
-            candidates.extend(part.strip() for part in stored.split(" | ") if part.strip())
-        candidates.extend(extract_quote_spans(body))
-        if body and len(body) >= 40 and not looks_like_scripture_blob(body):
-            candidates.append(body)
+        candidates: list[str] = []
+        if stored:
+            for part in stored.split(" | "):
+                piece = " ".join(part.split()).strip()
+                if (
+                    piece
+                    and not looks_like_scripture_blob(piece)
+                    and is_pastor_own_voice(piece, bible_corpus=bible)
+                ):
+                    candidates.append(piece)
+        if looks_like_scripture_blob(body):
+            candidates.extend(_pastor_sentences_from_mixed_notes(body, bible_corpus=bible))
+        else:
+            candidates.extend(extract_quote_spans(body))
+            if body and len(body) >= 40:
+                candidates.append(body)
         for item in candidates:
             cleaned = " ".join(item.split())
             key = normalize_grounding_text(cleaned)
             if len(cleaned) < 12 or key in seen:
                 continue
             if looks_like_heading_quote(cleaned):
+                continue
+            if looks_like_scripture_blob(cleaned):
                 continue
             if not is_pastor_own_voice(cleaned, bible_corpus=bible):
                 continue
@@ -413,6 +476,23 @@ _EMPTY_STATES_RE = re.compile(
     r"(?i)(?:in\s+)?((?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
     r"\s*\(\s*NKJV\s*\)\s*,?\s*it states,\s*(?=[A-Z])"
 )
+_EMPTY_NKJV_CITE_RE = re.compile(
+    r"(?i)(?:in\s+)?"
+    r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*,?\s*"
+    r"(?:it\s+)?"
+    r"(?:states|says|reminds us|promises|instructs|declares|teaches that|teaches|"
+    r"explains|records|assures(?:\s+us)?|encourages(?:\s+us)?)"
+    r",?\s*"
+    r'(?!\s*[\"“])'
+)
+_THIS_VERSE_PREFIX_RE = re.compile(
+    r"(?i)^(?:This means\s+|"
+    r"This (?:verse|passage) (?:highlights that|emphasizes that|"
+    r"encourages us to|assures us that|instructs(?:\s+us)?(?:\s+that)?|"
+    r"promises that|teaches that|says that|reminds us that|highlights|"
+    r"emphasizes|encourages us|assures us|promises|teaches|says|reminds us)\s+)"
+)
 _EMPTY_TEACHES_MEANS_RE = re.compile(
     r"(?i)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\s*This means\s+"
 )
@@ -439,6 +519,65 @@ def _clip_excerpt(text: str, limit: int = 280) -> str:
     return (trimmed or cut).rstrip(".,;:") + "…"
 
 
+def _wording_for_nkjv_ref(ref: str, pairs: list[tuple[str, str]]) -> str:
+    wanted = parse_verse_refs(ref)
+    if not wanted:
+        return ""
+    book, chapter, verse = wanted[0]
+    want = f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+    for pref, wording in pairs:
+        for p_book, p_chapter, p_verse in parse_verse_refs(pref) or []:
+            key = f"{canonical_book_key(p_book)}|{int(p_chapter)}|{int(p_verse)}"
+            if key == want:
+                return _clip_excerpt(wording, 240)
+        if normalize_grounding_text(ref) in normalize_grounding_text(pref):
+            return _clip_excerpt(wording, 240)
+    return ""
+
+
+def repair_empty_nkjv_citations(
+    answer: str,
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Fill or rewrite verse lead-ins that never quoted the NKJV wording."""
+    text = answer or ""
+    if not text:
+        return text
+    pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
+    pieces: list[str] = []
+    cursor = 0
+    for match in _EMPTY_NKJV_CITE_RE.finditer(text):
+        if match.start() < cursor:
+            continue
+        ref = match.group(1)
+        tail = text[match.end() :]
+        this_m = _THIS_VERSE_PREFIX_RE.match(tail)
+        wording = _wording_for_nkjv_ref(ref, pairs)
+        pieces.append(text[cursor:match.start()])
+        if wording:
+            bit = f'{ref} (NKJV) says, "{wording}"'
+            if this_m:
+                remainder = tail[this_m.end() :]
+                joiner = " " if remainder[:1] not in " \n" else ""
+                pieces.append(bit + joiner)
+                cursor = match.end() + this_m.end()
+            else:
+                pieces.append(bit + " ")
+                cursor = match.end()
+            continue
+        if this_m:
+            pieces.append(f"{ref} (NKJV) teaches that ")
+            cursor = match.end() + this_m.end()
+        else:
+            pieces.append(f"{ref} (NKJV) teaches that ")
+            cursor = match.end()
+    pieces.append(text[cursor:])
+    cleaned = "".join(pieces)
+    cleaned = re.sub(r" +", " ", cleaned)
+    cleaned = re.sub(r" \n", "\n", cleaned)
+    return cleaned.strip()
+
+
 def strip_retrieval_meta(answer: str) -> str:
     """Drop labeled retrieval dumps so the user only sees the teaching reply."""
     text = answer or ""
@@ -454,14 +593,12 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _SOURCE_BULLET_RE.sub("", text)
     text = _EMPTY_EXPLAIN_RE.sub("", text)
     text = _EMPTY_ADVISES_RE.sub("", text)
-    text = _EMPTY_STATES_RE.sub(r"\1 (NKJV) says, ", text)
     text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
-    text = _EMPTY_SAYS_THIS_RE.sub("(NKJV) says ", text)
     text = _CERTAINLY_OPENER_RE.sub("", text)
     text = _BULLET_GLYPH_RE.sub("", text)
     text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    return repair_empty_nkjv_citations(text.strip())
 
 
 def grounded_fallback_answer(

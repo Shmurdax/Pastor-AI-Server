@@ -361,6 +361,34 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_hosea_command_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "Go and marry a prostitute, so some of her '
+            "children will be born to you from other men. This will illustrate the way "
+            'my people have been untrue to me, openly committing adultery against the LORD."'
+        )
+        self.assertTrue(
+            looks_like_scripture_wording(
+                "Go and marry a prostitute, so some of her children will be born to you."
+            )
+        )
+        self.assertFalse(
+            is_pastor_own_voice(
+                "Go and marry a prostitute, so some of her children will be born to you."
+            )
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotRegex(
+            fixed,
+            r'(?i)pastor don.{0,40}teaches, "Go and marry a prostitute',
+        )
+        self.assertIn("Hosea 1:2", fixed)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(
+            any("prostitute" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

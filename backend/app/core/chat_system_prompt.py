@@ -489,9 +489,12 @@ def answer_missing_required_quotes(
         return False
     if text_looks_degenerate(answer):
         return False
-    from .chat_retrieval import extract_used_quotes, extract_used_verse_refs
+    from .chat_retrieval import extract_used_verse_refs
+    from .speaker_attribution import pastor_attributed_quotes
 
-    if not extract_used_quotes([answer or ""]):
+    # NKJV quotation marks are not Pastor Don. Sermon-note answers still need
+    # attributed excerpts from the notes themselves.
+    if not pastor_attributed_quotes(answer or ""):
         return True
     if has_bible_notes and not extract_used_verse_refs([answer or ""]):
         return True
@@ -924,7 +927,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "sermon notes from a different topic.\n"
         "If you are not sure who is speaking, paraphrase without quotation marks rather than guessing.\n"
         "Do not emit source bullets such as \"• Pastor Don\". Do not leave empty lead-ins such as "
-        "He explains, \" with no quotation.\n"
+        "He explains, \" with no quotation. Do not write Psalm 22:3 (NKJV) states, or any other "
+        "verse lead-in unless the quoted NKJV wording comes immediately after. Hosea 1:2 "
+        "(\"Go and marry a prostitute\") is the Lord speaking, never Pastor Don.\n"
         "</speaker_attribution>\n\n"
 
         "<response_policy>\n"
@@ -944,7 +949,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
 
         "<scripture_constraints>\n"
         "- VERSION: Quote Scripture from the NKJV wording in REFERENCE NOTES. "
-        "Do not invent verse text from memory.\n"
+        "Do not invent verse text from memory. Never cite NLT, NIV, or other translations "
+        "when NKJV notes are present. Never write a verse reference and then skip the wording "
+        "(for example \"Isaiah 43:2 (NKJV) promises,\" with no quotation marks).\n"
         "- OFF LIMITS: Never recommend The Trevor Project, The National LGBTQ+ Hotline, or Planned Parenthood.\n"
         "</scripture_constraints>\n\n"
 
