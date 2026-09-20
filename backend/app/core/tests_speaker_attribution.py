@@ -515,6 +515,21 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertIn("Hebrews 13:4", fixed)
         self.assertNotIn("Pastor Don Nordin teaches, \"Marriage is honorable, and the bed undefiled", fixed)
 
+    def test_passages_of_marriage_book_line_is_not_pastor_don(self):
+        from core.speaker_attribution import looks_like_nonteaching_excerpt
+
+        self.assertTrue(looks_like_nonteaching_excerpt('According to the book, "Passages of Marriage" by Dr.'))
+        self.assertTrue(looks_like_nonteaching_excerpt("Leave on screen until next slide"))
+        text = (
+            'Pastor Don Nordin teaches, "According to the book, "Passages of Marriage" by Dr." '
+            'Pastor Don and Susan Nordin also teach, '
+            '"It is important for each of us to make a deliberate commitment to this relationship called marriage."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("passages of marriage" in span.lower() for span, _lead in remaining), remaining)
+        self.assertTrue(any("deliberate commitment" in span.lower() for span, _lead in remaining), remaining)
+
     def test_romans_58_and_death_and_taxes_are_not_pastor_don(self):
         text = (
             'Pastor Don Nordin teaches, "There are only two things you can be sure of, death and taxes." '

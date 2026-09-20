@@ -743,6 +743,45 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("You make me feel", cleaned)
         self.assertIn("developmental process", cleaned)
 
+    def test_collect_ranks_marriage_quotes_ahead_of_slide_fillers(self):
+        from core.grounding import select_query_grounded_quotes
+
+        docs = [
+            _doc(
+                f"How could you possibly feel that way about tone {index}?",
+                source="home.pdf",
+                chunk_kind="sermon_quote",
+            )
+            for index in range(12)
+        ]
+        docs.append(
+            _doc(
+                "It is important for each of us to make a deliberate commitment "
+                "to this relationship called marriage. According to the book, "
+                '"Passages of Marriage" by Dr. Hemfelt.',
+                source="home.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "It is important for each of us to make a deliberate commitment "
+                    "to this relationship called marriage. | According to the book, "
+                    '"Passages of Marriage" by Dr.'
+                ),
+            )
+        )
+        quotes = collect_allowed_sermon_quotes(
+            docs, query="Create sermon notes on marriage."
+        )
+        self.assertTrue(any("deliberate commitment" in item for item in quotes), quotes)
+        self.assertFalse(any("passages of marriage" in item.lower() for item in quotes), quotes)
+        self.assertFalse(any("according to the book" in item.lower() for item in quotes), quotes)
+        picked = select_query_grounded_quotes(
+            quotes, "Create sermon notes on marriage.", allow_topic_pool_fallback=True
+        )
+        self.assertTrue(any("deliberate commitment" in item for item in picked), picked)
+        snippet = grounded_fallback_answer(picked, [])
+        self.assertIn("deliberate commitment", snippet)
+        self.assertNotIn("Passages of Marriage", snippet)
+
     def test_ensure_topical_nkjv_replaces_celibacy_verse_for_marriage(self):
         from core.grounding import ensure_topical_nkjv, nkjv_matches_query
 

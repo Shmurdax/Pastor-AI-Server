@@ -231,6 +231,7 @@ def collect_allowed_sermon_quotes(
     *,
     limit: int = 12,
     bible_corpus: str = "",
+    query: str = "",
 ) -> list[str]:
     """Exact lines the model may quote as Pastor Don / Susan."""
     quotes: list[str] = []
@@ -273,9 +274,15 @@ def collect_allowed_sermon_quotes(
                 continue
             seen.add(key)
             quotes.append(cleaned)
-            if len(quotes) >= limit:
-                return quotes
-    return quotes
+    if query:
+        scored = sorted(
+            quotes,
+            key=lambda item: snippet_query_score(item, query),
+            reverse=True,
+        )
+        positive = [item for item in scored if snippet_query_score(item, query) > 0]
+        quotes = positive or scored
+    return quotes[:limit]
 
 
 def collect_allowed_nkjv(docs: Iterable[Any], *, limit: int = 12) -> list[tuple[str, str]]:

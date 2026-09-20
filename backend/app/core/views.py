@@ -520,7 +520,7 @@ def _grounding_snippets(prepared):
     query = str(prepared.get("topic_query") or "")
     bible_text = nkjv_corpus(bible)
     quotes = select_query_grounded_quotes(
-        collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text),
+        collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text, query=query),
         query,
         allow_topic_pool_fallback=True,
     )
@@ -573,7 +573,9 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
         return True
     if not pastor_quotes_match_query(answer or "", query):
         retrieved = select_query_grounded_quotes(
-            collect_allowed_sermon_quotes(sermon, bible_corpus=nkjv_corpus(bible)),
+            collect_allowed_sermon_quotes(
+                sermon, bible_corpus=nkjv_corpus(bible), query=query
+            ),
             query,
         )
         if retrieved:

@@ -268,6 +268,19 @@ _COUNSELING_SLIDE_RE = re.compile(
     r'(?is)^\s*["“]?\s*I["”]?\s*messages rather than\s*["“]?\s*you["”]?'
     r'(?:\s*messages)?["”]?\s*[.]?\s*$'
     r'|^\s*["“]?\s*You make me feel["”]?\s*[.]?\s*$'
+    r'|^\s*["“]?\s*I feel["”]?\s+is a much better method\b'
+    r'|^\s*["“]?\s*(?:How could you possibly feel that way|Why do you feel that way)\b'
+)
+_BOOK_AUTHORITY_RE = re.compile(
+    r"(?i)\baccording to the book\b"
+    r"|\bpassages? of marriage\b"
+    r"|\bhemfelt\b"
+)
+_SLIDE_DIRECTION_RE = re.compile(
+    r"(?i)\bleave on screen\b"
+    r"|\bplace on screen\b"
+    r"|\bdenotes ppt\b"
+    r"|\binstructions to technician\b"
 )
 _MANGLED_I_YOU_LABEL_RE = re.compile(
     r'(?is)I["”]?\s*messages rather than.{0,80}You make me feel'
@@ -438,6 +451,8 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
     if looks_like_broken_excerpt(sample):
         return True
     if _COUNSELING_SLIDE_RE.search(sample) or _MANGLED_I_YOU_LABEL_RE.search(sample):
+        return True
+    if _BOOK_AUTHORITY_RE.search(sample) or _SLIDE_DIRECTION_RE.search(sample):
         return True
     if re.search(r'(?i)\bI["”]?\s*messages rather than\b', sample) and len(sample) < 60:
         return True
