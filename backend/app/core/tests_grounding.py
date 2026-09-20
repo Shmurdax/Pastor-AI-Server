@@ -605,6 +605,74 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("here’s a summary", cleaned.lower())
         self.assertIn("1 Corinthians 7:37-40", cleaned)
 
+    def test_certainly_provided_sermon_notes_opener_is_stripped(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            "Certainly! Based on the provided sermon notes, here is a summary of the key points regarding prayer:. "
+            'Pastor Don Nordin teaches, "Praying for the lost requires persistence."'
+        )
+        self.assertNotIn("certainly", cleaned.lower())
+        self.assertNotIn("provided sermon notes", cleaned.lower())
+        self.assertNotIn("here is a summary", cleaned.lower())
+        self.assertIn("Praying for the lost requires persistence", cleaned)
+
+    def test_peter_humility_verse_is_not_collected_as_pastor_quote(self):
+        from core.grounding import select_query_grounded_quotes
+        from core.speaker_attribution import (
+            is_pastor_own_voice,
+            looks_like_scripture_wording,
+            pastor_attributed_quotes,
+            rewrite_misattributed_quotes,
+        )
+
+        verse = (
+            "Yes, all of you be submissive to one another, and be clothed with humility, "
+            "for God resists the proud, But gives grace to the humble."
+        )
+        teaching = (
+            "To receive spiritual miracles and cooperation, we must humble ourselves before others."
+        )
+        docs = [
+            _doc(
+                f"{teaching}\n{verse}\n"
+                "Humility involves recognizing our dependence on God and taking the high road of humility.",
+                source="miracles.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        self.assertFalse(is_pastor_own_voice(verse))
+        self.assertTrue(looks_like_scripture_wording(verse))
+        self.assertTrue(is_pastor_own_voice(teaching))
+        quotes = collect_allowed_sermon_quotes(
+            docs, query="Create sermon notes on humility."
+        )
+        self.assertTrue(any("spiritual miracles" in item.lower() for item in quotes), quotes)
+        self.assertFalse(any("be clothed with humility" in item.lower() for item in quotes), quotes)
+        picked = select_query_grounded_quotes(
+            quotes,
+            "Create sermon notes on humility.",
+            allow_topic_pool_fallback=True,
+        )
+        self.assertTrue(
+            any(
+                "spiritual miracles" in item.lower() or "high road of humility" in item.lower()
+                for item in picked
+            ),
+            picked,
+        )
+        snippet = grounded_fallback_answer(picked, [])
+        remaining = pastor_attributed_quotes(rewrite_misattributed_quotes(snippet))
+        self.assertTrue(remaining, snippet)
+        self.assertFalse(
+            any("be clothed with humility" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+        self.assertTrue(
+            any("spiritual miracles" in span.lower() or "high road" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
     def test_passage_of_marriage_book_authority_is_stripped(self):
         from core.grounding import strip_retrieval_meta
 
@@ -886,6 +954,27 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("tithe of the land", filled)
         self.assertNotIn("not to touch a woman", filled)
         self.assertNotIn("outlines the requirements for giving", filled)
+
+    def test_giving_range_starting_at_ban_verse_is_replaced_with_tithe_verse(self):
+        from core.chat_retrieval import has_quoted_nkjv
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query
+
+        query = "Create sermon notes on giving and stewardship."
+        text = (
+            'Pastor Don Nordin teaches, "Stewardship is the sum total of man’s attitude '
+            'and reaction toward the Divine Creator and His creation." '
+            'Leviticus 27:29-32 (NKJV) says, "No person under the ban, who may become doomed '
+            "to destruction among men, shall be redeemed, but shall surely be put to death. "
+            "And all the tithe of the land, whether of the seed of the land or of the fruit "
+            'of the tree, is the LORD\'s."'
+        )
+        filled = ensure_topical_nkjv(text, query, [])
+        self.assertTrue(has_quoted_nkjv(filled), filled)
+        self.assertTrue(nkjv_matches_query(filled, query), filled)
+        self.assertIn("Leviticus 27:30", filled)
+        self.assertIn("tithe of the land", filled)
+        self.assertNotIn("under the ban", filled)
+        self.assertNotIn("put to death", filled)
 
     def test_prayer_teaches_that_without_quote_is_filled_from_topic_wording(self):
         from core.chat_retrieval import has_quoted_nkjv

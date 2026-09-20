@@ -487,10 +487,13 @@ _META_OPENER_RE = re.compile(
     r"here(?:'s| is)\s+.{0,160}?based on the provided (?:scripture and )?notes[:.]?\s*"
 )
 _PROVIDED_MATERIAL_OPENER_RE = re.compile(
-    r"(?is)^\s*(?:To create |Creating )?(?:sermon )?notes on .{0,80}?"
-    r"based on the (?:provided )?(?:reference )?(?:material|notes)\b.{0,240}?"
-    r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:\s*"
-    r"|^\s*.{0,220}?based on the (?:provided )?(?:reference )?(?:material|notes)[,:]?\s*"
+    r"(?is)^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
+    r"(?:To create |Creating )?(?:sermon )?notes on .{0,80}?"
+    r"based on the (?:provided )?(?:sermon |reference )?(?:material|notes)\b.{0,240}?"
+    r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:?\s*"
+    r"|^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
+    r".{0,220}?based on the (?:provided )?(?:sermon |reference )?(?:material|notes)\b[,:]?\s*"
+    r"(?:here is a summary of the key points regarding [^.\n:]{0,80}:\s*)?"
 )
 _PASSAGE_BOOK_RE = re.compile(
     r"(?is)According to the book\s+[\"“']?Passages? of Marriage[\"”']?.{0,400}?"
@@ -793,7 +796,7 @@ _TOPIC_VERSE_HINTS = {
     "temptation": "1 Corinthians 10:13 Matthew 4:1",
     "hope": "Romans 15:13 Romans 8:28",
     "church": "Matthew 28:19 Acts 2:42",
-    "humility": "Philippians 2:3 James 4:10",
+    "humility": "Philippians 2:3 James 4:10 1 Peter 5:5",
     "evangelism": "Matthew 28:19 Acts 1:8",
     "rest": "Matthew 11:28 Hebrews 4:9",
     "prodigal": "Luke 15:20",
@@ -843,6 +846,10 @@ _TOPIC_NKJV_WORDING = {
     "Acts 2:42": "And they continued steadfastly in the apostles' doctrine and fellowship, in the breaking of bread, and in prayers.",
     "Philippians 2:3": "Let nothing be done through selfish ambition or conceit, but in lowliness of mind let each esteem others better than himself.",
     "James 4:10": "Humble yourselves in the sight of the Lord, and He will lift you up.",
+    "1 Peter 5:5": (
+        "Yes, all of you be submissive to one another, and be clothed with humility, "
+        "for God resists the proud, But gives grace to the humble."
+    ),
     "Acts 1:8": "But you shall receive power when the Holy Spirit has come upon you; and you shall be witnesses to Me in Jerusalem, and in all Judea and Samaria, and to the end of the earth.",
     "Matthew 11:28": "Come to Me, all you who labor and are heavy laden, and I will give you rest.",
     "Hebrews 4:9": "There remains therefore a rest for the people of God.",
@@ -961,6 +968,17 @@ def _choose_topical_pair(
     return topical[0]
 
 
+def _cite_starts_before_hint(cite_text: str, hint_keys: set[str]) -> bool:
+    """True when a range includes a topical verse but opens on a neighboring verse."""
+    refs = parse_verse_refs(cite_text or "")
+    if not refs or not hint_keys:
+        return False
+    cited_keys = {_ref_key(*item) for item in refs}
+    if not (cited_keys & hint_keys):
+        return False
+    return _ref_key(*refs[0]) not in hint_keys
+
+
 def ensure_topical_nkjv(
     answer: str,
     query: str,
@@ -1005,6 +1023,10 @@ def ensure_topical_nkjv(
     for match in _NKJV_BLOCK_RE.finditer(text):
         cited_keys = _ref_keys_from_text(match.group(0)[:80])
         if cited_keys & hint_keys and has_quoted:
+            if _cite_starts_before_hint(match.group(0)[:80], hint_keys):
+                ref, wording = _choose_topical_pair(topical, cited_keys)
+                replacement = _quoted_nkjv_replacement(ref, wording)
+                return (text[: match.start()] + replacement + text[match.end() :]).strip()
             continue
         if has_topical and has_quoted:
             return (text[: match.start()] + text[match.end() :]).strip()

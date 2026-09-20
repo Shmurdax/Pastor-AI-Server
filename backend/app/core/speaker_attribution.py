@@ -193,6 +193,16 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("he will turn the hearts of the fathers to the children", "Malachi 4:6"),
     ("turn the heart of the fathers to the children", "Malachi 4:6"),
     ("and the hearts of the children to their fathers", "Malachi 4:6"),
+    ("yes, all of you be submissive to one another", "1 Peter 5:5"),
+    ("be submissive to one another, and be clothed with humility", "1 Peter 5:5"),
+    ("be clothed with humility", "1 Peter 5:5"),
+    ("god resists the proud", "1 Peter 5:5"),
+    ("gives grace to the humble", "1 Peter 5:5"),
+    ("submit yourselves to your elders", "1 Peter 5:5"),
+    ("humble yourselves in the sight of the lord", "James 4:10"),
+    ("submit yourselves therefore to god", "James 4:7"),
+    ("resist the devil and he will flee from you", "James 4:7"),
+    ("he gives more grace therefore he says", "James 4:6"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -567,6 +577,11 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Psalm 103:12",
         "Ephesians 4:22",
         "Exodus 18:22",
+        "Malachi 4:6",
+        "1 Peter 5:5",
+        "James 4:6",
+        "James 4:7",
+        "James 4:10",
     }
 )
 

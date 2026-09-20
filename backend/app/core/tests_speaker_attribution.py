@@ -629,6 +629,42 @@ class SpeakerAttributionTests(unittest.TestCase):
             )
         )
 
+    def test_peter_and_james_humility_verses_are_not_pastor_don(self):
+        verse = (
+            "Yes, all of you be submissive to one another, and be clothed with humility, "
+            "for God resists the proud, But gives grace to the humble."
+        )
+        self.assertFalse(is_pastor_own_voice(verse))
+        self.assertTrue(looks_like_scripture_wording(verse))
+        self.assertEqual(known_verse_ref(verse), "1 Peter 5:5")
+        self.assertFalse(
+            is_pastor_own_voice("Humble yourselves in the sight of the Lord, and He will lift you up.")
+        )
+        self.assertEqual(
+            known_verse_ref("Humble yourselves in the sight of the Lord, and He will lift you up."),
+            "James 4:10",
+        )
+        self.assertTrue(
+            is_pastor_own_voice(
+                "To receive spiritual miracles and cooperation, we must humble ourselves before others."
+            )
+        )
+        text = (
+            'Pastor Don Nordin teaches, "Yes, all of you be submissive to one another, '
+            'and be clothed with humility, for God resists the proud, But gives grace to the humble." '
+            'Pastor Don and Susan Nordin also teach, '
+            '"To receive spiritual miracles and cooperation, we must humble ourselves before others."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("be clothed with humility" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("god resists the proud" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("1 Peter 5:5", fixed)
+        self.assertTrue(
+            any("spiritual miracles" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
