@@ -788,6 +788,30 @@ _TOPIC_VERSE_HINTS = {
     "humility": "Philippians 2:3 James 4:10",
     "evangelism": "Matthew 28:19 Acts 1:8",
     "rest": "Matthew 11:28 Hebrews 4:9",
+    "prodigal": "Luke 15:20",
+    "goliath": "1 Samuel 17:45",
+    "noah": "Genesis 6:22",
+    "samaritan": "Luke 10:33",
+    "daniel": "Daniel 6:22",
+    "well": "John 4:14",
+    "isaac": "Genesis 22:2",
+    "cross": "Luke 23:33",
+    "feeding": "Matthew 14:19",
+    "jonah": "Jonah 1:17",
+    "empty_tomb": "Matthew 28:6",
+}
+_STORY_SYNONYMS = {
+    "prodigal": ("prodigal",),
+    "goliath": ("goliath",),
+    "noah": ("noah", "ark"),
+    "samaritan": ("samaritan",),
+    "daniel": ("lions' den", "lion's den", "lions den"),
+    "well": ("woman at the well", "at the well"),
+    "isaac": ("isaac", "moriah"),
+    "cross": ("crucifixion", "crucified", "calvary", "golgotha"),
+    "feeding": ("five thousand", "5000", "loaves"),
+    "jonah": ("jonah", "nineveh"),
+    "empty_tomb": ("empty tomb", "resurrection"),
 }
 _TOPIC_NKJV_WORDING = {
     "Psalm 22:3": "But You are holy, Enthroned in the praises of Israel.",
@@ -814,19 +838,40 @@ _TOPIC_NKJV_WORDING = {
     "Acts 1:8": "But you shall receive power when the Holy Spirit has come upon you; and you shall be witnesses to Me in Jerusalem, and in all Judea and Samaria, and to the end of the earth.",
     "Matthew 11:28": "Come to Me, all you who labor and are heavy laden, and I will give you rest.",
     "Hebrews 4:9": "There remains therefore a rest for the people of God.",
+    "Luke 15:20": "And he arose and came to his father. But when he was still a great way off, his father saw him and had compassion, and ran and fell on his neck and kissed him.",
+    "1 Samuel 17:45": "Then David said to the Philistine, You come to me with a sword, with a spear, and with a javelin. But I come to you in the name of the LORD of hosts, the God of the armies of Israel, whom you have defied.",
+    "Genesis 6:22": "Thus Noah did; according to all that God commanded him, so he did.",
+    "Luke 10:33": "But a certain Samaritan, as he journeyed, came where he was. And when he saw him, he had compassion.",
+    "Daniel 6:22": "My God sent His angel and shut the lions' mouths, so that they have not hurt me, because I was found innocent before Him.",
+    "John 4:14": "but whoever drinks of the water that I shall give him will never thirst. But the water that I shall give him will become in him a fountain of water springing up into everlasting life.",
+    "Genesis 22:2": "Then He said, Take now your son, your only son Isaac, whom you love, and go to the land of Moriah, and offer him there as a burnt offering on one of the mountains of which I shall tell you.",
+    "Luke 23:33": "And when they had come to the place called Calvary, there they crucified Him, and the criminals, one on the right hand and the other on the left.",
+    "Matthew 14:19": "Then He commanded the multitudes to sit down on the grass. And He took the five loaves and the two fish, and looking up to heaven, He blessed and broke and gave the loaves to the disciples; and the disciples gave to the multitudes.",
+    "Jonah 1:17": "Now the LORD had prepared a great fish to swallow Jonah. And Jonah was in the belly of the fish three days and three nights.",
+    "Matthew 28:6": "He is not here; for He is risen, as He said. Come, see the place where the Lord lay.",
 }
+_VERSE_CITE_RE = (
+    r'(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?'
+)
+_NKJV_SPEECH_VERBS = (
+    r'(?:it\s+)?(?:says|states|teaches that|reminds us|promises|instructs|'
+    r'encourages us|assures us|outlines|warns(?:\s+against)?|highlights|emphasizes|'
+    r'we see|is a (?:powerful )?reminder)'
+)
 _NKJV_QUOTE_AFTER_CITE_RE = re.compile(
-    r'(?is)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)'
+    rf'(?is)({_VERSE_CITE_RE})'
     r'\s*\(\s*NKJV\s*\)'
     r'.{0,80}?["“]([^"”]{8,800})["”]'
 )
 _NKJV_BLOCK_RE = re.compile(
-    r'(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?'
-    r'\s*\(\s*NKJV\s*\)'
-    r'(?:\s*,?\s*(?:it\s+)?(?:says|states|teaches that|reminds us|promises|instructs|'
-    r'encourages us|assures us|outlines|warns(?:\s+against)?|highlights|emphasizes|'
-    r'we see|is a (?:powerful )?reminder)[,:]?\s*)?'
-    r'(?:["“][^"”]{8,800}["”])?'
+    rf'(?:{_VERSE_CITE_RE})'
+    rf'(?:'
+    rf'\s*\(\s*NKJV\s*\)'
+    rf'(?:\s*,?\s*{_NKJV_SPEECH_VERBS}[,:]?\s*)?'
+    rf'(?:["“][^"”]{{8,800}}["”])?'
+    rf'|'
+    rf'\s+{_NKJV_SPEECH_VERBS}[^.?\n]{{0,180}}[.?]?'
+    rf')'
 )
 
 
@@ -834,12 +879,21 @@ def _ref_key(book: str, chapter: int, verse: int) -> str:
     return f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
 
 
+def _topic_synonym_map() -> dict:
+    from .chat_retrieval import _TOPIC_SYNONYMS
+
+    merged = dict(_TOPIC_SYNONYMS)
+    merged.update(_STORY_SYNONYMS)
+    return merged
+
+
 def topic_hint_ref_keys(query: str) -> set[str]:
-    from .chat_retrieval import _TOPIC_SYNONYMS, _query_has_synonym
+    from .chat_retrieval import _query_has_synonym
 
     keys: set[str] = set()
+    synonyms_by_topic = _topic_synonym_map()
     for topic, hint in _TOPIC_VERSE_HINTS.items():
-        synonyms = _TOPIC_SYNONYMS.get(topic)
+        synonyms = synonyms_by_topic.get(topic)
         if synonyms and _query_has_synonym(query or "", synonyms):
             for book, chapter, verse in parse_verse_refs(hint):
                 keys.add(_ref_key(book, chapter, verse))
@@ -881,6 +935,24 @@ def nkjv_matches_query(answer: str, query: str) -> bool:
     return False
 
 
+def _ref_keys_from_text(text: str) -> set[str]:
+    return {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(text or "")}
+
+
+def _quoted_nkjv_replacement(ref: str, wording: str) -> str:
+    return f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
+
+
+def _choose_topical_pair(
+    topical: list[tuple[str, str]],
+    cited_keys: set[str],
+) -> tuple[str, str]:
+    for ref, wording in topical:
+        if _ref_keys_from_text(ref) & cited_keys:
+            return ref, wording
+    return topical[0]
+
+
 def ensure_topical_nkjv(
     answer: str,
     query: str,
@@ -893,35 +965,47 @@ def ensure_topical_nkjv(
     hint_keys = topic_hint_ref_keys(query)
     if not hint_keys:
         return text
-    pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
-    if not pairs:
-        pairs = topical_nkjv_fallback_pairs(query)
+    lookup_pairs = [
+        (str(ref), str(wording).strip())
+        for ref, wording in (nkjv_pairs or [])
+        if wording
+    ]
+    fallback_pairs = topical_nkjv_fallback_pairs(query)
+    seen = {normalize_grounding_text(f"{ref}|{wording}") for ref, wording in lookup_pairs}
+    pairs = list(lookup_pairs)
+    for ref, wording in fallback_pairs:
+        key = normalize_grounding_text(f"{ref}|{wording}")
+        if key in seen:
+            continue
+        seen.add(key)
+        pairs.append((ref, wording))
     topical = [
         (ref, wording)
         for ref, wording in pairs
-        if {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(ref)} & hint_keys
+        if _ref_keys_from_text(ref) & hint_keys
     ]
+    if not topical:
+        topical = list(fallback_pairs)
     if not topical:
         topical = select_query_grounded_nkjv(pairs, query, limit=1)
     if not topical:
         return text
-    ref, wording = topical[0]
-    replacement = f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
     from .chat_retrieval import has_quoted_nkjv
 
     has_quoted = has_quoted_nkjv(text)
     has_topical = nkjv_matches_query(text, query)
     for match in _NKJV_BLOCK_RE.finditer(text):
-        cited_keys = {
-            _ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(match.group(0)[:80])
-        }
+        cited_keys = _ref_keys_from_text(match.group(0)[:80])
         if cited_keys & hint_keys and has_quoted:
             continue
         if has_topical and has_quoted:
             return (text[: match.start()] + text[match.end() :]).strip()
+        ref, wording = _choose_topical_pair(topical, cited_keys)
+        replacement = _quoted_nkjv_replacement(ref, wording)
         return (text[: match.start()] + replacement + text[match.end() :]).strip()
     if not has_quoted or not has_topical:
-        return weave_into_answer(text, replacement)
+        ref, wording = topical[0]
+        return weave_into_answer(text, _quoted_nkjv_replacement(ref, wording))
     return text
 
 
@@ -938,10 +1022,11 @@ _NLT_CITE_RE = re.compile(
 
 def verse_refs_for_lookup(user_query: str, docs: Iterable[Any], *, limit: int = 8) -> list[tuple[str, int, int]]:
     blobs = [user_query or ""]
-    from .chat_retrieval import _TOPIC_SYNONYMS, _query_has_synonym
+    from .chat_retrieval import _query_has_synonym
 
+    synonyms_by_topic = _topic_synonym_map()
     for key, hint in _TOPIC_VERSE_HINTS.items():
-        synonyms = _TOPIC_SYNONYMS.get(key)
+        synonyms = synonyms_by_topic.get(key)
         if synonyms and _query_has_synonym(user_query or "", synonyms):
             blobs.append(hint)
     for doc in docs or []:

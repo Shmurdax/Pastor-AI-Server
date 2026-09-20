@@ -861,6 +861,46 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("(NKJV) says,", from_fallback)
         self.assertTrue(nkjv_matches_query(from_fallback, query))
 
+    def test_unquoted_leviticus_outline_replaced_even_with_off_topic_pairs(self):
+        from core.chat_retrieval import has_quoted_nkjv
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query
+
+        query = "Create sermon notes on giving and stewardship."
+        text = (
+            "### Sermon Notes: Giving and Stewardship\n\n"
+            "**Stewardship Defined**\n"
+            "Stewardship is the sum total of man's attitude toward the Creator. "
+            'Pastor Don Nordin teaches, "The subject of tithing is really not about money alone, '
+            'it is about a lifestyle of stewardship!" '
+            "Leviticus 27:30-34 outlines the requirements for giving, emphasizing the importance "
+            "of honoring God with our finances."
+        )
+        filled = ensure_topical_nkjv(
+            text,
+            query,
+            [("1 Corinthians 7:1", "It is good for a man not to touch a woman.")],
+        )
+        self.assertTrue(has_quoted_nkjv(filled), filled)
+        self.assertTrue(nkjv_matches_query(filled, query), filled)
+        self.assertIn("tithe of the land", filled)
+        self.assertNotIn("not to touch a woman", filled)
+        self.assertNotIn("outlines the requirements for giving", filled)
+
+    def test_prodigal_story_question_gets_quoted_nkjv_fallback(self):
+        from core.chat_retrieval import has_quoted_nkjv
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query
+
+        query = "What does Pastor Don say about the prodigal son?"
+        text = (
+            'Pastor Don Nordin teaches, "The father ran to the son before the son could finish his speech." '
+            "The story shows mercy that restores a wandering child."
+        )
+        filled = ensure_topical_nkjv(text, query, [])
+        self.assertTrue(has_quoted_nkjv(filled), filled)
+        self.assertTrue(nkjv_matches_query(filled, query), filled)
+        self.assertIn("Luke 15:20", filled)
+        self.assertIn("great way off", filled)
+
     def test_nkjv_says_without_opening_quote_is_repaired(self):
         from core.chat_retrieval import has_quoted_nkjv
         from core.grounding import ensure_topical_nkjv, repair_empty_nkjv_citations
