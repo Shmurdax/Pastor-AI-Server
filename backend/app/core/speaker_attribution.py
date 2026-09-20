@@ -148,6 +148,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("the two shall become one flesh", "Genesis 2:24"),
     ("if any man will come after me", "Luke 9:23"),
     ("let him deny himself, and take up his cross", "Luke 9:23"),
+    ("a gentle answer turns away wrath", "Proverbs 15:1"),
+    ("a soft answer turns away wrath", "Proverbs 15:1"),
+    ("a harsh word stirs up anger", "Proverbs 15:1"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -209,6 +212,7 @@ _SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
 _BROKEN_START_RE = re.compile(
     r"^(?:"
     r"[a-z]{1,3}[;:,]"
+    r"|ieve\b"
     r"|(?:ecclesi|corint|thessalon|chron|revelat|deuteron|zechari)\b"
     r")"
 )
@@ -760,7 +764,8 @@ def drop_nonteaching_pastor_wraps(answer: str) -> str:
         cleaned,
     )
     cleaned = re.sub(
-        r'(?i)(?:^|(?<=\s))Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\s+(?![\"“])',
+        r'(?i)(?:^|(?<=\s))Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? '
+        r'(?:teaches|emphasizes|advises|encourages|explains),(?!\s*[\"“])\s*(?:\.\s*)?',
         "",
         cleaned,
     )

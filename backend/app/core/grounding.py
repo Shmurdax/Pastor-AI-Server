@@ -499,7 +499,11 @@ _EMPTY_SAYS_THIS_RE = re.compile(
     r"(?i)\(\s*NKJV\s*\)\s+says,\s+This (?:verse|passage)\s+"
 )
 _CERTAINLY_OPENER_RE = re.compile(
-    r"(?is)^\s*(?:certainly|sure)[!.,]?\s+here(?:'s| is)\s+.{0,180}?:\s*"
+    r"(?is)^\s*(?:certainly|sure)[!.,]?\s+here(?:'s| is| are)\s+.{0,180}?:\s*"
+)
+_SLIDE_WORSHIP_QUOTE_RE = re.compile(
+    r'(?is)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,?\s*'
+    r'["“]WORSHIP["”].{0,180}?(?:["”]|$)'
 )
 _BULLET_GLYPH_RE = re.compile(r"[•▪▫]\s*")
 _GLUED_SENTENCE_RE = re.compile(r"([a-z])\.([A-Z])")
@@ -594,6 +598,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _EMPTY_ADVISES_RE.sub("", text)
     text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
     text = _CERTAINLY_OPENER_RE.sub("", text)
+    text = _SLIDE_WORSHIP_QUOTE_RE.sub("", text)
     text = _BULLET_GLYPH_RE.sub("", text)
     text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

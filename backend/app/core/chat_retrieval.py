@@ -587,7 +587,7 @@ _TOPIC_NARROWERS = {
     "marriage": frozenset({"family"}),
 }
 _TOPIC_CORE = {
-    "parenting": ("parenting", "parents"),
+    "parenting": ("parenting",),
     "marriage": ("marriage", "married", "husband", "wife"),
     "worship": ("worship", "worshiping", "worshipping", "praise", "praises"),
     "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
@@ -595,6 +595,18 @@ _TOPIC_CORE = {
     "humility": ("humility", "humble"),
     "evangelism": ("evangelism", "evangelize", "witness", "gospel"),
     "grief": ("grieving", "grief", "mourn", "comfort"),
+}
+_TITLE_TOPIC_BLOCKLIST = {
+    "parenting": (
+        "christmas",
+        "nativity",
+        "advent",
+        "easter",
+        "hosea",
+        "gomer",
+        "prevail for the lost",
+        "palm sunday",
+    ),
 }
 
 
@@ -1228,6 +1240,27 @@ def filter_hits_by_topic(
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    present_keys = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    blocked = set()
+    for key in present_keys:
+        blocked.update(_TITLE_TOPIC_BLOCKLIST.get(key, ()))
+    if blocked:
+        filtered = []
+        for doc, score in scored_hits:
+            title = title_search_blob(doc)
+            body = f"{title} {chunk_text(doc)[:800]}".lower()
+            if any(token in title for token in blocked) and "parenting" not in body:
+                continue
+            filtered.append((doc, score))
+        if filtered:
+            scored_hits = filtered
+            ranked = []
+            for doc, score in scored_hits:
+                overlap = topic_overlap_score(doc, tokens)
+                ranked.append((doc, score, overlap))
+            on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
     core = required_topic_core_tokens(query)
     if core:
         core_hits = [

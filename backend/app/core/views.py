@@ -524,13 +524,22 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
     if not docs:
         return False
     query = str(prepared.get("topic_query") or "")
-    has_bible_notes = any(_is_bible_source(_doc_source_name(doc)) for doc in docs)
-    return answer_missing_required_quotes(
+    sermon, bible = split_docs_for_grounding(docs)
+    has_bible_notes = bool(bible) or any(
+        _is_bible_source(_doc_source_name(doc)) for doc in docs
+    )
+    if answer_missing_required_quotes(
         answer,
         query=query,
         has_reference_notes=True,
         has_bible_notes=has_bible_notes,
-    )
+    ):
+        return True
+    from .chat_retrieval import extract_used_verse_refs
+
+    if not extract_used_verse_refs([answer or ""]) and collect_allowed_nkjv(bible):
+        return True
+    return False
 
 
 def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> str:
@@ -541,6 +550,13 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     if report.ok and not force:
         return ""
     quotes, nkjv = _grounding_snippets(prepared)
+    from .chat_retrieval import extract_used_verse_refs
+    from .speaker_attribution import pastor_attributed_quotes
+
+    if pastor_attributed_quotes(answer or ""):
+        quotes = []
+    if extract_used_verse_refs([answer or ""]):
+        nkjv = []
     if not quotes and not nkjv:
         return ""
     logger.warning("RAG check still failing; weaving on-topic Pastor Don excerpts into the reply")

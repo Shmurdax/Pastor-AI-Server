@@ -774,8 +774,13 @@ class ChatRetrievalTests(unittest.TestCase):
             source="prayers-lost.pdf",
             title="Prayers That Prevail for the Lost",
         )
+        christmas = _doc(
+            "He was the son, so it was thought, of Joseph, and Mary was his mother in the legal family line.",
+            source="christmas.pdf",
+            title="Christmas the Greatest Story Ever Told",
+        )
         kept = filter_hits_by_topic(
-            [(hosea_prayer, 0.94), (parenting, 0.81)],
+            [(hosea_prayer, 0.94), (christmas, 0.90), (parenting, 0.81)],
             query,
             retrieval_k=6,
         )

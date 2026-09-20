@@ -497,6 +497,16 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('says, "Nevertheless', cleaned)
         self.assertNotIn("teaches that ,", cleaned)
 
+    def test_certainly_here_are_opener_is_stripped(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            "Certainly! Here are some key points from the sermon notes on marriage:. "
+            'Pastor Don Nordin teaches, "Marriage is a developmental process."'
+        )
+        self.assertNotIn("Certainly", cleaned)
+        self.assertIn("Marriage is a developmental process", cleaned)
+
 
 if __name__ == "__main__":
     unittest.main()

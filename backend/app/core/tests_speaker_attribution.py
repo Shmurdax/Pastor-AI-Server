@@ -370,6 +370,15 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertNotRegex(fixed, r'(?i)pastor don.{0,40}"For this reason a man shall leave')
         self.assertIn("Genesis 2:24", fixed)
 
+    def test_proverbs_soft_answer_is_not_pastor_don(self):
+        text = (
+            'Pastor Don and Susan Nordin also teach, "A gentle answer turns away wrath, '
+            'but a harsh word stirs up anger."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotRegex(fixed, r'(?i)pastor don.{0,50}"A gentle answer')
+        self.assertIn("Proverbs 15:1", fixed)
+
     def test_hosea_command_is_not_pastor_don(self):
         text = (
             'Pastor Don Nordin teaches, "Go and marry a prostitute, so some of her '
