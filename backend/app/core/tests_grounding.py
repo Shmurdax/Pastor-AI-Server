@@ -829,6 +829,33 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("keep his virgin", cleaned)
         self.assertTrue(nkjv_matches_query(cleaned, query))
 
+    def test_bare_leviticus_cite_is_not_quoted_nkjv_and_gets_filled(self):
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query
+
+        query = "Create sermon notes on giving and stewardship."
+        bare = (
+            "Stewardship is about ownership. In Leviticus 27:30-34, we see clear "
+            "directives regarding tithes and offerings. These commands underscore tithing."
+        )
+        self.assertFalse(nkjv_matches_query(bare, query))
+        pairs = [
+            (
+                "Leviticus 27:30",
+                "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the Lord's.",
+            ),
+            (
+                "Malachi 3:10",
+                "Bring all the tithes into the storehouse, that there may be food in My house.",
+            ),
+        ]
+        filled = ensure_topical_nkjv(bare, query, pairs)
+        self.assertIn("(NKJV) says,", filled)
+        self.assertTrue(nkjv_matches_query(filled, query))
+        self.assertTrue(
+            "tithe of the land" in filled or "tithes into the storehouse" in filled,
+            filled,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

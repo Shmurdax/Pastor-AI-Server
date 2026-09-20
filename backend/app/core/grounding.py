@@ -822,7 +822,9 @@ def topic_hint_ref_keys(query: str) -> set[str]:
 
 def nkjv_matches_query(answer: str, query: str) -> bool:
     """True when a quoted NKJV verse actually speaks to the current question."""
-    if not (answer or "").strip():
+    from .chat_retrieval import has_quoted_nkjv
+
+    if not has_quoted_nkjv(answer or ""):
         return False
     hint_keys = topic_hint_ref_keys(query)
     required = {token for token in required_topic_synonyms(query) if len(token) > 2}
@@ -837,12 +839,7 @@ def nkjv_matches_query(answer: str, query: str) -> bool:
         folded = set(normalize_grounding_text(wording).split())
         if required and folded & required:
             return True
-    if hint_keys:
-        cited = {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(answer or "")}
-        return bool(cited & hint_keys)
-    from .chat_retrieval import has_quoted_nkjv
-
-    return has_quoted_nkjv(answer or "")
+    return False
 
 
 def ensure_topical_nkjv(
