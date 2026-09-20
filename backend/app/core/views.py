@@ -625,7 +625,12 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
-        return answer
+        answer = ensure_topical_nkjv(
+            repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible)),
+            str(prepared.get("topic_query") or ""),
+            collect_allowed_nkjv(bible),
+        )
+        return _speaker_repaired(prepared, compact_teaching_answer(answer))
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:

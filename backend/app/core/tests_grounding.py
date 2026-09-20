@@ -238,6 +238,7 @@ class GroundingTests(unittest.TestCase):
 
         source = inspect.getsource(lookup_nkjv_verses)
         self.assertIn('key="verse_start"', source)
+        self.assertIn("NKJV chapter lookup failed", source)
 
     def test_grounding_repair_steer_lists_allowed_lines(self):
         from core.grounding import GroundingReport, grounding_repair_steer

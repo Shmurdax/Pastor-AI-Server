@@ -1012,6 +1012,50 @@ def lookup_nkjv_verses(
             matched += 1
             if matched >= limit_per_ref:
                 break
+        if matched:
+            continue
+        try:
+            chapter_points, _offset = client.scroll(
+                collection_name=collection_name,
+                scroll_filter=qdrant_models.Filter(
+                    must=[
+                        qdrant_models.FieldCondition(
+                            key="chunk_kind",
+                            match=qdrant_models.MatchValue(value="bible_verse"),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="book",
+                            match=qdrant_models.MatchValue(value=book),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="chapter",
+                            match=qdrant_models.MatchValue(value=int(chapter)),
+                        ),
+                    ]
+                ),
+                limit=24,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception:
+            logger.debug("NKJV chapter lookup failed for %s %s", book, chapter, exc_info=True)
+            chapter_points = []
+        covering = []
+        for point in chapter_points or []:
+            payload = _payload_of(point)
+            start = int(payload.get("verse_start") or 0)
+            end = int(payload.get("verse_end") or start)
+            if not start or not (start <= verse <= max(start, end)):
+                continue
+            covering.append((abs(start - verse), start, payload))
+        covering.sort(key=lambda item: (item[0], item[1]))
+        for _dist, _start, payload in covering[:limit_per_ref]:
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            metadata = dict(payload.get("metadata") or {})
+            metadata.update({k: v for k, v in payload.items() if k != "metadata"})
+            add_doc(factory(text, metadata))
     return found
 
 
