@@ -77,6 +77,7 @@ from .grounding import (
     nkjv_corpus,
     nkjv_matches_query,
     pastor_quotes_match_query,
+    topical_nkjv_fallback_pairs,
     repair_speaker_attributions,
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
@@ -516,10 +517,14 @@ def _rag_check_report(prepared, answer: str):
     return report, sermon, bible
 
 
+def _prepared_query(prepared) -> str:
+    return str(prepared.get("topic_query") or prepared.get("user_query") or "").strip()
+
+
 def _grounding_snippets(prepared):
     docs = prepared.get("docs") or []
     sermon, bible = split_docs_for_grounding(docs)
-    query = str(prepared.get("topic_query") or "")
+    query = _prepared_query(prepared)
     bible_text = nkjv_corpus(bible)
     quotes = select_query_grounded_quotes(
         collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text, query=query),
@@ -527,6 +532,8 @@ def _grounding_snippets(prepared):
         allow_topic_pool_fallback=True,
     )
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
+    if not nkjv:
+        nkjv = topical_nkjv_fallback_pairs(query)
     return quotes[:2], nkjv[:1]
 
 
@@ -555,7 +562,7 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
     docs = prepared.get("docs") or []
     if not docs:
         return False
-    query = str(prepared.get("topic_query") or "")
+    query = _prepared_query(prepared)
     sermon, bible = split_docs_for_grounding(docs)
     has_bible_notes = bool(bible) or any(
         _is_bible_source(_doc_source_name(doc)) for doc in docs
@@ -595,7 +602,7 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     quotes, nkjv = _grounding_snippets(prepared)
     from .chat_retrieval import has_quoted_nkjv
 
-    query = str(prepared.get("topic_query") or "")
+    query = _prepared_query(prepared)
     if pastor_quotes_match_query(answer or "", query):
         quotes = []
     if has_quoted_nkjv(answer or "") and nkjv_matches_query(answer or "", query):
@@ -613,24 +620,63 @@ def _speaker_repaired(prepared, answer: str) -> str:
     return repair_speaker_attributions(answer or "", nkjv_docs=bible)
 
 
+def _quoted_nkjv_sentence(ref: str, wording: str) -> str:
+    clipped = " ".join(str(wording or "").split())
+    if len(clipped) > 240:
+        clipped = clipped[:237].rsplit(" ", 1)[0] + "..."
+    return f'{ref} (NKJV) says, "{clipped}"'
+
+
+def _ensure_quoted_nkjv(prepared, answer: str) -> str:
+    """Last step: a teaching reply with notes must quote NKJV for this question."""
+    from .chat_retrieval import has_quoted_nkjv
+
+    text = answer or ""
+    query = _prepared_query(prepared)
+    docs = prepared.get("docs") or []
+    _sermon, bible = split_docs_for_grounding(docs)
+    pairs = collect_allowed_nkjv(bible)
+    for candidate in (query, str(prepared.get("user_query") or "")):
+        candidate = str(candidate or "").strip()
+        if not candidate:
+            continue
+        text = ensure_topical_nkjv(text, candidate, pairs)
+        if has_quoted_nkjv(text) and nkjv_matches_query(text, candidate):
+            return text
+    if has_quoted_nkjv(text):
+        return text
+    fallback = topical_nkjv_fallback_pairs(query) or topical_nkjv_fallback_pairs(
+        str(prepared.get("user_query") or "")
+    ) or pairs
+    if fallback:
+        ref, wording = fallback[0]
+        snippet = _quoted_nkjv_sentence(ref, wording)
+        if snippet not in text:
+            text = f"{text.rstrip()}\n\n{snippet}"
+    return text
+
+
 def _finalize_teaching_answer(prepared, answer: str) -> str:
     """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     sermon, bible = split_docs_for_grounding(docs)
+    query = _prepared_query(prepared)
     answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
     answer = _speaker_repaired(prepared, answer)
     if not docs:
-        return answer
+        return _ensure_quoted_nkjv(prepared, answer)
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
         answer = ensure_topical_nkjv(
             repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible)),
-            str(prepared.get("topic_query") or ""),
+            query,
             collect_allowed_nkjv(bible),
         )
-        return _speaker_repaired(prepared, compact_teaching_answer(answer))
+        return _speaker_repaired(
+            prepared, compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer))
+        )
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:
@@ -651,9 +697,10 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
     answer = ensure_topical_nkjv(
         answer,
-        str(prepared.get("topic_query") or ""),
+        query,
         collect_allowed_nkjv(bible),
     )
+    answer = _ensure_quoted_nkjv(prepared, answer)
     return _speaker_repaired(prepared, compact_teaching_answer(answer))
 
 
@@ -1334,6 +1381,7 @@ class ChatAPIView(APIView):
                 "target_message": target_message,
                 "teaching_claims": teaching_claims,
                 "topic_query": topic_query,
+                "user_query": user_query_llm,
             }
 
         def _response_sources(docs, answer: str, query: str = ""):
