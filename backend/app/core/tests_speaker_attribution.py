@@ -501,6 +501,20 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertIn("Hebrews 13:4", fixed)
         self.assertIn("Psalm 22:3", fixed)
 
+    def test_truncated_hebrews_134_ellipsis_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "Marriage is honorable, and the bed undefiled...." '
+            "Ephesians 5:25-28 (NKJV) says, "
+            '"Husbands, love your wives, just as Christ also loved the church."'
+        )
+        self.assertTrue(looks_like_scripture_wording("Marriage is honorable, and the bed undefiled...."))
+        self.assertEqual(known_verse_ref("Marriage is honorable, and the bed undefiled...."), "Hebrews 13:4")
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("bed undefiled" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Hebrews 13:4", fixed)
+        self.assertNotIn("Pastor Don Nordin teaches, \"Marriage is honorable, and the bed undefiled", fixed)
+
     def test_romans_58_and_death_and_taxes_are_not_pastor_don(self):
         text = (
             'Pastor Don Nordin teaches, "There are only two things you can be sure of, death and taxes." '

@@ -172,6 +172,8 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("knew his wife", "Genesis 4:1"),
     ("marriage is honorable in all, and the bed undefiled", "Hebrews 13:4"),
     ("marriage is honorable among all, and the bed undefiled", "Hebrews 13:4"),
+    ("marriage is honorable, and the bed undefiled", "Hebrews 13:4"),
+    ("and the bed undefiled", "Hebrews 13:4"),
     ("god is enthroned in the praises of his people", "Psalm 22:3"),
     ("enthroned in the praises of his people", "Psalm 22:3"),
     ("enthroned in the praises of israel", "Psalm 22:3"),
