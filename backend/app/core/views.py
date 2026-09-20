@@ -520,6 +520,7 @@ def _grounding_snippets(prepared):
     quotes = select_query_grounded_quotes(
         collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text),
         query,
+        allow_topic_pool_fallback=True,
     )
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
     return quotes[:2], nkjv[:1]

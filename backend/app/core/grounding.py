@@ -128,13 +128,18 @@ def snippet_query_score(text: str, query: str) -> float:
 
 
 def select_query_grounded_quotes(
-    quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12
+    quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12,
+    allow_topic_pool_fallback: bool = False,
 ) -> list[str]:
     ranked = sorted(
         (
             item.strip()
             for item in quotes
-            if item and str(item).strip() and not looks_like_heading_quote(item)
+            if item
+            and str(item).strip()
+            and not looks_like_heading_quote(item)
+            and not looks_like_nonteaching_excerpt(item)
+            and not looks_like_scripture_wording(item)
         ),
         key=lambda item: snippet_query_score(item, query),
         reverse=True,
@@ -142,6 +147,8 @@ def select_query_grounded_quotes(
     picked = [item for item in ranked if snippet_query_score(item, query) >= min_score]
     if not picked:
         picked = [item for item in ranked if snippet_query_score(item, query) > 0]
+    if not picked and allow_topic_pool_fallback:
+        picked = ranked[:limit]
     return picked[:limit]
 
 
@@ -461,6 +468,12 @@ _META_OPENER_RE = re.compile(
     r"(?is)^\s*(?:certainly|sure)[!.,]?\s+"
     r"here(?:'s| is)\s+.{0,160}?based on the provided (?:scripture and )?notes[:.]?\s*"
 )
+_PROVIDED_MATERIAL_OPENER_RE = re.compile(
+    r"(?is)^\s*(?:To create |Creating )?(?:sermon )?notes on .{0,80}?"
+    r"based on the (?:provided )?(?:reference )?(?:material|notes)\b.{0,240}?"
+    r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:\s*"
+    r"|^\s*.{0,220}?based on the (?:provided )?(?:reference )?(?:material|notes)[,:]?\s*"
+)
 _SLIDE_NOTE_RE = re.compile(
     r"(?is)\s*(?:\((?:LEAVE ON SCREEN|UNTIL END OF SERVICE)[^)]*\)|"
     r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
@@ -613,6 +626,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _RETRIEVAL_DISCLAIMER_RE.sub("", text)
     text = _TITLE_WEAVE_RE.sub("", text)
     text = _META_OPENER_RE.sub("", text)
+    text = _PROVIDED_MATERIAL_OPENER_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = _SLIDE_NOTE_RE.sub("", text)
     text = _GLUED_BOOK_RE.sub(r"\1", text)

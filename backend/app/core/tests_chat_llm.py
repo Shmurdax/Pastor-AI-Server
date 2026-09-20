@@ -315,6 +315,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("repair_empty_nkjv_citations", source)
         self.assertIn("_missing_required_quotes", source)
         self.assertIn("pastor_quotes_match_query", source)
+        self.assertIn("allow_topic_pool_fallback=True", source)
         self.assertNotIn("appending on-topic retrieved excerpts", source)
         self.assertNotIn("then append notes if needed", source)
         self.assertIn("skip_rewrite_repair", source)

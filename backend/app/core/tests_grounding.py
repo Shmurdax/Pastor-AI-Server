@@ -488,6 +488,17 @@ class GroundingTests(unittest.TestCase):
             "Create sermon notes on marriage.",
         )
         self.assertEqual(quotes, [])
+        self.assertEqual(
+            select_query_grounded_quotes(
+                [
+                    "There are only two things you can be sure of, death and taxes.",
+                    "Comfort the child and stay in the kitchen with them.",
+                ],
+                "Create sermon notes on marriage.",
+                allow_topic_pool_fallback=True,
+            ),
+            ["Comfort the child and stay in the kitchen with them."],
+        )
         self.assertFalse(
             pastor_quotes_match_query(
                 'Pastor Don Nordin teaches, "There are only two things you can be sure of, death and taxes."',
@@ -555,6 +566,18 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertNotIn("Certainly", cleaned)
         self.assertIn("Marriage is a developmental process", cleaned)
+
+    def test_provided_reference_material_opener_is_stripped(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            "To create sermon notes on marriage based on the provided reference material, "
+            "we can focus on the key points regarding personhood. Here’s a summary:. "
+            '1 Corinthians 7:37-40 (NKJV) says, "Nevertheless he who stands steadfast in his heart."'
+        )
+        self.assertNotIn("provided reference material", cleaned.lower())
+        self.assertNotIn("here’s a summary", cleaned.lower())
+        self.assertIn("1 Corinthians 7:37-40", cleaned)
 
     def test_in_luke_we_see_is_filled_with_nkjv_wording(self):
         from core.grounding import repair_empty_nkjv_citations
