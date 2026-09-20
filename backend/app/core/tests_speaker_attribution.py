@@ -104,6 +104,8 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "John 3:17",
             'Pastor Don teaches, "The righteous shall flourish like the palm tree: he shall grow like a cedar in Lebanon. 13Those that be planted in the house of the Lord."':
                 "Psalm 92:12",
+            'Pastor Don teaches, "By faith we understand that the entire universe was formed at God’s command, that what we now see did not come from anything that can be seen."':
+                "Hebrews 11:3",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)

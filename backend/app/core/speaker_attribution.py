@@ -84,6 +84,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("thy righteousness also, o god", "Psalm 71:19"),
     ("who is like unto thee", "Psalm 71:19"),
     ("i will go in the strength of the lord god", "Psalm 71:16"),
+    ("by faith we understand that the entire universe was formed", "Hebrews 11:3"),
+    ("worlds were framed by the word of god", "Hebrews 11:3"),
+    ("what we now see did not come from anything that can be seen", "Hebrews 11:3"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -238,6 +241,7 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Psalm 92:12",
         "Psalm 71:16",
         "Psalm 71:19",
+        "Hebrews 11:3",
     }
 )
 
