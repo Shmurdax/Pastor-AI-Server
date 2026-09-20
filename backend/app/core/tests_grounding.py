@@ -515,7 +515,7 @@ class GroundingTests(unittest.TestCase):
                 "Create sermon notes on marriage.",
                 allow_topic_pool_fallback=True,
             ),
-            ["Comfort the child and stay in the kitchen with them."],
+            [],
         )
         self.assertFalse(
             pastor_quotes_match_query(
@@ -679,6 +679,75 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertEqual(filled, text)
         self.assertIn("teaches that of persistent", filled)
+
+    def test_i_you_slide_labels_are_not_collected_or_woven(self):
+        from core.grounding import select_query_grounded_quotes
+        from core.speaker_attribution import is_pastor_own_voice, rewrite_misattributed_quotes
+
+        docs = [
+            _doc(
+                "I messages rather than you.\n"
+                "You make me feel.\n"
+                "Marriage is a developmental process, not an event. "
+                "Couples must treat marriage as a living relationship that takes daily care.",
+                source="home.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        quotes = collect_allowed_sermon_quotes(docs)
+        self.assertTrue(any("developmental process" in item for item in quotes), quotes)
+        self.assertFalse(any("You make me feel" in item for item in quotes), quotes)
+        self.assertFalse(any("messages rather than" in item.lower() and len(item) < 60 for item in quotes), quotes)
+        self.assertFalse(is_pastor_own_voice("You make me feel"))
+        self.assertFalse(is_pastor_own_voice('I” messages rather than “you'))
+        self.assertTrue(
+            is_pastor_own_voice(
+                "Use I messages rather than you messages when you speak to your spouse."
+            )
+        )
+        picked = select_query_grounded_quotes(
+            quotes + ["You make me feel", 'I messages rather than you'],
+            "Create sermon notes on marriage.",
+            allow_topic_pool_fallback=True,
+        )
+        self.assertTrue(any("developmental" in item for item in picked), picked)
+        self.assertFalse(any("You make me feel" in item for item in picked), picked)
+        snippet = grounded_fallback_answer(picked, [])
+        self.assertNotIn("You make me feel", snippet)
+        live = (
+            'Pastor Don Nordin teaches, "I” messages rather than “you" Pastor Don and Susan '
+            'Nordin also teach, "You make me feel" 1 Corinthians 7:37 (NKJV) says, '
+            '"Nevertheless he who stands steadfast in his heart."'
+        )
+        cleaned = rewrite_misattributed_quotes(weave_into_answer(live, snippet))
+        self.assertNotIn("You make me feel", cleaned)
+        self.assertIn("developmental process", cleaned)
+
+    def test_ensure_topical_nkjv_replaces_celibacy_verse_for_marriage(self):
+        from core.grounding import ensure_topical_nkjv, nkjv_matches_query
+
+        query = "Create sermon notes on marriage."
+        off_topic = (
+            '1 Corinthians 7:37-40 (NKJV) says, "Nevertheless he who stands steadfast '
+            'in his heart, having no necessity, but has power over his own will, and has '
+            'so determined in his heart that he will keep his virgin, does well."'
+        )
+        self.assertFalse(nkjv_matches_query(off_topic, query))
+        pairs = [
+            (
+                "Genesis 2:24",
+                "Therefore a man shall leave his father and mother and be joined to his wife, and they shall become one flesh.",
+            ),
+            (
+                "1 Corinthians 7:37",
+                "Nevertheless he who stands steadfast in his heart.",
+            ),
+        ]
+        cleaned = ensure_topical_nkjv(off_topic, query, pairs)
+        self.assertIn("Genesis 2:24", cleaned)
+        self.assertIn("joined to his wife", cleaned)
+        self.assertNotIn("keep his virgin", cleaned)
+        self.assertTrue(nkjv_matches_query(cleaned, query))
 
 
 if __name__ == "__main__":

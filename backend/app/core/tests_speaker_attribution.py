@@ -569,6 +569,17 @@ class SpeakerAttributionTests(unittest.TestCase):
         cleaned = rewrite_misattributed_quotes(live)
         self.assertNotIn("You make me feel", cleaned)
         self.assertFalse(pastor_attributed_quotes(cleaned))
+        self.assertFalse(
+            is_pastor_own_voice("You make me feel")
+        )
+        self.assertFalse(
+            is_pastor_own_voice('I” messages rather than “you')
+        )
+        self.assertTrue(
+            is_pastor_own_voice(
+                "Use I messages rather than you messages when you speak to your spouse."
+            )
+        )
 
 
 if __name__ == "__main__":

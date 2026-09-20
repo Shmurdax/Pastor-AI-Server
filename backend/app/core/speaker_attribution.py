@@ -258,6 +258,14 @@ _GENERIC_PROVERB_RE = re.compile(
     r"|pain of discipline or the pain of regret"
 )
 _SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
+_COUNSELING_SLIDE_RE = re.compile(
+    r'(?is)^\s*["“]?\s*I["”]?\s*messages rather than\s*["“]?\s*you["”]?'
+    r'(?:\s*messages)?["”]?\s*[.]?\s*$'
+    r'|^\s*["“]?\s*You make me feel["”]?\s*[.]?\s*$'
+)
+_MANGLED_I_YOU_LABEL_RE = re.compile(
+    r'(?is)I["”]?\s*messages rather than.{0,80}You make me feel'
+)
 _BROKEN_START_RE = re.compile(
     r"^(?:"
     r"[a-z]{1,3}[;:,]"
@@ -422,6 +430,10 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
     if _SLIDE_CHECKBOX_RE.search(sample):
         return True
     if looks_like_broken_excerpt(sample):
+        return True
+    if _COUNSELING_SLIDE_RE.search(sample) or _MANGLED_I_YOU_LABEL_RE.search(sample):
+        return True
+    if re.search(r'(?i)\bI["”]?\s*messages rather than\b', sample) and len(sample) < 60:
         return True
     if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
         return True

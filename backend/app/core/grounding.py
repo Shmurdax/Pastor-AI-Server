@@ -148,7 +148,19 @@ def select_query_grounded_quotes(
     if not picked:
         picked = [item for item in ranked if snippet_query_score(item, query) > 0]
     if not picked and allow_topic_pool_fallback:
-        picked = ranked[:limit]
+        required = {
+            token
+            for token in required_topic_synonyms(query)
+            if len(token) > 2
+        }
+        if required:
+            picked = [
+                item
+                for item in ranked
+                if any(token in normalize_grounding_text(item).split() for token in required)
+            ][:limit]
+        else:
+            picked = ranked[:limit]
     return picked[:limit]
 
 
@@ -740,6 +752,101 @@ _TOPIC_VERSE_HINTS = {
     "evangelism": "Matthew 28:19 Acts 1:8",
     "rest": "Matthew 11:28 Hebrews 4:9",
 }
+_NKJV_QUOTE_AFTER_CITE_RE = re.compile(
+    r'(?is)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)'
+    r'\s*\(\s*NKJV\s*\)'
+    r'.{0,80}?["“]([^"”]{8,800})["”]'
+)
+_NKJV_BLOCK_RE = re.compile(
+    r'(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?'
+    r'\s*\(\s*NKJV\s*\)'
+    r'(?:\s*,?\s*(?:it\s+)?(?:says|states|teaches that|reminds us|promises|instructs|'
+    r'encourages us|assures us|outlines|warns(?:\s+against)?|highlights|emphasizes|'
+    r'we see|is a (?:powerful )?reminder)[,:]?\s*)?'
+    r'(?:["“][^"”]{8,800}["”])?'
+)
+
+
+def _ref_key(book: str, chapter: int, verse: int) -> str:
+    return f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+
+
+def topic_hint_ref_keys(query: str) -> set[str]:
+    from .chat_retrieval import _TOPIC_SYNONYMS, _query_has_synonym
+
+    keys: set[str] = set()
+    for topic, hint in _TOPIC_VERSE_HINTS.items():
+        synonyms = _TOPIC_SYNONYMS.get(topic)
+        if synonyms and _query_has_synonym(query or "", synonyms):
+            for book, chapter, verse in parse_verse_refs(hint):
+                keys.add(_ref_key(book, chapter, verse))
+    return keys
+
+
+def nkjv_matches_query(answer: str, query: str) -> bool:
+    """True when a quoted NKJV verse actually speaks to the current question."""
+    if not (answer or "").strip():
+        return False
+    hint_keys = topic_hint_ref_keys(query)
+    required = {token for token in required_topic_synonyms(query) if len(token) > 2}
+    for match in _NKJV_QUOTE_AFTER_CITE_RE.finditer(answer or ""):
+        ref = match.group(1)
+        wording = match.group(2)
+        ref_keys = {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(ref)}
+        if hint_keys and ref_keys & hint_keys:
+            return True
+        if snippet_query_score(f"{ref} {wording}", query) > 0:
+            return True
+        folded = set(normalize_grounding_text(wording).split())
+        if required and folded & required:
+            return True
+    if hint_keys:
+        cited = {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(answer or "")}
+        return bool(cited & hint_keys)
+    from .chat_retrieval import has_quoted_nkjv
+
+    return has_quoted_nkjv(answer or "")
+
+
+def ensure_topical_nkjv(
+    answer: str,
+    query: str,
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Swap an off-topic NKJV cite for a verse that actually addresses the question."""
+    text = answer or ""
+    if not text or parse_verse_refs(query or ""):
+        return text
+    hint_keys = topic_hint_ref_keys(query)
+    if not hint_keys:
+        return text
+    pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
+    topical = [
+        (ref, wording)
+        for ref, wording in pairs
+        if {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(ref)} & hint_keys
+    ]
+    if not topical:
+        topical = select_query_grounded_nkjv(pairs, query, limit=1)
+    if not topical:
+        return text
+    ref, wording = topical[0]
+    replacement = f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
+    has_topical = nkjv_matches_query(text, query)
+    for match in _NKJV_BLOCK_RE.finditer(text):
+        cited_keys = {
+            _ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(match.group(0)[:80])
+        }
+        if cited_keys & hint_keys:
+            continue
+        if has_topical:
+            return (text[: match.start()] + text[match.end() :]).strip()
+        return (text[: match.start()] + replacement + text[match.end() :]).strip()
+    if not has_topical:
+        return weave_into_answer(text, replacement)
+    return text
+
+
 _NLT_CITE_RE = re.compile(
     r"(?i)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
     r"\s*\(\s*NLT\s*\)\s*[:,]?\s*(?:says\s*,\s*)?[\"“][^\"”]{0,400}[\"”]?"

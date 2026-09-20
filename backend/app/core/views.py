@@ -70,10 +70,12 @@ from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
+    ensure_topical_nkjv,
     grounded_fallback_answer,
     grounding_repair_steer,
     lookup_nkjv_verses,
     nkjv_corpus,
+    nkjv_matches_query,
     pastor_quotes_match_query,
     repair_speaker_attributions,
     select_query_grounded_nkjv,
@@ -567,6 +569,8 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
 
     if not has_quoted_nkjv(answer or "") and collect_allowed_nkjv(bible):
         return True
+    if collect_allowed_nkjv(bible) and not nkjv_matches_query(answer or "", query):
+        return True
     if not pastor_quotes_match_query(answer or "", query):
         retrieved = select_query_grounded_quotes(
             collect_allowed_sermon_quotes(sermon, bible_corpus=nkjv_corpus(bible)),
@@ -590,7 +594,7 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     query = str(prepared.get("topic_query") or "")
     if pastor_quotes_match_query(answer or "", query):
         quotes = []
-    if has_quoted_nkjv(answer or ""):
+    if has_quoted_nkjv(answer or "") and nkjv_matches_query(answer or "", query):
         nkjv = []
     if not quotes and not nkjv:
         return ""
@@ -635,7 +639,13 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         fallback = _rag_grounding_fallback(prepared, answer, force=True)
         if fallback and fallback not in (answer or ""):
             answer = weave_into_answer(answer, fallback)
-    return answer
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
+    answer = ensure_topical_nkjv(
+        answer,
+        str(prepared.get("topic_query") or ""),
+        collect_allowed_nkjv(bible),
+    )
+    return _speaker_repaired(prepared, compact_teaching_answer(answer))
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
