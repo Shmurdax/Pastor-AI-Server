@@ -646,10 +646,10 @@ def repair_empty_nkjv_citations(
         ref = match.group(1)
         tail = text[match.end() :]
         rest_line = tail.split("\n", 1)[0]
-        quote_m = re.search(r'[\"“]', rest_line)
+        quote_m = re.search(r'[\"“]', rest_line[:80])
         next_cite = re.search(
             r"(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+",
-            rest_line,
+            rest_line[:80],
         )
         if quote_m and (not next_cite or quote_m.start() < next_cite.start()):
             continue
@@ -907,17 +907,20 @@ def ensure_topical_nkjv(
         return text
     ref, wording = topical[0]
     replacement = f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
+    from .chat_retrieval import has_quoted_nkjv
+
+    has_quoted = has_quoted_nkjv(text)
     has_topical = nkjv_matches_query(text, query)
     for match in _NKJV_BLOCK_RE.finditer(text):
         cited_keys = {
             _ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(match.group(0)[:80])
         }
-        if cited_keys & hint_keys:
+        if cited_keys & hint_keys and has_quoted:
             continue
-        if has_topical:
+        if has_topical and has_quoted:
             return (text[: match.start()] + text[match.end() :]).strip()
         return (text[: match.start()] + replacement + text[match.end() :]).strip()
-    if not has_topical:
+    if not has_quoted or not has_topical:
         return weave_into_answer(text, replacement)
     return text
 

@@ -861,6 +861,29 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("(NKJV) says,", from_fallback)
         self.assertTrue(nkjv_matches_query(from_fallback, query))
 
+    def test_nkjv_says_without_opening_quote_is_repaired(self):
+        from core.chat_retrieval import has_quoted_nkjv
+        from core.grounding import ensure_topical_nkjv, repair_empty_nkjv_citations
+
+        query = "Create sermon notes on prayer."
+        text = (
+            'Pastor Don Nordin teaches, "Praying for the lost requires persistence." '
+            "Matthew 6:5-8 (NKJV) says, And when you pray, you shall not be like the hypocrites. "
+            "For they love to pray standing in the synagogues. they have their reward.\""
+        )
+        self.assertFalse(has_quoted_nkjv(text))
+        repaired = repair_empty_nkjv_citations(
+            text,
+            [
+                (
+                    "Matthew 6:6",
+                    "But you, when you pray, go into your room, and when you have shut your door, pray to your Father who is in the secret place.",
+                )
+            ],
+        )
+        topical = ensure_topical_nkjv(text, query, [])
+        self.assertTrue(has_quoted_nkjv(repaired) or has_quoted_nkjv(topical), repaired + "\n---\n" + topical)
+
 
 if __name__ == "__main__":
     unittest.main()
