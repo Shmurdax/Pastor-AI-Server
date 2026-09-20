@@ -493,8 +493,9 @@ _EMPTY_STATES_RE = re.compile(
 _EMPTY_NKJV_CITE_RE = re.compile(
     r"(?i)(?:in\s+)?"
     r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
-    r"\s*\(\s*NKJV\s*\)\s*,?\s*"
+    r"\s*\(\s*NKJV\s*\)\s*[,:]?\s*"
     r"(?:it\s+)?"
+    r"(?:This (?:verse|passage)\s+)?"
     r"(?:states|says|reminds(?:\s+\w+)?|promises|instructs|encourages(?:\s+\w+)?|"
     r"assures(?:\s+\w+)?|reassures(?:\s+\w+)?|outlines|warns(?:\s+against)?|"
     r"teaches\s+that|highlights(?:\s+\w+(?:\s+\w+)?)?|"
@@ -573,6 +574,14 @@ def repair_empty_nkjv_citations(
     if not text:
         return text
     pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
+    text = _NLT_CITE_RE.sub(
+        lambda match: (
+            f'{match.group(1)} (NKJV) says, "{_wording_for_nkjv_ref(match.group(1), pairs)}"'
+            if _wording_for_nkjv_ref(match.group(1), pairs)
+            else f"{match.group(1)} (NKJV) teaches that "
+        ),
+        text,
+    )
     pieces: list[str] = []
     cursor = 0
     for match in _EMPTY_NKJV_CITE_RE.finditer(text):
@@ -581,7 +590,12 @@ def repair_empty_nkjv_citations(
         ref = match.group(1)
         tail = text[match.end() :]
         rest_line = tail.split("\n", 1)[0]
-        if re.search(r'[\"“]', rest_line):
+        quote_m = re.search(r'[\"“]', rest_line)
+        next_cite = re.search(
+            r"(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+",
+            rest_line,
+        )
+        if quote_m and (not next_cite or quote_m.start() < next_cite.start()):
             continue
         this_m = _THIS_VERSE_PREFIX_RE.match(tail)
         wording = _wording_for_nkjv_ref(ref, pairs)
@@ -597,9 +611,17 @@ def repair_empty_nkjv_citations(
                 pieces.append(bit + " ")
                 cursor = match.end()
             else:
-                skip = re.match(r"[ \t]*[^\n]{0,220}", tail)
+                next_cite = re.search(
+                    r"(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+",
+                    tail[:220],
+                )
+                if next_cite:
+                    skip_end = next_cite.start()
+                else:
+                    skip = re.match(r"[ \t]*[^\n]{0,220}", tail)
+                    skip_end = skip.end() if skip else 0
                 pieces.append(bit)
-                cursor = match.end() + (skip.end() if skip else 0)
+                cursor = match.end() + skip_end
             continue
         if this_m:
             pieces.append(f"{ref} (NKJV) teaches that ")
@@ -697,8 +719,33 @@ def weave_into_answer(answer: str, snippet: str) -> str:
     return f"{text.rstrip()}\n\n{extra}"
 
 
+_TOPIC_VERSE_HINTS = {
+    "worship": "Psalm 22:3 Romans 12:1 John 4:24",
+    "marriage": "Genesis 2:24 Ephesians 5:25 1 Corinthians 7:3",
+    "parenting": "Ephesians 6:4 Proverbs 22:6",
+    "prayer": "James 1:6 Matthew 6:6",
+    "giving": "Psalm 24:1 Malachi 3:10 Leviticus 27:30",
+    "temptation": "1 Corinthians 10:13 Matthew 4:1",
+    "hope": "Romans 15:13 Romans 8:28",
+    "church": "Matthew 28:19 Acts 2:42",
+    "humility": "Philippians 2:3 James 4:10",
+    "evangelism": "Matthew 28:19 Acts 1:8",
+    "rest": "Matthew 11:28 Hebrews 4:9",
+}
+_NLT_CITE_RE = re.compile(
+    r"(?i)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NLT\s*\)\s*[:,]?\s*(?:says\s*,\s*)?[\"“][^\"”]{0,400}[\"”]?"
+)
+
+
 def verse_refs_for_lookup(user_query: str, docs: Iterable[Any], *, limit: int = 8) -> list[tuple[str, int, int]]:
     blobs = [user_query or ""]
+    from .chat_retrieval import _TOPIC_SYNONYMS, _query_has_synonym
+
+    for key, hint in _TOPIC_VERSE_HINTS.items():
+        synonyms = _TOPIC_SYNONYMS.get(key)
+        if synonyms and _query_has_synonym(user_query or "", synonyms):
+            blobs.append(hint)
     for doc in docs or []:
         blobs.append(chunk_text(doc))
         blobs.append(str(_metadata(doc).get("verse_ref") or ""))

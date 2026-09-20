@@ -186,6 +186,8 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("throw off the old man", "Ephesians 4:22"),
     ("put off the old man", "Ephesians 4:22"),
     ("put off, concerning your former conduct, the old man", "Ephesians 4:22"),
+    ("every great matter they shall bring to you", "Exodus 18:22"),
+    ("every small matter they themselves shall judge", "Exodus 18:22"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -425,6 +427,8 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if re.match(r"(?i)^to get right\b", sample.strip(" \"“”'")):
         return True
+    if re.search(r"(?i)\bpastor don\b", sample):
+        return True
     stripped = sample.strip(" \"“”'")
     if re.match(r"^[A-Z]{4,}\b", stripped) and not _SENTENCE_END_RE.search(stripped):
         return True
@@ -525,6 +529,7 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Romans 5:8",
         "Psalm 103:12",
         "Ephesians 4:22",
+        "Exodus 18:22",
     }
 )
 

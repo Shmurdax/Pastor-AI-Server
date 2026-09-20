@@ -609,6 +609,28 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('Romans 12:1-2 (NKJV) says, "I beseech you therefore', filled)
         self.assertNotIn("is a powerful reminder", filled)
 
+    def test_colon_this_verse_leadin_and_nlt_are_rewritten(self):
+        from core.grounding import repair_empty_nkjv_citations, verse_refs_for_lookup
+
+        filled = repair_empty_nkjv_citations(
+            "Proverbs 22:6 (NKJV): This verse highlights the significance of early training. "
+            'Leviticus 27:30-34 (NLT): "A tenth of the produce of the land belongs to the LORD."',
+            [
+                ("Proverbs 22:6", "Train up a child in the way he should go."),
+                (
+                    "Leviticus 27:30",
+                    "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the Lord's.",
+                ),
+            ],
+        )
+        self.assertIn('Proverbs 22:6 (NKJV) says, "Train up a child', filled)
+        self.assertIn("Leviticus 27:30-34 (NKJV)", filled)
+        self.assertNotIn("NLT", filled)
+        self.assertNotIn("This verse highlights", filled)
+        refs = verse_refs_for_lookup("Create sermon notes on worship.", [])
+        joined = " ".join(f"{book} {chapter}:{verse}" for book, chapter, verse in refs)
+        self.assertTrue("22" in joined or "12" in joined or "4" in joined, refs)
+
     def test_quoted_teaches_that_on_same_line_is_kept(self):
         from core.grounding import repair_empty_nkjv_citations
 

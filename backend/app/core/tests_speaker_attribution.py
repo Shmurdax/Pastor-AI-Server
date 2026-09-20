@@ -534,6 +534,16 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_exodus_jethro_line_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "church meant “house." '
+            'Pastor Don and Susan Nordin also teach, "Then it will be that every great matter they shall bring to you, but every small matter they themselves shall judge."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("great matter" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Exodus 18:22", fixed)
+
 
 if __name__ == "__main__":
     unittest.main()

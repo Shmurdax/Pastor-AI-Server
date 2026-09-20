@@ -609,6 +609,7 @@ _TITLE_TOPIC_BLOCKLIST = {
         "trust the lord",
         "second mile",
         "living the good life",
+        "community",
     ),
 }
 # When core words like "parenting" are missing, still require both sides of the
