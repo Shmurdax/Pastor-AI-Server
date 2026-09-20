@@ -56,6 +56,8 @@ void main() {
     expect(find.textContaining("rooted in Pastor Don Nordin's"), findsNothing);
     expect(find.text('Customized, biblical AI chat experience'), findsOneWidget);
     expect(find.text('Access to daily 15-minute video devotional videos'), findsOneWidget);
+    expect(find.text('Over 40 years of study notes and preached on material'), findsOneWidget);
+    expect(find.text("the Nordin's study notes"), findsNothing);
     expect(find.text('Unlimited Chat history'), findsNothing);
     expect(find.text('Daily Bible reading assignment.'), findsNothing);
     expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
