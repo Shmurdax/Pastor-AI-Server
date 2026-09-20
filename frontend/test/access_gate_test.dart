@@ -51,6 +51,8 @@ void main() {
 
     expect(find.text("Nordin's AI"), findsOneWidget);
     expect(find.text('Get started'), findsOneWidget);
+    expect(find.textContaining("Pastor Don and Susan Nordin's"), findsOneWidget);
+    expect(find.textContaining("rooted in Pastor Don Nordin's"), findsNothing);
     expect(find.text('Sign in'), findsWidgets);
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
   });
