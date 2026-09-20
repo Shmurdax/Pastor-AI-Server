@@ -75,10 +75,19 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("i am not ashamed of the gospel", "Romans 1:16"),
     ("now is the accepted time", "2 Corinthians 6:2"),
     ("now is the day of salvation", "2 Corinthians 6:2"),
+    ("flourish like the palm tree", "Psalm 92:12"),
+    ("god did not send his son into the world to condemn", "John 3:17"),
+    ("for this melchizedek", "Hebrews 7:1"),
+    ("melchizedek, king of salem", "Hebrews 7:1"),
+    ("priest of the most high god", "Hebrews 7:1"),
+    ("jesus returned in the power of the spirit", "Luke 4:14"),
+    ("thy righteousness also, o god", "Psalm 71:19"),
+    ("who is like unto thee", "Psalm 71:19"),
+    ("i will go in the strength of the lord god", "Psalm 71:16"),
 )
 
 _VERSE_DUMP_RE = re.compile(
-    r"(?i)\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b"
+    r"(?i)\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b|\d{1,3}(?=[A-Z])"
 )
 
 _SCRIPTURE_VOICE_RE = re.compile(
@@ -220,10 +229,15 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Galatians 2:20",
         "Genesis 14:18",
         "Genesis 14:19",
+        "Hebrews 7:1",
         "Hebrews 10:36",
-        "2 Corinthians 6:2",
         "Hebrews 11:1",
+        "2 Corinthians 6:2",
         "Romans 1:16",
+        "Luke 4:14",
+        "Psalm 92:12",
+        "Psalm 71:16",
+        "Psalm 71:19",
     }
 )
 

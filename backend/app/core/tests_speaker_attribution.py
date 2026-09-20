@@ -100,6 +100,10 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "Galatians 2:20",
             'Pastor Don teaches, "It is written, My house is a house of prayer, but you have made it a den of thieves."':
                 "Luke 19:46",
+            'Pastor Don Nordin teaches, "For God did not send His Son into the world to condemn the world, but that the world through Him might be saved."':
+                "John 3:17",
+            'Pastor Don teaches, "The righteous shall flourish like the palm tree: he shall grow like a cedar in Lebanon. 13Those that be planted in the house of the Lord."':
+                "Psalm 92:12",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)
