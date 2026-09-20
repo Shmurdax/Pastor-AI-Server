@@ -488,6 +488,120 @@ def looks_like_followup(query: str) -> bool:
     return len(text.split()) <= 8
 
 
+_FOLLOWUP_ANCHOR_NOISE = frozenset(
+    {
+        "already",
+        "backup",
+        "based",
+        "clarify",
+        "clarification",
+        "discussed",
+        "expand",
+        "further",
+        "guidance",
+        "one",
+        "point",
+        "points",
+        "quote",
+        "quotes",
+        "scripture",
+        "steps",
+        "that",
+        "this",
+        "three",
+        "topic",
+        "two",
+        "week",
+    }
+)
+_TOPIC_SYNONYMS = {
+    "grief": (
+        "grief",
+        "grieving",
+        "grieve",
+        "grieved",
+        "mourn",
+        "mourning",
+        "sorrow",
+        "sorrowful",
+        "comfort",
+        "comforter",
+        "weep",
+        "weeping",
+        "wept",
+        "tears",
+        "brokenhearted",
+        "bereave",
+        "bereaved",
+        "bereavement",
+        "funeral",
+        "widow",
+        "widows",
+        "hurting",
+    ),
+    "faith": ("faith", "faithful", "believe", "believes", "believing", "unbelief"),
+    "prayer": ("prayer", "pray", "praying", "prayed", "intercession", "intercede"),
+    "marriage": ("marriage", "married", "husband", "wife", "spouses", "wedding"),
+    "family": ("family", "families", "children", "parent", "parents"),
+    "spirit": ("spirit", "ghost"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
+    "purpose": ("purpose", "calling", "destiny"),
+    "grace": ("grace", "gracious"),
+}
+_GENERIC_TOPIC_KEYS = frozenset({"prayer", "faith", "grace", "spirit", "purpose"})
+
+
+def _query_has_synonym(text: str, synonyms: Iterable[str]) -> bool:
+    blob = f"{keyword_search_query(text)} {text}".lower()
+    return any(re.search(rf"\b{re.escape(str(item).lower())}\b", blob) for item in synonyms)
+
+
+def current_carries_new_topic(current: str, prior: str = "") -> bool:
+    """True when this turn names a topic the previous question did not."""
+    current_q = (current or "").strip()
+    if not current_q:
+        return False
+    if looks_like_format_followup(current_q):
+        return False
+    if not (prior or "").strip():
+        return True
+    current_keys = {
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(current_q, synonyms)
+    }
+    prior_keys = {
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(prior, synonyms)
+    }
+    if current_keys - prior_keys:
+        return True
+    if _FOLLOWUP_RE.search(current_q) or looks_like_followup(current_q):
+        return False
+    extra = set(query_focus_tokens(current_q)) - set(query_focus_tokens(prior))
+    extra -= _FOLLOWUP_ANCHOR_NOISE
+    extra -= _GENERIC_FOCUS_STOPWORDS
+    return bool(extra)
+
+
+def required_topic_synonyms(query: str) -> frozenset[str]:
+    """Synonyms that retrieved notes must mention for this question's topic."""
+    present: list[str] = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    specific = [key for key in present if key not in _GENERIC_TOPIC_KEYS]
+    keys = specific or present
+    found: set[str] = set()
+    for key in keys:
+        found.update(_TOPIC_SYNONYMS[key])
+    return frozenset(found)
+
+
+def topic_synonym_search_query(query: str) -> str:
+    """Extra embedding query made of topical synonyms (grief → comfort/mourning)."""
+    required = required_topic_synonyms(query)
+    if not required:
+        return ""
+    return " ".join(sorted(required)[:8])
+
+
 def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]] = None) -> str:
     """Blend the opening topic and latest user turn into retrieval."""
     current_q = (current or "").strip()
@@ -496,8 +610,20 @@ def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]]
         priors = [item for item in priors if item.lower() != current_q.lower()]
     if not priors:
         return current_q
-    first_prior = priors[0]
+    from .chat_system_prompt import looks_like_opening_recall
+
+    if looks_like_opening_recall(current_q):
+        first_prior = priors[0]
+        last_prior = priors[-1]
+        parts = [first_prior]
+        if last_prior.lower() != first_prior.lower():
+            parts.append(last_prior)
+        parts.append(current_q)
+        return " ".join(parts)
     last_prior = priors[-1]
+    if current_carries_new_topic(current_q, last_prior):
+        return current_q
+    first_prior = priors[0]
     parts = [first_prior]
     if last_prior.lower() != first_prior.lower():
         parts.append(last_prior)
@@ -1029,6 +1155,15 @@ def filter_hits_by_topic(
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    required = required_topic_synonyms(query)
+    if required:
+        required_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if topic_overlap_score(doc, required) > 0
+        ]
+        if required_hits:
+            return required_hits
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
         # generic \"sermon\" clips just to fill the quota. If nothing names the
@@ -1086,9 +1221,11 @@ def expand_search_queries(
             if token.lower() not in _LIBRARY_FOCUS_STOP
         )
 
-    # Follow-ups: search the prior user topic first so "expand week one"
-    # still retrieves marriage notes instead of generic "week / point" clips.
-    if prior_focus:
+    new_topic = current_carries_new_topic(current_q, last_prior) if last_prior else True
+
+    # Vague follow-ups search the prior topic first ("expand week one").
+    # A new topical question (faith, grieving, Holy Spirit) embeds that topic first.
+    if prior_focus and not new_topic:
         add(prior_focus)
         add(f"Pastor Don Nordin {prior_focus}")
         if heading_focus:
@@ -1110,11 +1247,17 @@ def expand_search_queries(
                     aliases.append(alias)
         if aliases:
             add(" ".join(bible_names + aliases))
-    elif focus and (not prior_focus or focus.lower() != prior_focus.lower()):
-        # Embed the topical core (homosexuality, salvation, …), not
-        # "generate a sermon based on …".
+    elif focus and (new_topic or not prior_focus or focus.lower() != prior_focus.lower()):
         add(focus)
         add(f"Pastor Don Nordin {focus}")
+
+    synonym_focus = topic_synonym_search_query(current_q)
+    if synonym_focus:
+        add(synonym_focus)
+        add(f"Pastor Don Nordin {synonym_focus}")
+
+    if prior_focus and new_topic and focus and focus.lower() != prior_focus.lower():
+        add(f"{focus} {prior_focus}")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():

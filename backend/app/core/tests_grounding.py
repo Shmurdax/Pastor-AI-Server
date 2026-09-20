@@ -175,6 +175,23 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("TJeremiah", cleaned)
         self.assertIn("Jeremiah 1:5", cleaned)
 
+    def test_strip_source_bullets_and_empty_leadins(self):
+        from core.grounding import strip_retrieval_meta
+
+        dumped = (
+            'Pastor Don teaches specific prayer.\n'
+            'He explains, "\n'
+            "land.As I wait on you.\n"
+            "• Pastor Don\n"
+            "In Romans 10:17 (NKJV), it states, This means faith comes by hearing."
+        )
+        cleaned = strip_retrieval_meta(dumped)
+        self.assertNotIn("He explains", cleaned)
+        self.assertNotIn("• Pastor Don", cleaned)
+        self.assertIn("land. As I wait", cleaned)
+        self.assertIn("Romans 10:17 (NKJV) says,", cleaned)
+        self.assertNotIn("it states,", cleaned.lower())
+
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans
 

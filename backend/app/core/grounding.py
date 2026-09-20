@@ -401,6 +401,19 @@ _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
 _GLUED_BOOK_RE = re.compile(
     r"\bT(Jeremiah|Hebrews|Psalms?|Isaiah|Matthew|John|Luke|Romans|Corinthians)\b"
 )
+_SOURCE_BULLET_RE = re.compile(
+    r"(?im)^\s*[•\-\*]\s*(?:Pastor Don(?: and Susan)?(?: Nordin)?|NKJV|Scripture)\s*$"
+)
+_EMPTY_EXPLAIN_RE = re.compile(
+    r'(?im)^\s*(?:He|She|They|Pastor Don(?: and Susan)?(?: Nordin)?)\s+'
+    r'(?:explains?|teaches?|says|said|emphasizes?),?\s*["“]\s*$'
+)
+_EMPTY_ADVISES_RE = re.compile(r"(?i)\b(?:specifically,\s*)?he advises:\.\s*")
+_EMPTY_STATES_RE = re.compile(
+    r"(?i)(?:in\s+)?((?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*,?\s*it states,\s*(?=[A-Z])"
+)
+_GLUED_SENTENCE_RE = re.compile(r"([a-z])\.([A-Z])")
 
 
 def _clip_excerpt(text: str, limit: int = 280) -> str:
@@ -428,6 +441,11 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = _SLIDE_NOTE_RE.sub("", text)
     text = _GLUED_BOOK_RE.sub(r"\1", text)
+    text = _SOURCE_BULLET_RE.sub("", text)
+    text = _EMPTY_EXPLAIN_RE.sub("", text)
+    text = _EMPTY_ADVISES_RE.sub("", text)
+    text = _EMPTY_STATES_RE.sub(r"\1 (NKJV) says, ", text)
+    text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 

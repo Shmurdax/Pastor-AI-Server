@@ -152,6 +152,64 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(any("gay" in item.lower() and "pastor don" in item.lower() for item in queries))
         self.assertFalse(any("what should i say" in item.lower() for item in queries), queries)
 
+    def test_new_topic_embeds_current_question_not_prior_purpose(self):
+        queries = expand_search_queries(
+            "What does Pastor Don teach about faith?",
+            ["What is my purpose in God's plan?"],
+        )
+        self.assertTrue(queries)
+        self.assertIn("faith", queries[0].lower())
+        self.assertNotIn("purpose", queries[0].lower())
+        from core.chat_retrieval import current_carries_new_topic, topic_anchor_query
+
+        self.assertTrue(
+            current_carries_new_topic(
+                "What does Pastor Don teach about faith?",
+                "What is my purpose in God's plan?",
+            )
+        )
+        anchor = topic_anchor_query(
+            "What does Pastor Don teach about faith?",
+            ["What is my purpose in God's plan?", "Quote Pastor Don about that purpose."],
+        )
+        self.assertIn("faith", anchor.lower())
+        self.assertNotIn("purpose", anchor.lower())
+
+    def test_grieving_followup_embeds_grief_not_prior_prayer_only(self):
+        current = (
+            "How should I pray when I am grieving, based on Pastor Don's teaching "
+            "and what we already discussed?"
+        )
+        queries = expand_search_queries(
+            current,
+            ["Quote Pastor Don about prayer."],
+        )
+        joined = " | ".join(queries).lower()
+        self.assertTrue(queries)
+        self.assertTrue(
+            "griev" in queries[0].lower() or "grief" in queries[0].lower(),
+            queries,
+        )
+        self.assertIn("comfort", joined)
+        grief = _doc(
+            "Sit with the grieving and weep with those who weep, then comfort them in prayer.",
+            source="grief.pdf",
+            title="Comfort the Grieving",
+        )
+        repentance = _doc(
+            "If My people who are called by My name will humble themselves and pray "
+            "and turn from their wicked ways I will forgive their sin.",
+            source="prayer.pdf",
+            title="If My People Pray",
+        )
+        kept = filter_hits_by_topic(
+            [(repentance, 0.95), (grief, 0.80)],
+            current,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["grief.pdf"])
+
     def test_library_pull_embeds_topic_not_pull_up_a_sermon(self):
         self.assertTrue(looks_like_library_pull("Pull up a sermon in the sermon library about faith"))
         self.assertFalse(looks_like_library_pull("What does Pastor Don teach about faith?"))

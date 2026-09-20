@@ -178,6 +178,14 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "Matthew 5:28",
             'Pastor Don Nordin teaches, "Recall the former days in which, after you were illuminated, you endured a great struggle with sufferings."':
                 "Hebrews 10:32",
+            'Pastor Don Nordin teaches, "And he said to me, O Daniel, man greatly beloved, understand the words that I speak to you and stand upright, for I have now been sent to you."':
+                "Daniel 10:11",
+            'Pastor Don and Susan Nordin also teach, "Then he said to me, Do not fear, Daniel, for from the first day that you set your heart to understand and to humble yourself before your God, your words were heard."':
+                "Daniel 10:12",
+            'Additionally, he emphasizes, "If My people who are called by My name will humble themselves, and pray and seek My face, and turn from their wicked ways, then I will hear from heaven."':
+                "2 Chronicles 7:14",
+            'Pastor Don and Susan Nordin also teach, "You will do greater things because I will go to My Father and He will send Holy Spirit to abide in you."':
+                "John 14:12",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)
@@ -213,7 +221,9 @@ class SpeakerAttributionTests(unittest.TestCase):
             'Pastor Don teaches, "We cannot talk about giving without talking about stewardship." '
             'Pastor Don Nordin teaches, "An instrument used for moving the bolt of a lock thus locking or unlocking something." '
             'Pastor Don and Susan Nordin also teach, "Who Built the Moon." '
-            'Pastor Don and Susan Nordin also teach, "king of peace."'
+            'Pastor Don and Susan Nordin also teach, "king of peace." '
+            'Pastor Don Nordin teaches, "Some of the problem is that He is a person without a body because: □ We are made in the image of God." '
+            'Pastor Don teaches, "wed money in my name for people who could not get a loan."'
         )
         fixed = rewrite_misattributed_quotes(text)
         self.assertIn("stewardship", fixed)
@@ -221,6 +231,8 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertNotIn("Who Built the Moon", fixed)
         self.assertNotIn("Pastor Don and Susan Nordin also teach, \"king of peace", fixed)
         self.assertIn("Hebrews 7:2", fixed)
+        self.assertNotIn("□", fixed)
+        self.assertNotIn("wed money", fixed.lower())
 
     def test_title_excerpt_is_not_pastor_voice(self):
         self.assertFalse(is_pastor_own_voice("Who Built the Moon."))
@@ -232,6 +244,16 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertTrue(
             is_pastor_own_voice(
                 "We cannot talk about giving without talking about stewardship."
+            )
+        )
+        self.assertFalse(
+            is_pastor_own_voice(
+                "You will do greater things because I will go to My Father and He will send Holy Spirit to abide in you."
+            )
+        )
+        self.assertFalse(
+            is_pastor_own_voice(
+                "wed money in my name for people who could not get a loan."
             )
         )
 

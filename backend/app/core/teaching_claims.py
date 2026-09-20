@@ -60,6 +60,12 @@ _QUERY_TOPIC_WORDS = frozenset(
         "covenant",
         "tongues",
         "baptism",
+        "grief",
+        "grieving",
+        "mourn",
+        "mourning",
+        "sorrow",
+        "comfort",
         "giving",
     }
 )
@@ -130,6 +136,7 @@ _STOP = frozenset(
         "want", "wants", "like", "make", "makes", "come", "comes", "go", "goes",
         "know", "knows", "see", "sees", "say", "says", "get", "gets", "give",
         "gives", "take", "takes", "one", "two", "first", "second", "third",
+        "tell", "tells", "told", "ask", "asks", "asked", "asking",
         "point", "points", "week", "topic", "topics", "note", "notes",
         "verse", "verses", "word", "words", "amen", "hallelujah",
     }
@@ -189,8 +196,11 @@ def claim_matches_query(claim: str, query_tokens: set[str]) -> bool:
         return True
     claim_words = set(normalize_grounding_text(claim).split())
     distinctive = distinctive_query_tokens(query_tokens)
+    topic_core = {token for token in query_tokens if token in _QUERY_TOPIC_WORDS}
     if distinctive:
         return bool(distinctive & claim_words)
+    if topic_core:
+        return bool(topic_core & claim_words)
     return bool(query_tokens & claim_words)
 
 
@@ -259,8 +269,7 @@ def extract_teaching_claims(
     ranked = [claim for score, claim in scored if score >= 0]
     if query_tokens and ranked and not looks_like_library_pull(query):
         topical = [claim for claim in ranked if claim_matches_query(claim, query_tokens)]
-        if topical:
-            ranked = topical
+        ranked = topical
     return ranked[: max(1, limit)]
 
 

@@ -493,11 +493,7 @@ def _grounding_snippets(prepared):
         collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text),
         query,
     )
-    if not quotes:
-        quotes = collect_allowed_sermon_quotes(sermon, limit=2, bible_corpus=bible_text)
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
-    if not nkjv:
-        nkjv = collect_allowed_nkjv(bible, limit=1)
     return quotes[:2], nkjv[:1]
 
 
@@ -1141,7 +1137,7 @@ class ChatAPIView(APIView):
                 )
                 teaching_claims = extract_teaching_claims(
                     docs,
-                    query=topic_query,
+                    query=user_query_llm,
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))

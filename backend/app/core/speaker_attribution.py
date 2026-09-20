@@ -42,10 +42,14 @@ _DIVINE_SPEECH_RE = re.compile(
     r"|i am (?:the (?:lord|way|resurrection|good shepherd|bread of life|light of the world|true vine)|who i am)"
     r"|before abraham was,\s*i am"
     r"|this is my beloved son"
-    r"|i will never leave you nor forsake you"
-    r"|come to me, all you who labor"
-    r"|let there be light"
-    r")"
+        r"|i will never leave you nor forsake you"
+        r"|come to me, all you who labor"
+        r"|let there be light"
+        r"|i will go to my father"
+        r"|greater (?:things|works) than these"
+        r"|he will send (?:the )?holy spirit"
+        r"|if my people who are called by my name"
+        r")"
 )
 
 _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
@@ -105,6 +109,24 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("by faith we understand that the entire universe was formed", "Hebrews 11:3"),
     ("worlds were framed by the word of god", "Hebrews 11:3"),
     ("what we now see did not come from anything that can be seen", "Hebrews 11:3"),
+    ("o daniel, man greatly beloved", "Daniel 10:11"),
+    ("understand the words that i speak to you and stand upright", "Daniel 10:11"),
+    ("i have now been sent to you", "Daniel 10:11"),
+    ("do not fear, daniel", "Daniel 10:12"),
+    ("from the first day that you set your heart to understand", "Daniel 10:12"),
+    ("if my people who are called by my name", "2 Chronicles 7:14"),
+    ("humble themselves and pray and seek my face", "2 Chronicles 7:14"),
+    ("turn from their wicked ways", "2 Chronicles 7:14"),
+    ("i will hear from heaven", "2 Chronicles 7:14"),
+    ("forgive their sin and heal their land", "2 Chronicles 7:14"),
+    ("you will do greater things because i will go to my father", "John 14:12"),
+    ("greater works than these he will do", "John 14:12"),
+    ("i will go to my father", "John 14:12"),
+    ("he will send holy spirit to abide in you", "John 14:16"),
+    ("he will send the holy spirit", "John 14:16"),
+    ("he will give you another helper", "John 14:16"),
+    ("faith is the confident assurance that what we hope for is going to happen", "Hebrews 11:1"),
+    ("it is the evidence of things we cannot yet see", "Hebrews 11:1"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -145,6 +167,37 @@ _DICTIONARY_RE = re.compile(
     r"(?i)(?:instrument|device|tool)\s+used for(?: moving the bolt)?"
     r"|locking or unlocking something"
     r"|thus locking or unlocking"
+)
+_SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
+_BROKEN_START_RE = re.compile(
+    r"^(?:"
+    r"[a-z]{1,3}[;:,]"
+    r"|(?:ecclesi|corint|thessalon|chron|revelat|deuteron|zechari)\b"
+    r")"
+)
+_COMMON_QUOTE_STARTERS = frozenset(
+    {
+        "a", "and", "as", "but", "do", "don't", "for", "god", "he", "i", "if",
+        "in", "it", "let", "lord", "my", "no", "not", "now", "our", "so", "the",
+        "then", "there", "this", "that", "to", "we", "when", "you",
+    }
+)
+_BIBLICAL_PASSAGE_RE = re.compile(
+    r"(?i)(?:"
+    r"(?:and|then)\s+(?:he|she|the\s+(?:angel|man|lord|messenger|one))\s+said\s+to\s+me"
+    r"|o\s+(?:daniel|israel|jerusalem|jacob|judah|samuel|gideon|joshua|moses|"
+    r"solomon|david|job|jonah|jeremiah|ezekiel|zechariah|nehemiah|theophilus)"
+    r"|man greatly beloved"
+    r"|do not fear,\s*daniel"
+    r"|from the first day that you set your heart to understand"
+    r"|understand the words that i (?:speak|am speaking) to you"
+    r"|i have now been sent to you"
+    r"|if my people who are called by my name"
+    r"|you will do greater (?:things|works) because i will go to my father"
+    r"|i will go to my father"
+    r"|he will send (?:the )?holy spirit"
+    r"|greater works than these"
+    r")"
 )
 _SENTENCE_END_RE = re.compile(r"[.!?…]")
 
@@ -201,6 +254,8 @@ def looks_like_scripture_wording(text: str, bible_corpus: str = "") -> bool:
         return True
     if known_verse_ref(text):
         return True
+    if _BIBLICAL_PASSAGE_RE.search(text or ""):
+        return True
     if _VERSE_DUMP_RE.search(text or ""):
         return True
     hay = normalize_speaker_text(bible_corpus)
@@ -234,12 +289,31 @@ def looks_like_title_excerpt(text: str) -> bool:
     return False
 
 
+def looks_like_broken_excerpt(text: str) -> bool:
+    """True for mid-word sermon chunks and truncated book names quoted as teaching."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return True
+    if _BROKEN_START_RE.search(cleaned):
+        return True
+    first = re.match(r"^([a-z]+)\b", cleaned)
+    if first:
+        word = first.group(1)
+        if word not in _COMMON_QUOTE_STARTERS and len(word) <= 3:
+            return True
+    return False
+
+
 def looks_like_nonteaching_excerpt(text: str) -> bool:
     """True for dictionary slides, titles, and other non-spoken pastor lines."""
     sample = " ".join((text or "").split())
     if not sample:
         return True
     if _DICTIONARY_RE.search(sample):
+        return True
+    if _SLIDE_CHECKBOX_RE.search(sample):
+        return True
+    if looks_like_broken_excerpt(sample):
         return True
     if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
         return True
@@ -268,7 +342,7 @@ def annotate_scripture_in_sermon(text: str) -> str:
     sentences = split_sentences(sample) or [sample]
     labeled: list[str] = []
     for sentence in sentences:
-        if looks_like_divine_speech(sentence) or known_verse_ref(sentence):
+        if looks_like_scripture_wording(sentence):
             if sentence.startswith(SERMON_SCRIPTURE_TAG.strip()):
                 labeled.append(sentence)
             else:
@@ -323,6 +397,8 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Psalm 71:16",
         "Psalm 71:19",
         "Hebrews 11:3",
+        "Daniel 10:11",
+        "Daniel 10:12",
     }
 )
 
