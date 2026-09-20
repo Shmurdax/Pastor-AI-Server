@@ -1001,6 +1001,22 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("tithe of the land", filled)
         self.assertNotIn("under the ban", filled)
         self.assertNotIn("put to death", filled)
+        messy_lookup = ensure_topical_nkjv(
+            text,
+            query,
+            [
+                (
+                    "Leviticus 27:29-32",
+                    "No person under the ban, who may become doomed to destruction "
+                    "among men, shall be redeemed, but shall surely be put to death. "
+                    "And all the tithe of the land, whether of the seed of the land "
+                    "or of the fruit of the tree, is the LORD's.",
+                )
+            ],
+        )
+        self.assertIn("Leviticus 27:30", messy_lookup)
+        self.assertIn("tithe of the land", messy_lookup)
+        self.assertNotIn("under the ban", messy_lookup)
 
     def test_prayer_teaches_that_without_quote_is_filled_from_topic_wording(self):
         from core.chat_retrieval import has_quoted_nkjv

@@ -1051,6 +1051,7 @@ def ensure_topical_nkjv(
         (ref, wording)
         for ref, wording in pairs
         if _ref_keys_from_text(ref) & hint_keys
+        and not _cite_starts_before_hint(ref, hint_keys)
     ]
     if not topical:
         topical = list(fallback_pairs)
@@ -1066,7 +1067,12 @@ def ensure_topical_nkjv(
         cited_keys = _ref_keys_from_text(match.group(0)[:80])
         if cited_keys & hint_keys and has_quoted:
             if _cite_starts_before_hint(match.group(0)[:80], hint_keys):
-                ref, wording = _choose_topical_pair(topical, cited_keys)
+                hint_pairs = [
+                    (ref, wording)
+                    for ref, wording in topical
+                    if not _cite_starts_before_hint(ref, hint_keys)
+                ] or list(fallback_pairs)
+                ref, wording = _choose_topical_pair(hint_pairs or topical, cited_keys)
                 replacement = _quoted_nkjv_replacement(ref, wording)
                 return (text[: match.start()] + replacement + text[match.end() :]).strip()
             continue
