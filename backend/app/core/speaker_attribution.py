@@ -175,6 +175,10 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("god is enthroned in the praises of his people", "Psalm 22:3"),
     ("enthroned in the praises of his people", "Psalm 22:3"),
     ("enthroned in the praises of israel", "Psalm 22:3"),
+    ("while we were yet in our sins christ died", "Romans 5:8"),
+    ("while we were yet in our sins", "Romans 5:8"),
+    ("while we were still sinners, christ died for us", "Romans 5:8"),
+    ("while we were still sinners christ died", "Romans 5:8"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -237,6 +241,11 @@ _DICTIONARY_RE = re.compile(
     r"|comes from the greek word"
     r"|the greek word"
     r"|rely upon or have confidence in"
+)
+_GENERIC_PROVERB_RE = re.compile(
+    r"(?i)(?:only two things you can be sure of|nothing is certain (?:in this world )?except)\s*,?\s*"
+    r"death and taxes"
+    r"|\bdeath and taxes\b"
 )
 _SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
 _BROKEN_START_RE = re.compile(
@@ -398,6 +407,8 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if _DICTIONARY_RE.search(sample):
         return True
+    if _GENERIC_PROVERB_RE.search(sample):
+        return True
     if _SLIDE_CHECKBOX_RE.search(sample):
         return True
     if looks_like_broken_excerpt(sample):
@@ -503,6 +514,7 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Genesis 4:1",
         "Hebrews 13:4",
         "Psalm 22:3",
+        "Romans 5:8",
     }
 )
 

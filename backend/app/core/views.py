@@ -74,6 +74,7 @@ from .grounding import (
     grounding_repair_steer,
     lookup_nkjv_verses,
     nkjv_corpus,
+    pastor_quotes_match_query,
     repair_speaker_attributions,
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
@@ -565,6 +566,13 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
 
     if not has_quoted_nkjv(answer or "") and collect_allowed_nkjv(bible):
         return True
+    if not pastor_quotes_match_query(answer or "", query):
+        retrieved = select_query_grounded_quotes(
+            collect_allowed_sermon_quotes(sermon, bible_corpus=nkjv_corpus(bible)),
+            query,
+        )
+        if retrieved:
+            return True
     return False
 
 
@@ -577,9 +585,9 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
         return ""
     quotes, nkjv = _grounding_snippets(prepared)
     from .chat_retrieval import has_quoted_nkjv
-    from .speaker_attribution import pastor_attributed_quotes
 
-    if pastor_attributed_quotes(answer or ""):
+    query = str(prepared.get("topic_query") or "")
+    if pastor_quotes_match_query(answer or "", query):
         quotes = []
     if has_quoted_nkjv(answer or ""):
         nkjv = []

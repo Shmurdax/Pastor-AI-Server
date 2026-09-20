@@ -501,6 +501,19 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertIn("Hebrews 13:4", fixed)
         self.assertIn("Psalm 22:3", fixed)
 
+    def test_romans_58_and_death_and_taxes_are_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "There are only two things you can be sure of, death and taxes." '
+            'Pastor Don and Susan Nordin also teach, "While we were yet in our sins Christ died for us…"'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("death and taxes" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("yet in our sins" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Romans 5:8", fixed)
+        self.assertNotIn("records the Lord saying", fixed)
+        self.assertNotIn("death and taxes", fixed.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

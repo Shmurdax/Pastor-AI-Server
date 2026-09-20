@@ -477,6 +477,30 @@ class GroundingTests(unittest.TestCase):
             ["Worship is a jamming device against the enemy when we lift God up."],
         )
 
+    def test_zero_overlap_quotes_are_not_forced(self):
+        from core.grounding import pastor_quotes_match_query, select_query_grounded_quotes
+
+        quotes = select_query_grounded_quotes(
+            [
+                "There are only two things you can be sure of, death and taxes.",
+                "Comfort the child and stay in the kitchen with them.",
+            ],
+            "Create sermon notes on marriage.",
+        )
+        self.assertEqual(quotes, [])
+        self.assertFalse(
+            pastor_quotes_match_query(
+                'Pastor Don Nordin teaches, "There are only two things you can be sure of, death and taxes."',
+                "Create sermon notes on marriage.",
+            )
+        )
+        self.assertTrue(
+            pastor_quotes_match_query(
+                'Pastor Don Nordin teaches, "Marriage is a developmental process that requires commitment."',
+                "Create sermon notes on marriage.",
+            )
+        )
+
     def test_quoted_nkjv_is_not_rewritten(self):
         from core.grounding import repair_empty_nkjv_citations
 
@@ -546,6 +570,25 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertIn('Luke 19:45-48 (NKJV) says, "Then He went into the temple', filled)
         self.assertNotIn("we see Jesus", filled)
+
+    def test_quoted_teaches_that_on_same_line_is_kept(self):
+        from core.grounding import repair_empty_nkjv_citations
+
+        text = (
+            "James 1:6-8 (NKJV) teaches that of persistent and unwavering prayer: "
+            "“But let him ask in faith, with no doubting.”"
+        )
+        filled = repair_empty_nkjv_citations(
+            text,
+            [
+                (
+                    "James 1:6",
+                    "But let him ask in faith, with no doubting, for he who doubts is like a wave of the sea.",
+                )
+            ],
+        )
+        self.assertEqual(filled, text)
+        self.assertIn("teaches that of persistent", filled)
 
 
 if __name__ == "__main__":

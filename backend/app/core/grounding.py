@@ -141,8 +141,7 @@ def select_query_grounded_quotes(
     )
     picked = [item for item in ranked if snippet_query_score(item, query) >= min_score]
     if not picked:
-        positive = [item for item in ranked if snippet_query_score(item, query) > 0]
-        picked = positive or ranked
+        picked = [item for item in ranked if snippet_query_score(item, query) > 0]
     return picked[:limit]
 
 
@@ -164,13 +163,20 @@ def select_query_grounded_nkjv(
         if snippet_query_score(f"{item[0]} {item[1]}", query) >= min_score
     ]
     if not picked:
-        positive = [
+        picked = [
             item
             for item in ranked
             if snippet_query_score(f"{item[0]} {item[1]}", query) > 0
         ]
-        picked = positive or ranked
     return picked[:limit]
+
+
+def pastor_quotes_match_query(answer: str, query: str) -> bool:
+    """True when a Pastor Don wrap actually overlaps the current question."""
+    from .speaker_attribution import pastor_attributed_quotes
+
+    quotes = pastor_attributed_quotes(answer or "")
+    return any(snippet_query_score(span, query) > 0 for span, _lead in quotes)
 
 
 _MIXED_PASTOR_MIN_CHARS = 100
@@ -564,6 +570,9 @@ def repair_empty_nkjv_citations(
             continue
         ref = match.group(1)
         tail = text[match.end() :]
+        rest_line = tail.split("\n", 1)[0]
+        if re.search(r'[\"“]', rest_line):
+            continue
         this_m = _THIS_VERSE_PREFIX_RE.match(tail)
         wording = _wording_for_nkjv_ref(ref, pairs)
         pieces.append(text[cursor:match.start()])
