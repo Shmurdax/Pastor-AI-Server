@@ -97,4 +97,4 @@ class MediaCatalogStats {
 }
 
 /// Single collection label for all media library content.
-const kMediaCollectionLabel = 'Daily Devotionals';
+const kMediaCollectionLabel = 'Walk Through the Word';

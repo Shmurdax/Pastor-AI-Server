@@ -34,7 +34,7 @@ double mediaGridChildAspectRatio({
   return tileWidth / (tileWidth * 9 / 16 + captionHeight);
 }
 
-/// Patreon-style media library for The NORDINS Daily Devotionals (video).
+/// Patreon-style media library for The NORDINS Walk Through the Word (video).
 /// Catalog loads from GET /api/media/ (Vimeo folder 24205069 embeds).
 /// Premium sessions never fall back to the 9 local MP4 placeholders.
 class MediaLibraryScreen extends StatefulWidget {
@@ -568,9 +568,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             const SizedBox(height: 4),
                             Text(
                               _catalogLoading
-                                  ? 'Loading devotionals…'
+                                  ? 'Loading videos…'
                                   : _hasPremiumAccess
-                                      ? '${_sort.label} · ${_catalogItems.length} devotionals in catalog'
+                                      ? '${_sort.label} · ${_catalogItems.length} videos in catalog'
                                       : 'Free preview · Subscribe to unlock the full library',
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),
@@ -961,15 +961,6 @@ class _MediaPostCard extends StatelessWidget {
                           color: _gold.withValues(alpha: 0.95),
                         ),
                       ),
-                      if (item.accessTier == MediaAccessTier.premium)
-                        Positioned(
-                          right: 10,
-                          top: 10,
-                          child: _Badge(
-                            label: 'Premium',
-                            highlight: !item.isPlayable,
-                          ),
-                        ),
                       if (item.durationLabel != null)
                         Positioned(
                           right: 10,
@@ -1085,32 +1076,6 @@ class _MediaPostCardBody extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({required this.label, this.highlight = false});
-
-  final String label;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: highlight ? _gold.withValues(alpha: 0.9) : Colors.black54,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.figtree(
-          color: highlight ? _navy : Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
     );
   }
 }
