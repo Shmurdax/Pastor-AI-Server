@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/main.dart';
+import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,8 +54,29 @@ void main() {
     expect(find.text('Get started'), findsOneWidget);
     expect(find.textContaining("Pastor Don and Susan Nordin's"), findsOneWidget);
     expect(find.textContaining("rooted in Pastor Don Nordin's"), findsNothing);
+    expect(find.text('Customized, biblical AI chat experience'), findsOneWidget);
+    expect(find.text('Access to daily 15-minute devotional videos'), findsOneWidget);
+    expect(find.text('Over 40 years of study notes and preached on material'), findsOneWidget);
+    expect(find.text("the Nordin's study notes"), findsNothing);
+    expect(find.text('Unlimited Chat history'), findsNothing);
+    expect(find.text('Daily Bible reading assignment.'), findsNothing);
+    expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
+    expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsNothing);
     expect(find.text('Sign in'), findsWidgets);
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
+  });
+
+  testWidgets('landing yearly toggle shows the yearly discount percent', (tester) async {
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    await tester.tap(find.text('Yearly'));
+    await tester.pump();
+
+    expect(find.text(r'$150'), findsWidgets);
+    expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
+    expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsOneWidget);
+    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'), findsWidgets);
   });
 
   testWidgets('landing fits a narrow phone viewport', (tester) async {
@@ -171,7 +193,28 @@ void main() {
 
     expect(find.text('Complete your subscription'), findsOneWidget);
     expect(find.text('Continue to checkout'), findsOneWidget);
+    expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
+  });
+
+  testWidgets('paywall yearly toggle shows the yearly discount percent', (tester) async {
+    final auth = _readyAuth(
+      token: 'tok',
+      user: const AuthUser(
+        id: '2',
+        email: 'free@test.com',
+        name: 'Free User',
+      ),
+    );
+    await tester.pumpWidget(_wrap(auth));
+    await tester.pump();
+
+    await tester.tap(find.text('Yearly'));
+    await tester.pump();
+
+    expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
+    expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsOneWidget);
+    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'), findsWidgets);
   });
 
   testWidgets('paywall fits a narrow phone viewport', (tester) async {
