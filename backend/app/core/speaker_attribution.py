@@ -16,7 +16,7 @@ from .bible_refs import parse_verse_refs
 from .quote_chunking import split_sentences
 
 _QUOTE_RE = re.compile(
-    r'(?:^|(?<=[\s,:(—–]))([\"“])([^\"”\n]{12,400}?)([\"”])'
+    r'(?:^|(?<=[\s,:(—–]))([\"“])([^\"”]{12,400}?)([\"”])'
 )
 # Opening quote with no closer before the line ends — the model often drops the
 # closing mark, which used to skip rewrite entirely.
@@ -185,7 +185,7 @@ _PASTOR_WRAPPED_QUOTE_RE = re.compile(
     rf"{_SPEECH_VERB_RE}"
     r"(?:\s+that)?"
     r"[,:\s]*)"
-    r'(["“])([^"”\n]{12,400}?)(["”])'
+    r'(["“])([^"”]{12,400}?)(["”])'
 )
 
 _DICTIONARY_RE = re.compile(
@@ -491,12 +491,19 @@ def _ranges_overlap(start: int, end: int, occupied: list[tuple[int, int]]) -> bo
 
 
 def _iter_quote_matches(text: str) -> list[tuple[int, int, str, str]]:
-    """Closed quotes, then pastor-led unclosed quotes that end at a newline."""
+    """Closed quotes first (they may wrap a newline), then unclosed pastor quotes."""
     sample = text or ""
     occupied: list[tuple[int, int]] = []
     items: list[tuple[int, int, str, str]] = []
 
+    for match in _QUOTE_RE.finditer(sample):
+        span = " ".join(match.group(2).split()).strip()
+        items.append((match.start(), match.end(), span, match.group(0)))
+        occupied.append((match.start(), match.end()))
+
     for match in _UNCLOSED_QUOTE_RE.finditer(sample):
+        if _ranges_overlap(match.start(), match.end(), occupied):
+            continue
         prefix = sample[: match.start()]
         if _leadin_match(prefix) is None:
             continue
@@ -504,13 +511,6 @@ def _iter_quote_matches(text: str) -> list[tuple[int, int, str, str]]:
         if len(span) < 12:
             continue
         items.append((match.start(), match.end(), span, _closed_quote(match.group(0))))
-        occupied.append((match.start(), match.end()))
-
-    for match in _QUOTE_RE.finditer(sample):
-        if _ranges_overlap(match.start(), match.end(), occupied):
-            continue
-        span = " ".join(match.group(2).split()).strip()
-        items.append((match.start(), match.end(), span, match.group(0)))
         occupied.append((match.start(), match.end()))
 
     items.sort(key=lambda item: item[0])

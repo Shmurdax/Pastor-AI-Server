@@ -338,6 +338,29 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_splits_jesus_clause_after_newline_inside_he_teaches_quote(self):
+        text = (
+            "Pastor Don also emphasizes remaining filled with the Holy Spirit.\n\n"
+            'He teaches, "It wasn’t until after His Baptism that Jesus began to perform miracles.\n\n'
+            "‘You will do greater things because I will go to My Father and He will send "
+            'Holy Spirit to abide in you.’"'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertIn("John 14", fixed)
+        self.assertNotRegex(
+            fixed,
+            r"(?i)he teaches, \".{0,80}You will do greater things",
+        )
+        self.assertRegex(
+            fixed,
+            r"(?i)records the lord saying,.{0,8}You will do greater things",
+        )
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(
+            any("greater things" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
