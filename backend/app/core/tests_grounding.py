@@ -594,6 +594,21 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('Luke 19:45-48 (NKJV) says, "Then He went into the temple', filled)
         self.assertNotIn("we see Jesus", filled)
 
+    def test_nkjv_is_a_reminder_leadin_is_filled(self):
+        from core.grounding import repair_empty_nkjv_citations
+
+        filled = repair_empty_nkjv_citations(
+            "Paul’s call in Romans 12:1-2 (NKJV) is a powerful reminder of our duty to offer ourselves.",
+            [
+                (
+                    "Romans 12:1",
+                    "I beseech you therefore, brethren, by the mercies of God, that you present your bodies a living sacrifice.",
+                )
+            ],
+        )
+        self.assertIn('Romans 12:1-2 (NKJV) says, "I beseech you therefore', filled)
+        self.assertNotIn("is a powerful reminder", filled)
+
     def test_quoted_teaches_that_on_same_line_is_kept(self):
         from core.grounding import repair_empty_nkjv_citations
 

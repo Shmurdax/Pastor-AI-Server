@@ -186,14 +186,13 @@ def pastor_quotes_match_query(answer: str, query: str) -> bool:
     return any(snippet_query_score(span, query) > 0 for span, _lead in quotes)
 
 
-_MIXED_PASTOR_MIN_CHARS = 100
+_MIXED_PASTOR_MIN_CHARS = 40
 
 
 def _pastor_sentences_from_mixed_notes(body: str, *, bible_corpus: str = "") -> list[str]:
     """Keep spoken teaching from a chunk that also cites verses."""
     sentences = split_sentences(body) or [body]
     pastor: list[str] = []
-    verse_sentences = 0
     for sentence in sentences:
         cleaned = " ".join(sentence.split()).strip()
         if len(cleaned) < 40:
@@ -204,14 +203,11 @@ def _pastor_sentences_from_mixed_notes(body: str, *, bible_corpus: str = "") -> 
             or looks_like_scripture_wording(cleaned, bible_corpus)
             or looks_like_heading_quote(cleaned)
         ):
-            verse_sentences += 1
             continue
         if is_pastor_own_voice(cleaned, bible_corpus=bible_corpus):
             pastor.append(cleaned)
     pastor_chars = sum(len(item) for item in pastor)
     if pastor_chars < _MIXED_PASTOR_MIN_CHARS:
-        return []
-    if verse_sentences and pastor_chars < 160 and verse_sentences >= len(pastor):
         return []
     return pastor
 
@@ -502,7 +498,8 @@ _EMPTY_NKJV_CITE_RE = re.compile(
     r"(?:states|says|reminds(?:\s+\w+)?|promises|instructs|encourages(?:\s+\w+)?|"
     r"assures(?:\s+\w+)?|reassures(?:\s+\w+)?|outlines|warns(?:\s+against)?|"
     r"teaches\s+that|highlights(?:\s+\w+(?:\s+\w+)?)?|"
-    r"emphasizes(?:\s+\w+(?:\s+\w+)?)?|we see)"
+    r"emphasizes(?:\s+\w+(?:\s+\w+)?)?|we see|"
+    r"is a (?:powerful )?reminder)"
     r'(?!\s*,?\s*[\"“])'
     r",?\s*"
 )

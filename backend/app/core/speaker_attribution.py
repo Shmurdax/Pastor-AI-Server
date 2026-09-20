@@ -18,7 +18,7 @@ from .quote_chunking import split_sentences
 _QUOTE_RE = re.compile(
     r'(?:^|(?<=[\s,:(—–]))([\"“])([^\"”]{12,400}?)([\"”])'
 )
-_SCARE_QUOTE_RE = re.compile(r'(["“])([a-z]{1,10})”')
+_SCARE_QUOTE_RE = re.compile(r'(["“])([A-Za-z]{1,10})[\"”]')
 # Opening quote with no closer before the line ends — the model often drops the
 # closing mark, which used to skip rewrite entirely.
 _UNCLOSED_QUOTE_RE = re.compile(r'([\"“])([^\"”\n]{12,}?)(?=\s*(?:\n|$))')
@@ -179,6 +179,13 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("while we were yet in our sins", "Romans 5:8"),
     ("while we were still sinners, christ died for us", "Romans 5:8"),
     ("while we were still sinners christ died", "Romans 5:8"),
+    ("as far as the east is from the west", "Psalm 103:12"),
+    ("so far has he removed our transgressions", "Psalm 103:12"),
+    ("hats he removed our transgressions", "Psalm 103:12"),
+    ("so far hats he removed our transgressions", "Psalm 103:12"),
+    ("throw off the old man", "Ephesians 4:22"),
+    ("put off the old man", "Ephesians 4:22"),
+    ("put off, concerning your former conduct, the old man", "Ephesians 4:22"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -246,6 +253,7 @@ _GENERIC_PROVERB_RE = re.compile(
     r"(?i)(?:only two things you can be sure of|nothing is certain (?:in this world )?except)\s*,?\s*"
     r"death and taxes"
     r"|\bdeath and taxes\b"
+    r"|pain of discipline or the pain of regret"
 )
 _SLIDE_CHECKBOX_RE = re.compile(r"[□■▪▫☐☑☒]\s*")
 _BROKEN_START_RE = re.compile(
@@ -515,6 +523,8 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Hebrews 13:4",
         "Psalm 22:3",
         "Romans 5:8",
+        "Psalm 103:12",
+        "Ephesians 4:22",
     }
 )
 

@@ -514,6 +514,26 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertNotIn("records the Lord saying", fixed)
         self.assertNotIn("death and taxes", fixed.lower())
 
+    def test_psalm_103_and_old_man_are_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "As far as the east is from the west, so far hats He '
+            'removed our transgressions…" Pastor Don and Susan Nordin also teach, '
+            '"Throw off the old man." Pastor Don Nordin teaches, '
+            '"We must all suffer one of two things: the pain of discipline or the pain of regret or disappointment." '
+            'Pastor Don and Susan Nordin also teach, "I” messages rather than “you messages when you speak to your spouse."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("east is from the west" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("old man" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("pain of discipline" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Psalm 103:12", fixed)
+        self.assertIn("Ephesians 4:22", fixed)
+        self.assertTrue(
+            any("messages" in span.lower() and "spouse" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

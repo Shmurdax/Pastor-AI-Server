@@ -641,6 +641,26 @@ class ChatRetrievalTests(unittest.TestCase):
         sources = [doc.metadata["source"] for doc, _score in kept]
         self.assertEqual(sources, ["parenting.pdf"])
 
+    def test_parenting_notes_are_not_living_the_good_life(self):
+        query = "Create sermon notes on parenting and raising children."
+        seminar = _doc(
+            "Parents and children can live the good life through discipline and better habits.",
+            source="good-life.pdf",
+            title="Living the Good Life",
+        )
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        kept = filter_hits_by_topic(
+            [(seminar, 0.97), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
     def test_topic_filter_keeps_nkjv_beside_prayer_notes(self):
         query = "Create sermon notes on prayer."
         sermon = _doc(
