@@ -480,10 +480,12 @@ _EMPTY_NKJV_CITE_RE = re.compile(
     r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
     r"\s*\(\s*NKJV\s*\)\s*,?\s*"
     r"(?:it\s+)?"
-    r"(?:states|reminds us|promises|instructs|encourages us|assures us|"
-    r"reassures us|outlines|warns(?:\s+against)?|we see)"
+    r"(?:states|says|reminds(?:\s+\w+)?|promises|instructs|encourages(?:\s+\w+)?|"
+    r"assures(?:\s+\w+)?|reassures(?:\s+\w+)?|outlines|warns(?:\s+against)?|"
+    r"teaches\s+that|highlights(?:\s+\w+(?:\s+\w+)?)?|"
+    r"emphasizes(?:\s+\w+(?:\s+\w+)?)?|we see)"
+    r'(?!\s*,?\s*[\"“])'
     r",?\s*"
-    r'(?!\s*[\"“])'
 )
 _THIS_VERSE_PREFIX_RE = re.compile(
     r"(?i)^(?:This means\s+|"
@@ -498,6 +500,11 @@ _EMPTY_TEACHES_MEANS_RE = re.compile(
 _EMPTY_SAYS_THIS_RE = re.compile(
     r"(?i)\(\s*NKJV\s*\)\s+says,\s+This (?:verse|passage)\s+"
 )
+_AS_THIS_OBSERVATION_RE = re.compile(
+    r"(?i)\bAs This observation highlights[^.?\n]*[.?]?\s*"
+)
+_EMPTY_EXCERPT_RE = re.compile(r"(?im)^\s*\*?Excerpt\*?:\s*$")
+_EMPTY_QUOTES_RE = re.compile(r'[\"“]\s*[\"”]')
 _CERTAINLY_OPENER_RE = re.compile(
     r"(?is)^\s*(?:certainly|sure)[!.,]?\s+here(?:'s| is| are)\s+.{0,180}?:\s*"
 )
@@ -564,9 +571,13 @@ def repair_empty_nkjv_citations(
                 joiner = " " if remainder[:1] not in " \n" else ""
                 pieces.append(bit + joiner)
                 cursor = match.end() + this_m.end()
-            else:
+            elif tail.lstrip()[:1] in '"“':
                 pieces.append(bit + " ")
                 cursor = match.end()
+            else:
+                skip = re.match(r"[ \t]*[^\n]{0,220}", tail)
+                pieces.append(bit)
+                cursor = match.end() + (skip.end() if skip else 0)
             continue
         if this_m:
             pieces.append(f"{ref} (NKJV) teaches that ")
@@ -599,6 +610,9 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _EMPTY_ADVISES_RE.sub("", text)
     text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
     text = _CERTAINLY_OPENER_RE.sub("", text)
+    text = _AS_THIS_OBSERVATION_RE.sub("", text)
+    text = _EMPTY_EXCERPT_RE.sub("", text)
+    text = _EMPTY_QUOTES_RE.sub("", text)
     text = _SLIDE_WORSHIP_QUOTE_RE.sub("", text)
     text = _BULLET_GLYPH_RE.sub("", text)
     text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)

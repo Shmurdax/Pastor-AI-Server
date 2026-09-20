@@ -164,6 +164,12 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("behold the lamb of god which takes away the sin", "John 1:29"),
     ("behold! the lamb of god who takes away the sin of the world", "John 1:29"),
     ("behold the lamb of god", "John 1:29"),
+    ("he will direct your paths", "Proverbs 3:6"),
+    ("he shall direct your paths", "Proverbs 3:6"),
+    ("he will direct our steps", "Proverbs 3:6"),
+    ("all things work together for good", "Romans 8:28"),
+    ("all things to work together for our good", "Romans 8:28"),
+    ("knew his wife", "Genesis 4:1"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -487,6 +493,9 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "1 Peter 2:9",
         "Matthew 4:9",
         "John 1:29",
+        "Proverbs 3:6",
+        "Romans 8:28",
+        "Genesis 4:1",
     }
 )
 

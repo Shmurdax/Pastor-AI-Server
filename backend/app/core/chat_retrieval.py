@@ -1293,8 +1293,7 @@ def filter_hits_by_topic(
         filtered = []
         for doc, score in scored_hits:
             title = title_search_blob(doc)
-            body = f"{title} {chunk_text(doc)[:800]}".lower()
-            if any(token in title for token in blocked) and "parenting" not in body:
+            if any(token in title for token in blocked) and "parenting" not in title:
                 continue
             filtered.append((doc, score))
         if filtered:

@@ -609,7 +609,7 @@ class ChatRetrievalTests(unittest.TestCase):
             title="It Is Time to Believe",
         )
         blocked = _doc(
-            "Parents and children should wait on God together.",
+            "Parents and children should wait on God together. Parenting takes trust.",
             source="trust-lord.pdf",
             title="It Is Time to Trust the Lord Empowerment 2020",
         )

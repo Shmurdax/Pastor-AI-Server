@@ -472,6 +472,23 @@ class SpeakerAttributionTests(unittest.TestCase):
     def test_truncated_series_wrapup_is_not_pastor_voice(self):
         self.assertFalse(is_pastor_own_voice("to get right! One other thing before we finish this series."))
 
+    def test_proverbs_and_romans_trust_lines_are_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "He will direct our steps." '
+            'Pastor Don and Susan Nordin also teach, "All things to work together for our good." '
+            'Pastor Don Nordin teaches, "knew his wife. God is the creator of sex but this culture has hijacked it."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("direct our steps" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("work together for our good" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Proverbs 3:6", fixed)
+        self.assertIn("Romans 8:28", fixed)
+        self.assertTrue(
+            any("creator of sex" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

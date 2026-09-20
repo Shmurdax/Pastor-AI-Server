@@ -497,6 +497,29 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('says, "Nevertheless', cleaned)
         self.assertNotIn("teaches that ,", cleaned)
 
+    def test_empty_teaches_that_leadin_is_filled(self):
+        from core.grounding import repair_empty_nkjv_citations, strip_retrieval_meta
+
+        text = (
+            "Psalm 100:4 (NKJV) teaches that to enter His gates with thanksgiving:\n"
+            "Isaiah 43:2 (NKJV) teaches that that even in the midst of trouble, God is with us:"
+        )
+        filled = repair_empty_nkjv_citations(
+            text,
+            [
+                ("Psalm 100:4", "Enter into His gates with thanksgiving, And into His courts with praise."),
+                ("Isaiah 43:2", "When you pass through the waters, I will be with you."),
+            ],
+        )
+        self.assertIn('Psalm 100:4 (NKJV) says, "Enter into His gates', filled)
+        self.assertIn('Isaiah 43:2 (NKJV) says, "When you pass through', filled)
+        self.assertNotIn("teaches that to enter", filled)
+        cleaned = strip_retrieval_meta(
+            "Worship is a journey. As This observation highlights the tendency to focus on personal achievements. "
+            'Pastor Don teaches, "Worship in crisis."'
+        )
+        self.assertNotIn("This observation", cleaned)
+
     def test_certainly_here_are_opener_is_stripped(self):
         from core.grounding import strip_retrieval_meta
 
