@@ -19,6 +19,7 @@ from .speaker_attribution import (
     is_pastor_own_voice,
     known_verse_ref,
     looks_like_divine_speech,
+    looks_like_nonteaching_excerpt,
     looks_like_scripture_wording,
     quoted_spans_with_voice,
     rewrite_misattributed_quotes,
@@ -86,7 +87,6 @@ def looks_like_scripture_blob(text: str) -> bool:
 
 
 _HEADING_QUOTE_RE = re.compile(r"^\s*#{1,6}\s+\S")
-_SENTENCE_END_RE = re.compile(r"[.!?…]")
 
 
 def looks_like_heading_quote(text: str) -> bool:
@@ -96,13 +96,7 @@ def looks_like_heading_quote(text: str) -> bool:
         return True
     if cleaned.startswith("#") or _HEADING_QUOTE_RE.match(cleaned):
         return True
-    if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(cleaned):
-        words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
-        if 2 <= len(words) <= 12:
-            titled = sum(1 for word in words if word[:1].isupper())
-            if titled >= max(2, len(words) - 1):
-                return True
-    return False
+    return looks_like_nonteaching_excerpt(cleaned)
 
 
 def snippet_query_score(text: str, query: str) -> float:

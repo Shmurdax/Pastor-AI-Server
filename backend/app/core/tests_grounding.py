@@ -133,6 +133,12 @@ class GroundingTests(unittest.TestCase):
         self.assertFalse(
             looks_like_heading_quote("We sit with the grieving and we pray.")
         )
+        self.assertTrue(looks_like_heading_quote("Who Built the Moon."))
+        self.assertTrue(
+            looks_like_heading_quote(
+                "An instrument used for moving the bolt of a lock thus locking or unlocking something."
+            )
+        )
         text = grounded_fallback_answer(
             ["# God Was with Him", "We sit with the grieving and we pray."],
             [],

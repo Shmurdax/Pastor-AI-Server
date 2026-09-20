@@ -185,6 +185,33 @@ class SpeakerAttributionTests(unittest.TestCase):
         )
         self.assertEqual(fixed, text)
 
+    def test_drops_dictionary_and_title_wraps(self):
+        text = (
+            'Pastor Don teaches, "We cannot talk about giving without talking about stewardship." '
+            'Pastor Don Nordin teaches, "An instrument used for moving the bolt of a lock thus locking or unlocking something." '
+            'Pastor Don and Susan Nordin also teach, "Who Built the Moon." '
+            'Pastor Don and Susan Nordin also teach, "king of peace."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertIn("stewardship", fixed)
+        self.assertNotIn("instrument used for moving the bolt", fixed.lower())
+        self.assertNotIn("Who Built the Moon", fixed)
+        self.assertNotIn("Pastor Don and Susan Nordin also teach, \"king of peace", fixed)
+        self.assertIn("Hebrews 7:2", fixed)
+
+    def test_title_excerpt_is_not_pastor_voice(self):
+        self.assertFalse(is_pastor_own_voice("Who Built the Moon."))
+        self.assertFalse(
+            is_pastor_own_voice(
+                "An instrument used for moving the bolt of a lock thus locking or unlocking something."
+            )
+        )
+        self.assertTrue(
+            is_pastor_own_voice(
+                "We cannot talk about giving without talking about stewardship."
+            )
+        )
+
     def test_annotates_god_speech_in_sermon_notes(self):
         notes = annotate_scripture_in_sermon(
             "Stay faithful in your calling. Before you were born, I sanctified you "

@@ -86,6 +86,8 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("for this melchizedek", "Hebrews 7:1"),
     ("melchizedek, king of salem", "Hebrews 7:1"),
     ("priest of the most high god", "Hebrews 7:1"),
+    ("king of peace", "Hebrews 7:2"),
+    ("king of righteousness", "Hebrews 7:2"),
     ("jesus returned in the power of the spirit", "Luke 4:14"),
     ("thy righteousness also, o god", "Psalm 71:19"),
     ("who is like unto thee", "Psalm 71:19"),
@@ -126,6 +128,13 @@ _LEADIN_RE = re.compile(
 _OPENER_RE = re.compile(
     r"(?i)^(additionally|similarly|moreover|furthermore|also|likewise)[, ]+"
 )
+
+_DICTIONARY_RE = re.compile(
+    r"(?i)(?:instrument|device|tool)\s+used for(?: moving the bolt)?"
+    r"|locking or unlocking something"
+    r"|thus locking or unlocking"
+)
+_SENTENCE_END_RE = re.compile(r"[.!?…]")
 
 SERMON_SCRIPTURE_TAG = (
     "[Scripture cited in this sermon, spoken by the Lord or the biblical author "
@@ -195,10 +204,41 @@ def looks_like_scripture_wording(text: str, bible_corpus: str = "") -> bool:
     return False
 
 
+def looks_like_title_excerpt(text: str) -> bool:
+    """True for sermon titles / slide headings quoted as if Pastor Don said them."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return True
+    if cleaned.startswith("#"):
+        return True
+    titled_src = cleaned[:-1].rstrip() if cleaned.endswith(".") else cleaned
+    if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(titled_src):
+        words = [word for word in re.findall(r"[A-Za-z']+", titled_src)]
+        if 2 <= len(words) <= 12:
+            titled = sum(1 for word in words if word[:1].isupper())
+            if titled >= max(2, len(words) - 1):
+                return True
+    return False
+
+
+def looks_like_nonteaching_excerpt(text: str) -> bool:
+    """True for dictionary slides, titles, and other non-spoken pastor lines."""
+    sample = " ".join((text or "").split())
+    if not sample:
+        return True
+    if _DICTIONARY_RE.search(sample):
+        return True
+    if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
+        return True
+    return looks_like_title_excerpt(sample)
+
+
 def is_pastor_own_voice(text: str, *, bible_corpus: str = "") -> bool:
     """False for verses and divine first-person; those must not be Pastor Don quotes."""
     cleaned = " ".join((text or "").split())
     if len(cleaned) < 12:
+        return False
+    if looks_like_nonteaching_excerpt(cleaned):
         return False
     if looks_like_scripture_wording(cleaned, bible_corpus):
         return False
@@ -256,6 +296,7 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Genesis 14:18",
         "Genesis 14:19",
         "Hebrews 7:1",
+        "Hebrews 7:2",
         "Hebrews 10:36",
         "Hebrews 11:1",
         "2 Corinthians 6:2",
@@ -411,9 +452,48 @@ def rewrite_misattributed_quotes(
         cursor = end
         changed = True
     if not changed:
-        return text
+        return drop_nonteaching_pastor_wraps(text)
     pieces.append(text[cursor:])
     cleaned = "".join(pieces)
+    cleaned = re.sub(r" {2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return drop_nonteaching_pastor_wraps(cleaned.strip())
+
+
+def drop_nonteaching_pastor_wraps(answer: str) -> str:
+    """Remove Pastor Don wraps that are titles, dictionary slides, or empty quotes."""
+    text = answer or ""
+    if not text:
+        return text
+    pieces: list[str] = []
+    cursor = 0
+    changed = False
+    for start, end, span, _quoted in _iter_quote_matches(text):
+        if not looks_like_nonteaching_excerpt(span):
+            continue
+        prefix = text[:start]
+        lead = _leadin_match(prefix)
+        if lead is None:
+            continue
+        window = _clause_tail(prefix)
+        abs_start = start - len(window) + lead.start()
+        if abs_start < cursor:
+            continue
+        pieces.append(text[cursor:abs_start])
+        cursor = end
+        while cursor < len(text) and text[cursor] in " \t.":
+            cursor += 1
+        changed = True
+    if not changed:
+        cleaned = text
+    else:
+        pieces.append(text[cursor:])
+        cleaned = "".join(pieces)
+    cleaned = re.sub(
+        r'(?i)\s*Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,?\s*(?:["“]["”]?)?\s*$',
+        "",
+        cleaned,
+    )
     cleaned = re.sub(r" {2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
