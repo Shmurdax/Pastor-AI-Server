@@ -544,6 +544,25 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertFalse(any("great matter" in span.lower() for span, _lead in remaining), remaining)
         self.assertIn("Exodus 18:22", fixed)
 
+    def test_glued_leadin_inside_quote_is_dropped_but_sermon_lines_stay(self):
+        self.assertTrue(
+            is_pastor_own_voice("Marriage is a developmental process, not an event.")
+        )
+        self.assertFalse(
+            is_pastor_own_voice(
+                'I messages rather than “you Pastor Don and Susan Nordin also teach,'
+            )
+        )
+        text = (
+            'Pastor Don Nordin teaches, "I messages rather than “you Pastor Don and Susan '
+            'Nordin also teach," You make me feel" 1 Corinthians 7:3 (NKJV) says, "Let the husband '
+            'render to his wife the affection due her."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("also teach" in span.lower() for span, _lead in remaining), remaining)
+        self.assertNotIn("You make me feel", fixed)
+
 
 if __name__ == "__main__":
     unittest.main()

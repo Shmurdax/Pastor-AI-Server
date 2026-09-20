@@ -877,6 +877,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Do not invent extra Christian-living headings or tips (boundaries, self-esteem, communication "
         "techniques, and similar) that are not in those notes. Build the outline from Pastor Don's and "
         "Susan's actual points. Prefer labeled SERMON notes over knowledge-only books when both appear. "
+        "If a sermon mentions a book such as Passages of Marriage, still teach Pastor Don's notes; "
+        "do not make that book the authority or outline. "
         "Represent their views faithfully. Do not invent positions that contradict their teaching. "
         "If the notes do not address the question, say that plainly. Never say notes were not "
         "found or missing when excerpts are present.\n"

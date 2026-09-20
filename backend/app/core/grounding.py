@@ -470,6 +470,10 @@ _PROVIDED_MATERIAL_OPENER_RE = re.compile(
     r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:\s*"
     r"|^\s*.{0,220}?based on the (?:provided )?(?:reference )?(?:material|notes)[,:]?\s*"
 )
+_PASSAGE_BOOK_RE = re.compile(
+    r"(?is)According to the book\s+[\"“']?Passages? of Marriage[\"”']?.{0,400}?"
+    r"(?=Pastor Don|\n\n|\n#{1,3}|\Z)"
+)
 _SLIDE_NOTE_RE = re.compile(
     r"(?is)\s*(?:\((?:LEAVE ON SCREEN|UNTIL END OF SERVICE)[^)]*\)|"
     r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
@@ -646,6 +650,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _TITLE_WEAVE_RE.sub("", text)
     text = _META_OPENER_RE.sub("", text)
     text = _PROVIDED_MATERIAL_OPENER_RE.sub("", text)
+    text = _PASSAGE_BOOK_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = _SLIDE_NOTE_RE.sub("", text)
     text = _GLUED_BOOK_RE.sub(r"\1", text)

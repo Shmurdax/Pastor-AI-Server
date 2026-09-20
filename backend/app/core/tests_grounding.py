@@ -579,6 +579,18 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("here’s a summary", cleaned.lower())
         self.assertIn("1 Corinthians 7:37-40", cleaned)
 
+    def test_passage_of_marriage_book_authority_is_stripped(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            'According to the book "Passages of Marriage" by Dr. Frank and Mary Alice Minirth, '
+            "there are five distinct units in marriage. "
+            'Pastor Don Nordin teaches, "Marriage is a developmental process."'
+        )
+        self.assertNotIn("Passages of Marriage", cleaned)
+        self.assertNotIn("Minirth", cleaned)
+        self.assertIn("Marriage is a developmental process", cleaned)
+
     def test_in_luke_we_see_is_filled_with_nkjv_wording(self):
         from core.grounding import repair_empty_nkjv_citations
 

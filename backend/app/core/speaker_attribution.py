@@ -427,7 +427,11 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if re.match(r"(?i)^to get right\b", sample.strip(" \"“”'")):
         return True
-    if re.search(r"(?i)\bpastor don\b", sample):
+    if re.search(
+        r"(?i)pastor don(?: and susan)?(?: nordin)?(?: also)? "
+        r"(?:teach(?:es)?|explains?|emphasizes?|says|said)",
+        sample,
+    ):
         return True
     stripped = sample.strip(" \"“”'")
     if re.match(r"^[A-Z]{4,}\b", stripped) and not _SENTENCE_END_RE.search(stripped):
@@ -843,6 +847,11 @@ def drop_nonteaching_pastor_wraps(answer: str) -> str:
         r'(?i)(?:^|(?<=\s))Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? '
         r'(?:teaches|emphasizes|advises|encourages|explains|reminds us),'
         r'(?!\s*[\"“])\s*(?:\.\s*)?',
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(
+        r'(?i)(?:^|(?<=\s))(?:[A-Za-z][^.\n\"“]{0,60})?[\"”]\s*(?=(?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+)',
         "",
         cleaned,
     )
