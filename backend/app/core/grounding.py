@@ -192,6 +192,8 @@ _MIXED_PASTOR_MIN_CHARS = 40
 def _pastor_sentences_from_mixed_notes(body: str, *, bible_corpus: str = "") -> list[str]:
     """Keep spoken teaching from a chunk that also cites verses."""
     sentences = split_sentences(body) or [body]
+    if len(sentences) <= 1 and len(body or "") > 160:
+        sentences = [part.strip() for part in re.split(r"[\n;]+", body or "") if part.strip()]
     pastor: list[str] = []
     for sentence in sentences:
         cleaned = " ".join(sentence.split()).strip()
@@ -244,7 +246,8 @@ def collect_allowed_sermon_quotes(
         candidates.extend(extract_quote_spans(body))
         candidates.extend(_pastor_sentences_from_mixed_notes(body, bible_corpus=bible))
         if body and len(body) >= 40 and not looks_like_scripture_blob(body):
-            candidates.append(body)
+            if is_pastor_own_voice(body, bible_corpus=bible):
+                candidates.append(body)
         for item in candidates:
             cleaned = " ".join(item.split())
             key = normalize_grounding_text(cleaned)

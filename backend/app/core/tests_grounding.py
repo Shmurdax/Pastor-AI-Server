@@ -462,6 +462,24 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertFalse(any("Enthroned" in item for item in quotes), quotes)
 
+    def test_newline_chunks_keep_pastor_lines_beside_verses(self):
+        from core.grounding import collect_allowed_sermon_quotes
+
+        docs = [
+            _doc(
+                "Marriage is a developmental process not an event and requires commitment\n"
+                "As far as the east is from the west so far has He removed our transgressions\n"
+                "We must make sure our spouses feel valued as a very special person today",
+                source="home.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        quotes = collect_allowed_sermon_quotes(docs)
+        joined = " ".join(quotes)
+        self.assertIn("developmental process", joined)
+        self.assertIn("special person", joined)
+        self.assertFalse(any("east is from the west" in item for item in quotes), quotes)
+
     def test_fallback_picks_on_topic_quote_when_score_is_low(self):
         from core.grounding import select_query_grounded_quotes
 

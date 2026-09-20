@@ -628,9 +628,14 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     if fallback and fallback not in (answer or ""):
         answer = weave_into_answer(answer, fallback)
     answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
-    return compact_teaching_answer(
+    answer = compact_teaching_answer(
         repair_speaker_attributions(answer, nkjv_docs=bible)
     )
+    if _missing_required_quotes(prepared, answer):
+        fallback = _rag_grounding_fallback(prepared, answer, force=True)
+        if fallback and fallback not in (answer or ""):
+            answer = weave_into_answer(answer, fallback)
+    return answer
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
