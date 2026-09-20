@@ -114,7 +114,7 @@ class LandingScreen extends StatelessWidget {
                 Center(child: Container(height: 2, width: 56, color: _gold)),
                 const SizedBox(height: 16),
                 Text(
-                  "Pastoral answers rooted in Pastor Don Nordin's teaching and Scripture. "
+                  "Pastoral answers rooted in Pastor Don and Susan Nordin's teaching and Scripture. "
                   'Subscribe to start chatting, praying, and studying with the ministry library.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
