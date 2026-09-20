@@ -174,6 +174,10 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "1 Corinthians 16:1",
             'Pastor Don and Susan Nordin also teach, "Don’t even be angry with your brother."':
                 "Matthew 5:22",
+            'Pastor Don and Susan Nordin also teach, "If you look at a woman with lust in your heart you have already committed adultery."':
+                "Matthew 5:28",
+            'Pastor Don Nordin teaches, "Recall the former days in which, after you were illuminated, you endured a great struggle with sufferings."':
+                "Hebrews 10:32",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)

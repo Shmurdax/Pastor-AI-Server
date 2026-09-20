@@ -64,6 +64,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("faith is the substance of things hoped for", "Hebrews 11:1"),
     ("don't even be angry with your brother", "Matthew 5:22"),
     ("whoever is angry with his brother", "Matthew 5:22"),
+    ("if you look at a woman with lust", "Matthew 5:28"),
+    ("already committed adultery", "Matthew 5:28"),
+    ("recall the former days in which, after you were illuminated", "Hebrews 10:32"),
     ("i will never leave you nor forsake you", "Hebrews 13:5"),
     ("this is my beloved son", "Matthew 3:17"),
     ("all things are possible to him who believes", "Mark 9:23"),
@@ -171,7 +174,8 @@ def _fragment_variants(fragment: str) -> tuple[str, ...]:
 
 
 def _text_contains_fragment(folded: str, fragment: str) -> bool:
-    return any(item in folded for item in _fragment_variants(fragment))
+    needles = _fragment_variants(normalize_speaker_text(fragment))
+    return any(item in folded for item in needles if item)
 
 
 def looks_like_divine_speech(text: str) -> bool:
@@ -309,6 +313,7 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Hebrews 7:8",
         "1 Corinthians 16:1",
         "1 Corinthians 16:2",
+        "Hebrews 10:32",
         "Hebrews 10:36",
         "Hebrews 11:1",
         "2 Corinthians 6:2",
