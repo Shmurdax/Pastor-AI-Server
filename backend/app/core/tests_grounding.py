@@ -233,6 +233,12 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertEqual(len(found), 1)
 
+    def test_lookup_scroll_filter_includes_verse_start(self):
+        import inspect
+
+        source = inspect.getsource(lookup_nkjv_verses)
+        self.assertIn('key="verse_start"', source)
+
     def test_grounding_repair_steer_lists_allowed_lines(self):
         from core.grounding import GroundingReport, grounding_repair_steer
 

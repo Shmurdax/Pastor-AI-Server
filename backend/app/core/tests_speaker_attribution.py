@@ -544,6 +544,25 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertFalse(any("great matter" in span.lower() for span, _lead in remaining), remaining)
         self.assertIn("Exodus 18:22", fixed)
 
+    def test_malachi_hearts_of_the_fathers_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "He will turn the hearts of the fathers to the children, '
+            'and the hearts of the children to their fathers."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("hearts of the fathers" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Malachi 4:6", fixed)
+
+    def test_concludes_leadin_counts_as_pastor_quote(self):
+        text = (
+            'As Pastor Don Nordin concludes, "We are living in difficult times! '
+            'I want to know who intends to worship their way THROUGH?"'
+        )
+        quotes = pastor_attributed_quotes(text)
+        self.assertTrue(quotes)
+        self.assertIn("worship their way", quotes[0][0].lower())
+
     def test_glued_leadin_inside_quote_is_dropped_but_sermon_lines_stay(self):
         self.assertTrue(
             is_pastor_own_voice("Marriage is a developmental process, not an event.")

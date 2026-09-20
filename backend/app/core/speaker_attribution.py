@@ -188,6 +188,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("put off, concerning your former conduct, the old man", "Ephesians 4:22"),
     ("every great matter they shall bring to you", "Exodus 18:22"),
     ("every small matter they themselves shall judge", "Exodus 18:22"),
+    ("he will turn the hearts of the fathers to the children", "Malachi 4:6"),
+    ("turn the heart of the fathers to the children", "Malachi 4:6"),
+    ("and the hearts of the children to their fathers", "Malachi 4:6"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -211,7 +214,8 @@ _SCRIPTURE_VOICE_RE = re.compile(
 _SPEECH_VERB_RE = (
     r"(?:also\s+)?(?:teach(?:es)?|emphasizes?|says|said|taught|preach(?:es)?|"
     r"explains?|declares?|reminds?|quotes?|highlights?|adds?|notes?|"
-    r"continues?|underscores?|affirms?)"
+    r"continues?|underscores?|affirms?|concludes?|states?|observes?|"
+    r"encourages?)"
 )
 _PASTOR_NAME_RE = (
     r"pastor\s+don(?:\s+and\s+susan)?(?:\s+nordin)?(?:\s+and\s+susan(?:\s+nordin)?)?"

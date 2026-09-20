@@ -540,7 +540,7 @@ _TEACHINGS_PROVIDED_RE = re.compile(
     r"(?i)(?:here are some key points )?based on the teachings provided:\s*"
 )
 _AS_THIS_OBSERVATION_RE = re.compile(
-    r"(?i)\bAs This observation highlights[^.?\n]*[.?]?\s*"
+    r"(?i)\bAs This (?:observation highlights|journey)\b[^.?\n]*[.?]?\s*"
 )
 _EMPTY_EXCERPT_RE = re.compile(r"(?im)^\s*\*?Excerpt\*?:\s*$")
 _EMPTY_QUOTES_RE = re.compile(r'[\"“]\s*[\"”]')
@@ -949,6 +949,10 @@ def lookup_nkjv_verses(
                         qdrant_models.FieldCondition(
                             key="chapter",
                             match=qdrant_models.MatchValue(value=int(chapter)),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="verse_start",
+                            match=qdrant_models.MatchValue(value=int(verse)),
                         ),
                     ]
                 ),
