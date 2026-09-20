@@ -853,9 +853,13 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("(NKJV) says,", filled)
         self.assertTrue(nkjv_matches_query(filled, query))
         self.assertTrue(
-            "tithe of the land" in filled or "tithes into the storehouse" in filled,
+            "tithe of the land" in filled or "tithes into the storehouse" in filled
+            or "earth is the LORD" in filled or "earth is the Lord's" in filled,
             filled,
         )
+        from_fallback = ensure_topical_nkjv(bare, query, [])
+        self.assertIn("(NKJV) says,", from_fallback)
+        self.assertTrue(nkjv_matches_query(from_fallback, query))
 
 
 if __name__ == "__main__":

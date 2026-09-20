@@ -789,6 +789,32 @@ _TOPIC_VERSE_HINTS = {
     "evangelism": "Matthew 28:19 Acts 1:8",
     "rest": "Matthew 11:28 Hebrews 4:9",
 }
+_TOPIC_NKJV_WORDING = {
+    "Psalm 22:3": "But You are holy, Enthroned in the praises of Israel.",
+    "Romans 12:1": "I beseech you therefore, brethren, by the mercies of God, that you present your bodies a living sacrifice, holy, acceptable to God, which is your reasonable service.",
+    "John 4:24": "God is Spirit, and those who worship Him must worship in spirit and truth.",
+    "Genesis 2:24": "Therefore a man shall leave his father and mother and be joined to his wife, and they shall become one flesh.",
+    "Ephesians 5:25": "Husbands, love your wives, just as Christ also loved the church and gave Himself for her.",
+    "1 Corinthians 7:3": "Let the husband render to his wife the affection due her, and likewise also the wife to her husband.",
+    "Ephesians 6:4": "And you, fathers, do not provoke your children to wrath, but bring them up in the training and admonition of the Lord.",
+    "Proverbs 22:6": "Train up a child in the way he should go, And when he is old he will not depart from it.",
+    "James 1:6": "But let him ask in faith, with no doubting, for he who doubts is like a wave of the sea driven and tossed by the wind.",
+    "Matthew 6:6": "But you, when you pray, go into your room, and when you have shut your door, pray to your Father who is in the secret place; and your Father who sees in secret will reward you openly.",
+    "Psalm 24:1": "The earth is the LORD's, and all its fullness, The world and those who dwell therein.",
+    "Malachi 3:10": "Bring all the tithes into the storehouse, That there may be food in My house, And try Me now in this, Says the LORD of hosts.",
+    "Leviticus 27:30": "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the LORD's. It is holy to the LORD.",
+    "1 Corinthians 10:13": "No temptation has overtaken you except such as is common to man; but God is faithful, who will not allow you to be tempted beyond what you are able, but with the temptation will also make the way of escape, that you may be able to bear it.",
+    "Matthew 4:1": "Then Jesus was led up by the Spirit into the wilderness to be tempted by the devil.",
+    "Romans 15:13": "Now may the God of hope fill you with all joy and peace in believing, that you may abound in hope by the power of the Holy Spirit.",
+    "Romans 8:28": "And we know that all things work together for good to those who love God, to those who are the called according to His purpose.",
+    "Matthew 28:19": "Go therefore and make disciples of all the nations, baptizing them in the name of the Father and of the Son and of the Holy Spirit.",
+    "Acts 2:42": "And they continued steadfastly in the apostles' doctrine and fellowship, in the breaking of bread, and in prayers.",
+    "Philippians 2:3": "Let nothing be done through selfish ambition or conceit, but in lowliness of mind let each esteem others better than himself.",
+    "James 4:10": "Humble yourselves in the sight of the Lord, and He will lift you up.",
+    "Acts 1:8": "But you shall receive power when the Holy Spirit has come upon you; and you shall be witnesses to Me in Jerusalem, and in all Judea and Samaria, and to the end of the earth.",
+    "Matthew 11:28": "Come to Me, all you who labor and are heavy laden, and I will give you rest.",
+    "Hebrews 4:9": "There remains therefore a rest for the people of God.",
+}
 _NKJV_QUOTE_AFTER_CITE_RE = re.compile(
     r'(?is)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)'
     r'\s*\(\s*NKJV\s*\)'
@@ -818,6 +844,19 @@ def topic_hint_ref_keys(query: str) -> set[str]:
             for book, chapter, verse in parse_verse_refs(hint):
                 keys.add(_ref_key(book, chapter, verse))
     return keys
+
+
+def topical_nkjv_fallback_pairs(query: str) -> list[tuple[str, str]]:
+    """NKJV wording for the current topic when Qdrant lookup did not attach verses."""
+    keys = topic_hint_ref_keys(query)
+    if not keys:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for ref, wording in _TOPIC_NKJV_WORDING.items():
+        parsed = parse_verse_refs(ref)
+        if parsed and _ref_key(*parsed[0]) in keys:
+            pairs.append((ref, wording))
+    return pairs
 
 
 def nkjv_matches_query(answer: str, query: str) -> bool:
@@ -855,6 +894,8 @@ def ensure_topical_nkjv(
     if not hint_keys:
         return text
     pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
+    if not pairs:
+        pairs = topical_nkjv_fallback_pairs(query)
     topical = [
         (ref, wording)
         for ref, wording in pairs
