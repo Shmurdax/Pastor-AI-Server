@@ -314,6 +314,30 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertIn("oil-in-an-engine", fixed)
         self.assertNotRegex(fixed, r'(?i)pastor don and susan.{0,40}greater things')
 
+    def test_splits_pastor_prose_from_jesus_clause_in_same_quote(self):
+        text = (
+            'Pastor Don Nordin teaches, "It isn\'t until after His Baptism that Jesus '
+            "began to perform miracles. You will do greater things because I will go to "
+            'My Father and He will send Holy Spirit to abide in you."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertIn("Baptism", fixed)
+        self.assertIn("Pastor Don", fixed)
+        self.assertIn("John 14", fixed)
+        self.assertRegex(
+            fixed,
+            r'(?i)pastor don.{0,40}teaches, "It isn\'t until after His Baptism',
+        )
+        self.assertNotRegex(
+            fixed,
+            r"(?i)records the lord saying, \"It isn't until after His Baptism",
+        )
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(
+            any("greater things" in span.lower() for span, _lead in remaining),
+            remaining,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

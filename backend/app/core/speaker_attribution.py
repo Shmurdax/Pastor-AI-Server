@@ -561,6 +561,40 @@ def _rewrite_unquoted_pastor_scripture(
     return _PASTOR_TEACHES_THAT_RE.sub(repl, text or "")
 
 
+def _split_mixed_scripture_quote(
+    lead: str,
+    span: str,
+    *,
+    bible_corpus: str = "",
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str | None:
+    """Keep Pastor Don's own sentences; cite only the Scripture clauses as the Lord."""
+    parts = split_sentences(span)
+    if len(parts) < 2:
+        return None
+    pastor_parts: list[str] = []
+    scripture_parts: list[str] = []
+    for part in parts:
+        cleaned = " ".join(part.split()).strip()
+        if not cleaned or looks_like_nonteaching_excerpt(cleaned):
+            continue
+        if looks_like_scripture_wording(cleaned, bible_corpus):
+            scripture_parts.append(cleaned)
+        else:
+            pastor_parts.append(cleaned)
+    if not pastor_parts or not scripture_parts:
+        return None
+    bits: list[str] = []
+    lead_text = (lead or "").strip()
+    if lead_text and not lead_text.endswith(" "):
+        lead_text += " "
+    if pastor_parts:
+        bits.append(f'{lead_text}"{" ".join(pastor_parts)}"')
+    for part in scripture_parts:
+        bits.append(scripture_leadin_for(part, nkjv_pairs) + f'"{part}"')
+    return " ".join(bits)
+
+
 def _rewrite_pastor_wrapped_scripture(
     text: str,
     *,
@@ -576,6 +610,11 @@ def _rewrite_pastor_wrapped_scripture(
         quoted = f'{match.group(2)}{match.group(3)}{match.group(4)}'
         if looks_like_nonteaching_excerpt(span):
             return ""
+        mixed = _split_mixed_scripture_quote(
+            lead, span, bible_corpus=bible_corpus, nkjv_pairs=pairs
+        )
+        if mixed is not None:
+            return mixed
         if not looks_like_scripture_wording(span, bible_corpus):
             return match.group(0)
         opener = ""
@@ -611,11 +650,23 @@ def rewrite_misattributed_quotes(
         lead = _leadin_match(prefix)
         if lead is None:
             continue
-        if not looks_like_scripture_wording(span, bible_corpus):
-            continue
         window = _clause_tail(prefix)
         abs_start = start - len(window) + lead.start()
         if abs_start < cursor:
+            continue
+        mixed = _split_mixed_scripture_quote(
+            lead.group(0),
+            span,
+            bible_corpus=bible_corpus,
+            nkjv_pairs=pairs,
+        )
+        if mixed is not None:
+            pieces.append(text[cursor:abs_start])
+            pieces.append(mixed)
+            cursor = end
+            changed = True
+            continue
+        if not looks_like_scripture_wording(span, bible_corpus):
             continue
         opener = ""
         opener_match = _OPENER_RE.match(lead.group(0).strip())
