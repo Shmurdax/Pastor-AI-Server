@@ -779,6 +779,8 @@ def ensure_pastor_quote_wrap(answer: str, quotes: Iterable[str] = ()) -> str:
         and str(item).strip()
         and is_pastor_own_voice(item)
         and not looks_like_scripture_wording(item)
+        and not known_verse_ref(item)
+        and not parse_verse_refs(str(item)[:200])
         and len(" ".join(str(item).split())) >= 40
     ]
     if not candidates:
@@ -788,6 +790,8 @@ def ensure_pastor_quote_wrap(answer: str, quotes: Iterable[str] = ()) -> str:
                 len(cleaned) >= 40
                 and is_pastor_own_voice(cleaned)
                 and not looks_like_scripture_wording(cleaned)
+                and not known_verse_ref(cleaned)
+                and not parse_verse_refs(cleaned[:200])
                 and not looks_like_heading_quote(cleaned)
             ):
                 candidates.append(cleaned)

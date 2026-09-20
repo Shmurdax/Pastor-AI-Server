@@ -208,6 +208,18 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("hope in god and wait expectantly for him", "Psalm 42:5"),
     ("the help of my countenance, and my god", "Psalm 42:5"),
     ("the help of my sad countenance", "Psalm 42:5"),
+    ("go therefore and make disciples of all the nations", "Matthew 28:19"),
+    ("baptizing them in the name of the father and of the son", "Matthew 28:19"),
+    ("make disciples of all the nations", "Matthew 28:19"),
+    ("pulling them out of the fire", "Jude 1:23"),
+    ("pull them out of the fire", "Jude 1:23"),
+    ("hating even the garment defiled by the flesh", "Jude 1:23"),
+    ("garment spotted by the flesh", "Jude 1:23"),
+    ("save with fear", "Jude 1:23"),
+    ("and others save with fear", "Jude 1:23"),
+    ("on some have compassion, making a difference", "Jude 1:22"),
+    ("i will restore double to you", "Zechariah 9:12"),
+    ("even today i declare i will restore double", "Zechariah 9:12"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -467,6 +479,8 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if re.search(r'(?i)\bI["”]?\s*messages rather than\b', sample) and len(sample) < 60:
         return True
+    if re.search(r"\bof\s+\d{1,3}\s+(?:immorality|unscriptural)", sample):
+        return True
     if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
         return True
     if re.match(r"(?i)^to get right\b", sample.strip(" \"“”'")):
@@ -584,6 +598,10 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "James 4:7",
         "James 4:10",
         "Psalm 42:5",
+        "Matthew 28:19",
+        "Jude 1:22",
+        "Jude 1:23",
+        "Zechariah 9:12",
     }
 )
 

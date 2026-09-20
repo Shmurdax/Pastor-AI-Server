@@ -643,6 +643,24 @@ class GroundingTests(unittest.TestCase):
         self.assertTrue(any("spiritual miracles" in span.lower() for span, _lead in quotes), quotes)
         self.assertNotIn("As t1 Peter", wrapped)
 
+    def test_ensure_pastor_quote_wrap_skips_great_commission(self):
+        from core.grounding import ensure_pastor_quote_wrap
+        from core.speaker_attribution import pastor_attributed_quotes
+
+        text = (
+            "### Evangelism and Witnessing\n\n"
+            "Jude describes the work of evangelism using powerful imagery. "
+            "Go therefore and make disciples of all the nations, baptizing them "
+            "in the name of the Father and of the Son and of the Holy Spirit. "
+            'Matthew 28:19 (NKJV) says, "Go therefore and make disciples of all the nations." '
+            "These actions reflect the urgency and importance of sharing the Gospel and saving souls."
+        )
+        wrapped = ensure_pastor_quote_wrap(text, [])
+        quotes = pastor_attributed_quotes(wrapped)
+        self.assertTrue(quotes, wrapped)
+        self.assertFalse(any("make disciples" in span.lower() for span, _lead in quotes), quotes)
+        self.assertTrue(any("sharing the gospel" in span.lower() or "saving souls" in span.lower() for span, _lead in quotes), quotes)
+
     def test_peter_humility_verse_is_not_collected_as_pastor_quote(self):
         from core.grounding import select_query_grounded_quotes
         from core.speaker_attribution import (

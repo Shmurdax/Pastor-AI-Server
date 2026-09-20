@@ -675,13 +675,14 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
             query,
             collect_allowed_nkjv(bible),
         )
-        return _speaker_repaired(
-            prepared,
-            ensure_pastor_quote_wrap(
-                compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer)),
-                _grounding_snippets(prepared)[0],
-            ),
+        answer = _speaker_repaired(
+            prepared, compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer))
         )
+        quotes = _grounding_snippets(prepared)[0]
+        answer = ensure_pastor_quote_wrap(answer, quotes)
+        if _missing_required_quotes(prepared, answer):
+            answer = ensure_pastor_quote_wrap(answer, quotes)
+        return _speaker_repaired(prepared, compact_teaching_answer(answer))
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:
@@ -707,7 +708,11 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
     )
     answer = _ensure_quoted_nkjv(prepared, answer)
     answer = _speaker_repaired(prepared, compact_teaching_answer(answer))
-    answer = ensure_pastor_quote_wrap(answer, _grounding_snippets(prepared)[0])
+    quotes = _grounding_snippets(prepared)[0]
+    answer = ensure_pastor_quote_wrap(answer, quotes)
+    answer = _speaker_repaired(prepared, compact_teaching_answer(answer))
+    if _missing_required_quotes(prepared, answer):
+        answer = ensure_pastor_quote_wrap(answer, quotes)
     return _speaker_repaired(prepared, compact_teaching_answer(answer))
 
 

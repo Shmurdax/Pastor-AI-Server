@@ -665,6 +665,27 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_great_commission_and_jude_are_not_pastor_don(self):
+        commission = (
+            "Go therefore and make disciples of all the nations, baptizing them "
+            "in the name of the Father and of the Son and of the Holy Spirit."
+        )
+        self.assertFalse(is_pastor_own_voice(commission))
+        self.assertEqual(known_verse_ref(commission), "Matthew 28:19")
+        self.assertFalse(is_pastor_own_voice("Pull them out of the fire."))
+        self.assertFalse(is_pastor_own_voice("Hate the garment spotted by the flesh."))
+        text = (
+            'Pastor Don Nordin teaches, "Go therefore and make disciples of all the nations, '
+            'baptizing them in the name of the Father and of the Son and of the Holy Spirit." '
+            'Pastor Don and Susan Nordin also teach, '
+            '"The church’s duty is centered around reaching the lost."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("make disciples" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Matthew 28:19", fixed)
+        self.assertTrue(any("reaching the lost" in span.lower() for span, _lead in remaining), remaining)
+
     def test_the_scripture_teaches_is_not_pastor_he_leadin(self):
         text = (
             "To receive spiritual miracles, we must humble ourselves before others. "
