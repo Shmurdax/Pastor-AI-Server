@@ -393,6 +393,8 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
         return True
     if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
         return True
+    if re.match(r"(?i)^to get right\b", sample.strip(" \"“”'")):
+        return True
     stripped = sample.strip(" \"“”'")
     if re.match(r"^[A-Z]{4,}\b", stripped) and not _SENTENCE_END_RE.search(stripped):
         return True

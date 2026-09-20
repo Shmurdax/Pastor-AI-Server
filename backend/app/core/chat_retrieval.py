@@ -1227,6 +1227,28 @@ def pin_docs_to_strong_title_matches(
     return pinned
 
 
+def _with_bible_hits(
+    kept: list[tuple[Any, float]],
+    pool: list[tuple[Any, float]],
+    *,
+    limit: int = 4,
+) -> list[tuple[Any, float]]:
+    """Keep NKJV chunks beside topical sermon notes so answers can quote Scripture."""
+    seen = {chunk_fingerprint(chunk_text(doc)) for doc, _score in kept}
+    extra: list[tuple[Any, float]] = []
+    for doc, score in pool:
+        if not is_bible_source(metadata_source_hint(doc)):
+            continue
+        fp = chunk_fingerprint(chunk_text(doc))
+        if not fp or fp in seen:
+            continue
+        extra.append((doc, score))
+        seen.add(fp)
+        if len(extra) >= limit:
+            break
+    return list(kept) + extra
+
+
 def _hit_matches_topic_pairs(doc: Any, groups: tuple[frozenset[str], ...]) -> bool:
     """True when the chunk names each required side of a topic pair."""
     hay = _metadata_search_blob(doc)
@@ -1290,7 +1312,7 @@ def filter_hits_by_topic(
             if topic_overlap_score(doc, core) > 0
         ]
         if core_hits:
-            return core_hits
+            return _with_bible_hits(core_hits, scored_hits)
     pair_keys = [key for key in present_keys if key in _TOPIC_PAIR_REQUIREMENTS]
     if pair_keys:
         pair_hits = [
@@ -1302,14 +1324,14 @@ def filter_hits_by_topic(
             )
         ]
         if pair_hits:
-            return pair_hits
+            return _with_bible_hits(pair_hits, scored_hits)
         titled = [
             (doc, score)
             for doc, score in scored_hits
             if title_overlap_score(doc, (core or required_topic_synonyms(query))) > 0
         ]
         if titled:
-            return titled
+            return _with_bible_hits(titled, scored_hits)
         # Do not fall through to a single "parent" mention in an unrelated sermon.
     required = required_topic_synonyms(query)
     if required and not pair_keys:
@@ -1319,13 +1341,13 @@ def filter_hits_by_topic(
             if topic_overlap_score(doc, required) > 0
         ]
         if required_hits:
-            return required_hits
+            return _with_bible_hits(required_hits, scored_hits)
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
         # generic \"sermon\" clips just to fill the quota. If nothing names the
         # people, keep Bible verses only — never April-7 intros / unrelated PDFs.
         if on_topic:
-            return on_topic
+            return _with_bible_hits(on_topic, scored_hits)
         return [
             (doc, score)
             for doc, score, _overlap in ranked
@@ -1333,7 +1355,7 @@ def filter_hits_by_topic(
         ]
     min_keep = max(6, retrieval_k)
     if len(on_topic) >= min_keep:
-        return on_topic
+        return _with_bible_hits(on_topic, scored_hits)
     # Prefer any overlap, then original rank.
     ranked.sort(key=lambda item: (item[2], item[1]), reverse=True)
     return [(doc, score) for doc, score, _overlap in ranked]
@@ -1457,6 +1479,14 @@ def extract_used_verse_refs(texts: Iterable[str], *, limit: int = 12) -> list[st
             if len(found) >= limit:
                 return found
     return found
+
+
+_QUOTED_NKJV_RE = re.compile(r'(?i)\(\s*NKJV\s*\)[^\"“]{0,80}[\"“]')
+
+
+def has_quoted_nkjv(text: str) -> bool:
+    """True when an NKJV citation is followed by quotation-marked wording."""
+    return bool(_QUOTED_NKJV_RE.search(text or ""))
 
 
 def bible_book_key(text: str) -> str:

@@ -469,6 +469,9 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_truncated_series_wrapup_is_not_pastor_voice(self):
+        self.assertFalse(is_pastor_own_voice("to get right! One other thing before we finish this series."))
+
 
 if __name__ == "__main__":
     unittest.main()

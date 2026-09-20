@@ -489,14 +489,14 @@ def answer_missing_required_quotes(
         return False
     if text_looks_degenerate(answer):
         return False
-    from .chat_retrieval import extract_used_verse_refs
+    from .chat_retrieval import extract_used_verse_refs, has_quoted_nkjv
     from .speaker_attribution import pastor_attributed_quotes
 
     # NKJV quotation marks are not Pastor Don. Sermon-note answers still need
     # attributed excerpts from the notes themselves.
     if not pastor_attributed_quotes(answer or ""):
         return True
-    if has_bible_notes and not extract_used_verse_refs([answer or ""]):
+    if has_bible_notes and not has_quoted_nkjv(answer or ""):
         return True
     return False
 

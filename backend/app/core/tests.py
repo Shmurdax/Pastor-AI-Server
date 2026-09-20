@@ -247,10 +247,19 @@ class ChatSystemPromptTests(unittest.TestCase):
                 quoted, query=query, has_reference_notes=True, has_bible_notes=True
             )
         )
-        with_verse = quoted + " Hebrews 11:1 says faith is the substance of things hoped for."
+        with_verse = (
+            quoted
+            + '\nHebrews 11:1 (NKJV) says, "Now faith is the substance of things hoped for."'
+        )
         self.assertFalse(
             answer_missing_required_quotes(
                 with_verse, query=query, has_reference_notes=True, has_bible_notes=True
+            )
+        )
+        unquoted_ref = quoted + " Leviticus 27:30-34 outlines the requirement to tithe."
+        self.assertTrue(
+            answer_missing_required_quotes(
+                unquoted_ref, query=query, has_reference_notes=True, has_bible_notes=True
             )
         )
         nkjv_only = (

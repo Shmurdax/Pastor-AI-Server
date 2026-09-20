@@ -561,9 +561,9 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
         has_bible_notes=has_bible_notes,
     ):
         return True
-    from .chat_retrieval import extract_used_verse_refs
+    from .chat_retrieval import has_quoted_nkjv
 
-    if not extract_used_verse_refs([answer or ""]) and collect_allowed_nkjv(bible):
+    if not has_quoted_nkjv(answer or "") and collect_allowed_nkjv(bible):
         return True
     return False
 
@@ -576,12 +576,12 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     if report.ok and not force:
         return ""
     quotes, nkjv = _grounding_snippets(prepared)
-    from .chat_retrieval import extract_used_verse_refs
+    from .chat_retrieval import has_quoted_nkjv
     from .speaker_attribution import pastor_attributed_quotes
 
     if pastor_attributed_quotes(answer or ""):
         quotes = []
-    if extract_used_verse_refs([answer or ""]):
+    if has_quoted_nkjv(answer or ""):
         nkjv = []
     if not quotes and not nkjv:
         return ""

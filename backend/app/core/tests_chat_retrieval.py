@@ -19,6 +19,7 @@ from core.chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
+    has_quoted_nkjv,
     is_bible_source,
     is_strong_title_match,
     is_video_chunk,
@@ -619,6 +620,37 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         sources = [doc.metadata["source"] for doc, _score in kept]
         self.assertEqual(sources, ["parenting.pdf"])
+
+    def test_topic_filter_keeps_nkjv_beside_prayer_notes(self):
+        query = "Create sermon notes on prayer."
+        sermon = _doc(
+            "Praying for the lost requires persistence on the part of the intercessor.",
+            source="prayer.pdf",
+            title="Prayers That Prevail for the Lost",
+        )
+        bible = _doc(
+            "Ask, and it will be given to you; seek, and you will find.",
+            source="nkjv-bible.pdf",
+            title="Matthew 7:7",
+        )
+        kept = filter_hits_by_topic(
+            [(sermon, 0.92), (bible, 0.71)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertIn("prayer.pdf", sources)
+        self.assertIn("nkjv-bible.pdf", sources)
+
+    def test_quoted_nkjv_requires_wording(self):
+        self.assertTrue(
+            has_quoted_nkjv(
+                'James 1:6 (NKJV) says, "But let him ask in faith, with no doubting."'
+            )
+        )
+        self.assertFalse(
+            has_quoted_nkjv("Leviticus 27:30-34 outlines the requirement to give a tenth.")
+        )
 
     def test_select_diverse_docs_spreads_sources(self):
         scored = [
