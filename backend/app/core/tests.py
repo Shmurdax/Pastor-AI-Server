@@ -71,6 +71,9 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("at least two word-for-word quotation-marked excerpts", prompt)
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
+        self.assertIn("<speaker_attribution>", prompt)
+        self.assertIn("Keep four voices distinct", prompt)
+        self.assertIn("Never write Pastor Don teaches", prompt)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
         self.assertIn("Do not invent a recap", FOLLOWUP_STEER)
         self.assertNotIn("2000 characters", prompt)
@@ -235,6 +238,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not repeat headings", QUOTE_CONTINUE_STEER)
+        self.assertIn("Never wrap Scripture", QUOTE_CONTINUE_STEER)
         from .chat_system_prompt import skip_rewrite_repair
         self.assertTrue(skip_rewrite_repair(paraphrase))
         self.assertTrue(skip_rewrite_repair(quoted))
@@ -243,10 +247,28 @@ class ChatSystemPromptTests(unittest.TestCase):
                 quoted, query=query, has_reference_notes=True, has_bible_notes=True
             )
         )
-        with_verse = quoted + " Hebrews 11:1 says faith is the substance of things hoped for."
+        with_verse = (
+            quoted
+            + '\nHebrews 11:1 (NKJV) says, "Now faith is the substance of things hoped for."'
+        )
         self.assertFalse(
             answer_missing_required_quotes(
                 with_verse, query=query, has_reference_notes=True, has_bible_notes=True
+            )
+        )
+        unquoted_ref = quoted + " Leviticus 27:30-34 outlines the requirement to tithe."
+        self.assertTrue(
+            answer_missing_required_quotes(
+                unquoted_ref, query=query, has_reference_notes=True, has_bible_notes=True
+            )
+        )
+        nkjv_only = (
+            paraphrase
+            + '\n\n1 Corinthians 7:37 (NKJV) says, "Nevertheless he who stands steadfast in his heart."'
+        )
+        self.assertTrue(
+            answer_missing_required_quotes(
+                nkjv_only, query=query, has_reference_notes=True
             )
         )
 

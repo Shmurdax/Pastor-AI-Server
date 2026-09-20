@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
+from .speaker_attribution import annotate_scripture_in_sermon
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BIBLE_SOURCE_MARKERS = (
@@ -486,6 +488,234 @@ def looks_like_followup(query: str) -> bool:
     return len(text.split()) <= 8
 
 
+_FOLLOWUP_ANCHOR_NOISE = frozenset(
+    {
+        "already",
+        "backup",
+        "based",
+        "clarify",
+        "clarification",
+        "discussed",
+        "expand",
+        "further",
+        "guidance",
+        "one",
+        "point",
+        "points",
+        "quote",
+        "quotes",
+        "scripture",
+        "steps",
+        "that",
+        "this",
+        "three",
+        "topic",
+        "two",
+        "week",
+    }
+)
+_TOPIC_SYNONYMS = {
+    "grief": (
+        "grieving",
+        "grieve",
+        "grieved",
+        "mourn",
+        "mourning",
+        "sorrow",
+        "sorrowful",
+        "comfort",
+        "comforter",
+        "weep",
+        "weeping",
+        "wept",
+        "tears",
+        "brokenhearted",
+        "bereave",
+        "bereaved",
+        "bereavement",
+        "funeral",
+        "widow",
+        "widows",
+        "hurting",
+    ),
+    "faith": ("faith", "faithful", "believe", "believes", "believing", "unbelief"),
+    "prayer": ("prayer", "pray", "praying", "prayed", "intercession", "intercede"),
+    "marriage": ("marriage", "married", "husband", "wife", "spouses", "wedding"),
+    "parenting": (
+        "parenting",
+        "parent",
+        "parents",
+        "child-rearing",
+        "childrearing",
+    ),
+    "family": ("family", "families", "children", "parent", "parents"),
+    "worship": (
+        "worship",
+        "worshiping",
+        "worshipping",
+        "worshiper",
+        "worshipper",
+        "praise",
+        "praises",
+        "praising",
+        "adoration",
+    ),
+    "temptation": ("temptation", "tempt", "tempted", "tempting", "tempter"),
+    "hope": ("hope", "hoping", "hoped", "hopeful", "suffering", "suffer", "trial", "trials"),
+    "church": ("church", "churches", "congregation", "congregations"),
+    "humility": ("humility", "humble", "humbled", "humbles"),
+    "evangelism": (
+        "evangelism",
+        "evangelize",
+        "evangelizing",
+        "witness",
+        "witnessing",
+        "soulwinning",
+        "gospel",
+    ),
+    "rest": ("sabbath", "resting"),
+    "spirit": ("spirit", "ghost"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offerings"),
+    "purpose": ("purpose", "calling", "destiny"),
+    "grace": ("grace", "gracious"),
+}
+_GENERIC_TOPIC_KEYS = frozenset({"prayer", "faith", "grace", "spirit", "purpose"})
+# When a more specific family-life topic is named, do not treat incidental
+# "children" mentions (Hosea, the lost, etc.) as on-topic parenting notes.
+_TOPIC_NARROWERS = {
+    "parenting": frozenset({"family"}),
+    "marriage": frozenset({"family"}),
+}
+_TOPIC_CORE = {
+    "parenting": ("parenting", "child-rearing", "childrearing"),
+    "marriage": ("marriage", "married", "husband", "wife"),
+    "worship": ("worship", "worshiping", "worshipping", "praise", "praises"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offerings"),
+    "temptation": ("temptation", "tempt", "tempted"),
+    "humility": ("humility", "humble"),
+    "evangelism": ("evangelism", "evangelize", "witness", "gospel"),
+    "grief": ("grieving", "grief", "mourn", "comfort"),
+}
+_TITLE_TOPIC_BLOCKLIST = {
+    "parenting": (
+        "christmas",
+        "nativity",
+        "advent",
+        "easter",
+        "hosea",
+        "gomer",
+        "prevail for the lost",
+        "palm sunday",
+        "trust the lord",
+        "second mile",
+        "living the good life",
+        "community",
+    ),
+    "isaac": (
+        "tithe",
+        "tithing",
+        "stewardship",
+        "melchizedek",
+        "nextsteps",
+    ),
+    "well": (
+        "gehazi",
+        "shunammite",
+        "elisha",
+        "naaman",
+    ),
+}
+_STORY_TITLE_TOPICS = {
+    "isaac": ("isaac", "moriah"),
+    "well": ("woman at the well", "at the well"),
+}
+# When core words like "parenting" are missing, still require both sides of the
+# topic (parents AND children) so a trust sermon that mentions "parents" drops.
+_TOPIC_PAIR_REQUIREMENTS = {
+    "parenting": (
+        frozenset({"parenting", "parent", "parents"}),
+        frozenset({"child", "children", "child-rearing", "childrearing", "raising"}),
+    ),
+}
+
+
+def _query_has_synonym(text: str, synonyms: Iterable[str]) -> bool:
+    blob = f"{keyword_search_query(text)} {text}".lower()
+    return any(re.search(rf"\b{re.escape(str(item).lower())}\b", blob) for item in synonyms)
+
+
+def current_carries_new_topic(current: str, prior: str = "") -> bool:
+    """True when this turn names a topic the previous question did not."""
+    current_q = (current or "").strip()
+    if not current_q:
+        return False
+    if looks_like_format_followup(current_q):
+        return False
+    if not (prior or "").strip():
+        return True
+    current_keys = {
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(current_q, synonyms)
+    }
+    prior_keys = {
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(prior, synonyms)
+    }
+    if current_keys - prior_keys:
+        return True
+    if _FOLLOWUP_RE.search(current_q) or looks_like_followup(current_q):
+        return False
+    extra = set(query_focus_tokens(current_q)) - set(query_focus_tokens(prior))
+    extra -= _FOLLOWUP_ANCHOR_NOISE
+    extra -= _GENERIC_FOCUS_STOPWORDS
+    return bool(extra)
+
+
+def required_topic_synonyms(query: str) -> frozenset[str]:
+    """Synonyms that retrieved notes must mention for this question's topic."""
+    present: list[str] = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    drop: set[str] = set()
+    for key in present:
+        drop.update(_TOPIC_NARROWERS.get(key, ()))
+    narrowed = [key for key in present if key not in drop]
+    specific = [key for key in narrowed if key not in _GENERIC_TOPIC_KEYS]
+    keys = specific or narrowed or present
+    found: set[str] = set()
+    for key in keys:
+        found.update(_TOPIC_SYNONYMS[key])
+    return frozenset(found)
+
+
+def required_topic_core_tokens(query: str) -> frozenset[str]:
+    """Distinctive topic words a hit must mention (not loose synonyms like 'children')."""
+    present: list[str] = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    drop: set[str] = set()
+    for key in present:
+        drop.update(_TOPIC_NARROWERS.get(key, ()))
+    narrowed = [key for key in present if key not in drop]
+    specific = [key for key in narrowed if key not in _GENERIC_TOPIC_KEYS]
+    keys = specific or narrowed
+    cores: set[str] = set()
+    for key in keys:
+        extras = _TOPIC_CORE.get(key)
+        if extras:
+            cores.update(extras)
+        else:
+            cores.add(key)
+            cores.update(list(_TOPIC_SYNONYMS[key])[:2])
+    return frozenset(cores)
+
+
+def topic_synonym_search_query(query: str) -> str:
+    """Extra embedding query made of topical synonyms (grief → comfort/mourning)."""
+    required = required_topic_synonyms(query)
+    if not required:
+        return ""
+    return " ".join(sorted(required)[:8])
+
+
 def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]] = None) -> str:
     """Blend the opening topic and latest user turn into retrieval."""
     current_q = (current or "").strip()
@@ -494,8 +724,20 @@ def topic_anchor_query(current: str, prior_user_queries: Optional[Iterable[str]]
         priors = [item for item in priors if item.lower() != current_q.lower()]
     if not priors:
         return current_q
-    first_prior = priors[0]
+    from .chat_system_prompt import looks_like_opening_recall
+
+    if looks_like_opening_recall(current_q):
+        first_prior = priors[0]
+        last_prior = priors[-1]
+        parts = [first_prior]
+        if last_prior.lower() != first_prior.lower():
+            parts.append(last_prior)
+        parts.append(current_q)
+        return " ".join(parts)
     last_prior = priors[-1]
+    if current_carries_new_topic(current_q, last_prior):
+        return current_q
+    first_prior = priors[0]
     parts = [first_prior]
     if last_prior.lower() != first_prior.lower():
         parts.append(last_prior)
@@ -1005,6 +1247,40 @@ def pin_docs_to_strong_title_matches(
     return pinned
 
 
+def _with_bible_hits(
+    kept: list[tuple[Any, float]],
+    pool: list[tuple[Any, float]],
+    *,
+    limit: int = 4,
+) -> list[tuple[Any, float]]:
+    """Keep NKJV chunks beside topical sermon notes so answers can quote Scripture."""
+    seen = {chunk_fingerprint(chunk_text(doc)) for doc, _score in kept}
+    extra: list[tuple[Any, float]] = []
+    for doc, score in pool:
+        if not is_bible_source(metadata_source_hint(doc)):
+            continue
+        fp = chunk_fingerprint(chunk_text(doc))
+        if not fp or fp in seen:
+            continue
+        extra.append((doc, score))
+        seen.add(fp)
+        if len(extra) >= limit:
+            break
+    return list(kept) + extra
+
+
+def _hit_matches_topic_pairs(doc: Any, groups: tuple[frozenset[str], ...]) -> bool:
+    """True when the chunk names each required side of a topic pair."""
+    hay = _metadata_search_blob(doc)
+    token_set: set[str] = set()
+    for group in groups:
+        token_set.update(group)
+    return all(
+        any(_focus_token_in_blob(token, hay, token_set) for token in group)
+        for group in groups
+    )
+
+
 def filter_hits_by_topic(
     scored_hits: list[tuple[Any, float]],
     query: str,
@@ -1027,12 +1303,84 @@ def filter_hits_by_topic(
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    present_keys = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    present_keys.extend(
+        key for key, synonyms in _STORY_TITLE_TOPICS.items() if _query_has_synonym(query, synonyms)
+    )
+    blocked = set()
+    for key in present_keys:
+        blocked.update(_TITLE_TOPIC_BLOCKLIST.get(key, ()))
+    if blocked:
+        filtered = []
+        for doc, score in scored_hits:
+            title = title_search_blob(doc)
+            if any(token in title for token in blocked) and "parenting" not in title:
+                continue
+            filtered.append((doc, score))
+        scored_hits = filtered
+        ranked = []
+        for doc, score in scored_hits:
+            overlap = topic_overlap_score(doc, tokens)
+            ranked.append((doc, score, overlap))
+        on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    core = required_topic_core_tokens(query)
+    pair_keys = [key for key in present_keys if key in _TOPIC_PAIR_REQUIREMENTS]
+    if core:
+        core_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if topic_overlap_score(doc, core) > 0
+        ]
+        if core_hits:
+            if pair_keys:
+                paired_core = [
+                    (doc, score)
+                    for doc, score in core_hits
+                    if all(
+                        _hit_matches_topic_pairs(doc, _TOPIC_PAIR_REQUIREMENTS[key])
+                        for key in pair_keys
+                    )
+                ]
+                if paired_core:
+                    return _with_bible_hits(paired_core, scored_hits)
+            else:
+                return _with_bible_hits(core_hits, scored_hits)
+    if pair_keys:
+        pair_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if all(
+                _hit_matches_topic_pairs(doc, _TOPIC_PAIR_REQUIREMENTS[key])
+                for key in pair_keys
+            )
+        ]
+        if pair_hits:
+            return _with_bible_hits(pair_hits, scored_hits)
+        titled = [
+            (doc, score)
+            for doc, score in scored_hits
+            if title_overlap_score(doc, (core or required_topic_synonyms(query))) > 0
+        ]
+        if titled:
+            return _with_bible_hits(titled, scored_hits)
+        return _with_bible_hits(pair_hits, scored_hits)
+    required = required_topic_synonyms(query)
+    if required and not pair_keys:
+        required_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if topic_overlap_score(doc, required) > 0
+        ]
+        if required_hits:
+            return _with_bible_hits(required_hits, scored_hits)
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
         # generic \"sermon\" clips just to fill the quota. If nothing names the
         # people, keep Bible verses only — never April-7 intros / unrelated PDFs.
         if on_topic:
-            return on_topic
+            return _with_bible_hits(on_topic, scored_hits)
         return [
             (doc, score)
             for doc, score, _overlap in ranked
@@ -1040,7 +1388,7 @@ def filter_hits_by_topic(
         ]
     min_keep = max(6, retrieval_k)
     if len(on_topic) >= min_keep:
-        return on_topic
+        return _with_bible_hits(on_topic, scored_hits)
     # Prefer any overlap, then original rank.
     ranked.sort(key=lambda item: (item[2], item[1]), reverse=True)
     return [(doc, score) for doc, score, _overlap in ranked]
@@ -1084,9 +1432,11 @@ def expand_search_queries(
             if token.lower() not in _LIBRARY_FOCUS_STOP
         )
 
-    # Follow-ups: search the prior user topic first so "expand week one"
-    # still retrieves marriage notes instead of generic "week / point" clips.
-    if prior_focus:
+    new_topic = current_carries_new_topic(current_q, last_prior) if last_prior else True
+
+    # Vague follow-ups search the prior topic first ("expand week one").
+    # A new topical question (faith, grieving, Holy Spirit) embeds that topic first.
+    if prior_focus and not new_topic:
         add(prior_focus)
         add(f"Pastor Don Nordin {prior_focus}")
         if heading_focus:
@@ -1108,11 +1458,17 @@ def expand_search_queries(
                     aliases.append(alias)
         if aliases:
             add(" ".join(bible_names + aliases))
-    elif focus and (not prior_focus or focus.lower() != prior_focus.lower()):
-        # Embed the topical core (homosexuality, salvation, …), not
-        # "generate a sermon based on …".
+    elif focus and (new_topic or not prior_focus or focus.lower() != prior_focus.lower()):
         add(focus)
         add(f"Pastor Don Nordin {focus}")
+
+    synonym_focus = topic_synonym_search_query(current_q)
+    if synonym_focus:
+        add(synonym_focus)
+        add(f"Pastor Don Nordin {synonym_focus}")
+
+    if prior_focus and new_topic and focus and focus.lower() != prior_focus.lower():
+        add(f"{focus} {prior_focus}")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
@@ -1142,14 +1498,12 @@ def extract_used_quotes(texts: Iterable[str], *, limit: int = 10) -> list[str]:
 
 
 def extract_used_verse_refs(texts: Iterable[str], *, limit: int = 12) -> list[str]:
+    from .bible_refs import scripture_refs_from_text
+
     found: list[str] = []
     seen: set[str] = set()
     for text in texts:
-        for match in _VERSE_RE.finditer(text or ""):
-            book = re.sub(r"\s+", " ", match.group(1)).strip()
-            if book.lower() not in {b.lower() for b in _BIBLE_BOOKS}:
-                continue
-            ref = f"{book} {match.group(2)}:{match.group(3)}"
+        for ref in scripture_refs_from_text(text or "", limit=limit):
             key = ref.lower()
             if key in seen:
                 continue
@@ -1158,6 +1512,14 @@ def extract_used_verse_refs(texts: Iterable[str], *, limit: int = 12) -> list[st
             if len(found) >= limit:
                 return found
     return found
+
+
+_QUOTED_NKJV_RE = re.compile(r'(?i)\(\s*NKJV\s*\)[^\"“]{0,80}[\"“]')
+
+
+def has_quoted_nkjv(text: str) -> bool:
+    """True when an NKJV citation is followed by quotation-marked wording."""
+    return bool(_QUOTED_NKJV_RE.search(text or ""))
 
 
 def bible_book_key(text: str) -> str:
@@ -1846,7 +2208,17 @@ def format_reference_notes(
         text = chunk_text(doc)
         if not text:
             continue
-        block = f"[Note {index} | {label}]\n{text}"
+        meta = getattr(doc, "metadata", None) or {}
+        kind = str(meta.get("chunk_kind") or "").lower()
+        bible = kind.startswith("bible") or is_bible_source(
+            metadata_source_hint(doc) or str(meta.get("source") or "")
+        )
+        if bible:
+            role = "SCRIPTURE (NKJV)"
+        else:
+            role = "SERMON (Pastor Don / Susan)"
+            text = annotate_scripture_in_sermon(text)
+        block = f"[Note {index} | {role} | {label}]\n{text}"
         extra = (2 if blocks else 0) + len(block)
         if used + extra > max_chars:
             remain = max_chars - used - (2 if blocks else 0)

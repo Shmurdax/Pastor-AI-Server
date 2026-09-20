@@ -70,9 +70,16 @@ from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
+    ensure_pastor_quote_wrap,
+    ensure_topical_nkjv,
     grounded_fallback_answer,
     grounding_repair_steer,
     lookup_nkjv_verses,
+    nkjv_corpus,
+    nkjv_matches_query,
+    pastor_quotes_match_query,
+    topical_nkjv_fallback_pairs,
+    repair_speaker_attributions,
     select_query_grounded_nkjv,
     select_query_grounded_quotes,
     split_docs_for_grounding,
@@ -81,6 +88,7 @@ from .grounding import (
     verify_answer_grounding,
     verse_refs_for_lookup,
     weave_into_answer,
+    repair_empty_nkjv_citations,
 )
 from .teaching_claims import (
     claim_repair_steer,
@@ -101,6 +109,7 @@ from .chat_retrieval import (
     restrict_docs_to_primary_source,
     retain_title_matches,
     topic_anchor_query,
+    current_carries_new_topic,
     is_bible_source,
     is_video_chunk,
     search_queries_on_store,
@@ -114,6 +123,7 @@ from .chat_system_prompt import (
     FINISH_STEER,
     LIBRARY_PULL_STEER,
     FOLLOWUP_STEER,
+    NEW_TOPIC_STEER,
     OPENING_RECALL_STEER,
     format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
@@ -251,6 +261,32 @@ def visible_chat_source_docs(docs):
         for doc in list(docs or [])
         if chunk_is_in_library(doc, hidden_hashes=hidden_hashes, hidden_names=hidden_names)
     ]
+
+
+def prefer_library_sermon_hits(scored_hits):
+    """When sermon-library notes exist, drop hidden knowledge books from RAG."""
+    hidden_hashes, hidden_names = hidden_library_matchers()
+    if not hidden_hashes and not hidden_names:
+        return list(scored_hits or [])
+    library = []
+    bible = []
+    for item in scored_hits or []:
+        doc = item[0]
+        if _is_bible_source(_doc_source_name(doc)):
+            bible.append(item)
+        elif chunk_is_in_library(
+            doc, hidden_hashes=hidden_hashes, hidden_names=hidden_names
+        ):
+            library.append(item)
+    if library:
+        return library + bible
+    return list(scored_hits or [])
+
+
+def prefer_library_sermon_docs(docs):
+    """Keep hidden books only when no sermon-library notes were retrieved."""
+    hits = prefer_library_sermon_hits([(doc, 1.0) for doc in list(docs or [])])
+    return [doc for doc, _score in hits]
 
 
 def _file_response_for_document(document: IngestedDocument, *, download: bool = False):
@@ -468,27 +504,37 @@ def _rag_check_report(prepared, answer: str):
     sermon, bible = split_docs_for_grounding(docs)
     report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
     logger.warning(
-        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s sample_quotes=%s sample_refs=%s",
+        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s "
+        "misattributed=%s sample_quotes=%s sample_refs=%s sample_misattributed=%s",
         report.ok,
         len(report.invented_quotes),
         len(report.invented_scripture),
         len(report.missing_nkjv_refs),
+        len(report.misattributed_quotes),
         report.invented_quotes[:2],
         report.missing_nkjv_refs[:5],
+        report.misattributed_quotes[:2],
     )
     return report, sermon, bible
+
+
+def _prepared_query(prepared) -> str:
+    return str(prepared.get("topic_query") or prepared.get("user_query") or "").strip()
 
 
 def _grounding_snippets(prepared):
     docs = prepared.get("docs") or []
     sermon, bible = split_docs_for_grounding(docs)
-    query = str(prepared.get("topic_query") or "")
-    quotes = select_query_grounded_quotes(collect_allowed_sermon_quotes(sermon), query)
-    if not quotes:
-        quotes = collect_allowed_sermon_quotes(sermon, limit=2)
+    query = _prepared_query(prepared)
+    bible_text = nkjv_corpus(bible)
+    quotes = select_query_grounded_quotes(
+        collect_allowed_sermon_quotes(sermon, bible_corpus=bible_text, query=query),
+        query,
+        allow_topic_pool_fallback=True,
+    )
     nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
     if not nkjv:
-        nkjv = collect_allowed_nkjv(bible, limit=1)
+        nkjv = topical_nkjv_fallback_pairs(query)
     return quotes[:2], nkjv[:1]
 
 
@@ -517,14 +563,34 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
     docs = prepared.get("docs") or []
     if not docs:
         return False
-    query = str(prepared.get("topic_query") or "")
-    has_bible_notes = any(_is_bible_source(_doc_source_name(doc)) for doc in docs)
-    return answer_missing_required_quotes(
+    query = _prepared_query(prepared)
+    sermon, bible = split_docs_for_grounding(docs)
+    has_bible_notes = bool(bible) or any(
+        _is_bible_source(_doc_source_name(doc)) for doc in docs
+    )
+    if answer_missing_required_quotes(
         answer,
         query=query,
         has_reference_notes=True,
         has_bible_notes=has_bible_notes,
-    )
+    ):
+        return True
+    from .chat_retrieval import has_quoted_nkjv
+
+    if not has_quoted_nkjv(answer or "") and collect_allowed_nkjv(bible):
+        return True
+    if collect_allowed_nkjv(bible) and not nkjv_matches_query(answer or "", query):
+        return True
+    if not pastor_quotes_match_query(answer or "", query):
+        retrieved = select_query_grounded_quotes(
+            collect_allowed_sermon_quotes(
+                sermon, bible_corpus=nkjv_corpus(bible), query=query
+            ),
+            query,
+        )
+        if retrieved:
+            return True
+    return False
 
 
 def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> str:
@@ -535,31 +601,119 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     if report.ok and not force:
         return ""
     quotes, nkjv = _grounding_snippets(prepared)
+    from .chat_retrieval import has_quoted_nkjv
+
+    query = _prepared_query(prepared)
+    if pastor_quotes_match_query(answer or "", query):
+        quotes = []
+    if has_quoted_nkjv(answer or "") and nkjv_matches_query(answer or "", query):
+        nkjv = []
     if not quotes and not nkjv:
         return ""
     logger.warning("RAG check still failing; weaving on-topic Pastor Don excerpts into the reply")
     return grounded_fallback_answer(quotes, nkjv)
 
 
+def _speaker_repaired(prepared, answer: str) -> str:
+    """Always strip Pastor Don / Susan wraps of Scripture, even with no notes."""
+    docs = prepared.get("docs") or []
+    _sermon, bible = split_docs_for_grounding(docs)
+    return repair_speaker_attributions(answer or "", nkjv_docs=bible)
+
+
+def _quoted_nkjv_sentence(ref: str, wording: str) -> str:
+    clipped = " ".join(str(wording or "").split())
+    if len(clipped) > 240:
+        clipped = clipped[:237].rsplit(" ", 1)[0] + "..."
+    return f'{ref} (NKJV) says, "{clipped}"'
+
+
+def _ensure_quoted_nkjv(prepared, answer: str) -> str:
+    """Last step: a teaching reply with notes must quote NKJV for this question."""
+    from .chat_retrieval import has_quoted_nkjv
+
+    text = answer or ""
+    query = _prepared_query(prepared)
+    docs = prepared.get("docs") or []
+    _sermon, bible = split_docs_for_grounding(docs)
+    pairs = collect_allowed_nkjv(bible)
+    for candidate in (query, str(prepared.get("user_query") or "")):
+        candidate = str(candidate or "").strip()
+        if not candidate:
+            continue
+        text = ensure_topical_nkjv(text, candidate, pairs)
+        if has_quoted_nkjv(text) and nkjv_matches_query(text, candidate):
+            return text
+    if has_quoted_nkjv(text):
+        return text
+    fallback = topical_nkjv_fallback_pairs(query) or topical_nkjv_fallback_pairs(
+        str(prepared.get("user_query") or "")
+    ) or pairs
+    if fallback:
+        ref, wording = fallback[0]
+        snippet = _quoted_nkjv_sentence(ref, wording)
+        if snippet not in text:
+            text = f"{text.rstrip()}\n\n{snippet}"
+    return text
+
+
 def _finalize_teaching_answer(prepared, answer: str) -> str:
     """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
+    sermon, bible = split_docs_for_grounding(docs)
+    query = _prepared_query(prepared)
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
+    answer = _speaker_repaired(prepared, answer)
     if not docs:
-        return answer
+        return _ensure_quoted_nkjv(prepared, answer)
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
-        return answer
+        answer = ensure_topical_nkjv(
+            repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible)),
+            query,
+            collect_allowed_nkjv(bible),
+        )
+        answer = _speaker_repaired(
+            prepared, compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer))
+        )
+        quotes = _grounding_snippets(prepared)[0]
+        answer = ensure_pastor_quote_wrap(answer, quotes)
+        if _missing_required_quotes(prepared, answer):
+            answer = ensure_pastor_quote_wrap(answer, quotes)
+        return _speaker_repaired(prepared, compact_teaching_answer(answer))
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:
             answer = compact_teaching_answer(stripped)
         missing_quotes = True
+        answer = repair_speaker_attributions(answer, nkjv_docs=bible)
     fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
     if fallback and fallback not in (answer or ""):
         answer = weave_into_answer(answer, fallback)
-    return compact_teaching_answer(answer)
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
+    answer = compact_teaching_answer(
+        repair_speaker_attributions(answer, nkjv_docs=bible)
+    )
+    if _missing_required_quotes(prepared, answer):
+        fallback = _rag_grounding_fallback(prepared, answer, force=True)
+        if fallback and fallback not in (answer or ""):
+            answer = weave_into_answer(answer, fallback)
+    answer = repair_empty_nkjv_citations(answer, collect_allowed_nkjv(bible))
+    answer = ensure_topical_nkjv(
+        answer,
+        query,
+        collect_allowed_nkjv(bible),
+    )
+    answer = _ensure_quoted_nkjv(prepared, answer)
+    answer = _speaker_repaired(prepared, compact_teaching_answer(answer))
+    quotes = _grounding_snippets(prepared)[0]
+    answer = ensure_pastor_quote_wrap(answer, quotes)
+    answer = _speaker_repaired(prepared, compact_teaching_answer(answer))
+    if _missing_required_quotes(prepared, answer):
+        answer = ensure_pastor_quote_wrap(answer, quotes)
+    return _speaker_repaired(prepared, compact_teaching_answer(answer))
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -1055,6 +1209,7 @@ class ChatAPIView(APIView):
                     topic_query,
                     retrieval_k=RETRIEVAL_K,
                 )
+                scored_hits = prefer_library_sermon_hits(scored_hits)
                 before_threshold = scored_hits
                 scored_hits = apply_retrieval_threshold(
                     scored_hits,
@@ -1092,6 +1247,18 @@ class ChatAPIView(APIView):
                             or _doc_source_name(doc)
                         ),
                     )
+                docs = pin_docs_to_strong_title_matches(
+                    docs,
+                    topic_query,
+                    pin_query=user_query_llm,
+                    candidate_hits=scored_hits,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    source_key=lambda doc: (
+                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                        or _doc_source_name(doc)
+                    ),
+                )
+                docs = prefer_library_sermon_docs(docs)
                 refs = verse_refs_for_lookup(topic_query, docs)
                 nkjv_docs = lookup_nkjv_verses(
                     client,
@@ -1109,17 +1276,6 @@ class ChatAPIView(APIView):
                     if key and key not in seen_nkjv:
                         docs.append(extra)
                         seen_nkjv.add(key)
-                docs = pin_docs_to_strong_title_matches(
-                    docs,
-                    topic_query,
-                    pin_query=user_query_llm,
-                    candidate_hits=scored_hits,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
-                )
                 context = format_reference_notes(
                     docs,
                     _doc_source_label,
@@ -1127,7 +1283,7 @@ class ChatAPIView(APIView):
                 )
                 teaching_claims = extract_teaching_claims(
                     docs,
-                    query=topic_query,
+                    query=user_query_llm,
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
@@ -1148,14 +1304,23 @@ class ChatAPIView(APIView):
                 max_turns=MAX_HISTORY_TURNS,
                 max_chars=MAX_HISTORY_CHARS,
             )
+            last_prior = prior_user_queries[-1] if prior_user_queries else ""
+            new_topic = bool(last_prior) and current_carries_new_topic(
+                user_query_llm, last_prior
+            )
             history_messages = []
             history_chars = 0
             for msg in selected_rows:
                 history_messages.append(HumanMessage(content=msg.user_query))
-                history_messages.append(
-                    AIMessage(content=sanitize_history_text(msg.ai_response or ""))
-                )
-                history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
+                ai_text = sanitize_history_text(msg.ai_response or "")
+                if new_topic:
+                    ai_text = (
+                        "I already taught a different topic in this chat. "
+                        "Do not copy that outline. Use the current REFERENCE NOTES "
+                        "for this new question."
+                    )
+                history_messages.append(AIMessage(content=ai_text))
+                history_chars += len(f"{msg.user_query} {ai_text}")
             logger.warning(
                 "Chat history pinned opening=%r turns=%s chars=%s session=%s",
                 (selected_rows[0].user_query[:120] if selected_rows else ""),
@@ -1170,6 +1335,8 @@ class ChatAPIView(APIView):
             opening_text = (first_row.user_query or "").strip() if first_row else ""
             if looks_like_opening_recall(user_query_llm) and opening_text:
                 followup_block = format_opening_recall_steer(opening_text)
+            elif new_topic:
+                followup_block = NEW_TOPIC_STEER
             elif prior_user_queries:
                 followup_block = FOLLOWUP_STEER
             else:
@@ -1226,6 +1393,7 @@ class ChatAPIView(APIView):
                 "target_message": target_message,
                 "teaching_claims": teaching_claims,
                 "topic_query": topic_query,
+                "user_query": user_query_llm,
             }
 
         def _response_sources(docs, answer: str, query: str = ""):
@@ -1402,6 +1570,7 @@ class ChatAPIView(APIView):
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
                 answer, leaked = _retry_if_cjk_leak(prepared, first_raw)
+                answer = _speaker_repaired(prepared, answer)
                 painted = "".join(painted_parts)
                 if emit_live and answer != painted:
                     yield _sse({"type": "replace", "text": answer})
@@ -1427,12 +1596,16 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if not extra:
                         break
                     if emit_live:
                         yield _sse({"type": "delta", "text": "\n\n" + extra})
-                    answer = _join_continuation(answer, extra)
+                    answer = _speaker_repaired(
+                        prepared, _join_continuation(answer, extra)
+                    )
                     if live_history:
                         live_history.publish(answer, streaming=True)
                 repair_steer, repair_budget = (
@@ -1452,11 +1625,15 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 quote_steer, quote_budget = (
@@ -1476,11 +1653,15 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Quote repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 grounding_steer, grounding_budget = (
@@ -1500,21 +1681,30 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("RAG grounding repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
+                    finish_extra = _speaker_repaired(prepared, finish_extra)
                     if emit_live:
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
-                    answer = _join_continuation(answer, finish_extra)
+                    answer = _speaker_repaired(
+                        prepared, _join_continuation(answer, finish_extra)
+                    )
                 final_answer = sanitize_chat_answer(
-                    _finalize_teaching_answer(prepared, answer)
+                    _ensure_quoted_nkjv(
+                        prepared, _finalize_teaching_answer(prepared, answer)
+                    )
                 )
                 if emit_live:
                     prefix = (answer or "").rstrip()
@@ -1581,6 +1771,7 @@ class ChatAPIView(APIView):
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
             answer, leaked = _retry_if_cjk_leak(prepared, answer)
+            answer = _speaker_repaired(prepared, answer)
             if live_history:
                 live_history.publish(answer, streaming=True)
             expansion_pass = 0
@@ -1717,7 +1908,11 @@ class ChatAPIView(APIView):
             finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
-            answer = sanitize_chat_answer(_finalize_teaching_answer(prepared, answer))
+            answer = sanitize_chat_answer(
+                _ensure_quoted_nkjv(
+                    prepared, _finalize_teaching_answer(prepared, answer)
+                )
+            )
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,

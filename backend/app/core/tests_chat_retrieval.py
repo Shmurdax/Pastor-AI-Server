@@ -19,6 +19,7 @@ from core.chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
+    has_quoted_nkjv,
     is_bible_source,
     is_strong_title_match,
     is_video_chunk,
@@ -151,6 +152,74 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("gay", joined)
         self.assertTrue(any("gay" in item.lower() and "pastor don" in item.lower() for item in queries))
         self.assertFalse(any("what should i say" in item.lower() for item in queries), queries)
+
+    def test_new_topic_embeds_current_question_not_prior_purpose(self):
+        queries = expand_search_queries(
+            "What does Pastor Don teach about faith?",
+            ["What is my purpose in God's plan?"],
+        )
+        self.assertTrue(queries)
+        self.assertIn("faith", queries[0].lower())
+        self.assertNotIn("purpose", queries[0].lower())
+        from core.chat_retrieval import current_carries_new_topic, topic_anchor_query
+
+        self.assertTrue(
+            current_carries_new_topic(
+                "What does Pastor Don teach about faith?",
+                "What is my purpose in God's plan?",
+            )
+        )
+        anchor = topic_anchor_query(
+            "What does Pastor Don teach about faith?",
+            ["What is my purpose in God's plan?", "Quote Pastor Don about that purpose."],
+        )
+        self.assertIn("faith", anchor.lower())
+        self.assertNotIn("purpose", anchor.lower())
+
+    def test_sermon_notes_giving_is_a_new_topic_after_marriage(self):
+        from core.chat_retrieval import current_carries_new_topic
+
+        self.assertTrue(
+            current_carries_new_topic(
+                "Create sermon notes on giving and stewardship.",
+                "Create sermon notes on marriage.",
+            )
+        )
+
+    def test_grieving_followup_embeds_grief_not_prior_prayer_only(self):
+        current = (
+            "How should I pray when I am grieving, based on Pastor Don's teaching "
+            "and what we already discussed?"
+        )
+        queries = expand_search_queries(
+            current,
+            ["Quote Pastor Don about prayer."],
+        )
+        joined = " | ".join(queries).lower()
+        self.assertTrue(queries)
+        self.assertTrue(
+            "griev" in queries[0].lower() or "grief" in queries[0].lower(),
+            queries,
+        )
+        self.assertIn("comfort", joined)
+        grief = _doc(
+            "Sit with the grieving and weep with those who weep, then comfort them in prayer.",
+            source="grief.pdf",
+            title="Comfort the Grieving",
+        )
+        repentance = _doc(
+            "If My people who are called by My name will humble themselves and pray "
+            "and turn from their wicked ways I will forgive their sin.",
+            source="prayer.pdf",
+            title="If My People Pray",
+        )
+        kept = filter_hits_by_topic(
+            [(repentance, 0.95), (grief, 0.80)],
+            current,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["grief.pdf"])
 
     def test_library_pull_embeds_topic_not_pull_up_a_sermon(self):
         self.assertTrue(looks_like_library_pull("Pull up a sermon in the sermon library about faith"))
@@ -531,6 +600,128 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertTrue(any("lexicon" in item.lower() for item in quotes))
         self.assertTrue(any(item.lower().startswith("ezekiel 18:4") for item in verses))
 
+    def test_extracts_in_luke_verse_prefix(self):
+        verses = extract_used_verse_refs(
+            ["In Luke 19:45-48 (NKJV), we see Jesus entering the temple."]
+        )
+        self.assertTrue(any(item.lower().startswith("luke 19:45") for item in verses), verses)
+
+    def test_parenting_notes_are_not_trust_sermon_with_parent_mention(self):
+        query = "Create sermon notes on parenting and raising children."
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        trust = _doc(
+            "Reliance on the integrity of a person. Parents should trust God in every season.",
+            source="trust.pdf",
+            title="It Is Time to Believe",
+        )
+        blocked = _doc(
+            "Parents and children should wait on God together. Parenting takes trust.",
+            source="trust-lord.pdf",
+            title="It Is Time to Trust the Lord Empowerment 2020",
+        )
+        kept = filter_hits_by_topic(
+            [(trust, 0.94), (blocked, 0.93), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
+    def test_parenting_notes_are_not_second_mile_leadership(self):
+        query = "Create sermon notes on parenting and raising children."
+        leadership = _doc(
+            "Parenting challenges include attitude. Your attitude not your aptitude will determine your altitude.",
+            source="second-mile.pdf",
+            title="Second Mile Leadership Updated",
+        )
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        kept = filter_hits_by_topic(
+            [(leadership, 0.96), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
+    def test_parenting_notes_are_not_living_the_good_life(self):
+        query = "Create sermon notes on parenting and raising children."
+        seminar = _doc(
+            "Parents and children can live the good life through discipline and better habits.",
+            source="good-life.pdf",
+            title="Living the Good Life",
+        )
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        kept = filter_hits_by_topic(
+            [(seminar, 0.97), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
+    def test_parenting_notes_are_not_community_seminar(self):
+        query = "Create sermon notes on parenting and raising children."
+        community = _doc(
+            "Parents and children belong to the household of faith in the local community.",
+            source="community.pdf",
+            title="Community",
+        )
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        kept = filter_hits_by_topic(
+            [(community, 0.96), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
+    def test_topic_filter_keeps_nkjv_beside_prayer_notes(self):
+        query = "Create sermon notes on prayer."
+        sermon = _doc(
+            "Praying for the lost requires persistence on the part of the intercessor.",
+            source="prayer.pdf",
+            title="Prayers That Prevail for the Lost",
+        )
+        bible = _doc(
+            "Ask, and it will be given to you; seek, and you will find.",
+            source="nkjv-bible.pdf",
+            title="Matthew 7:7",
+        )
+        kept = filter_hits_by_topic(
+            [(sermon, 0.92), (bible, 0.71)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertIn("prayer.pdf", sources)
+        self.assertIn("nkjv-bible.pdf", sources)
+
+    def test_quoted_nkjv_requires_wording(self):
+        self.assertTrue(
+            has_quoted_nkjv(
+                'James 1:6 (NKJV) says, "But let him ask in faith, with no doubting."'
+            )
+        )
+        self.assertFalse(
+            has_quoted_nkjv("Leviticus 27:30-34 outlines the requirement to give a tenth.")
+        )
+
     def test_select_diverse_docs_spreads_sources(self):
         scored = [
             (_doc("gay identity teaching from sermon A " * 8, source="sermon-a.pdf"), 0.92),
@@ -690,6 +881,45 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("complementarian", texts)
         self.assertNotIn("thirty things", texts)
 
+    def test_parenting_notes_are_not_hosea_prayer_sermon(self):
+        from core.chat_retrieval import (
+            filter_hits_by_topic,
+            required_topic_core_tokens,
+            required_topic_synonyms,
+        )
+
+        query = "Create sermon notes on parenting and raising children."
+        required = required_topic_synonyms(query)
+        self.assertTrue(any("parent" in item for item in required), required)
+        self.assertNotIn("children", required)
+        cores = required_topic_core_tokens(query)
+        self.assertIn("parenting", cores)
+        self.assertNotIn("parent", cores)
+        self.assertNotIn("children", cores)
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Parenting",
+        )
+        hosea_prayer = _doc(
+            "Go and marry a prostitute, so some of her children will be born to you from other men. "
+            "Hosea prayed persistently for Gomer and visualized her salvation.",
+            source="prayers-lost.pdf",
+            title="Prayers That Prevail for the Lost",
+        )
+        christmas = _doc(
+            "He was the son, so it was thought, of Joseph, and Mary was his mother in the legal family line.",
+            source="christmas.pdf",
+            title="Christmas the Greatest Story Ever Told",
+        )
+        kept = filter_hits_by_topic(
+            [(hosea_prayer, 0.94), (christmas, 0.90), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
     def test_novelty_skips_already_quoted_chunk_when_alternatives_exist(self):
         used_quote = "I am not sure how the term Gay became part of the lexicon"
         used_verse = "Ezekiel 18:4"
@@ -725,9 +955,23 @@ class ChatRetrievalTests(unittest.TestCase):
             _doc("Second chunk", source="nkjv-bible.pdf", title="NKJV Bible"),
         ]
         notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
-        self.assertIn("[Note 1 | Walking in Love]", notes)
-        self.assertIn("[Note 2 | NKJV Bible]", notes)
+        self.assertIn("[Note 1 | SERMON (Pastor Don / Susan) | Walking in Love]", notes)
+        self.assertIn("[Note 2 | SCRIPTURE (NKJV) | NKJV Bible]", notes)
         self.assertIn("First chunk", notes)
+
+    def test_format_notes_tags_god_speech_inside_sermon(self):
+        docs = [
+            _doc(
+                "God has a plan for your life. Before you were born, I sanctified you "
+                "and appointed you as My spokesman to the world. Stay faithful.",
+                source="purpose.pdf",
+                title="Purpose",
+            )
+        ]
+        notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
+        self.assertIn("SERMON (Pastor Don / Susan)", notes)
+        self.assertIn("not Pastor Don", notes)
+        self.assertIn("Before you were born, I sanctified you", notes)
 
     def test_uniqueness_instruction_lists_prior_material(self):
         text = uniqueness_instruction(
@@ -1181,6 +1425,26 @@ class ChatRetrievalTests(unittest.TestCase):
             source_key=lambda doc: doc.metadata["source"],
         )
         self.assertEqual([doc.metadata["source"] for doc in pinned], ["abundance.pdf"])
+
+    def test_isaac_story_drops_tithing_titles(self):
+        query = "What does Pastor Don say about Abraham offering Isaac?"
+        tithe = _doc(
+            "Abraham paid tithe to Melchizedek 430 years before the Law.",
+            source="nextsteps.pdf",
+            title="Nextsteps 101",
+        )
+        isaac = _doc(
+            "Abraham offered Isaac on Mount Moriah as an act of trust.",
+            source="moriah.pdf",
+            title="The Offering of Isaac",
+        )
+        kept = filter_hits_by_topic(
+            [(tithe, 0.97), (isaac, 0.80)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["moriah.pdf"])
 
 
 if __name__ == "__main__":

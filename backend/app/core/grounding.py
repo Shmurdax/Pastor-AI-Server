@@ -10,12 +10,24 @@ from typing import Any, Callable, Iterable, Optional
 from .bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs
 from .chat_retrieval import (
     chunk_text,
-    extract_used_quotes,
     extract_used_verse_refs,
     is_bible_source,
     metadata_source_hint,
+    query_focus_tokens,
+    required_topic_synonyms,
 )
-from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
+from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
+from .speaker_attribution import (
+    is_pastor_own_voice,
+    known_verse_ref,
+    looks_like_divine_speech,
+    looks_like_nonteaching_excerpt,
+    looks_like_scripture_wording,
+    pastor_attributed_quotes,
+    quoted_spans_with_voice,
+    rewrite_misattributed_quotes,
+    normalize_mixed_inner_quotes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +79,16 @@ _QUERY_STOPWORDS = frozenset(
         "what",
         "when",
         "whose",
+        "create",
+        "sermon",
+        "notes",
+        "about",
+        "based",
+        "outline",
+        "teach",
+        "teaches",
+        "says",
+        "say",
     }
 )
 
@@ -79,7 +101,6 @@ def looks_like_scripture_blob(text: str) -> bool:
 
 
 _HEADING_QUOTE_RE = re.compile(r"^\s*#{1,6}\s+\S")
-_SENTENCE_END_RE = re.compile(r"[.!?…]")
 
 
 def looks_like_heading_quote(text: str) -> bool:
@@ -89,13 +110,7 @@ def looks_like_heading_quote(text: str) -> bool:
         return True
     if cleaned.startswith("#") or _HEADING_QUOTE_RE.match(cleaned):
         return True
-    if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(cleaned):
-        words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
-        if 2 <= len(words) <= 12:
-            titled = sum(1 for word in words if word[:1].isupper())
-            if titled >= max(2, len(words) - 1):
-                return True
-    return False
+    return looks_like_nonteaching_excerpt(cleaned)
 
 
 def snippet_query_score(text: str, query: str) -> float:
@@ -104,6 +119,9 @@ def snippet_query_score(text: str, query: str) -> float:
         for word in normalize_grounding_text(query).split()
         if word not in _QUERY_STOPWORDS and len(word) > 2
     }
+    q_words.update(str(token).lower() for token in query_focus_tokens(query) if len(str(token)) > 2)
+    q_words.update(str(token).lower() for token in required_topic_synonyms(query) if len(str(token)) > 2)
+    q_words = {word for word in q_words if word not in _QUERY_STOPWORDS}
     t_words = set(normalize_grounding_text(text).split())
     if not q_words or not t_words:
         return 0.0
@@ -111,18 +129,39 @@ def snippet_query_score(text: str, query: str) -> float:
 
 
 def select_query_grounded_quotes(
-    quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12
+    quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12,
+    allow_topic_pool_fallback: bool = False,
 ) -> list[str]:
     ranked = sorted(
         (
             item.strip()
             for item in quotes
-            if item and str(item).strip() and not looks_like_heading_quote(item)
+            if item
+            and str(item).strip()
+            and not looks_like_heading_quote(item)
+            and not looks_like_nonteaching_excerpt(item)
+            and not looks_like_scripture_wording(item)
         ),
         key=lambda item: snippet_query_score(item, query),
         reverse=True,
     )
     picked = [item for item in ranked if snippet_query_score(item, query) >= min_score]
+    if not picked:
+        picked = [item for item in ranked if snippet_query_score(item, query) > 0]
+    if not picked and allow_topic_pool_fallback:
+        required = {
+            token
+            for token in required_topic_synonyms(query)
+            if len(token) > 2
+        }
+        if required:
+            picked = [
+                item
+                for item in ranked
+                if any(token in normalize_grounding_text(item).split() for token in required)
+            ][:limit]
+        else:
+            picked = ranked[:limit]
     return picked[:limit]
 
 
@@ -143,13 +182,62 @@ def select_query_grounded_nkjv(
         for item in ranked
         if snippet_query_score(f"{item[0]} {item[1]}", query) >= min_score
     ]
+    if not picked:
+        picked = [
+            item
+            for item in ranked
+            if snippet_query_score(f"{item[0]} {item[1]}", query) > 0
+        ]
     return picked[:limit]
 
 
-def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> list[str]:
+def pastor_quotes_match_query(answer: str, query: str) -> bool:
+    """True when a Pastor Don wrap actually overlaps the current question."""
+    from .speaker_attribution import pastor_attributed_quotes
+
+    quotes = pastor_attributed_quotes(answer or "")
+    return any(snippet_query_score(span, query) > 0 for span, _lead in quotes)
+
+
+_MIXED_PASTOR_MIN_CHARS = 40
+
+
+def _pastor_sentences_from_mixed_notes(body: str, *, bible_corpus: str = "") -> list[str]:
+    """Keep spoken teaching from a chunk that also cites verses."""
+    sentences = split_sentences(body) or [body]
+    if len(sentences) <= 1 and len(body or "") > 160:
+        sentences = [part.strip() for part in re.split(r"[\n;]+", body or "") if part.strip()]
+    pastor: list[str] = []
+    for sentence in sentences:
+        cleaned = " ".join(sentence.split()).strip()
+        if len(cleaned) < 40:
+            continue
+        if (
+            looks_like_scripture_blob(cleaned)
+            or parse_verse_refs(cleaned[:400])
+            or looks_like_scripture_wording(cleaned, bible_corpus)
+            or looks_like_heading_quote(cleaned)
+        ):
+            continue
+        if is_pastor_own_voice(cleaned, bible_corpus=bible_corpus):
+            pastor.append(cleaned)
+    pastor_chars = sum(len(item) for item in pastor)
+    if pastor_chars < _MIXED_PASTOR_MIN_CHARS:
+        return []
+    return pastor
+
+
+def collect_allowed_sermon_quotes(
+    docs: Iterable[Any],
+    *,
+    limit: int = 12,
+    bible_corpus: str = "",
+    query: str = "",
+) -> list[str]:
     """Exact lines the model may quote as Pastor Don / Susan."""
     quotes: list[str] = []
     seen: set[str] = set()
+    bible = bible_corpus or ""
     for doc in docs or []:
         if _is_bible_doc(doc):
             continue
@@ -159,14 +247,21 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
             continue
         stored = str(meta.get("quote_text") or "").strip()
         body = spoken_text_without_timestamps(chunk_text(doc))
-        if looks_like_scripture_blob(body) and not stored:
-            continue
-        candidates = []
-        if stored and not looks_like_scripture_blob(stored):
-            candidates.extend(part.strip() for part in stored.split(" | ") if part.strip())
+        candidates: list[str] = []
+        if stored:
+            for part in stored.split(" | "):
+                piece = " ".join(part.split()).strip()
+                if (
+                    piece
+                    and not looks_like_scripture_blob(piece)
+                    and is_pastor_own_voice(piece, bible_corpus=bible)
+                ):
+                    candidates.append(piece)
         candidates.extend(extract_quote_spans(body))
+        candidates.extend(_pastor_sentences_from_mixed_notes(body, bible_corpus=bible))
         if body and len(body) >= 40 and not looks_like_scripture_blob(body):
-            candidates.append(body)
+            if is_pastor_own_voice(body, bible_corpus=bible):
+                candidates.append(body)
         for item in candidates:
             cleaned = " ".join(item.split())
             key = normalize_grounding_text(cleaned)
@@ -174,11 +269,21 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
                 continue
             if looks_like_heading_quote(cleaned):
                 continue
+            if looks_like_scripture_blob(cleaned):
+                continue
+            if not is_pastor_own_voice(cleaned, bible_corpus=bible):
+                continue
             seen.add(key)
             quotes.append(cleaned)
-            if len(quotes) >= limit:
-                return quotes
-    return quotes
+    if query:
+        scored = sorted(
+            quotes,
+            key=lambda item: snippet_query_score(item, query),
+            reverse=True,
+        )
+        positive = [item for item in scored if snippet_query_score(item, query) > 0]
+        quotes = positive or scored
+    return quotes[:limit]
 
 
 def collect_allowed_nkjv(docs: Iterable[Any], *, limit: int = 12) -> list[tuple[str, str]]:
@@ -267,6 +372,7 @@ class GroundingReport:
     invented_quotes: list[str] = field(default_factory=list)
     invented_scripture: list[str] = field(default_factory=list)
     missing_nkjv_refs: list[str] = field(default_factory=list)
+    misattributed_quotes: list[str] = field(default_factory=list)
 
 
 def verify_answer_grounding(
@@ -295,13 +401,23 @@ def verify_answer_grounding(
 
     invented_quotes: list[str] = []
     invented_scripture: list[str] = []
-    for span in extract_used_quotes([answer]):
+    misattributed_quotes: list[str] = []
+    voiced = quoted_spans_with_voice(answer)
+    for span, voice in voiced:
         in_notes = text_is_grounded(span, notes)
         in_bible = text_is_grounded(span, bible)
+        scripture_like = looks_like_scripture_wording(span, bible) or in_bible
+        if voice == "pastor" and scripture_like:
+            misattributed_quotes.append(span)
+            continue
         if in_notes or in_bible:
             continue
+        if voice == "scripture" and (
+            known_verse_ref(span) or looks_like_divine_speech(span)
+        ):
+            continue
         lowered = (span or "").lower()
-        if "nkjv" in lowered or parse_verse_refs(span):
+        if "nkjv" in lowered or parse_verse_refs(span) or voice == "scripture":
             invented_scripture.append(span)
         else:
             invented_quotes.append(span)
@@ -318,12 +434,18 @@ def verify_answer_grounding(
         elif not bible.strip():
             missing_refs.append(ref)
 
-    ok = not invented_quotes and not invented_scripture and not missing_refs
+    ok = (
+        not invented_quotes
+        and not invented_scripture
+        and not missing_refs
+        and not misattributed_quotes
+    )
     return GroundingReport(
         ok=ok,
         invented_quotes=invented_quotes,
         invented_scripture=invented_scripture,
         missing_nkjv_refs=missing_refs,
+        misattributed_quotes=misattributed_quotes,
     )
 
 
@@ -365,7 +487,89 @@ _META_OPENER_RE = re.compile(
     r"(?is)^\s*(?:certainly|sure)[!.,]?\s+"
     r"here(?:'s| is)\s+.{0,160}?based on the provided (?:scripture and )?notes[:.]?\s*"
 )
+_PROVIDED_MATERIAL_OPENER_RE = re.compile(
+    r"(?is)^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
+    r"(?:To create |Creating )?(?:sermon )?notes on .{0,80}?"
+    r"(?:based on the (?:provided )?(?:sermon |reference )?(?:material|notes)"
+    r"|focus on the key points provided in the (?:sermon |reference )?material)\b.{0,240}?"
+    r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:?\s*"
+    r"|^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
+    r".{0,220}?(?:based on the (?:provided )?(?:sermon |reference )?(?:material|notes)"
+    r"|provided in the (?:sermon |reference )?material)\b[,:.]?\s*"
+    r"(?:here is a summary of the key points regarding [^.\n:]{0,80}:\s*)?"
+)
+_PASSAGE_BOOK_RE = re.compile(
+    r"(?is)According to the book\s+[\"“']?Passages? of Marriage[\"”']?.{0,400}?"
+    r"(?=Pastor Don|\n\n|\n#{1,3}|\Z)"
+)
+_SLIDE_NOTE_RE = re.compile(
+    r"(?is)\s*(?:\(?\s*LEAVE ON (?:THE )?SCREEN[^)\n]{0,80}\)?|"
+    r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
+)
 _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
+_GLUED_BOOK_RE = re.compile(
+    r"\bT(Jeremiah|Hebrews|Psalms?|Isaiah|Matthew|John|Luke|Romans|Corinthians)\b"
+)
+_SOURCE_BULLET_RE = re.compile(
+    r"(?im)^\s*[•\-\*]\s*(?:Pastor Don(?: and Susan)?(?: Nordin)?|NKJV|Scripture)\s*$"
+)
+_EMPTY_EXPLAIN_RE = re.compile(
+    r'(?im)^\s*(?:He|She|They|Pastor Don(?: and Susan)?(?: Nordin)?)\s+'
+    r'(?:explains?|teaches?|says|said|emphasizes?),?\s*["“]\s*$'
+)
+_EMPTY_ADVISES_RE = re.compile(r"(?i)\b(?:specifically,\s*)?he advises:\.\s*")
+_EMPTY_STATES_RE = re.compile(
+    r"(?i)(?:in\s+)?((?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*,?\s*it states,\s*(?=[A-Z])"
+)
+_EMPTY_NKJV_CITE_RE = re.compile(
+    r"(?i)(?:in\s+)?"
+    r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*[,:]?\s*"
+    r"(?:it\s+)?"
+    r"(?:This (?:verse|passage)\s+)?"
+    r"(?:states|says|reminds(?:\s+\w+)?|promises|instructs|encourages(?:\s+\w+)?|"
+    r"assures(?:\s+\w+)?|reassures(?:\s+\w+)?|outlines|warns(?:\s+against)?|"
+    r"teaches\s+that|highlights(?:\s+\w+(?:\s+\w+)?)?|"
+    r"emphasizes(?:\s+\w+(?:\s+\w+)?)?|we see|"
+    r"is a (?:powerful )?reminder)"
+    r'(?!\s*,?\s*[\"“])'
+    r",?\s*"
+)
+_THIS_VERSE_PREFIX_RE = re.compile(
+    r"(?i)^(?:This means\s+|"
+    r"This (?:verse|passage) (?:highlights that|emphasizes that|"
+    r"encourages us to|assures us that|instructs(?:\s+us)?(?:\s+that)?|"
+    r"promises that|teaches that|says that|reminds us that|highlights|"
+    r"emphasizes|encourages us|assures us|promises|teaches|says|reminds us)\s+)"
+)
+_EMPTY_TEACHES_MEANS_RE = re.compile(
+    r"(?i)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\s*This means\s+"
+)
+_EMPTY_SAYS_THIS_RE = re.compile(
+    r"(?i)\(\s*NKJV\s*\)\s+says,\s+This (?:verse|passage)\s+"
+)
+_TEACHINGS_PROVIDED_RE = re.compile(
+    r"(?i)(?:here are some key points )?based on the teachings provided:\s*"
+)
+_AS_THIS_OBSERVATION_RE = re.compile(
+    r"(?i)\bAs This (?:observation highlights|journey)\b[^.?\n]*[.?]?\s*"
+)
+_NO_TEACHING_DISCLAIMER_RE = re.compile(
+    r"(?is)Pastor Don does not specifically teach about.{0,160}?(?:\.|$)\s*"
+    r"(?:However, we can draw parallels.{0,240}?(?:\.|$)\s*)?"
+)
+_EMPTY_EXCERPT_RE = re.compile(r"(?im)^\s*\*?Excerpt\*?:\s*$")
+_EMPTY_QUOTES_RE = re.compile(r'[\"“]\s*[\"”]')
+_CERTAINLY_OPENER_RE = re.compile(
+    r"(?is)^\s*(?:certainly|sure)[!.,]?\s+here(?:'s| is| are)\s+.{0,180}?:\s*"
+)
+_SLIDE_WORSHIP_QUOTE_RE = re.compile(
+    r'(?is)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,?\s*'
+    r'["“]WORSHIP["”].{0,180}?(?:["”]|$)'
+)
+_BULLET_GLYPH_RE = re.compile(r"[•▪▫]\s*")
+_GLUED_SENTENCE_RE = re.compile(r"([a-z])\.([A-Z])")
 
 
 def _clip_excerpt(text: str, limit: int = 280) -> str:
@@ -381,6 +585,131 @@ def _clip_excerpt(text: str, limit: int = 280) -> str:
     return (trimmed or cut).rstrip(".,;:") + "…"
 
 
+def _wording_for_nkjv_ref(ref: str, pairs: list[tuple[str, str]]) -> str:
+    wanted = parse_verse_refs(ref)
+    if not wanted:
+        return ""
+    want_keys = {
+        f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+        for book, chapter, verse in wanted
+    }
+    for pref, wording in pairs:
+        for p_book, p_chapter, p_verse in parse_verse_refs(pref) or []:
+            key = f"{canonical_book_key(p_book)}|{int(p_chapter)}|{int(p_verse)}"
+            if key in want_keys:
+                return _clip_excerpt(wording, 240)
+        if normalize_grounding_text(ref) in normalize_grounding_text(pref):
+            return _clip_excerpt(wording, 240)
+    for hint_ref, wording in _TOPIC_NKJV_WORDING.items():
+        parsed = parse_verse_refs(hint_ref)
+        if parsed:
+            key = f"{canonical_book_key(parsed[0][0])}|{int(parsed[0][1])}|{int(parsed[0][2])}"
+            if key in want_keys:
+                return _clip_excerpt(wording, 240)
+    return ""
+
+
+def _fallback_nkjv_wording(
+    ref: str, pairs: list[tuple[str, str]], *, answer: str = ""
+) -> tuple[str, str]:
+    """Use the cited verse when we have it; otherwise a topical retrieved verse."""
+    wording = _wording_for_nkjv_ref(ref, pairs)
+    if wording:
+        return ref, wording
+    cited = parse_verse_refs(ref)
+    folded = normalize_grounding_text(answer)
+    if cited:
+        book_key = canonical_book_key(cited[0][0])
+        for pref, pword in pairs:
+            parsed = parse_verse_refs(pref) or []
+            if any(canonical_book_key(p_book) == book_key for p_book, _chap, _verse in parsed):
+                clipped = _clip_excerpt(pword, 240)
+                if clipped:
+                    return pref, clipped
+    for pref, pword in pairs:
+        clipped = _clip_excerpt(pword, 240)
+        if clipped and normalize_grounding_text(clipped)[:48] not in folded:
+            return pref, clipped
+    if pairs:
+        pref, pword = pairs[0]
+        clipped = _clip_excerpt(pword, 240)
+        if clipped:
+            return pref, clipped
+    return ref, ""
+
+
+def repair_empty_nkjv_citations(
+    answer: str,
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Fill or rewrite verse lead-ins that never quoted the NKJV wording."""
+    text = answer or ""
+    if not text:
+        return text
+    pairs = [(str(ref), str(wording).strip()) for ref, wording in (nkjv_pairs or []) if wording]
+    text = _NLT_CITE_RE.sub(
+        lambda match: (
+            f'{match.group(1)} (NKJV) says, "{_wording_for_nkjv_ref(match.group(1), pairs)}"'
+            if _wording_for_nkjv_ref(match.group(1), pairs)
+            else f"{match.group(1)} (NKJV) teaches that "
+        ),
+        text,
+    )
+    text = re.sub(r"(?i)\(\s*NLT\s*\)", "(NKJV)", text)
+    pieces: list[str] = []
+    cursor = 0
+    for match in _EMPTY_NKJV_CITE_RE.finditer(text):
+        if match.start() < cursor:
+            continue
+        ref = match.group(1)
+        tail = text[match.end() :]
+        rest_line = tail.split("\n", 1)[0]
+        quote_m = re.search(r'[\"“]', rest_line[:80])
+        next_cite = re.search(
+            r"(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+",
+            rest_line[:80],
+        )
+        if quote_m and (not next_cite or quote_m.start() < next_cite.start()):
+            continue
+        this_m = _THIS_VERSE_PREFIX_RE.match(tail)
+        ref, wording = _fallback_nkjv_wording(ref, pairs, answer=text)
+        pieces.append(text[cursor:match.start()])
+        if wording:
+            bit = f'{ref} (NKJV) says, "{wording}"'
+            if this_m:
+                remainder = tail[this_m.end() :]
+                joiner = " " if remainder[:1] not in " \n" else ""
+                pieces.append(bit + joiner)
+                cursor = match.end() + this_m.end()
+            elif tail.lstrip()[:1] in '"“':
+                pieces.append(bit + " ")
+                cursor = match.end()
+            else:
+                next_cite = re.search(
+                    r"(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+",
+                    tail[:220],
+                )
+                if next_cite:
+                    skip_end = next_cite.start()
+                else:
+                    skip = re.match(r"[ \t]*[^\n]{0,220}", tail)
+                    skip_end = skip.end() if skip else 0
+                pieces.append(bit)
+                cursor = match.end() + skip_end
+            continue
+        if this_m:
+            pieces.append(f"{ref} (NKJV) teaches that ")
+            cursor = match.end() + this_m.end()
+        else:
+            pieces.append(f"{ref} (NKJV) teaches that ")
+            cursor = match.end()
+    pieces.append(text[cursor:])
+    cleaned = "".join(pieces)
+    cleaned = re.sub(r" +", " ", cleaned)
+    cleaned = re.sub(r" \n", "\n", cleaned)
+    return cleaned.strip()
+
+
 def strip_retrieval_meta(answer: str) -> str:
     """Drop labeled retrieval dumps so the user only sees the teaching reply."""
     text = answer or ""
@@ -390,9 +719,27 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _RETRIEVAL_DISCLAIMER_RE.sub("", text)
     text = _TITLE_WEAVE_RE.sub("", text)
     text = _META_OPENER_RE.sub("", text)
+    text = _PROVIDED_MATERIAL_OPENER_RE.sub("", text)
+    text = _PASSAGE_BOOK_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
+    text = _SLIDE_NOTE_RE.sub("", text)
+    text = _GLUED_BOOK_RE.sub(r"\1", text)
+    text = normalize_mixed_inner_quotes(text)
+    text = _SOURCE_BULLET_RE.sub("", text)
+    text = _EMPTY_EXPLAIN_RE.sub("", text)
+    text = _EMPTY_ADVISES_RE.sub("", text)
+    text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
+    text = _CERTAINLY_OPENER_RE.sub("", text)
+    text = _AS_THIS_OBSERVATION_RE.sub("", text)
+    text = _NO_TEACHING_DISCLAIMER_RE.sub("", text)
+    text = _TEACHINGS_PROVIDED_RE.sub("", text)
+    text = _EMPTY_EXCERPT_RE.sub("", text)
+    text = _EMPTY_QUOTES_RE.sub("", text)
+    text = _SLIDE_WORSHIP_QUOTE_RE.sub("", text)
+    text = _BULLET_GLYPH_RE.sub("", text)
+    text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    return repair_empty_nkjv_citations(text.strip())
 
 
 def grounded_fallback_answer(
@@ -403,7 +750,10 @@ def grounded_fallback_answer(
     quote_list = [
         _clip_excerpt(item)
         for item in quotes
-        if item and str(item).strip() and not looks_like_heading_quote(item)
+        if item
+        and str(item).strip()
+        and not looks_like_heading_quote(item)
+        and is_pastor_own_voice(item)
     ][:2]
     quote_list = [item for item in quote_list if item]
     nkjv_list = [
@@ -419,7 +769,53 @@ def grounded_fallback_answer(
     if nkjv_list:
         ref, wording = nkjv_list[0]
         sentences.append(f'{ref} (NKJV) says, "{wording}"')
-    return " ".join(sentences).strip()
+    return " ".join(sentences)
+
+
+def ensure_pastor_quote_wrap(answer: str, quotes: Iterable[str] = ()) -> str:
+    """Wrap an on-topic teaching sentence already in the reply if Pastor Don quotes are missing."""
+    text = answer or ""
+    if not text or pastor_attributed_quotes(text):
+        return text
+    candidates = [
+        " ".join(str(item).split())
+        for item in quotes
+        if item
+        and str(item).strip()
+        and is_pastor_own_voice(item)
+        and not looks_like_scripture_wording(item)
+        and not known_verse_ref(item)
+        and not parse_verse_refs(str(item)[:200])
+        and len(" ".join(str(item).split())) >= 40
+    ]
+    if not candidates:
+        for sentence in split_sentences(text) or []:
+            cleaned = " ".join(sentence.split()).strip().strip('"“”')
+            if (
+                len(cleaned) >= 40
+                and is_pastor_own_voice(cleaned)
+                and not looks_like_scripture_wording(cleaned)
+                and not known_verse_ref(cleaned)
+                and not parse_verse_refs(cleaned[:200])
+                and not looks_like_heading_quote(cleaned)
+                and not cleaned.lower().rstrip(".\"'”’ ").endswith("words like")
+                and not cleaned.endswith("like:")
+                and not cleaned.endswith("like:.")
+            ):
+                candidates.append(cleaned)
+                break
+    if not candidates:
+        return text
+    excerpt = candidates[0]
+    probe = excerpt[:48]
+    idx = text.lower().find(probe.lower())
+    if idx >= 0:
+        end = idx + len(excerpt)
+        if text[idx:end].lower().startswith(probe.lower()):
+            span = text[idx : min(end, len(text))]
+            return f'{text[:idx]}Pastor Don Nordin teaches, "{span.strip()}"{text[end:]}'.strip()
+    wrapped = f'Pastor Don Nordin teaches, "{excerpt}"'
+    return f"{wrapped} {text}".strip()
 
 
 def weave_into_answer(answer: str, snippet: str) -> str:
@@ -445,8 +841,288 @@ def weave_into_answer(answer: str, snippet: str) -> str:
     return f"{text.rstrip()}\n\n{extra}"
 
 
+_TOPIC_VERSE_HINTS = {
+    "worship": "Psalm 22:3 Romans 12:1 John 4:24",
+    "marriage": "Genesis 2:24 Ephesians 5:25 1 Corinthians 7:3",
+    "parenting": "Ephesians 6:4 Proverbs 22:6",
+    "prayer": "James 1:6 Matthew 6:6",
+    "giving": "Psalm 24:1 Malachi 3:10 Leviticus 27:30",
+    "temptation": "1 Corinthians 10:13 Matthew 4:1",
+    "hope": "Romans 15:13 Romans 8:28",
+    "church": "Matthew 28:19 Acts 2:42",
+    "humility": "Philippians 2:3 James 4:10 1 Peter 5:5",
+    "evangelism": "Matthew 28:19 Acts 1:8",
+    "rest": "Matthew 11:28 Hebrews 4:9",
+    "prodigal": "Luke 15:20",
+    "goliath": "1 Samuel 17:45",
+    "noah": "Genesis 6:22",
+    "samaritan": "Luke 10:33",
+    "daniel": "Daniel 6:22",
+    "well": "John 4:14",
+    "isaac": "Genesis 22:2",
+    "cross": "Luke 23:33",
+    "feeding": "Matthew 14:19",
+    "jonah": "Jonah 1:17",
+    "empty_tomb": "Matthew 28:6",
+}
+_STORY_SYNONYMS = {
+    "prodigal": ("prodigal",),
+    "goliath": ("goliath",),
+    "noah": ("noah", "ark"),
+    "samaritan": ("samaritan",),
+    "daniel": ("lions' den", "lion's den", "lions den"),
+    "well": ("woman at the well", "at the well"),
+    "isaac": ("isaac", "moriah"),
+    "cross": ("crucifixion", "crucified", "calvary", "golgotha"),
+    "feeding": ("five thousand", "5000", "loaves"),
+    "jonah": ("jonah", "nineveh"),
+    "empty_tomb": ("empty tomb", "resurrection"),
+}
+_TOPIC_NKJV_WORDING = {
+    "Psalm 22:3": "But You are holy, Enthroned in the praises of Israel.",
+    "Romans 12:1": "I beseech you therefore, brethren, by the mercies of God, that you present your bodies a living sacrifice, holy, acceptable to God, which is your reasonable service.",
+    "John 4:24": "God is Spirit, and those who worship Him must worship in spirit and truth.",
+    "Genesis 2:24": "Therefore a man shall leave his father and mother and be joined to his wife, and they shall become one flesh.",
+    "Ephesians 5:25": "Husbands, love your wives, just as Christ also loved the church and gave Himself for her.",
+    "1 Corinthians 7:3": "Let the husband render to his wife the affection due her, and likewise also the wife to her husband.",
+    "Ephesians 6:4": "And you, fathers, do not provoke your children to wrath, but bring them up in the training and admonition of the Lord.",
+    "Proverbs 22:6": "Train up a child in the way he should go, And when he is old he will not depart from it.",
+    "James 1:6": "But let him ask in faith, with no doubting, for he who doubts is like a wave of the sea driven and tossed by the wind.",
+    "Matthew 6:6": "But you, when you pray, go into your room, and when you have shut your door, pray to your Father who is in the secret place; and your Father who sees in secret will reward you openly.",
+    "Psalm 24:1": "The earth is the LORD's, and all its fullness, The world and those who dwell therein.",
+    "Malachi 3:10": "Bring all the tithes into the storehouse, That there may be food in My house, And try Me now in this, Says the LORD of hosts.",
+    "Leviticus 27:30": "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the LORD's. It is holy to the LORD.",
+    "1 Corinthians 10:13": "No temptation has overtaken you except such as is common to man; but God is faithful, who will not allow you to be tempted beyond what you are able, but with the temptation will also make the way of escape, that you may be able to bear it.",
+    "Matthew 4:1": "Then Jesus was led up by the Spirit into the wilderness to be tempted by the devil.",
+    "Romans 15:13": "Now may the God of hope fill you with all joy and peace in believing, that you may abound in hope by the power of the Holy Spirit.",
+    "Romans 8:28": "And we know that all things work together for good to those who love God, to those who are the called according to His purpose.",
+    "Matthew 28:19": "Go therefore and make disciples of all the nations, baptizing them in the name of the Father and of the Son and of the Holy Spirit.",
+    "Acts 2:42": "And they continued steadfastly in the apostles' doctrine and fellowship, in the breaking of bread, and in prayers.",
+    "Philippians 2:3": "Let nothing be done through selfish ambition or conceit, but in lowliness of mind let each esteem others better than himself.",
+    "James 4:10": "Humble yourselves in the sight of the Lord, and He will lift you up.",
+    "1 Peter 5:5": (
+        "Yes, all of you be submissive to one another, and be clothed with humility, "
+        "for God resists the proud, But gives grace to the humble."
+    ),
+    "Acts 1:8": "But you shall receive power when the Holy Spirit has come upon you; and you shall be witnesses to Me in Jerusalem, and in all Judea and Samaria, and to the end of the earth.",
+    "Matthew 11:28": "Come to Me, all you who labor and are heavy laden, and I will give you rest.",
+    "Hebrews 4:9": "There remains therefore a rest for the people of God.",
+    "Luke 15:20": "And he arose and came to his father. But when he was still a great way off, his father saw him and had compassion, and ran and fell on his neck and kissed him.",
+    "1 Samuel 17:45": "Then David said to the Philistine, You come to me with a sword, with a spear, and with a javelin. But I come to you in the name of the LORD of hosts, the God of the armies of Israel, whom you have defied.",
+    "Genesis 6:22": "Thus Noah did; according to all that God commanded him, so he did.",
+    "Luke 10:33": "But a certain Samaritan, as he journeyed, came where he was. And when he saw him, he had compassion.",
+    "Daniel 6:22": "My God sent His angel and shut the lions' mouths, so that they have not hurt me, because I was found innocent before Him.",
+    "John 4:14": "but whoever drinks of the water that I shall give him will never thirst. But the water that I shall give him will become in him a fountain of water springing up into everlasting life.",
+    "Genesis 22:2": "Then He said, Take now your son, your only son Isaac, whom you love, and go to the land of Moriah, and offer him there as a burnt offering on one of the mountains of which I shall tell you.",
+    "Luke 23:33": "And when they had come to the place called Calvary, there they crucified Him, and the criminals, one on the right hand and the other on the left.",
+    "Matthew 14:19": "Then He commanded the multitudes to sit down on the grass. And He took the five loaves and the two fish, and looking up to heaven, He blessed and broke and gave the loaves to the disciples; and the disciples gave to the multitudes.",
+    "Jonah 1:17": "Now the LORD had prepared a great fish to swallow Jonah. And Jonah was in the belly of the fish three days and three nights.",
+    "Matthew 28:6": "He is not here; for He is risen, as He said. Come, see the place where the Lord lay.",
+}
+_VERSE_CITE_RE = (
+    r'(?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?'
+)
+_NKJV_SPEECH_VERBS = (
+    r'(?:it\s+)?(?:says|states|teaches that|reminds us|promises|instructs|'
+    r'encourages us|assures us|outlines|warns(?:\s+against)?|highlights|emphasizes|'
+    r'we see|is a (?:powerful )?reminder)'
+)
+_NKJV_QUOTE_AFTER_CITE_RE = re.compile(
+    rf'(?is)({_VERSE_CITE_RE})'
+    r'\s*\(\s*NKJV\s*\)'
+    r'.{0,80}?["“]([^"”]{8,800})["”]'
+)
+_NKJV_BLOCK_RE = re.compile(
+    rf'(?:{_VERSE_CITE_RE})'
+    rf'(?:'
+    rf'\s*\(\s*NKJV\s*\)'
+    rf'(?:\s*,?\s*{_NKJV_SPEECH_VERBS}[,:]?\s*)?'
+    rf'(?:["“][^"”]{{8,800}}["”])?'
+    rf'|'
+    rf'\s+{_NKJV_SPEECH_VERBS}[^.?\n]{{0,180}}[.?]?'
+    rf')'
+)
+
+
+def _ref_key(book: str, chapter: int, verse: int) -> str:
+    return f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+
+
+def _topic_synonym_map() -> dict:
+    from .chat_retrieval import _TOPIC_SYNONYMS
+
+    merged = dict(_TOPIC_SYNONYMS)
+    merged.update(_STORY_SYNONYMS)
+    return merged
+
+
+def topic_hint_ref_keys(query: str) -> set[str]:
+    from .chat_retrieval import _query_has_synonym
+
+    story_keys: set[str] = set()
+    other_keys: set[str] = set()
+    synonyms_by_topic = _topic_synonym_map()
+    for topic, hint in _TOPIC_VERSE_HINTS.items():
+        synonyms = synonyms_by_topic.get(topic)
+        if synonyms and _query_has_synonym(query or "", synonyms):
+            parsed = {_ref_key(book, chapter, verse) for book, chapter, verse in parse_verse_refs(hint)}
+            if topic in _STORY_SYNONYMS:
+                story_keys.update(parsed)
+            else:
+                other_keys.update(parsed)
+    return story_keys or other_keys
+
+
+def topical_nkjv_fallback_pairs(query: str) -> list[tuple[str, str]]:
+    """NKJV wording for the current topic when Qdrant lookup did not attach verses."""
+    keys = topic_hint_ref_keys(query)
+    if not keys:
+        return []
+    pairs: list[tuple[str, str]] = []
+    for ref, wording in _TOPIC_NKJV_WORDING.items():
+        parsed = parse_verse_refs(ref)
+        if parsed and _ref_key(*parsed[0]) in keys:
+            pairs.append((ref, wording))
+    return pairs
+
+
+def nkjv_matches_query(answer: str, query: str) -> bool:
+    """True when a quoted NKJV verse actually speaks to the current question."""
+    from .chat_retrieval import has_quoted_nkjv
+
+    if not has_quoted_nkjv(answer or ""):
+        return False
+    hint_keys = topic_hint_ref_keys(query)
+    required = {token for token in required_topic_synonyms(query) if len(token) > 2}
+    for match in _NKJV_QUOTE_AFTER_CITE_RE.finditer(answer or ""):
+        ref = match.group(1)
+        wording = match.group(2)
+        ref_keys = {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(ref)}
+        if hint_keys and ref_keys & hint_keys:
+            return True
+        if snippet_query_score(f"{ref} {wording}", query) > 0:
+            return True
+        folded = set(normalize_grounding_text(wording).split())
+        if required and folded & required:
+            return True
+    return False
+
+
+def _ref_keys_from_text(text: str) -> set[str]:
+    return {_ref_key(book, ch, vs) for book, ch, vs in parse_verse_refs(text or "")}
+
+
+def _quoted_nkjv_replacement(ref: str, wording: str) -> str:
+    return f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
+
+
+def _choose_topical_pair(
+    topical: list[tuple[str, str]],
+    cited_keys: set[str],
+) -> tuple[str, str]:
+    for ref, wording in topical:
+        if _ref_keys_from_text(ref) & cited_keys:
+            return ref, wording
+    return topical[0]
+
+
+def _cite_starts_before_hint(cite_text: str, hint_keys: set[str]) -> bool:
+    """True when a range includes a topical verse but opens on a neighboring verse."""
+    refs = parse_verse_refs(cite_text or "")
+    if not refs or not hint_keys:
+        return False
+    cited_keys = {_ref_key(*item) for item in refs}
+    if not (cited_keys & hint_keys):
+        return False
+    return _ref_key(*refs[0]) not in hint_keys
+
+
+def ensure_topical_nkjv(
+    answer: str,
+    query: str,
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Swap an off-topic NKJV cite for a verse that actually addresses the question."""
+    text = answer or ""
+    if not text or parse_verse_refs(query or ""):
+        return text
+    hint_keys = topic_hint_ref_keys(query)
+    if not hint_keys:
+        return text
+    lookup_pairs = [
+        (str(ref), str(wording).strip())
+        for ref, wording in (nkjv_pairs or [])
+        if wording
+    ]
+    fallback_pairs = topical_nkjv_fallback_pairs(query)
+    seen = {normalize_grounding_text(f"{ref}|{wording}") for ref, wording in lookup_pairs}
+    pairs = list(lookup_pairs)
+    for ref, wording in fallback_pairs:
+        key = normalize_grounding_text(f"{ref}|{wording}")
+        if key in seen:
+            continue
+        seen.add(key)
+        pairs.append((ref, wording))
+    topical = [
+        (ref, wording)
+        for ref, wording in pairs
+        if _ref_keys_from_text(ref) & hint_keys
+        and not _cite_starts_before_hint(ref, hint_keys)
+    ]
+    if not topical:
+        topical = list(fallback_pairs)
+    if not topical:
+        topical = select_query_grounded_nkjv(pairs, query, limit=1)
+    if not topical:
+        return text
+    from .chat_retrieval import has_quoted_nkjv
+
+    has_quoted = has_quoted_nkjv(text)
+    has_topical = nkjv_matches_query(text, query)
+    for match in _NKJV_BLOCK_RE.finditer(text):
+        cited_keys = _ref_keys_from_text(match.group(0)[:80])
+        if cited_keys & hint_keys and has_quoted:
+            if _cite_starts_before_hint(match.group(0)[:80], hint_keys):
+                hint_pairs = [
+                    (ref, wording)
+                    for ref, wording in topical
+                    if not _cite_starts_before_hint(ref, hint_keys)
+                ] or list(fallback_pairs)
+                ref, wording = _choose_topical_pair(hint_pairs or topical, cited_keys)
+                replacement = _quoted_nkjv_replacement(ref, wording)
+                return (text[: match.start()] + replacement + text[match.end() :]).strip()
+            continue
+        if has_topical and has_quoted:
+            return (text[: match.start()] + text[match.end() :]).strip()
+        ref, wording = _choose_topical_pair(topical, cited_keys)
+        replacement = _quoted_nkjv_replacement(ref, wording)
+        return (text[: match.start()] + replacement + text[match.end() :]).strip()
+    if not has_quoted or not has_topical:
+        ref, wording = topical[0]
+        return weave_into_answer(text, _quoted_nkjv_replacement(ref, wording))
+    return text
+
+
+_NLT_CITE_RE = re.compile(
+    r"(?i)((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
+    r"\s*\(\s*NLT\s*\)"
+    r"(?:"
+    r"\s*[:,]?\s*(?:says\s*,\s*)?[\"“][^\"”]{0,400}[\"”]?"
+    r"|\s+(?:outlines|states|says|teaches\s+that|reminds\s+us|promises|instructs|"
+    r"encourages\s+us|highlights|emphasizes|we see)[^.?\n]{0,180}[.?]?"
+    r")?"
+)
+
+
 def verse_refs_for_lookup(user_query: str, docs: Iterable[Any], *, limit: int = 8) -> list[tuple[str, int, int]]:
     blobs = [user_query or ""]
+    from .chat_retrieval import _query_has_synonym
+
+    synonyms_by_topic = _topic_synonym_map()
+    for key, hint in _TOPIC_VERSE_HINTS.items():
+        synonyms = synonyms_by_topic.get(key)
+        if synonyms and _query_has_synonym(user_query or "", synonyms):
+            blobs.append(hint)
     for doc in docs or []:
         blobs.append(chunk_text(doc))
         blobs.append(str(_metadata(doc).get("verse_ref") or ""))
@@ -530,6 +1206,10 @@ def lookup_nkjv_verses(
                             key="chapter",
                             match=qdrant_models.MatchValue(value=int(chapter)),
                         ),
+                        qdrant_models.FieldCondition(
+                            key="verse_start",
+                            match=qdrant_models.MatchValue(value=int(verse)),
+                        ),
                     ]
                 ),
                 limit=max(8, limit_per_ref * 4),
@@ -555,16 +1235,62 @@ def lookup_nkjv_verses(
             matched += 1
             if matched >= limit_per_ref:
                 break
+        if matched:
+            continue
+        try:
+            chapter_points, _offset = client.scroll(
+                collection_name=collection_name,
+                scroll_filter=qdrant_models.Filter(
+                    must=[
+                        qdrant_models.FieldCondition(
+                            key="chunk_kind",
+                            match=qdrant_models.MatchValue(value="bible_verse"),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="book",
+                            match=qdrant_models.MatchValue(value=book),
+                        ),
+                        qdrant_models.FieldCondition(
+                            key="chapter",
+                            match=qdrant_models.MatchValue(value=int(chapter)),
+                        ),
+                    ]
+                ),
+                limit=24,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception:
+            logger.debug("NKJV chapter lookup failed for %s %s", book, chapter, exc_info=True)
+            chapter_points = []
+        covering = []
+        for point in chapter_points or []:
+            payload = _payload_of(point)
+            start = int(payload.get("verse_start") or 0)
+            end = int(payload.get("verse_end") or start)
+            if not start or not (start <= verse <= max(start, end)):
+                continue
+            covering.append((abs(start - verse), start, payload))
+        covering.sort(key=lambda item: (item[0], item[1]))
+        for _dist, _start, payload in covering[:limit_per_ref]:
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            metadata = dict(payload.get("metadata") or {})
+            metadata.update({k: v for k, v in payload.items() if k != "metadata"})
+            add_doc(factory(text, metadata))
     return found
 
 
 GROUNDING_REPAIR_STEER = (
-    "A RAG check found quotations or verses that are not in the retrieved notes. "
+    "A RAG check found quotations or verses that are not in the retrieved notes, "
+    "or Scripture / the Lord's words wrapped as Pastor Don quotes. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
     "Do not repeat headings, numbered points, or rewrite the sermon already on screen. "
     "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
-    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
-    "and one ALLOWED NKJV verse if that list is not empty."
+    "Never attribute NKJV wording or first-person God/Jesus speech to Pastor Don or Susan. "
+    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed as Pastor Don or Susan) "
+    "and one ALLOWED NKJV verse if that list is not empty, cited as Scripture."
 )
 
 
@@ -589,6 +1315,10 @@ def grounding_repair_steer(
         parts.append("Drop these ungrounded quotations:")
         for span in report.invented_quotes[:4]:
             parts.append(f'- "{(span or "")[:220]}"')
+    if report.misattributed_quotes:
+        parts.append("These quotations are Scripture or the Lord speaking — do not wrap them as Pastor Don:")
+        for span in report.misattributed_quotes[:4]:
+            parts.append(f'- "{(span or "")[:220]}"')
     dropped = list(report.invented_scripture) + list(report.missing_nkjv_refs)
     if dropped:
         parts.append("Drop these ungrounded Scripture lines or refs:")
@@ -610,3 +1340,16 @@ def grounding_repair_steer(
             parts.append(f'- {ref}: "{wording[:240]}"')
     parts.append("Then stop.")
     return "\n".join(parts)
+
+
+def repair_speaker_attributions(
+    answer: str,
+    *,
+    nkjv_docs: Iterable[Any] = (),
+) -> str:
+    """Rewrite Pastor Don / he-teaches wraps that are actually Scripture."""
+    return rewrite_misattributed_quotes(
+        answer or "",
+        bible_corpus=nkjv_corpus(nkjv_docs),
+        nkjv_pairs=collect_allowed_nkjv(nkjv_docs),
+    )

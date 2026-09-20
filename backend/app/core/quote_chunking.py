@@ -27,7 +27,7 @@ def spoken_text_without_timestamps(text: str) -> str:
         cleaned = _TIMESTAMP_RE.sub("", line).strip()
         if cleaned:
             lines.append(cleaned)
-    return " ".join(lines).strip() or " ".join((text or "").split())
+    return "\n".join(lines).strip() or " ".join((text or "").split())
 
 
 def split_sentences(text: str) -> list[str]:

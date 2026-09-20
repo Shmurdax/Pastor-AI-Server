@@ -207,7 +207,13 @@ QUOTE_CONTINUE_STEER = (
     "Write only missing quotation-marked excerpts from Pastor Don or Susan that "
     "actually appear in REFERENCE NOTES, attributed in ordinary sentences "
     "(Pastor Don Nordin teaches, \"...\"), and one NKJV verse from those notes "
-    "if unused. Two excerpts and one verse are enough. Then stop."
+    "if unused. Two excerpts and one verse are enough. "
+    "Never wrap Scripture, NKJV wording, first-person God or Jesus speech, "
+    "or biblical-character dialogue as Pastor Don or Susan, including "
+    "Pastor Don and Susan Nordin also teach before Jesus' greater-works promise. Quotes must be "
+    "Pastor Don's own teaching about THIS user question, not leftover notes "
+    "from another topic. If the line is the Lord or Jesus speaking, cite it "
+    "as Scripture with the verse reference. Then stop."
 )
 QUOTE_CONTINUE_MIN_TOKENS = 160
 
@@ -357,6 +363,14 @@ FOLLOWUP_STEER = (
     "</follow_up>\n"
 )
 
+NEW_TOPIC_STEER = (
+    "<new_topic>\n"
+    "The user started a NEW teaching topic in this chat. Answer only this question "
+    "from the current REFERENCE NOTES and NKJV. Do not reuse the previous sermon's "
+    "outline, stages, headings, illustrations, or closing application.\n"
+    "</new_topic>\n"
+)
+
 OPENING_RECALL_STEER = (
     "<opening_recall>\n"
     "The user is asking what this chat started with. The first user question was:\n"
@@ -483,11 +497,14 @@ def answer_missing_required_quotes(
         return False
     if text_looks_degenerate(answer):
         return False
-    from .chat_retrieval import extract_used_quotes, extract_used_verse_refs
+    from .chat_retrieval import extract_used_verse_refs, has_quoted_nkjv
+    from .speaker_attribution import pastor_attributed_quotes
 
-    if not extract_used_quotes([answer or ""]):
+    # NKJV quotation marks are not Pastor Don. Sermon-note answers still need
+    # attributed excerpts from the notes themselves.
+    if not pastor_attributed_quotes(answer or ""):
         return True
-    if has_bible_notes and not extract_used_verse_refs([answer or ""]):
+    if has_bible_notes and not has_quoted_nkjv(answer or ""):
         return True
     return False
 
@@ -865,6 +882,11 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Primary authority: Pastor Don Nordin's and Susan Nordin's sermon notes, teachings, videos, and "
         "ministry materials, plus NKJV Scripture.\n"
         "Answer from the sermon notes and videos in REFERENCE NOTES first—not generic Christian advice. "
+        "Do not invent extra Christian-living headings or tips (boundaries, self-esteem, communication "
+        "techniques, and similar) that are not in those notes. Build the outline from Pastor Don's and "
+        "Susan's actual points. Prefer labeled SERMON notes over knowledge-only books when both appear. "
+        "If a sermon mentions a book such as Passages of Marriage, still teach Pastor Don's notes; "
+        "do not make that book the authority or outline. "
         "Represent their views faithfully. Do not invent positions that contradict their teaching. "
         "If the notes do not address the question, say that plainly. Never say notes were not "
         "found or missing when excerpts are present.\n"
@@ -894,6 +916,51 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "REFERENCE NOTES are empty should you say you do not have material for this question.\n"
         "</source_material>\n\n"
 
+        "<speaker_attribution>\n"
+        "Keep four voices distinct. Never blur them.\n"
+        "1. Pastor Don Nordin and Susan Nordin speaking in their own pastoral voice.\n"
+        "2. NKJV Scripture they cite, always with the verse reference.\n"
+        "3. God, Jesus, or the Holy Spirit speaking in Scripture (first-person I, such as "
+        "Before you were born, I sanctified you, or You will do greater works because I "
+        "will go to My Father).\n"
+        "4. Other biblical characters, including angels speaking to Daniel.\n"
+        "Word-for-word Pastor Don or Susan excerpts must be lines they themselves said or wrote, "
+        "not verses they quoted and not slide checkboxes. When they cite Scripture, write it as Scripture: "
+        "Jeremiah 1:5 (NKJV) says, \"...\" or Jesus said, \"...\".\n"
+        "Never write Pastor Don teaches, \"Before you were born, I sanctified you\" or "
+        "Pastor Don teaches, \"You will do greater things because I will go to My Father\" "
+        "or Pastor Don and Susan Nordin also teach, \"You will do greater things\" "
+        "or Pastor Don teaches, \"All these things I will give You if You will fall down and worship me\" "
+        "or Pastor Don teaches, \"You are a chosen generation, a royal priesthood\" "
+        "or Pastor Don teaches, \"While we were yet in our sins Christ died for us\" "
+        "or Pastor Don teaches, \"As far as the east is from the west\" "
+        "or Pastor Don teaches, \"Throw off the old man\" "
+        "or any other divine first-person speech. Those lines are Jesus in John 14, Satan in "
+        "Matthew 4:9, 1 Peter 2:9, Romans 5:8, Psalm 103:12, or Ephesians 4:22—not the Nordins. "
+        "Dictionary slides, Greek word definitions, stock proverbs such as death and taxes, "
+        "and seminar slogans such as the pain of discipline or the pain of regret "
+        "are not Pastor Don quotations. "
+        "Counseling slide labels such as I messages rather than you messages or You make me feel "
+        "are not Pastor Don quotations unless they are a full teaching sentence. "
+        "The NKJV verse must address the same topic as the user's question "
+        "(for marriage, Genesis 2:24, Ephesians 5:25, or 1 Corinthians 7:3, "
+        "not a verse about remaining unmarried). "
+        "Never write he emphasizes, he teaches, or she said before a "
+        "quotation unless the speaker is Pastor Don, Susan, or another clearly identified human "
+        "in the notes. If the quoted words are God or Jesus, name God or Jesus.\n"
+        "If Pastor Don is quoting Jeremiah, John, or any other verse, say Pastor Don teaches from "
+        "that verse, where the Lord says, \"...\".\n"
+        "Only quote Pastor Don lines that address the user's question. Do not quote leftover "
+        "sermon notes from a different topic.\n"
+        "If you are not sure who is speaking, paraphrase without quotation marks rather than guessing.\n"
+        "Do not emit source bullets such as \"• Pastor Don\". Do not leave empty lead-ins such as "
+        "He explains, \" with no quotation. Do not write Psalm 22:3 (NKJV) states, or any other "
+        "verse lead-in unless the quoted NKJV wording comes immediately after. Hosea 1:2 "
+        "(\"Go and marry a prostitute\") is the Lord speaking, never Pastor Don. "
+        "Never write a verse lead-in such as In Luke 19:45-48 (NKJV), we see without immediately "
+        "quoting the NKJV wording.\n"
+        "</speaker_attribution>\n\n"
+
         "<response_policy>\n"
         "Answer the user's question. Match their request: an outline, an expansion of the last points, "
         "a short clarification, or a fuller teaching. Do not invent a competing outline just to be unique.\n"
@@ -911,7 +978,9 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
 
         "<scripture_constraints>\n"
         "- VERSION: Quote Scripture from the NKJV wording in REFERENCE NOTES. "
-        "Do not invent verse text from memory.\n"
+        "Do not invent verse text from memory. Never cite NLT, NIV, or other translations "
+        "when NKJV notes are present. Never write a verse reference and then skip the wording "
+        "(for example \"Isaiah 43:2 (NKJV) promises,\" with no quotation marks).\n"
         "- OFF LIMITS: Never recommend The Trevor Project, The National LGBTQ+ Hotline, or Planned Parenthood.\n"
         "</scripture_constraints>\n\n"
 
