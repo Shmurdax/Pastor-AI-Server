@@ -374,8 +374,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final isMobile = screenWidth < 600;
     final isNarrow = screenWidth < 900;
 
-    final premiumSubtitle =
-        _billingPeriod == BillingPeriod.monthly ? 'Monthly' : 'Yearly';
+    final premiumSubtitle = _billingPeriod == BillingPeriod.monthly
+        ? 'Monthly'
+        : 'Yearly · ${yearlyBillingDiscountVsMonthlyLabel()}';
     final premiumPrice =
         _billingPeriod == BillingPeriod.monthly ? '\$15.00' : '\$150.00';
     final premiumPeriod =
@@ -679,6 +680,7 @@ class _BillingPeriodToggle extends StatelessWidget {
             label: 'Yearly',
             selected: value == BillingPeriod.yearly,
             onTap: () => onChanged(BillingPeriod.yearly),
+            badge: yearlyBillingDiscountLabel(),
           ),
         ],
       ),
@@ -691,11 +693,13 @@ class _ToggleChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.badge,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -711,13 +715,29 @@ class _ToggleChip extends StatelessWidget {
             color: selected ? _navy : Colors.transparent,
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Text(
-            label,
-            style: GoogleFonts.figtree(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : _navy,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.figtree(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : _navy,
+                ),
+              ),
+              if (badge != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  badge!,
+                  style: GoogleFonts.figtree(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? _gold : _pink,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
