@@ -143,6 +143,11 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("the land has committed great harlotry", "Hosea 1:2"),
     ("this will illustrate the way my people have been untrue", "Hosea 1:2"),
     ("openly committing adultery against the lord by worshiping other gods", "Hosea 1:2"),
+    ("for this reason a man shall leave his father and mother", "Genesis 2:24"),
+    ("be joined to his wife, and the two shall become one flesh", "Genesis 2:24"),
+    ("the two shall become one flesh", "Genesis 2:24"),
+    ("if any man will come after me", "Luke 9:23"),
+    ("let him deny himself, and take up his cross", "Luke 9:23"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -233,6 +238,9 @@ _BIBLICAL_PASSAGE_RE = re.compile(
     r"|go(?:\s+and)?\s+(?:marry a prostitute|take(?:\s+yourself)?\s+a\s+wife of harlotry)"
     r"|this will illustrate the way my people have been untrue"
     r"|children of harlotry"
+    r"|for this reason a man shall leave his father"
+    r"|the two shall become one flesh"
+    r"|if any (?:man|person) (?:will|would) come after me"
     r")"
 )
 _SENTENCE_END_RE = re.compile(r"[.!?…]")
@@ -352,6 +360,11 @@ def looks_like_nonteaching_excerpt(text: str) -> bool:
     if looks_like_broken_excerpt(sample):
         return True
     if re.match(r"(?i)^(intro|title|key|definition)\s*:", sample):
+        return True
+    stripped = sample.strip(" \"“”'")
+    if re.match(r"^[A-Z]{4,}\b", stripped) and not _SENTENCE_END_RE.search(stripped):
+        return True
+    if (stripped.count("…") + stripped.count("...")) >= 2:
         return True
     return looks_like_title_excerpt(sample)
 
@@ -743,6 +756,11 @@ def drop_nonteaching_pastor_wraps(answer: str) -> str:
     )
     cleaned = re.sub(
         r'(?i)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\.\s*',
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(
+        r'(?i)(?:^|(?<=\s))Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\s+(?![\"“])',
         "",
         cleaned,
     )

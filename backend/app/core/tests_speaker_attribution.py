@@ -361,6 +361,15 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_genesis_marriage_verse_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "For this reason a man shall leave his father '
+            'and mother and be joined to his wife, and the two shall become one flesh."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotRegex(fixed, r'(?i)pastor don.{0,40}"For this reason a man shall leave')
+        self.assertIn("Genesis 2:24", fixed)
+
     def test_hosea_command_is_not_pastor_don(self):
         text = (
             'Pastor Don Nordin teaches, "Go and marry a prostitute, so some of her '

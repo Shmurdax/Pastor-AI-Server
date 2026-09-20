@@ -749,12 +749,20 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertNotIn("thirty things", texts)
 
     def test_parenting_notes_are_not_hosea_prayer_sermon(self):
-        from core.chat_retrieval import filter_hits_by_topic, required_topic_synonyms
+        from core.chat_retrieval import (
+            filter_hits_by_topic,
+            required_topic_core_tokens,
+            required_topic_synonyms,
+        )
 
         query = "Create sermon notes on parenting and raising children."
         required = required_topic_synonyms(query)
         self.assertTrue(any("parent" in item for item in required), required)
         self.assertNotIn("children", required)
+        cores = required_topic_core_tokens(query)
+        self.assertIn("parenting", cores)
+        self.assertNotIn("parent", cores)
+        self.assertNotIn("children", cores)
         parenting = _doc(
             "Parents must raise children with consistent discipline and model the faith at home.",
             source="parenting.pdf",

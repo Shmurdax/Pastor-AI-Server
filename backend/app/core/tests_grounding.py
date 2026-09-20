@@ -477,6 +477,26 @@ class GroundingTests(unittest.TestCase):
             ["Worship is a jamming device against the enemy when we lift God up."],
         )
 
+    def test_quoted_nkjv_is_not_rewritten(self):
+        from core.grounding import repair_empty_nkjv_citations
+
+        text = (
+            '1 Corinthians 7:37-40 (NKJV) says, "Nevertheless he who stands steadfast '
+            'in his heart, having no necessity, but has power over his own will."'
+        )
+        cleaned = repair_empty_nkjv_citations(
+            text,
+            [
+                (
+                    "1 Corinthians 7:37",
+                    "Nevertheless he who stands steadfast in his heart.",
+                )
+            ],
+        )
+        self.assertEqual(cleaned.count("Nevertheless"), 1)
+        self.assertIn('says, "Nevertheless', cleaned)
+        self.assertNotIn("teaches that ,", cleaned)
+
 
 if __name__ == "__main__":
     unittest.main()

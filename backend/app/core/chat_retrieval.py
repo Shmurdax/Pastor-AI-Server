@@ -545,7 +545,6 @@ _TOPIC_SYNONYMS = {
         "parenting",
         "parent",
         "parents",
-        "raising",
         "child-rearing",
         "childrearing",
     ),
@@ -586,6 +585,16 @@ _GENERIC_TOPIC_KEYS = frozenset({"prayer", "faith", "grace", "spirit", "purpose"
 _TOPIC_NARROWERS = {
     "parenting": frozenset({"family"}),
     "marriage": frozenset({"family"}),
+}
+_TOPIC_CORE = {
+    "parenting": ("parenting", "parents"),
+    "marriage": ("marriage", "married", "husband", "wife"),
+    "worship": ("worship", "worshiping", "worshipping", "praise", "praises"),
+    "giving": ("giving", "tithe", "tithing", "stewardship", "offering"),
+    "temptation": ("temptation", "tempt", "tempted"),
+    "humility": ("humility", "humble"),
+    "evangelism": ("evangelism", "evangelize", "witness", "gospel"),
+    "grief": ("grieving", "grief", "mourn", "comfort"),
 }
 
 
@@ -634,6 +643,28 @@ def required_topic_synonyms(query: str) -> frozenset[str]:
     for key in keys:
         found.update(_TOPIC_SYNONYMS[key])
     return frozenset(found)
+
+
+def required_topic_core_tokens(query: str) -> frozenset[str]:
+    """Distinctive topic words a hit must mention (not loose synonyms like 'children')."""
+    present: list[str] = [
+        key for key, synonyms in _TOPIC_SYNONYMS.items() if _query_has_synonym(query, synonyms)
+    ]
+    drop: set[str] = set()
+    for key in present:
+        drop.update(_TOPIC_NARROWERS.get(key, ()))
+    narrowed = [key for key in present if key not in drop]
+    specific = [key for key in narrowed if key not in _GENERIC_TOPIC_KEYS]
+    keys = specific or narrowed
+    cores: set[str] = set()
+    for key in keys:
+        extras = _TOPIC_CORE.get(key)
+        if extras:
+            cores.update(extras)
+        else:
+            cores.add(key)
+            cores.update(list(_TOPIC_SYNONYMS[key])[:2])
+    return frozenset(cores)
 
 
 def topic_synonym_search_query(query: str) -> str:
@@ -1197,6 +1228,15 @@ def filter_hits_by_topic(
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    core = required_topic_core_tokens(query)
+    if core:
+        core_hits = [
+            (doc, score)
+            for doc, score in scored_hits
+            if topic_overlap_score(doc, core) > 0
+        ]
+        if core_hits:
+            return core_hits
     required = required_topic_synonyms(query)
     if required:
         required_hits = [

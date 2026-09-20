@@ -481,8 +481,7 @@ _EMPTY_NKJV_CITE_RE = re.compile(
     r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
     r"\s*\(\s*NKJV\s*\)\s*,?\s*"
     r"(?:it\s+)?"
-    r"(?:states|says|reminds us|promises|instructs|declares|teaches that|teaches|"
-    r"explains|records|assures(?:\s+us)?|encourages(?:\s+us)?)"
+    r"(?:states|reminds us|promises|instructs)"
     r",?\s*"
     r'(?!\s*[\"“])'
 )
