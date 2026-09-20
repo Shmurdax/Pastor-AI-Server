@@ -579,15 +579,23 @@ def _wording_for_nkjv_ref(ref: str, pairs: list[tuple[str, str]]) -> str:
     wanted = parse_verse_refs(ref)
     if not wanted:
         return ""
-    book, chapter, verse = wanted[0]
-    want = f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+    want_keys = {
+        f"{canonical_book_key(book)}|{int(chapter)}|{int(verse)}"
+        for book, chapter, verse in wanted
+    }
     for pref, wording in pairs:
         for p_book, p_chapter, p_verse in parse_verse_refs(pref) or []:
             key = f"{canonical_book_key(p_book)}|{int(p_chapter)}|{int(p_verse)}"
-            if key == want:
+            if key in want_keys:
                 return _clip_excerpt(wording, 240)
         if normalize_grounding_text(ref) in normalize_grounding_text(pref):
             return _clip_excerpt(wording, 240)
+    for hint_ref, wording in _TOPIC_NKJV_WORDING.items():
+        parsed = parse_verse_refs(hint_ref)
+        if parsed:
+            key = f"{canonical_book_key(parsed[0][0])}|{int(parsed[0][1])}|{int(parsed[0][2])}"
+            if key in want_keys:
+                return _clip_excerpt(wording, 240)
     return ""
 
 

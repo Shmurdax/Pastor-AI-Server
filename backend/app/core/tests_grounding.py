@@ -435,7 +435,8 @@ class GroundingTests(unittest.TestCase):
         cleaned = strip_retrieval_meta(worship)
         self.assertNotIn("states,", cleaned.lower())
         self.assertNotIn("reminds us,", cleaned.lower())
-        self.assertIn("Psalm 22:3 (NKJV) teaches that God is enthroned", cleaned)
+        self.assertIn('Psalm 22:3 (NKJV) says, "But You are holy', cleaned)
+        self.assertIn("Proverbs 3:5-6 (NKJV) teaches that", cleaned)
         filled = repair_empty_nkjv_citations(
             worship,
             [
@@ -885,6 +886,21 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("tithe of the land", filled)
         self.assertNotIn("not to touch a woman", filled)
         self.assertNotIn("outlines the requirements for giving", filled)
+
+    def test_prayer_teaches_that_without_quote_is_filled_from_topic_wording(self):
+        from core.chat_retrieval import has_quoted_nkjv
+        from core.grounding import nkjv_matches_query, repair_empty_nkjv_citations
+
+        query = "Create sermon notes on prayer."
+        text = (
+            'Pastor Don Nordin teaches, "Praying For and reaching the lost requires persistence." '
+            "Matthew 6:5-8 (NKJV) teaches that And when you pray, you shall not be like the hypocrites. "
+            "For they love to pray standing in the synagogues they have their reward."
+        )
+        repaired = repair_empty_nkjv_citations(text, [])
+        self.assertTrue(has_quoted_nkjv(repaired), repaired)
+        self.assertTrue(nkjv_matches_query(repaired, query), repaired)
+        self.assertIn("when you pray, go into your room", repaired)
 
     def test_prodigal_story_question_gets_quoted_nkjv_fallback(self):
         from core.chat_retrieval import has_quoted_nkjv

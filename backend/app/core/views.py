@@ -1690,7 +1690,9 @@ class ChatAPIView(APIView):
                         prepared, _join_continuation(answer, finish_extra)
                     )
                 final_answer = sanitize_chat_answer(
-                    _finalize_teaching_answer(prepared, answer)
+                    _ensure_quoted_nkjv(
+                        prepared, _finalize_teaching_answer(prepared, answer)
+                    )
                 )
                 if emit_live:
                     prefix = (answer or "").rstrip()
@@ -1894,7 +1896,11 @@ class ChatAPIView(APIView):
             finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
-            answer = sanitize_chat_answer(_finalize_teaching_answer(prepared, answer))
+            answer = sanitize_chat_answer(
+                _ensure_quoted_nkjv(
+                    prepared, _finalize_teaching_answer(prepared, answer)
+                )
+            )
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,
