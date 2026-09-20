@@ -127,12 +127,17 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("he will give you another helper", "John 14:16"),
     ("faith is the confident assurance that what we hope for is going to happen", "Hebrews 11:1"),
     ("it is the evidence of things we cannot yet see", "Hebrews 11:1"),
+    ("having then gifts differing according to the grace", "Romans 12:6"),
+    ("let us use them: if prophecy", "Romans 12:6"),
+    ("let us hear the conclusion of the whole matter", "Ecclesiastes 12:13"),
+    ("fear god and keep his commandments for this is the whole duty of man", "Ecclesiastes 12:13"),
 )
 
 _VERSE_DUMP_RE = re.compile(
     r"(?i:\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b)"
     r"|\d{1,3}(?=[A-Z])"
     r"|\b\d{1,3}\s+[A-Z][a-z]"
+    r"|\b\d{1,3}\s+(?:or|and)\s+[a-z]"
 )
 
 _SCRIPTURE_VOICE_RE = re.compile(
@@ -399,6 +404,8 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Hebrews 11:3",
         "Daniel 10:11",
         "Daniel 10:12",
+        "Romans 12:6",
+        "Ecclesiastes 12:13",
     }
 )
 
@@ -507,6 +514,30 @@ def pastor_attributed_quotes(answer: str) -> list[tuple[str, str]]:
     return found
 
 
+_PASTOR_TEACHES_THAT_RE = re.compile(
+    r"(?i)((?:Pastor Don(?: and Susan)?(?: Nordin)?|he|she)(?: also)? "
+    r"teach(?:es)? that\s+)(.{30,360}?)(?=(?:\s+For instance|\s+Pastor Don|\n\n|\Z))"
+)
+
+
+def _rewrite_unquoted_pastor_scripture(
+    text: str,
+    *,
+    bible_corpus: str = "",
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Rewrite 'Pastor Don teaches that <verse>' when the clause is Scripture."""
+    pairs = list(nkjv_pairs or [])
+
+    def repl(match: re.Match[str]) -> str:
+        span = " ".join(match.group(2).split()).strip()
+        if not looks_like_scripture_wording(span, bible_corpus):
+            return match.group(0)
+        return scripture_leadin_for(span, pairs) + f'"{span}"'
+
+    return _PASTOR_TEACHES_THAT_RE.sub(repl, text or "")
+
+
 def rewrite_misattributed_quotes(
     answer: str,
     *,
@@ -545,12 +576,20 @@ def rewrite_misattributed_quotes(
         cursor = end
         changed = True
     if not changed:
-        return drop_nonteaching_pastor_wraps(text)
+        return drop_nonteaching_pastor_wraps(
+            _rewrite_unquoted_pastor_scripture(
+                text, bible_corpus=bible_corpus, nkjv_pairs=pairs
+            )
+        )
     pieces.append(text[cursor:])
     cleaned = "".join(pieces)
     cleaned = re.sub(r" {2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return drop_nonteaching_pastor_wraps(cleaned.strip())
+    return drop_nonteaching_pastor_wraps(
+        _rewrite_unquoted_pastor_scripture(
+            cleaned.strip(), bible_corpus=bible_corpus, nkjv_pairs=pairs
+        )
+    )
 
 
 def drop_nonteaching_pastor_wraps(answer: str) -> str:

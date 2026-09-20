@@ -516,7 +516,6 @@ _FOLLOWUP_ANCHOR_NOISE = frozenset(
 )
 _TOPIC_SYNONYMS = {
     "grief": (
-        "grief",
         "grieving",
         "grieve",
         "grieved",

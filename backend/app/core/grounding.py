@@ -413,6 +413,16 @@ _EMPTY_STATES_RE = re.compile(
     r"(?i)(?:in\s+)?((?:[1-3]\s+)?[A-Za-z]+(?:\s+[A-Za-z]+)?\s+\d+:\d+(?:-\d+)?)"
     r"\s*\(\s*NKJV\s*\)\s*,?\s*it states,\s*(?=[A-Z])"
 )
+_EMPTY_TEACHES_MEANS_RE = re.compile(
+    r"(?i)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\s*This means\s+"
+)
+_EMPTY_SAYS_THIS_RE = re.compile(
+    r"(?i)\(\s*NKJV\s*\)\s+says,\s+This (?:verse|passage)\s+"
+)
+_CERTAINLY_OPENER_RE = re.compile(
+    r"(?is)^\s*(?:certainly|sure)[!.,]?\s+here(?:'s| is)\s+.{0,180}?:\s*"
+)
+_BULLET_GLYPH_RE = re.compile(r"[•▪▫]\s*")
 _GLUED_SENTENCE_RE = re.compile(r"([a-z])\.([A-Z])")
 
 
@@ -445,6 +455,10 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _EMPTY_EXPLAIN_RE.sub("", text)
     text = _EMPTY_ADVISES_RE.sub("", text)
     text = _EMPTY_STATES_RE.sub(r"\1 (NKJV) says, ", text)
+    text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
+    text = _EMPTY_SAYS_THIS_RE.sub("(NKJV) says ", text)
+    text = _CERTAINLY_OPENER_RE.sub("", text)
+    text = _BULLET_GLYPH_RE.sub("", text)
     text = _GLUED_SENTENCE_RE.sub(r"\1. \2", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

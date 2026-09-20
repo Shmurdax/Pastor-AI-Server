@@ -186,6 +186,10 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "2 Chronicles 7:14",
             'Pastor Don and Susan Nordin also teach, "You will do greater things because I will go to My Father and He will send Holy Spirit to abide in you."':
                 "John 14:12",
+            'Pastor Don Nordin teaches, "Having then gifts differing according to the grace that is given to us, let us use them: if prophecy, let us prophesy in proportion to our faith; 7 or ministry, let us use it in our ministering;"':
+                "Romans 12:6",
+            'Pastor Don Nordin teaches, "Let us hear the conclusion of the whole matter, fear God and keep His commandments for this is the whole duty of man."':
+                "Ecclesiastes 12:13",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)
@@ -264,6 +268,17 @@ class SpeakerAttributionTests(unittest.TestCase):
         )
         self.assertIn("not Pastor Don", notes)
         self.assertIn("Before you were born, I sanctified you", notes)
+
+    def test_rewrites_unquoted_hebrews_paraphrase_as_scripture(self):
+        text = (
+            "Pastor Don teaches that faith is the confident assurance that what we hope "
+            "for is going to happen. It is the evidence of things we cannot yet see. "
+            "For instance, Noah took God at His word."
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotRegex(fixed, r'(?i)pastor don teaches that faith is the confident')
+        self.assertIn("Hebrews 11:1", fixed)
+        self.assertIn("Noah took God at His word", fixed)
 
 
 if __name__ == "__main__":
