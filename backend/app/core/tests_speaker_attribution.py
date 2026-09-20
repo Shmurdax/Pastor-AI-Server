@@ -7,6 +7,7 @@ from core.speaker_attribution import (
     looks_like_divine_speech,
     looks_like_scripture_wording,
     pastor_attributed_quotes,
+    quoted_span_voice,
     rewrite_misattributed_quotes,
 )
 
@@ -279,6 +280,39 @@ class SpeakerAttributionTests(unittest.TestCase):
         self.assertNotRegex(fixed, r'(?i)pastor don teaches that faith is the confident')
         self.assertIn("Hebrews 11:1", fixed)
         self.assertIn("Noah took God at His word", fixed)
+
+    def test_holy_spirit_screenshot_does_not_keep_jesus_as_nordin_teaching(self):
+        text = (
+            "Pastor Don teaches about the Holy Spirit, emphasizing that He is a person "
+            "who should be closely embraced by every believer. He clarifies that the term "
+            '"Holy Ghost" can sometimes be intimidating or mysterious, but the Holy Spirit '
+            "is nothing to fear. Pastor Don Nordin teaches, \"Some of the problem is that "
+            "He is a person without a body and that seems odd to us because: □ We are made "
+            "in the image of God, therefore we know He has a body... □ Jesus dawned an earth "
+            "suit and became Immanuel, God with us... But Holy Spirit?\" Pastor Don and "
+            "Susan Nordin also teach, \"You will do greater things because I will go to My "
+            "Father and He will send Holy Spirit to abide in you.\"\n\n"
+            "Pastor Don also highlights the oil-in-an-engine illustration."
+        )
+        before = pastor_attributed_quotes(text)
+        self.assertTrue(
+            any("greater things" in span.lower() for span, _lead in before),
+            before,
+        )
+        greater = next(span for span, _lead in before if "greater things" in span.lower())
+        idx = text.lower().index("you will do greater things")
+        prefix = text[: idx - 1]
+        self.assertEqual(quoted_span_voice(prefix), "pastor")
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotIn("also teach", fixed.lower())
+        self.assertNotIn("□", fixed)
+        self.assertIn("John 14", fixed)
+        self.assertRegex(
+            fixed,
+            r"(?i)(records the lord saying|jesus said).{0,8}You will do greater things",
+        )
+        self.assertIn("oil-in-an-engine", fixed)
+        self.assertNotRegex(fixed, r'(?i)pastor don and susan.{0,40}greater things')
 
 
 if __name__ == "__main__":

@@ -546,14 +546,21 @@ def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> st
     return grounded_fallback_answer(quotes, nkjv)
 
 
+def _speaker_repaired(prepared, answer: str) -> str:
+    """Always strip Pastor Don / Susan wraps of Scripture, even with no notes."""
+    docs = prepared.get("docs") or []
+    _sermon, bible = split_docs_for_grounding(docs)
+    return repair_speaker_attributions(answer or "", nkjv_docs=bible)
+
+
 def _finalize_teaching_answer(prepared, answer: str) -> str:
     """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
+    answer = _speaker_repaired(prepared, answer)
     if not docs:
         return answer
     sermon, bible = split_docs_for_grounding(docs)
-    answer = repair_speaker_attributions(answer, nkjv_docs=bible)
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     missing_quotes = _missing_required_quotes(prepared, answer)
     if report.ok and not missing_quotes:
@@ -1412,6 +1419,7 @@ class ChatAPIView(APIView):
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
                 answer, leaked = _retry_if_cjk_leak(prepared, first_raw)
+                answer = _speaker_repaired(prepared, answer)
                 painted = "".join(painted_parts)
                 if emit_live and answer != painted:
                     yield _sse({"type": "replace", "text": answer})
@@ -1437,12 +1445,16 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if not extra:
                         break
                     if emit_live:
                         yield _sse({"type": "delta", "text": "\n\n" + extra})
-                    answer = _join_continuation(answer, extra)
+                    answer = _speaker_repaired(
+                        prepared, _join_continuation(answer, extra)
+                    )
                     if live_history:
                         live_history.publish(answer, streaming=True)
                 repair_steer, repair_budget = (
@@ -1462,11 +1474,15 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 quote_steer, quote_budget = (
@@ -1486,11 +1502,15 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Quote repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 grounding_steer, grounding_budget = (
@@ -1510,19 +1530,26 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("RAG grounding repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _speaker_repaired(
+                        prepared, _usable_extra(answer, "".join(extra_parts))
+                    )
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
+                        answer = _speaker_repaired(
+                            prepared, _join_continuation(answer, extra)
+                        )
                         if live_history:
                             live_history.publish(answer, streaming=True)
                 finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
                 if finish_extra:
+                    finish_extra = _speaker_repaired(prepared, finish_extra)
                     if emit_live:
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
-                    answer = _join_continuation(answer, finish_extra)
+                    answer = _speaker_repaired(
+                        prepared, _join_continuation(answer, finish_extra)
+                    )
                 final_answer = sanitize_chat_answer(
                     _finalize_teaching_answer(prepared, answer)
                 )
@@ -1591,6 +1618,7 @@ class ChatAPIView(APIView):
             response = prepared["bound"].invoke(prepared["messages"])
             answer = response.content or ""
             answer, leaked = _retry_if_cjk_leak(prepared, answer)
+            answer = _speaker_repaired(prepared, answer)
             if live_history:
                 live_history.publish(answer, streaming=True)
             expansion_pass = 0

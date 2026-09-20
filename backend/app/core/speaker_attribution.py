@@ -15,7 +15,9 @@ from typing import Iterable, Optional
 from .bible_refs import parse_verse_refs
 from .quote_chunking import split_sentences
 
-_QUOTE_RE = re.compile(r'([\"“])(.{12,400}?)([\"”])')
+_QUOTE_RE = re.compile(
+    r'(?:^|(?<=[\s,:(—–]))([\"“])([^\"”\n]{12,400}?)([\"”])'
+)
 # Opening quote with no closer before the line ends — the model often drops the
 # closing mark, which used to skip rewrite entirely.
 _UNCLOSED_QUOTE_RE = re.compile(r'([\"“])([^\"”\n]{12,}?)(?=\s*(?:\n|$))')
@@ -46,6 +48,7 @@ _DIVINE_SPEECH_RE = re.compile(
         r"|come to me, all you who labor"
         r"|let there be light"
         r"|i will go to my father"
+        r"|you will do greater (?:things|works)"
         r"|greater (?:things|works) than these"
         r"|he will send (?:the )?holy spirit"
         r"|if my people who are called by my name"
@@ -120,7 +123,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("i will hear from heaven", "2 Chronicles 7:14"),
     ("forgive their sin and heal their land", "2 Chronicles 7:14"),
     ("you will do greater things because i will go to my father", "John 14:12"),
+    ("you will do greater things", "John 14:12"),
     ("greater works than these he will do", "John 14:12"),
+    ("i will go to my father and he will send", "John 14:12"),
     ("i will go to my father", "John 14:12"),
     ("he will send holy spirit to abide in you", "John 14:16"),
     ("he will send the holy spirit", "John 14:16"),
@@ -142,8 +147,11 @@ _VERSE_DUMP_RE = re.compile(
 
 _SCRIPTURE_VOICE_RE = re.compile(
     r"(?i)\b(?:"
-    r"nkjv|scripture|bible|the lord|jesus(?:\s+christ)?|holy spirit|"
-    r"god (?:said|says|spoke)|where the lord|records the lord|"
+    r"nkjv|scripture|bible|"
+    r"the lord (?:said|says|speaking)|"
+    r"jesus(?:\s+christ)? (?:said|says|taught|teaches|speaking)|"
+    r"god (?:said|says|spoke)|"
+    r"where the lord|records the lord|"
     r"biblical author"
     r")\b"
 )
@@ -166,6 +174,18 @@ _LEADIN_RE = re.compile(
 )
 _OPENER_RE = re.compile(
     r"(?i)^(additionally|similarly|moreover|furthermore|also|likewise)[, ]+"
+)
+# Direct pastor/Susan wrap of a quotation — does not depend on the previous
+# sentence's wording (a nearby "Holy Spirit" used to hide the lead-in).
+_PASTOR_WRAPPED_QUOTE_RE = re.compile(
+    r"(?is)"
+    r"((?:(?:additionally|similarly|moreover|furthermore|also|likewise)[, ]+)?"
+    rf"(?:{_PASTOR_NAME_RE}|he|she|they)"
+    r"(?:\s+\w+){0,8}?\s+"
+    rf"{_SPEECH_VERB_RE}"
+    r"(?:\s+that)?"
+    r"[,:\s]*)"
+    r'(["“])([^"”\n]{12,400}?)(["”])'
 )
 
 _DICTIONARY_RE = re.compile(
@@ -199,6 +219,7 @@ _BIBLICAL_PASSAGE_RE = re.compile(
     r"|i have now been sent to you"
     r"|if my people who are called by my name"
     r"|you will do greater (?:things|works) because i will go to my father"
+    r"|you will do greater (?:things|works)"
     r"|i will go to my father"
     r"|he will send (?:the )?holy spirit"
     r"|greater works than these"
@@ -425,7 +446,9 @@ def scripture_leadin_for(span: str, nkjv_pairs: Iterable[tuple[str, str]]) -> st
 def _clause_tail(prefix: str, *, limit: int = 100) -> str:
     """Last short clause before a quotation — avoids matching an earlier 'he said'."""
     window = (prefix or "")[-limit:]
-    for sep in (". ", "! ", "? ", "\n"):
+    # Include closing-quote ends so "But Holy Spirit?" does not leak into the
+    # next Pastor Don / Susan lead-in.
+    for sep in ('."', '!"', '?"', '.”', '!”', '?”', ". ", "! ", "? ", "\n"):
         idx = window.rfind(sep)
         if idx >= 0:
             window = window[idx + len(sep) :]
@@ -538,6 +561,34 @@ def _rewrite_unquoted_pastor_scripture(
     return _PASTOR_TEACHES_THAT_RE.sub(repl, text or "")
 
 
+def _rewrite_pastor_wrapped_scripture(
+    text: str,
+    *,
+    bible_corpus: str = "",
+    nkjv_pairs: Iterable[tuple[str, str]] = (),
+) -> str:
+    """Rewrite or drop Pastor Don / Susan wraps even when nearby prose names Jesus."""
+    pairs = list(nkjv_pairs or [])
+
+    def repl(match: re.Match[str]) -> str:
+        lead = match.group(1) or ""
+        span = " ".join((match.group(3) or "").split()).strip()
+        quoted = f'{match.group(2)}{match.group(3)}{match.group(4)}'
+        if looks_like_nonteaching_excerpt(span):
+            return ""
+        if not looks_like_scripture_wording(span, bible_corpus):
+            return match.group(0)
+        opener = ""
+        opener_match = _OPENER_RE.match(lead.strip())
+        if opener_match:
+            opener = opener_match.group(0)
+            if opener and not opener.endswith(" "):
+                opener = opener.rstrip(", ") + ", "
+        return opener + scripture_leadin_for(span, pairs) + quoted
+
+    return _PASTOR_WRAPPED_QUOTE_RE.sub(repl, text or "")
+
+
 def rewrite_misattributed_quotes(
     answer: str,
     *,
@@ -548,6 +599,9 @@ def rewrite_misattributed_quotes(
     text = answer or ""
     if not text:
         return text
+    text = _rewrite_pastor_wrapped_scripture(
+        text, bible_corpus=bible_corpus, nkjv_pairs=nkjv_pairs
+    )
     pairs = list(nkjv_pairs or [])
     pieces: list[str] = []
     cursor = 0
