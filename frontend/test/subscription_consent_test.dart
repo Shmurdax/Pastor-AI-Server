@@ -41,6 +41,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('yearly plan is 17 percent off twelve monthly payments', () {
+    expect(yearlyBillingDiscountPercent(), 17);
+    expect(yearlyBillingDiscountLabel(), 'Save 17%');
+    expect(yearlyBillingDiscountVsMonthlyLabel(), 'Save 17% vs monthly');
+  });
+
   test('consent copy names the selected billing period', () {
     expect(
       subscriptionConsentLabel(BillingPeriod.monthly),
@@ -126,5 +132,7 @@ void main() {
     );
     expect(subscribeFinder, findsOneWidget);
     expect(tester.widget<FilledButton>(subscribeFinder).onPressed, isNull);
+    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'), findsWidgets);
+    expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsOneWidget);
   });
 }

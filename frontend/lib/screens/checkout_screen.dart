@@ -16,6 +16,25 @@ const _pink = Color(0xFFa1375a);
 
 enum BillingPeriod { monthly, yearly }
 
+const premiumMonthlyPriceDollars = 15;
+const premiumYearlyPriceDollars = 150;
+
+/// Discount vs twelve monthly payments, rounded to the nearest percent.
+int yearlyBillingDiscountPercent({
+  int monthlyDollars = premiumMonthlyPriceDollars,
+  int yearlyDollars = premiumYearlyPriceDollars,
+}) {
+  final billedMonthly = monthlyDollars * 12;
+  if (billedMonthly <= 0) return 0;
+  return (((billedMonthly - yearlyDollars) * 100) / billedMonthly).round();
+}
+
+String yearlyBillingDiscountLabel() =>
+    'Save ${yearlyBillingDiscountPercent()}%';
+
+String yearlyBillingDiscountVsMonthlyLabel() =>
+    '${yearlyBillingDiscountLabel()} vs monthly';
+
 String subscriptionConsentLabel(BillingPeriod period) => period == BillingPeriod.yearly
     ? 'I acknowledge I am subscribing to a yearly Premium plan (\$150/year) that renews until I cancel.'
     : 'I acknowledge I am subscribing to a monthly Premium plan (\$15/month) that renews until I cancel.';
@@ -103,6 +122,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   String get _periodApiValue =>
       widget.billingPeriod == BillingPeriod.monthly ? 'monthly' : 'yearly';
+
+  String get _planSummary {
+    final price = '$_priceLabel $_pricePeriod';
+    if (widget.billingPeriod != BillingPeriod.yearly) return price;
+    return '$price · ${yearlyBillingDiscountLabel()}';
+  }
 
   @override
   void initState() {
@@ -382,13 +407,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     const SizedBox(height: 6),
                     Text(
                       'Signed in as ${auth.user?.email ?? 'member'} · '
-                      '$_priceLabel $_pricePeriod',
+                      '$_planSummary',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.figtree(
                         fontSize: 13,
                         color: Colors.black54,
                       ),
                     ),
+                    if (widget.billingPeriod == BillingPeriod.yearly) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        yearlyBillingDiscountVsMonthlyLabel(),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.figtree(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _gold,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       _mockCheckout
