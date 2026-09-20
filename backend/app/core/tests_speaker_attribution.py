@@ -172,6 +172,8 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "Hebrews 7:8",
             'Pastor Don and Susan Nordin also teach, "Now concerning the collection for the saints, as I have given order to the churches of Galatia, even so do ye. 2 Upon the first day of the week let every one of you lay by him in store."':
                 "1 Corinthians 16:1",
+            'Pastor Don and Susan Nordin also teach, "Don’t even be angry with your brother."':
+                "Matthew 5:22",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)

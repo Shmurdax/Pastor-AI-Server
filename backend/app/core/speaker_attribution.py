@@ -62,7 +62,8 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("i am the way, the truth", "John 14:6"),
     ("come to me, all you who labor", "Matthew 11:28"),
     ("faith is the substance of things hoped for", "Hebrews 11:1"),
-    ("go and sin no more", "John 8:11"),
+    ("don't even be angry with your brother", "Matthew 5:22"),
+    ("whoever is angry with his brother", "Matthew 5:22"),
     ("i will never leave you nor forsake you", "Hebrews 13:5"),
     ("this is my beloved son", "Matthew 3:17"),
     ("all things are possible to him who believes", "Mark 9:23"),
@@ -502,6 +503,11 @@ def drop_nonteaching_pastor_wraps(answer: str) -> str:
         cleaned = "".join(pieces)
     cleaned = re.sub(
         r'(?i)\s*Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,?\s*(?:["“]["”]?)?\s*$',
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(
+        r'(?i)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,\.\s*',
         "",
         cleaned,
     )
