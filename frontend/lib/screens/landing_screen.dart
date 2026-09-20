@@ -114,7 +114,7 @@ class LandingScreen extends StatelessWidget {
                 Center(child: Container(height: 2, width: 56, color: _gold)),
                 const SizedBox(height: 16),
                 Text(
-                  "Pastoral answers rooted in Pastor Don Nordin's teaching and Scripture. "
+                  "Pastoral answers rooted in Pastor Don and Susan Nordin's teaching and Scripture. "
                   'Subscribe to start chatting, praying, and studying with the ministry library.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
@@ -224,6 +224,17 @@ class LandingScreen extends StatelessWidget {
                               ),
                             ],
                           ),
+                          if (billingPeriod == BillingPeriod.yearly) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              yearlyBillingDiscountVsMonthlyLabel(),
+                              style: GoogleFonts.figtree(
+                                color: _gold,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 20),
                           ...premiumPerks.map(
                             (perk) => Padding(
@@ -309,13 +320,23 @@ class _LandingPeriodToggle extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _chip('Monthly', value == BillingPeriod.monthly, () => onChanged(BillingPeriod.monthly)),
-          _chip('Yearly', value == BillingPeriod.yearly, () => onChanged(BillingPeriod.yearly)),
+          _chip(
+            'Yearly',
+            value == BillingPeriod.yearly,
+            () => onChanged(BillingPeriod.yearly),
+            badge: yearlyBillingDiscountLabel(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _chip(String label, bool selected, VoidCallback onTap) {
+  Widget _chip(
+    String label,
+    bool selected,
+    VoidCallback onTap, {
+    String? badge,
+  }) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -328,13 +349,29 @@ class _LandingPeriodToggle extends StatelessWidget {
             color: selected ? null : Colors.transparent,
             borderRadius: BorderRadius.circular(24),
           ),
-          child: Text(
-            label,
-            style: GoogleFonts.figtree(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : _navy,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.figtree(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : _navy,
+                ),
+              ),
+              if (badge != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  badge,
+                  style: GoogleFonts.figtree(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? _gold : _pink,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
