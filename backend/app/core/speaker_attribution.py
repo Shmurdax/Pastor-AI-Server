@@ -18,6 +18,7 @@ from .quote_chunking import split_sentences
 _QUOTE_RE = re.compile(
     r'(?:^|(?<=[\s,:(—–]))([\"“])([^\"”]{12,400}?)([\"”])'
 )
+_SCARE_QUOTE_RE = re.compile(r'(["“])([a-z]{1,10})”')
 # Opening quote with no closer before the line ends — the model often drops the
 # closing mark, which used to skip rewrite entirely.
 _UNCLOSED_QUOTE_RE = re.compile(r'([\"“])([^\"”\n]{12,}?)(?=\s*(?:\n|$))')
@@ -260,6 +261,11 @@ def normalize_speaker_text(text: str) -> str:
     folded = _MARKUP_RE.sub(" ", folded)
     folded = _PUNCT_RE.sub(" ", folded.lower())
     return _SPACE_RE.sub(" ", folded).strip()
+
+
+def normalize_mixed_inner_quotes(text: str) -> str:
+    """Drop scare-quote closers like \"knew” so the real quotation can be parsed."""
+    return _SCARE_QUOTE_RE.sub(r"\1\2", text or "")
 
 
 def _fragment_variants(fragment: str) -> tuple[str, ...]:
@@ -546,7 +552,7 @@ def _iter_quote_matches(text: str) -> list[tuple[int, int, str, str]]:
 
 def quoted_spans_with_voice(answer: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
-    text = answer or ""
+    text = normalize_mixed_inner_quotes(answer or "")
     for start, _end, span, _quoted in _iter_quote_matches(text):
         found.append((span, quoted_span_voice(text[:start])))
     return found
@@ -554,7 +560,7 @@ def quoted_spans_with_voice(answer: str) -> list[tuple[str, str]]:
 
 def pastor_attributed_quotes(answer: str) -> list[tuple[str, str]]:
     """Return (quote, lead-in) pairs wrapped as Pastor Don / he-teaches speech."""
-    text = answer or ""
+    text = normalize_mixed_inner_quotes(answer or "")
     found: list[tuple[str, str]] = []
     for start, _end, span, _quoted in _iter_quote_matches(text):
         lead = _leadin_match(text[:start])
@@ -662,7 +668,7 @@ def rewrite_misattributed_quotes(
     nkjv_pairs: Iterable[tuple[str, str]] = (),
 ) -> str:
     """Rewrite pastor/he lead-ins that wrap Scripture or the Lord's words."""
-    text = answer or ""
+    text = normalize_mixed_inner_quotes(answer or "")
     if not text:
         return text
     text = _rewrite_pastor_wrapped_scripture(
@@ -726,7 +732,7 @@ def rewrite_misattributed_quotes(
 
 def drop_nonteaching_pastor_wraps(answer: str) -> str:
     """Remove Pastor Don wraps that are titles, dictionary slides, or empty quotes."""
-    text = answer or ""
+    text = normalize_mixed_inner_quotes(answer or "")
     if not text:
         return text
     pieces: list[str] = []

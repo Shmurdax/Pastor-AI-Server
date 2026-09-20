@@ -407,6 +407,17 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_scare_quotes_do_not_hide_pastor_excerpt(self):
+        text = (
+            'Pastor Don Nordin teaches, "knew” his wife. God is the creator of sex '
+            'but this culture has hijacked it, distorted it and perverted it."'
+        )
+        found = pastor_attributed_quotes(text)
+        self.assertTrue(
+            any("creator of sex" in span.lower() for span, _lead in found),
+            found,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

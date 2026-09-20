@@ -25,6 +25,7 @@ from .speaker_attribution import (
     looks_like_scripture_wording,
     quoted_spans_with_voice,
     rewrite_misattributed_quotes,
+    normalize_mixed_inner_quotes,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,12 +232,10 @@ def collect_allowed_sermon_quotes(
                     and is_pastor_own_voice(piece, bible_corpus=bible)
                 ):
                     candidates.append(piece)
-        if looks_like_scripture_blob(body):
-            candidates.extend(_pastor_sentences_from_mixed_notes(body, bible_corpus=bible))
-        else:
-            candidates.extend(extract_quote_spans(body))
-            if body and len(body) >= 40:
-                candidates.append(body)
+        candidates.extend(extract_quote_spans(body))
+        candidates.extend(_pastor_sentences_from_mixed_notes(body, bible_corpus=bible))
+        if body and len(body) >= 40 and not looks_like_scripture_blob(body):
+            candidates.append(body)
         for item in candidates:
             cleaned = " ".join(item.split())
             key = normalize_grounding_text(cleaned)
@@ -593,6 +592,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = _SLIDE_NOTE_RE.sub("", text)
     text = _GLUED_BOOK_RE.sub(r"\1", text)
+    text = normalize_mixed_inner_quotes(text)
     text = _SOURCE_BULLET_RE.sub("", text)
     text = _EMPTY_EXPLAIN_RE.sub("", text)
     text = _EMPTY_ADVISES_RE.sub("", text)
