@@ -122,6 +122,19 @@ class SpeakerAttributionTests(unittest.TestCase):
                 f"still wrapped as pastor: {leadin!r} {span!r}",
             )
 
+    def test_money_illustration_is_not_scripture(self):
+        span = (
+            "Suppose after one month I check back with her and discover the first guy "
+            "has been giving her $2,000.00 each week, the second guy is giving her "
+            "$1,000.00 per week, but the third guy gave her $800.00 the first week."
+        )
+        self.assertFalse(looks_like_scripture_wording(span))
+        self.assertTrue(is_pastor_own_voice(span))
+        fixed = rewrite_misattributed_quotes(
+            f'Pastor Don Nordin teaches, "{span}"'
+        )
+        self.assertIn("Pastor Don", fixed)
+
     def test_destroyed_works_matches_1_john(self):
         span = "Destroyed the works of the devil."
         self.assertTrue(looks_like_scripture_wording(span))
@@ -155,6 +168,10 @@ class SpeakerAttributionTests(unittest.TestCase):
                 "Psalm 92:12",
             'Pastor Don teaches, "By faith we understand that the entire universe was formed at God’s command, that what we now see did not come from anything that can be seen."':
                 "Hebrews 11:3",
+            'Pastor Don Nordin teaches, "Here mortal men receive tithes, but there he receives them, of whom it is witnessed that he lives."':
+                "Hebrews 7:8",
+            'Pastor Don and Susan Nordin also teach, "Now concerning the collection for the saints, as I have given order to the churches of Galatia, even so do ye. 2 Upon the first day of the week let every one of you lay by him in store."':
+                "1 Corinthians 16:1",
         }
         for raw, ref in samples.items():
             fixed = rewrite_misattributed_quotes(raw)

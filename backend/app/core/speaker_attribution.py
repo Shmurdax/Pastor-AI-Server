@@ -88,6 +88,12 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("priest of the most high god", "Hebrews 7:1"),
     ("king of peace", "Hebrews 7:2"),
     ("king of righteousness", "Hebrews 7:2"),
+    ("here mortal men receive tithes", "Hebrews 7:8"),
+    ("of whom it is witnessed that he lives", "Hebrews 7:8"),
+    ("now concerning the collection for the saints", "1 Corinthians 16:1"),
+    ("as i have given order to the churches of galatia", "1 Corinthians 16:1"),
+    ("upon the first day of the week let every one of you lay by him", "1 Corinthians 16:2"),
+    ("as god hath prospered him", "1 Corinthians 16:2"),
     ("jesus returned in the power of the spirit", "Luke 4:14"),
     ("thy righteousness also, o god", "Psalm 71:19"),
     ("who is like unto thee", "Psalm 71:19"),
@@ -98,7 +104,9 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
 )
 
 _VERSE_DUMP_RE = re.compile(
-    r"(?i)\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b|\d{1,3}(?=[A-Z])"
+    r"(?i:\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b)"
+    r"|\d{1,3}(?=[A-Z])"
+    r"|\b\d{1,3}\s+[A-Z][a-z]"
 )
 
 _SCRIPTURE_VOICE_RE = re.compile(
@@ -297,6 +305,9 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Genesis 14:19",
         "Hebrews 7:1",
         "Hebrews 7:2",
+        "Hebrews 7:8",
+        "1 Corinthians 16:1",
+        "1 Corinthians 16:2",
         "Hebrews 10:36",
         "Hebrews 11:1",
         "2 Corinthians 6:2",

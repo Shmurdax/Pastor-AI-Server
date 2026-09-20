@@ -166,6 +166,15 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("God is devoted to you", cleaned)
         self.assertIn("Keep praying", cleaned)
 
+    def test_strip_glued_book_typo(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            "TJeremiah 1:5 (NKJV) records the Lord saying, \"Before you were born.\""
+        )
+        self.assertNotIn("TJeremiah", cleaned)
+        self.assertIn("Jeremiah 1:5", cleaned)
+
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans
 

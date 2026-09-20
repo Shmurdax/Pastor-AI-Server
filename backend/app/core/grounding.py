@@ -398,6 +398,9 @@ _SLIDE_NOTE_RE = re.compile(
     r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
 )
 _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
+_GLUED_BOOK_RE = re.compile(
+    r"\bT(Jeremiah|Hebrews|Psalms?|Isaiah|Matthew|John|Luke|Romans|Corinthians)\b"
+)
 
 
 def _clip_excerpt(text: str, limit: int = 280) -> str:
@@ -424,6 +427,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _META_OPENER_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
     text = _SLIDE_NOTE_RE.sub("", text)
+    text = _GLUED_BOOK_RE.sub(r"\1", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
