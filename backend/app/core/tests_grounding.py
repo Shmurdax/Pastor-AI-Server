@@ -617,6 +617,32 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("here is a summary", cleaned.lower())
         self.assertIn("Praying for the lost requires persistence", cleaned)
 
+    def test_reference_material_opener_without_based_on_is_stripped(self):
+        from core.grounding import strip_retrieval_meta
+
+        cleaned = strip_retrieval_meta(
+            "To create sermon notes on marriage, focus on the key points provided in the reference material:. "
+            'Pastor Don Nordin teaches, "Marriage is a developmental process."'
+        )
+        self.assertNotIn("reference material", cleaned.lower())
+        self.assertIn("Marriage is a developmental process", cleaned)
+
+    def test_ensure_pastor_quote_wraps_unquoted_humility_teaching(self):
+        from core.grounding import ensure_pastor_quote_wrap
+        from core.speaker_attribution import pastor_attributed_quotes
+
+        text = (
+            "To receive spiritual miracles, we must humble ourselves before others. "
+            "This means taking the high road of humility rather than seeking recognition or praise. "
+            'As the Scripture teaches, "Likewise you younger people, submit yourselves to your elders" '
+            "(1 Peter 5:5 NKJV)."
+        )
+        wrapped = ensure_pastor_quote_wrap(text, [])
+        quotes = pastor_attributed_quotes(wrapped)
+        self.assertTrue(quotes, wrapped)
+        self.assertTrue(any("spiritual miracles" in span.lower() for span, _lead in quotes), quotes)
+        self.assertNotIn("As t1 Peter", wrapped)
+
     def test_peter_humility_verse_is_not_collected_as_pastor_quote(self):
         from core.grounding import select_query_grounded_quotes
         from core.speaker_attribution import (

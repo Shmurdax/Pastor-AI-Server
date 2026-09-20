@@ -324,6 +324,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("nkjv_matches_query", source)
         self.assertIn("ensure_topical_nkjv", source)
         self.assertIn("_ensure_quoted_nkjv", source)
+        self.assertIn("ensure_pastor_quote_wrap", source)
         self.assertIn("topical_nkjv_fallback_pairs", source)
         self.assertIn('"user_query": user_query_llm', source)
         self.assertIn("return _speaker_repaired(prepared, compact_teaching_answer(answer))", source)

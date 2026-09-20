@@ -70,6 +70,7 @@ from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
+    ensure_pastor_quote_wrap,
     ensure_topical_nkjv,
     grounded_fallback_answer,
     grounding_repair_steer,
@@ -675,7 +676,11 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
             collect_allowed_nkjv(bible),
         )
         return _speaker_repaired(
-            prepared, compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer))
+            prepared,
+            ensure_pastor_quote_wrap(
+                compact_teaching_answer(_ensure_quoted_nkjv(prepared, answer)),
+                _grounding_snippets(prepared)[0],
+            ),
         )
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
@@ -701,6 +706,8 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         collect_allowed_nkjv(bible),
     )
     answer = _ensure_quoted_nkjv(prepared, answer)
+    answer = _speaker_repaired(prepared, compact_teaching_answer(answer))
+    answer = ensure_pastor_quote_wrap(answer, _grounding_snippets(prepared)[0])
     return _speaker_repaired(prepared, compact_teaching_answer(answer))
 
 

@@ -23,6 +23,7 @@ from .speaker_attribution import (
     looks_like_divine_speech,
     looks_like_nonteaching_excerpt,
     looks_like_scripture_wording,
+    pastor_attributed_quotes,
     quoted_spans_with_voice,
     rewrite_misattributed_quotes,
     normalize_mixed_inner_quotes,
@@ -489,10 +490,12 @@ _META_OPENER_RE = re.compile(
 _PROVIDED_MATERIAL_OPENER_RE = re.compile(
     r"(?is)^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
     r"(?:To create |Creating )?(?:sermon )?notes on .{0,80}?"
-    r"based on the (?:provided )?(?:sermon |reference )?(?:material|notes)\b.{0,240}?"
+    r"(?:based on the (?:provided )?(?:sermon |reference )?(?:material|notes)"
+    r"|focus on the key points provided in the (?:sermon |reference )?material)\b.{0,240}?"
     r"(?:Here[’']s a summary|Here is a summary|Here are (?:a |the )?(?:summary|key points))\s*:?\s*"
     r"|^\s*(?:(?:certainly|sure|absolutely)[!.,]?\s+)?"
-    r".{0,220}?based on the (?:provided )?(?:sermon |reference )?(?:material|notes)\b[,:]?\s*"
+    r".{0,220}?(?:based on the (?:provided )?(?:sermon |reference )?(?:material|notes)"
+    r"|provided in the (?:sermon |reference )?material)\b[,:.]?\s*"
     r"(?:here is a summary of the key points regarding [^.\n:]{0,80}:\s*)?"
 )
 _PASSAGE_BOOK_RE = re.compile(
@@ -761,7 +764,46 @@ def grounded_fallback_answer(
     if nkjv_list:
         ref, wording = nkjv_list[0]
         sentences.append(f'{ref} (NKJV) says, "{wording}"')
-    return " ".join(sentences).strip()
+    return " ".join(sentences)
+
+
+def ensure_pastor_quote_wrap(answer: str, quotes: Iterable[str] = ()) -> str:
+    """Wrap an on-topic teaching sentence already in the reply if Pastor Don quotes are missing."""
+    text = answer or ""
+    if not text or pastor_attributed_quotes(text):
+        return text
+    candidates = [
+        " ".join(str(item).split())
+        for item in quotes
+        if item
+        and str(item).strip()
+        and is_pastor_own_voice(item)
+        and not looks_like_scripture_wording(item)
+        and len(" ".join(str(item).split())) >= 40
+    ]
+    if not candidates:
+        for sentence in split_sentences(text) or []:
+            cleaned = " ".join(sentence.split()).strip().strip('"“”')
+            if (
+                len(cleaned) >= 40
+                and is_pastor_own_voice(cleaned)
+                and not looks_like_scripture_wording(cleaned)
+                and not looks_like_heading_quote(cleaned)
+            ):
+                candidates.append(cleaned)
+                break
+    if not candidates:
+        return text
+    excerpt = candidates[0]
+    probe = excerpt[:48]
+    idx = text.lower().find(probe.lower())
+    if idx >= 0:
+        end = idx + len(excerpt)
+        if text[idx:end].lower().startswith(probe.lower()):
+            span = text[idx : min(end, len(text))]
+            return f'{text[:idx]}Pastor Don Nordin teaches, "{span.strip()}"{text[end:]}'.strip()
+    wrapped = f'Pastor Don Nordin teaches, "{excerpt}"'
+    return f"{wrapped} {text}".strip()
 
 
 def weave_into_answer(answer: str, snippet: str) -> str:

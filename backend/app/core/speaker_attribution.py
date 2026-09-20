@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
-from .bible_refs import parse_verse_refs
+from .bible_refs import format_verse_ref, parse_verse_refs
 from .quote_chunking import split_sentences
 
 _QUOTE_RE = re.compile(
@@ -203,6 +203,11 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("submit yourselves therefore to god", "James 4:7"),
     ("resist the devil and he will flee from you", "James 4:7"),
     ("he gives more grace therefore he says", "James 4:6"),
+    ("why are you cast down, o my inner self", "Psalm 42:5"),
+    ("why are you cast down, o my soul", "Psalm 42:5"),
+    ("hope in god and wait expectantly for him", "Psalm 42:5"),
+    ("the help of my countenance, and my god", "Psalm 42:5"),
+    ("the help of my sad countenance", "Psalm 42:5"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -235,7 +240,7 @@ _PASTOR_NAME_RE = (
 )
 _LEADIN_RE = re.compile(
     rf"(?i)(?:(?:additionally|similarly|moreover|furthermore|also|likewise)[, ]+)?"
-    rf"(?:{_PASTOR_NAME_RE}|he|she|they)"
+    rf"(?:{_PASTOR_NAME_RE}|\bhe\b|\bshe\b|\bthey\b)"
     rf"(?:\s+\w+){{0,8}}?\s+{_SPEECH_VERB_RE}"
     rf"(?:\s+that)?"
     rf"[,:\s]*$"
@@ -248,7 +253,7 @@ _OPENER_RE = re.compile(
 _PASTOR_WRAPPED_QUOTE_RE = re.compile(
     r"(?is)"
     r"((?:(?:additionally|similarly|moreover|furthermore|also|likewise)[, ]+)?"
-    rf"(?:{_PASTOR_NAME_RE}|he|she|they)"
+    rf"(?:{_PASTOR_NAME_RE}|\bhe\b|\bshe\b|\bthey\b)"
     r"(?:\s+\w+){0,8}?\s+"
     rf"{_SPEECH_VERB_RE}"
     r"(?:\s+that)?"
@@ -376,11 +381,7 @@ def _text_contains_fragment(folded: str, fragment: str) -> bool:
 
 def looks_like_divine_speech(text: str) -> bool:
     """True for first-person God / Jesus commissioning and covenant speech."""
-    sample = text or ""
-    if _DIVINE_SPEECH_RE.search(sample):
-        return True
-    folded = normalize_speaker_text(sample)
-    return any(_text_contains_fragment(folded, fragment) for fragment, _ref in _KNOWN_VERSE_FRAGMENTS)
+    return bool(_DIVINE_SPEECH_RE.search(text or ""))
 
 
 def known_verse_ref(text: str) -> str:
@@ -582,17 +583,29 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "James 4:6",
         "James 4:7",
         "James 4:10",
+        "Psalm 42:5",
     }
 )
 
 
+def _canonical_cite(ref: str) -> str:
+    refs = parse_verse_refs(ref or "")
+    if refs:
+        book, chapter, verse = refs[0]
+        return format_verse_ref(book, chapter, verse)
+    return (ref or "").strip()
+
+
 def scripture_leadin_for(span: str, nkjv_pairs: Iterable[tuple[str, str]]) -> str:
     ref = match_nkjv_ref(span, nkjv_pairs) or known_verse_ref(span)
-    lord = looks_like_divine_speech(span) and (not ref or ref not in _NARRATOR_OR_APOSTLE_REFS)
-    if lord and ref:
-        return f'{ref} (NKJV) records the Lord saying, '
+    cite = _canonical_cite(ref)
+    lord = looks_like_divine_speech(span) and (not cite or cite not in _NARRATOR_OR_APOSTLE_REFS)
+    if lord and cite:
+        return f'{cite} (NKJV) records the Lord saying, '
     if lord:
         return "Scripture records the Lord saying, "
+    if cite:
+        return f'{cite} (NKJV) says, '
     if ref:
         return f'{ref} (NKJV) says, '
     return "Scripture says, "
@@ -693,7 +706,7 @@ def pastor_attributed_quotes(answer: str) -> list[tuple[str, str]]:
 
 
 _PASTOR_TEACHES_THAT_RE = re.compile(
-    r"(?i)((?:Pastor Don(?: and Susan)?(?: Nordin)?|he|she)(?: also)? "
+    r"(?i)((?:Pastor Don(?: and Susan)?(?: Nordin)?|\bhe\b|\bshe\b)(?: also)? "
     r"teach(?:es)? that\s+)(.{30,360}?)(?=(?:\s+For instance|\s+Pastor Don|\n\n|\Z))"
 )
 
@@ -763,6 +776,8 @@ def _rewrite_pastor_wrapped_scripture(
         lead = match.group(1) or ""
         span = " ".join((match.group(3) or "").split()).strip()
         quoted = f'{match.group(2)}{match.group(3)}{match.group(4)}'
+        if _SCRIPTURE_VOICE_RE.search(lead) or parse_verse_refs(lead):
+            return match.group(0)
         if looks_like_nonteaching_excerpt(span):
             return ""
         mixed = _split_mixed_scripture_quote(

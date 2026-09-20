@@ -665,6 +665,36 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_the_scripture_teaches_is_not_pastor_he_leadin(self):
+        text = (
+            "To receive spiritual miracles, we must humble ourselves before others. "
+            'As the Scripture teaches, "Likewise you younger people, submit yourselves to your elders" '
+            "(1 Peter 5:5 NKJV)."
+        )
+        self.assertFalse(pastor_attributed_quotes(text))
+        fixed = rewrite_misattributed_quotes(text)
+        self.assertNotIn("As t1 Peter", fixed)
+        self.assertNotIn("records the Lord saying", fixed)
+        self.assertIn("As the Scripture teaches", fixed)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(remaining, remaining)
+
+    def test_psalm_42_hope_verse_is_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "Why are you cast down, O my inner self? '
+            'And why should you moan over me and be disquieted within me? '
+            'Hope in God and wait expectantly for Him, for I shall yet praise Him, '
+            'Who is the help of my sad countenance, and my God."'
+        )
+        self.assertTrue(looks_like_scripture_wording(
+            "Why are you cast down, O my inner self? Hope in God and wait expectantly for Him."
+        ))
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("cast down" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Psalm 42:5", fixed)
+        self.assertNotIn("records the Lord saying", fixed)
+
 
 if __name__ == "__main__":
     unittest.main()
