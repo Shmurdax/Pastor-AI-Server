@@ -742,7 +742,7 @@ def rewrite_misattributed_quotes(
     nkjv_pairs: Iterable[tuple[str, str]] = (),
 ) -> str:
     """Rewrite pastor/he lead-ins that wrap Scripture or the Lord's words."""
-    text = normalize_mixed_inner_quotes(answer or "")
+    text = _MANGLED_I_YOU_WRAP_RE.sub("", normalize_mixed_inner_quotes(answer or ""))
     if not text:
         return text
     text = _rewrite_pastor_wrapped_scripture(
@@ -804,9 +804,15 @@ def rewrite_misattributed_quotes(
     )
 
 
+_MANGLED_I_YOU_WRAP_RE = re.compile(
+    r'(?is)Pastor Don(?: and Susan)?(?: Nordin)?(?: also)? teach(?:es)?,?\s*'
+    r'["“]I[\"”]?\s*messages rather than.{0,220}?You make me feel["”]?'
+)
+
+
 def drop_nonteaching_pastor_wraps(answer: str) -> str:
     """Remove Pastor Don wraps that are titles, dictionary slides, or empty quotes."""
-    text = normalize_mixed_inner_quotes(answer or "")
+    text = _MANGLED_I_YOU_WRAP_RE.sub("", normalize_mixed_inner_quotes(answer or ""))
     if not text:
         return text
     pieces: list[str] = []

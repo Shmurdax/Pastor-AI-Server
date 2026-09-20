@@ -562,6 +562,13 @@ class SpeakerAttributionTests(unittest.TestCase):
         remaining = pastor_attributed_quotes(fixed)
         self.assertFalse(any("also teach" in span.lower() for span, _lead in remaining), remaining)
         self.assertNotIn("You make me feel", fixed)
+        live = (
+            'Pastor Don Nordin teaches, "I” messages rather than “you" Pastor Don and Susan '
+            'Nordin also teach, "You make me feel"'
+        )
+        cleaned = rewrite_misattributed_quotes(live)
+        self.assertNotIn("You make me feel", cleaned)
+        self.assertFalse(pastor_attributed_quotes(cleaned))
 
 
 if __name__ == "__main__":
