@@ -300,6 +300,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         )
         self.assertIn("LIBRARY_PULL_STEER", source)
         self.assertIn("FOLLOWUP_STEER", source)
+        self.assertIn("NEW_TOPIC_STEER", source)
+        self.assertIn("current_carries_new_topic", source)
         self.assertIn("OPENING_RECALL_STEER", source)
         self.assertIn("looks_like_opening_recall", source)
         self.assertIn("format_opening_recall_steer", source)

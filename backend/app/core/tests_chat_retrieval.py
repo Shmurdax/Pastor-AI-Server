@@ -176,6 +176,16 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("faith", anchor.lower())
         self.assertNotIn("purpose", anchor.lower())
 
+    def test_sermon_notes_giving_is_a_new_topic_after_marriage(self):
+        from core.chat_retrieval import current_carries_new_topic
+
+        self.assertTrue(
+            current_carries_new_topic(
+                "Create sermon notes on giving and stewardship.",
+                "Create sermon notes on marriage.",
+            )
+        )
+
     def test_grieving_followup_embeds_grief_not_prior_prayer_only(self):
         current = (
             "How should I pray when I am grieving, based on Pastor Don's teaching "

@@ -107,6 +107,7 @@ from .chat_retrieval import (
     restrict_docs_to_primary_source,
     retain_title_matches,
     topic_anchor_query,
+    current_carries_new_topic,
     is_bible_source,
     is_video_chunk,
     search_queries_on_store,
@@ -120,6 +121,7 @@ from .chat_system_prompt import (
     FINISH_STEER,
     LIBRARY_PULL_STEER,
     FOLLOWUP_STEER,
+    NEW_TOPIC_STEER,
     OPENING_RECALL_STEER,
     format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
@@ -1238,14 +1240,23 @@ class ChatAPIView(APIView):
                 max_turns=MAX_HISTORY_TURNS,
                 max_chars=MAX_HISTORY_CHARS,
             )
+            last_prior = prior_user_queries[-1] if prior_user_queries else ""
+            new_topic = bool(last_prior) and current_carries_new_topic(
+                user_query_llm, last_prior
+            )
             history_messages = []
             history_chars = 0
             for msg in selected_rows:
                 history_messages.append(HumanMessage(content=msg.user_query))
-                history_messages.append(
-                    AIMessage(content=sanitize_history_text(msg.ai_response or ""))
-                )
-                history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
+                ai_text = sanitize_history_text(msg.ai_response or "")
+                if new_topic:
+                    ai_text = (
+                        "I already taught a different topic in this chat. "
+                        "Do not copy that outline. Use the current REFERENCE NOTES "
+                        "for this new question."
+                    )
+                history_messages.append(AIMessage(content=ai_text))
+                history_chars += len(f"{msg.user_query} {ai_text}")
             logger.warning(
                 "Chat history pinned opening=%r turns=%s chars=%s session=%s",
                 (selected_rows[0].user_query[:120] if selected_rows else ""),
@@ -1260,6 +1271,8 @@ class ChatAPIView(APIView):
             opening_text = (first_row.user_query or "").strip() if first_row else ""
             if looks_like_opening_recall(user_query_llm) and opening_text:
                 followup_block = format_opening_recall_steer(opening_text)
+            elif new_topic:
+                followup_block = NEW_TOPIC_STEER
             elif prior_user_queries:
                 followup_block = FOLLOWUP_STEER
             else:

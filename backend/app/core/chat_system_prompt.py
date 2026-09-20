@@ -363,6 +363,14 @@ FOLLOWUP_STEER = (
     "</follow_up>\n"
 )
 
+NEW_TOPIC_STEER = (
+    "<new_topic>\n"
+    "The user started a NEW teaching topic in this chat. Answer only this question "
+    "from the current REFERENCE NOTES and NKJV. Do not reuse the previous sermon's "
+    "outline, stages, headings, illustrations, or closing application.\n"
+    "</new_topic>\n"
+)
+
 OPENING_RECALL_STEER = (
     "<opening_recall>\n"
     "The user is asking what this chat started with. The first user question was:\n"

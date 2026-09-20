@@ -497,7 +497,7 @@ _PASSAGE_BOOK_RE = re.compile(
     r"(?=Pastor Don|\n\n|\n#{1,3}|\Z)"
 )
 _SLIDE_NOTE_RE = re.compile(
-    r"(?is)\s*(?:\((?:LEAVE ON SCREEN|UNTIL END OF SERVICE)[^)]*\)|"
+    r"(?is)\s*(?:\(?\s*LEAVE ON (?:THE )?SCREEN[^)\n]{0,80}\)?|"
     r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
 )
 _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
@@ -591,6 +591,35 @@ def _wording_for_nkjv_ref(ref: str, pairs: list[tuple[str, str]]) -> str:
     return ""
 
 
+def _fallback_nkjv_wording(
+    ref: str, pairs: list[tuple[str, str]], *, answer: str = ""
+) -> tuple[str, str]:
+    """Use the cited verse when we have it; otherwise a topical retrieved verse."""
+    wording = _wording_for_nkjv_ref(ref, pairs)
+    if wording:
+        return ref, wording
+    cited = parse_verse_refs(ref)
+    folded = normalize_grounding_text(answer)
+    if cited:
+        book_key = canonical_book_key(cited[0][0])
+        for pref, pword in pairs:
+            parsed = parse_verse_refs(pref) or []
+            if any(canonical_book_key(p_book) == book_key for p_book, _chap, _verse in parsed):
+                clipped = _clip_excerpt(pword, 240)
+                if clipped:
+                    return pref, clipped
+    for pref, pword in pairs:
+        clipped = _clip_excerpt(pword, 240)
+        if clipped and normalize_grounding_text(clipped)[:48] not in folded:
+            return pref, clipped
+    if pairs:
+        pref, pword = pairs[0]
+        clipped = _clip_excerpt(pword, 240)
+        if clipped:
+            return pref, clipped
+    return ref, ""
+
+
 def repair_empty_nkjv_citations(
     answer: str,
     nkjv_pairs: Iterable[tuple[str, str]] = (),
@@ -625,7 +654,7 @@ def repair_empty_nkjv_citations(
         if quote_m and (not next_cite or quote_m.start() < next_cite.start()):
             continue
         this_m = _THIS_VERSE_PREFIX_RE.match(tail)
-        wording = _wording_for_nkjv_ref(ref, pairs)
+        ref, wording = _fallback_nkjv_wording(ref, pairs, answer=text)
         pieces.append(text[cursor:match.start()])
         if wording:
             bit = f'{ref} (NKJV) says, "{wording}"'

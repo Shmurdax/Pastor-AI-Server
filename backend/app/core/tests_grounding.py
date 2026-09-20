@@ -645,6 +645,27 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('Romans 12:1-2 (NKJV) says, "I beseech you therefore', filled)
         self.assertNotIn("is a powerful reminder", filled)
 
+    def test_empty_leviticus_teaches_that_is_filled_from_pairs(self):
+        from core.grounding import repair_empty_nkjv_citations, strip_retrieval_meta
+
+        filled = repair_empty_nkjv_citations(
+            "Leviticus 27:30-34 (NKJV) teaches that These commands are not suggestions "
+            "but mandates given by God through Moses on Mount Sinai.",
+            [
+                (
+                    "Leviticus 27:30",
+                    "And all the tithe of the land, whether of the seed of the land or of the fruit of the tree, is the Lord's.",
+                )
+            ],
+        )
+        self.assertIn('says, "And all the tithe of the land', filled)
+        self.assertNotIn("teaches that These commands", filled)
+        cleaned = strip_retrieval_meta(
+            'Pastor Don Nordin teaches, "God is the owner of all creation." '
+            "(LEAVE ON THE SCREEN UNTIL NEXT SLIDE) Stewardship is about ownership;\""
+        )
+        self.assertNotIn("LEAVE ON THE SCREEN", cleaned)
+
     def test_colon_this_verse_leadin_and_nlt_are_rewritten(self):
         from core.grounding import repair_empty_nkjv_citations, verse_refs_for_lookup
 
