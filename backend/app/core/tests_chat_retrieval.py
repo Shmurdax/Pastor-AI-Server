@@ -621,6 +621,26 @@ class ChatRetrievalTests(unittest.TestCase):
         sources = [doc.metadata["source"] for doc, _score in kept]
         self.assertEqual(sources, ["parenting.pdf"])
 
+    def test_parenting_notes_are_not_second_mile_leadership(self):
+        query = "Create sermon notes on parenting and raising children."
+        leadership = _doc(
+            "Parenting challenges include attitude. Your attitude not your aptitude will determine your altitude.",
+            source="second-mile.pdf",
+            title="Second Mile Leadership Updated",
+        )
+        parenting = _doc(
+            "Parents must raise children with consistent discipline and model the faith at home.",
+            source="parenting.pdf",
+            title="Home Improvement Family Night",
+        )
+        kept = filter_hits_by_topic(
+            [(leadership, 0.96), (parenting, 0.81)],
+            query,
+            retrieval_k=6,
+        )
+        sources = [doc.metadata["source"] for doc, _score in kept]
+        self.assertEqual(sources, ["parenting.pdf"])
+
     def test_topic_filter_keeps_nkjv_beside_prayer_notes(self):
         query = "Create sermon notes on prayer."
         sermon = _doc(

@@ -170,6 +170,11 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("all things work together for good", "Romans 8:28"),
     ("all things to work together for our good", "Romans 8:28"),
     ("knew his wife", "Genesis 4:1"),
+    ("marriage is honorable in all, and the bed undefiled", "Hebrews 13:4"),
+    ("marriage is honorable among all, and the bed undefiled", "Hebrews 13:4"),
+    ("god is enthroned in the praises of his people", "Psalm 22:3"),
+    ("enthroned in the praises of his people", "Psalm 22:3"),
+    ("enthroned in the praises of israel", "Psalm 22:3"),
 )
 
 _VERSE_DUMP_RE = re.compile(
@@ -496,6 +501,8 @@ _NARRATOR_OR_APOSTLE_REFS = frozenset(
         "Proverbs 3:6",
         "Romans 8:28",
         "Genesis 4:1",
+        "Hebrews 13:4",
+        "Psalm 22:3",
     }
 )
 

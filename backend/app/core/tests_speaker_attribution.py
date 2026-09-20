@@ -489,6 +489,18 @@ class SpeakerAttributionTests(unittest.TestCase):
             remaining,
         )
 
+    def test_hebrews_marriage_and_psalm_worship_are_not_pastor_don(self):
+        text = (
+            'Pastor Don Nordin teaches, "Marriage is honorable in all, and the bed undefiled." '
+            'Pastor Don and Susan Nordin also teach, "God is enthroned in the praises of His people."'
+        )
+        fixed = rewrite_misattributed_quotes(text)
+        remaining = pastor_attributed_quotes(fixed)
+        self.assertFalse(any("bed undefiled" in span.lower() for span, _lead in remaining), remaining)
+        self.assertFalse(any("enthroned in the praises" in span.lower() for span, _lead in remaining), remaining)
+        self.assertIn("Hebrews 13:4", fixed)
+        self.assertIn("Psalm 22:3", fixed)
+
 
 if __name__ == "__main__":
     unittest.main()

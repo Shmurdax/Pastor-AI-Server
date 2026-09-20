@@ -500,6 +500,9 @@ _EMPTY_TEACHES_MEANS_RE = re.compile(
 _EMPTY_SAYS_THIS_RE = re.compile(
     r"(?i)\(\s*NKJV\s*\)\s+says,\s+This (?:verse|passage)\s+"
 )
+_TEACHINGS_PROVIDED_RE = re.compile(
+    r"(?i)(?:here are some key points )?based on the teachings provided:\s*"
+)
 _AS_THIS_OBSERVATION_RE = re.compile(
     r"(?i)\bAs This observation highlights[^.?\n]*[.?]?\s*"
 )
@@ -611,6 +614,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _EMPTY_TEACHES_MEANS_RE.sub("", text)
     text = _CERTAINLY_OPENER_RE.sub("", text)
     text = _AS_THIS_OBSERVATION_RE.sub("", text)
+    text = _TEACHINGS_PROVIDED_RE.sub("", text)
     text = _EMPTY_EXCERPT_RE.sub("", text)
     text = _EMPTY_QUOTES_RE.sub("", text)
     text = _SLIDE_WORSHIP_QUOTE_RE.sub("", text)

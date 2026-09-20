@@ -607,6 +607,7 @@ _TITLE_TOPIC_BLOCKLIST = {
         "prevail for the lost",
         "palm sunday",
         "trust the lord",
+        "second mile",
     ),
 }
 # When core words like "parenting" are missing, still require both sides of the
@@ -1296,14 +1297,14 @@ def filter_hits_by_topic(
             if any(token in title for token in blocked) and "parenting" not in title:
                 continue
             filtered.append((doc, score))
-        if filtered:
-            scored_hits = filtered
-            ranked = []
-            for doc, score in scored_hits:
-                overlap = topic_overlap_score(doc, tokens)
-                ranked.append((doc, score, overlap))
-            on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+        scored_hits = filtered
+        ranked = []
+        for doc, score in scored_hits:
+            overlap = topic_overlap_score(doc, tokens)
+            ranked.append((doc, score, overlap))
+        on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
     core = required_topic_core_tokens(query)
+    pair_keys = [key for key in present_keys if key in _TOPIC_PAIR_REQUIREMENTS]
     if core:
         core_hits = [
             (doc, score)
@@ -1311,8 +1312,19 @@ def filter_hits_by_topic(
             if topic_overlap_score(doc, core) > 0
         ]
         if core_hits:
-            return _with_bible_hits(core_hits, scored_hits)
-    pair_keys = [key for key in present_keys if key in _TOPIC_PAIR_REQUIREMENTS]
+            if pair_keys:
+                paired_core = [
+                    (doc, score)
+                    for doc, score in core_hits
+                    if all(
+                        _hit_matches_topic_pairs(doc, _TOPIC_PAIR_REQUIREMENTS[key])
+                        for key in pair_keys
+                    )
+                ]
+                if paired_core:
+                    return _with_bible_hits(paired_core, scored_hits)
+            else:
+                return _with_bible_hits(core_hits, scored_hits)
     if pair_keys:
         pair_hits = [
             (doc, score)
@@ -1331,7 +1343,7 @@ def filter_hits_by_topic(
         ]
         if titled:
             return _with_bible_hits(titled, scored_hits)
-        # Do not fall through to a single "parent" mention in an unrelated sermon.
+        return _with_bible_hits(pair_hits, scored_hits)
     required = required_topic_synonyms(query)
     if required and not pair_keys:
         required_hits = [

@@ -515,10 +515,12 @@ class GroundingTests(unittest.TestCase):
         self.assertIn('Isaiah 43:2 (NKJV) says, "When you pass through', filled)
         self.assertNotIn("teaches that to enter", filled)
         cleaned = strip_retrieval_meta(
-            "Worship is a journey. As This observation highlights the tendency to focus on personal achievements. "
+            "Creating sermon notes on worship involves emphasizing worship. "
+            "Here are some key points based on the teachings provided:. "
             'Pastor Don teaches, "Worship in crisis."'
         )
-        self.assertNotIn("This observation", cleaned)
+        self.assertNotIn("teachings provided", cleaned.lower())
+        self.assertIn("Worship in crisis", cleaned)
 
     def test_certainly_here_are_opener_is_stripped(self):
         from core.grounding import strip_retrieval_meta
