@@ -26,7 +26,7 @@ const _pink = Color(0xFFa1375a);
 const premiumPerks = [
   'Customized, biblical AI chat experience',
   'Access to daily 15-minute video devotional videos',
-  "the Nordin's study notes",
+  'over 40 years of study notes and preached on material',
 ];
 
 String billingPeriodApiValue(BillingPeriod period) =>
