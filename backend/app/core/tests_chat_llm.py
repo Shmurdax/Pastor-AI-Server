@@ -294,6 +294,10 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("filter_hits_by_topic", source)
         self.assertIn("prefer_library_sermon_hits", source)
         self.assertIn("prefer_library_sermon_docs", source)
+        self.assertGreater(
+            source.find("nkjv_docs = lookup_nkjv_verses"),
+            source.find("docs = pin_docs_to_strong_title_matches"),
+        )
         self.assertIn("LIBRARY_PULL_STEER", source)
         self.assertIn("FOLLOWUP_STEER", source)
         self.assertIn("OPENING_RECALL_STEER", source)

@@ -1179,6 +1179,18 @@ class ChatAPIView(APIView):
                             or _doc_source_name(doc)
                         ),
                     )
+                docs = pin_docs_to_strong_title_matches(
+                    docs,
+                    topic_query,
+                    pin_query=user_query_llm,
+                    candidate_hits=scored_hits,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    source_key=lambda doc: (
+                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                        or _doc_source_name(doc)
+                    ),
+                )
+                docs = prefer_library_sermon_docs(docs)
                 refs = verse_refs_for_lookup(topic_query, docs)
                 nkjv_docs = lookup_nkjv_verses(
                     client,
@@ -1196,18 +1208,6 @@ class ChatAPIView(APIView):
                     if key and key not in seen_nkjv:
                         docs.append(extra)
                         seen_nkjv.add(key)
-                docs = pin_docs_to_strong_title_matches(
-                    docs,
-                    topic_query,
-                    pin_query=user_query_llm,
-                    candidate_hits=scored_hits,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
-                )
-                docs = prefer_library_sermon_docs(docs)
                 context = format_reference_notes(
                     docs,
                     _doc_source_label,
