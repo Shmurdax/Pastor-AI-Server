@@ -30,6 +30,11 @@ _DIVINE_SPEECH_RE = re.compile(
     r"|thus says the lord"
     r"|says the lord(?: god)?"
     r"|the lord said(?: to me)?"
+    r"|it is written"
+    r"|i am crucified with christ"
+    r"|my house (?:is|shall be(?: called)?) a house of prayer"
+    r"|i am not ashamed of the gospel"
+    r"|all things are possible to (?:him|them) who believes"
     r"|i am (?:the (?:lord|way|resurrection|good shepherd|bread of life|light of the world|true vine)|who i am)"
     r"|before abraham was,\s*i am"
     r"|this is my beloved son"
@@ -54,6 +59,26 @@ _KNOWN_VERSE_FRAGMENTS: tuple[tuple[str, str], ...] = (
     ("go and sin no more", "John 8:11"),
     ("i will never leave you nor forsake you", "Hebrews 13:5"),
     ("this is my beloved son", "Matthew 3:17"),
+    ("all things are possible to him who believes", "Mark 9:23"),
+    ("i am crucified with christ", "Galatians 2:20"),
+    ("christ liveth in me", "Galatians 2:20"),
+    ("gather together and come", "Isaiah 45:20"),
+    ("fugitives from the nations", "Isaiah 45:20"),
+    ("pray to gods that cannot save", "Isaiah 45:20"),
+    ("my house is a house of prayer", "Luke 19:46"),
+    ("den of thieves", "Luke 19:46"),
+    ("king melchizedek of salem", "Genesis 14:18"),
+    ("god most high, creator of heaven", "Genesis 14:19"),
+    ("how terrible it will be for you teachers of religious law", "Matthew 23:23"),
+    ("you are careful to tithe", "Matthew 23:23"),
+    ("you have need of endurance", "Hebrews 10:36"),
+    ("i am not ashamed of the gospel", "Romans 1:16"),
+    ("now is the accepted time", "2 Corinthians 6:2"),
+    ("now is the day of salvation", "2 Corinthians 6:2"),
+)
+
+_VERSE_DUMP_RE = re.compile(
+    r"(?i)\b\d{1,3}\s+and said\b|\b(?:verse|v\.)\s*\d+\b"
 )
 
 _SCRIPTURE_VOICE_RE = re.compile(
@@ -65,7 +90,7 @@ _SCRIPTURE_VOICE_RE = re.compile(
 )
 
 _SPEECH_VERB_RE = (
-    r"(?:also\s+)?(?:teaches?|emphasizes?|says|said|taught|preaches?|"
+    r"(?:also\s+)?(?:teach(?:es)?|emphasizes?|says|said|taught|preach(?:es)?|"
     r"explains?|declares?|reminds?|quotes?|highlights?|adds?|notes?|"
     r"continues?|underscores?|affirms?)"
 )
@@ -119,6 +144,8 @@ def looks_like_scripture_wording(text: str, bible_corpus: str = "") -> bool:
     if looks_like_divine_speech(text):
         return True
     if known_verse_ref(text):
+        return True
+    if _VERSE_DUMP_RE.search(text or ""):
         return True
     hay = normalize_speaker_text(bible_corpus)
     needle = normalize_speaker_text(text)
@@ -188,12 +215,25 @@ def match_nkjv_ref(span: str, nkjv_pairs: Iterable[tuple[str, str]]) -> str:
     return best_ref
 
 
+_NARRATOR_OR_APOSTLE_REFS = frozenset(
+    {
+        "Galatians 2:20",
+        "Genesis 14:18",
+        "Genesis 14:19",
+        "Hebrews 10:36",
+        "2 Corinthians 6:2",
+        "Hebrews 11:1",
+        "Romans 1:16",
+    }
+)
+
+
 def scripture_leadin_for(span: str, nkjv_pairs: Iterable[tuple[str, str]]) -> str:
     ref = match_nkjv_ref(span, nkjv_pairs) or known_verse_ref(span)
-    divine = looks_like_divine_speech(span)
-    if divine and ref:
+    lord = looks_like_divine_speech(span) and (not ref or ref not in _NARRATOR_OR_APOSTLE_REFS)
+    if lord and ref:
         return f'{ref} (NKJV) records the Lord saying, '
-    if divine:
+    if lord:
         return "Scripture records the Lord saying, "
     if ref:
         return f'{ref} (NKJV) says, '

@@ -90,6 +90,34 @@ class SpeakerAttributionTests(unittest.TestCase):
             )
             self.assertNotIn("destroy the works of the devil", span.lower())
 
+    def test_rewrites_jesus_and_prophet_quotes_wrapped_as_pastor(self):
+        samples = {
+            'Pastor Don teaches, "If you can believe, all things are possible to him who believes."':
+                "Mark 9:23",
+            'Pastor Don Nordin teaches, "Gather together and come; assemble, you fugitives from the nations."':
+                "Isaiah 45:20",
+            'Pastor Don and Susan Nordin also teach, "I am crucified with Christ: nevertheless I live."':
+                "Galatians 2:20",
+            'Pastor Don teaches, "It is written, My house is a house of prayer, but you have made it a den of thieves."':
+                "Luke 19:46",
+        }
+        for raw, ref in samples.items():
+            fixed = rewrite_misattributed_quotes(raw)
+            self.assertNotIn("Pastor Don", fixed, raw)
+            self.assertNotIn("also teach", fixed.lower(), raw)
+            self.assertIn(ref, fixed)
+            remaining = pastor_attributed_quotes(fixed)
+            self.assertFalse(remaining, remaining)
+
+    def test_matches_also_teach_leadin(self):
+        text = (
+            'You don’t have any trouble. All you need is faith in God. '
+            'Pastor Don and Susan Nordin also teach, "I am crucified with Christ."'
+        )
+        pairs = pastor_attributed_quotes(text)
+        self.assertTrue(pairs, pairs)
+        self.assertIn("crucified", pairs[0][0].lower())
+
     def test_does_not_rewrite_already_cited_scripture(self):
         text = (
             'Jeremiah 1:5 (NKJV) says, "Before I formed you in the womb I knew you." '

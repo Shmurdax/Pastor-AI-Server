@@ -148,6 +148,18 @@ class GroundingTests(unittest.TestCase):
         self.assertNotIn("provided scripture and notes", cleaned)
         self.assertNotIn("# God Was with Him", cleaned)
 
+    def test_strip_slide_direction_notes(self):
+        from core.grounding import strip_retrieval_meta
+
+        text = (
+            'Pastor Don Nordin teaches, "God is devoted to you." '
+            "(LEAVE ON SCREEN UNTIL END OF SERVICE) Keep praying."
+        )
+        cleaned = strip_retrieval_meta(text)
+        self.assertNotIn("LEAVE ON SCREEN", cleaned)
+        self.assertIn("God is devoted to you", cleaned)
+        self.assertIn("Keep praying", cleaned)
+
     def test_strip_ungrounded_spans_removes_invented_quote(self):
         from core.grounding import GroundingReport, strip_ungrounded_spans
 

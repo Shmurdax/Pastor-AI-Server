@@ -399,6 +399,10 @@ _META_OPENER_RE = re.compile(
     r"(?is)^\s*(?:certainly|sure)[!.,]?\s+"
     r"here(?:'s| is)\s+.{0,160}?based on the provided (?:scripture and )?notes[:.]?\s*"
 )
+_SLIDE_NOTE_RE = re.compile(
+    r"(?is)\s*(?:\((?:LEAVE ON SCREEN|UNTIL END OF SERVICE)[^)]*\)|"
+    r"LEAVE ON SCREEN UNTIL END OF SERVICE)"
+)
 _HEADING_BLOCK_RE = re.compile(r"^(?:#{1,3}\s+|\*\*).{2,80}\*?\*?$")
 
 
@@ -425,6 +429,7 @@ def strip_retrieval_meta(answer: str) -> str:
     text = _TITLE_WEAVE_RE.sub("", text)
     text = _META_OPENER_RE.sub("", text)
     text = _RETRIEVAL_HEADER_RE.sub("", text)
+    text = _SLIDE_NOTE_RE.sub("", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
