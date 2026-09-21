@@ -125,6 +125,7 @@ from .chat_system_prompt import (
     answer_looks_incomplete,
     answer_missing_required_quotes,
     answer_needs_expansion,
+    should_run_expansion,
     build_chat_system_prompt,
     compact_teaching_answer,
     continuation_token_budget,
@@ -419,19 +420,51 @@ def _usable_extra(prepared, answer: str, extra: str) -> str:
     if not docs:
         return extra
     sermon, bible = split_docs_for_grounding(docs)
+    query = str(prepared.get("topic_query") or "")
     claims = resolve_teaching_claims(
-        sermon, claims=prepared.get("teaching_claims") or []
+        sermon, query=query, claims=prepared.get("teaching_claims") or []
     )
     grounded = keep_note_paraphrase_sentences(
         extra,
         sermon_docs=sermon,
         nkjv_docs=bible,
         claims=claims,
+        query=query,
     )
-    if not grounded:
+    if grounded:
+        return grounded
+    joined = _join_continuation(answer, extra)
+    grounded_join = keep_note_paraphrase_sentences(
+        joined,
+        sermon_docs=sermon,
+        nkjv_docs=bible,
+        claims=claims,
+        query=query,
+    )
+    if not grounded_join:
         logger.info("Dropped a continuation that was not grounded in retrieved notes")
         return ""
-    return grounded
+    extra_words = [
+        token.strip(".,;:!?\"'")
+        for token in extra.lower().split()
+        if len(token.strip(".,;:!?\"'")) >= 4
+    ]
+    grounded_l = grounded_join.lower()
+    if extra_words and sum(1 for token in extra_words if token in grounded_l) < max(
+        1, (len(extra_words) + 1) // 2
+    ):
+        logger.info("Dropped a continuation that was not grounded in retrieved notes")
+        return ""
+    return extra
+
+
+def _should_run_expansion(prepared, answer: str, query: str) -> bool:
+    """Do not start a second generate pass when sermon notes already bind the answer."""
+    return should_run_expansion(
+        answer,
+        query,
+        has_retrieved_notes=bool(prepared.get("docs") or prepared.get("teaching_claims")),
+    )
 
 
 def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
@@ -513,13 +546,16 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         if stripped:
             answer = compact_teaching_answer(stripped)
     claims = resolve_teaching_claims(
-        sermon, claims=prepared.get("teaching_claims") or []
+        sermon,
+        query=str(prepared.get("topic_query") or ""),
+        claims=prepared.get("teaching_claims") or [],
     )
     answer = ground_to_note_paraphrase(
         answer,
         sermon_docs=sermon,
         nkjv_docs=bible,
         claims=claims,
+        query=str(prepared.get("topic_query") or ""),
     )
     return compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
 
@@ -1376,7 +1412,7 @@ class ChatAPIView(APIView):
                 expansion_pass = 0
                 while (
                     not leaked
-                    and answer_needs_expansion(answer, query=user_query_llm)
+                    and _should_run_expansion(prepared, answer, user_query_llm)
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
@@ -1552,7 +1588,7 @@ class ChatAPIView(APIView):
             expansion_pass = 0
             while (
                 not leaked
-                and answer_needs_expansion(answer, query=user_query_llm)
+                and _should_run_expansion(prepared, answer, user_query_llm)
                 and expansion_pass < MAX_EXPANSION_PASSES
             ):
                 expansion_pass += 1

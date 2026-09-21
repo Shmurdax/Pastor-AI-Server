@@ -498,6 +498,55 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("supportive atmosphere", lowered)
         self.assertNotIn("diluted", lowered)
         self.assertIn("abstinence", lowered)
+        self.assertNotIn("practical considerations", lowered)
+        self.assertNotIn("fatalities", lowered)
+        self.assertNotIn("drunk driving", lowered)
+
+    def test_repeating_thesis_words_does_not_keep_new_outline(self):
+        from core.teaching_claims import sentence_idea_is_in_notes
+
+        claim = (
+            "Total abstinence from alcoholic beverages is the only acceptable way "
+            "of life for the Christian."
+        )
+        hay = claim.lower()
+        self.assertTrue(
+            sentence_idea_is_in_notes(
+                "The boundary a Christian should set is total abstinence from alcoholic beverages.",
+                hay,
+                [claim],
+            )
+        )
+        self.assertFalse(
+            sentence_idea_is_in_notes(
+                "Adhering to a policy of total abstinence from alcoholic beverages "
+                "helps create a supportive atmosphere for all members.",
+                hay,
+                [claim],
+            )
+        )
+
+    def test_query_fallback_skips_off_topic_theses(self):
+        from core.teaching_claims import resolve_teaching_claims
+
+        docs = [
+            _doc(
+                "Happy people should walk in the Fruit of the Spirit and keep a merry heart.",
+                source="happiness.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+        ]
+        drink = resolve_teaching_claims(docs, query="Can Christians drink alcohol?")
+        blob = " ".join(drink).lower()
+        self.assertIn("abstinence", blob)
+        self.assertNotIn("merry heart", blob)
+        self.assertNotIn("fruit of the spirit", blob)
 
     def test_continuation_extra_without_notes_is_dropped(self):
         docs = [
@@ -518,6 +567,42 @@ class TeachingClaimTests(unittest.TestCase):
             extra, sermon_docs=docs, claims=claims
         )
         self.assertEqual(kept, "")
+
+    def test_joined_note_completion_stays_and_seminar_does_not(self):
+        from core.teaching_claims import keep_note_paraphrase_sentences
+
+        docs = [
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        claims = [
+            "Total abstinence from alcoholic beverages is the only acceptable way of "
+            "life for the Christian."
+        ]
+        joined = (
+            "Total abstinence from alcoholic beverages is the only acceptable way "
+            "of life for the Christian."
+        )
+        kept = keep_note_paraphrase_sentences(
+            joined, sermon_docs=docs, claims=claims, query="Can Christians drink?"
+        )
+        self.assertIn("abstinence", kept.lower())
+        self.assertIn("alcoholic beverages", kept.lower())
+        seminar_join = (
+            "The boundary a Christian should set is total abstinence from alcoholic "
+            "beverages. Community Impact: this also fosters a supportive atmosphere "
+            "for all members including every identity in the church."
+        )
+        kept_seminar = keep_note_paraphrase_sentences(
+            seminar_join, sermon_docs=docs, claims=claims, query="Can Christians drink?"
+        )
+        self.assertIn("abstinence", kept_seminar.lower())
+        self.assertNotIn("supportive atmosphere", kept_seminar.lower())
+        self.assertNotIn("every identity", kept_seminar.lower())
 
 
 if __name__ == "__main__":
