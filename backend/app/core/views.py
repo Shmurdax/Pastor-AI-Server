@@ -84,6 +84,7 @@ from .teaching_claims import (
     claim_repair_steer,
     claim_repair_token_budget,
     extract_teaching_claims,
+    format_generation_user_prompt,
     format_teaching_claims_block,
     notes_only_from_claims,
     paraphrase_too_thin,
@@ -91,16 +92,20 @@ from .teaching_claims import (
     resolve_teaching_claims,
 )
 from .chat_retrieval import (
+    INTENT_NEW_TOPIC,
     apply_retrieval_threshold,
+    classify_followup_intent,
     expand_search_queries,
     extract_used_quotes,
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
     looks_like_library_pull,
+    merge_scored_hits,
     pin_docs_to_strong_title_matches,
     restrict_docs_to_primary_source,
     retain_title_matches,
+    select_major_source_keys,
     topic_anchor_query,
     is_bible_source,
     is_video_chunk,
@@ -108,6 +113,12 @@ from .chat_retrieval import (
     select_chat_source_chips,
     select_diverse_docs,
 )
+from .sermon_catalog import (
+    catalog_title_queries,
+    lookup_chunks_by_file_hashes,
+    match_library_catalog,
+)
+from .rerank import rerank_scored_hits
 from .chat_system_prompt import (
     COMPLETE_ANSWER_MIN_CHARS,
     CONVERSATIONAL_STEER,
@@ -937,7 +948,19 @@ class ChatAPIView(APIView):
                 prior_ai_texts.append(target_message.ai_response)
             used_quotes = extract_used_quotes(prior_ai_texts)
             used_verses = extract_used_verse_refs(prior_ai_texts)
-            topic_query = topic_anchor_query(user_query_llm, prior_user_queries)
+            followup_intent = classify_followup_intent(
+                user_query_llm,
+                prior_user_queries,
+                prior_ai_texts,
+            )
+            if followup_intent == INTENT_NEW_TOPIC:
+                topic_query = user_query_llm
+                catalog_query = user_query_llm
+            else:
+                topic_query = topic_anchor_query(user_query_llm, prior_user_queries)
+                catalog_query = topic_query
+            catalog_hits = match_library_catalog(catalog_query, limit=3)
+            catalog_keys = [hit.file_hash for hit in catalog_hits if hit.file_hash]
 
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
@@ -973,7 +996,8 @@ class ChatAPIView(APIView):
                     user_query_llm,
                     prior_user_queries,
                     prior_ai_texts=prior_ai_texts,
-                    limit=7,
+                    limit=9,
+                    catalog_titles=catalog_title_queries(catalog_hits),
                 )
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
                 logger.debug(
@@ -1004,6 +1028,43 @@ class ChatAPIView(APIView):
                 scored_hits = retain_title_matches(
                     before_threshold, scored_hits, topic_query
                 )
+                source_fn = lambda doc: (
+                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                    or _doc_source_name(doc)
+                )
+                major_keys = select_major_source_keys(
+                    scored_hits,
+                    topic_query,
+                    source_key=source_fn,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    catalog_keys=catalog_keys,
+                    limit=3,
+                )
+                fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
+                catalog_docs = []
+                if fetch_keys:
+                    catalog_docs = lookup_chunks_by_file_hashes(
+                        client,
+                        collection_name,
+                        fetch_keys,
+                        query=topic_query,
+                        limit_per_file=8,
+                    )
+                    if catalog_docs:
+                        scored_hits = merge_scored_hits(
+                            [scored_hits, [(doc, 1.0) for doc in catalog_docs]]
+                        )
+                        logger.warning(
+                            "Catalog sermons session=%s titles=%s majors=%s",
+                            session_id[:18],
+                            [hit.title for hit in catalog_hits],
+                            fetch_keys[:6],
+                        )
+                scored_hits = rerank_scored_hits(
+                    topic_query,
+                    scored_hits,
+                    pinned_docs=catalog_docs,
+                )
                 docs = select_diverse_docs(
                     scored_hits,
                     k=RETRIEVAL_K,
@@ -1015,12 +1076,10 @@ class ChatAPIView(APIView):
                     used_verses=used_verses,
                     is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
                     is_video=is_video_chunk,
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
+                    source_key=source_fn,
                     query=topic_query,
                     pin_query=user_query_llm,
+                    catalog_source_keys=fetch_keys,
                 )
                 if looks_like_library_pull(user_query_llm):
                     docs = restrict_docs_to_primary_source(
@@ -1064,6 +1123,7 @@ class ChatAPIView(APIView):
                     docs,
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
+                    query=topic_query,
                 )
                 teaching_claims = resolve_teaching_claims(
                     docs,
@@ -1072,6 +1132,13 @@ class ChatAPIView(APIView):
                         docs,
                         query=topic_query,
                     ),
+                )
+                logger.warning(
+                    "Teaching claims session=%s count=%s query=%r claims=%s",
+                    session_id[:18],
+                    len(teaching_claims or []),
+                    (topic_query or "")[:120],
+                    teaching_claims or [],
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
@@ -1152,6 +1219,11 @@ class ChatAPIView(APIView):
                     format_opening_recall_steer(opening_text)
                     + "\nUser question:\n"
                     + user_query_llm.strip()
+                )
+            else:
+                human_content = format_generation_user_prompt(
+                    user_query_llm,
+                    teaching_claims,
                 )
             human_content = f"{human_content}{language_generation_reminder()}"
             messages = (

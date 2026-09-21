@@ -19,6 +19,7 @@ from core.chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
+    exclusive_title_lock_for_query,
     is_bible_source,
     is_strong_title_match,
     is_video_chunk,
@@ -75,7 +76,7 @@ class ChatRetrievalTests(unittest.TestCase):
         joined = " | ".join(queries).lower()
         self.assertIn("gay", joined)
         self.assertTrue(queries[0].lower().startswith("gay"), queries)
-        self.assertTrue(any("clarify" in item.lower() for item in queries))
+        self.assertFalse(any("clarify" in item.lower() for item in queries), queries)
         self.assertGreaterEqual(len(queries), 2)
 
     def test_followup_query_leads_with_prior_topic(self):
@@ -1201,6 +1202,14 @@ class ChatRetrievalTests(unittest.TestCase):
             any("christian and alcohol" in item.lower() for item in queries),
             queries,
         )
+        self.assertTrue(
+            any("total abstinence" in item.lower() for item in queries),
+            queries,
+        )
+        self.assertTrue(
+            any("alcoholism is a sin" in item.lower() for item in queries),
+            queries,
+        )
         self.assertFalse(any("communion" in item.lower() for item in queries), queries)
 
     def test_drink_query_keeps_alcohol_hits_and_drops_communion(self):
@@ -1512,6 +1521,36 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         self.assertLess(notes.find("abstinence"), notes.find("3.5%"))
         self.assertIn("[Note 1 | Sippin' Saints]", notes)
+
+    def test_drink_reference_notes_keep_abstinence_drop_proverbs_blob(self):
+        docs = [
+            _doc(
+                "Wine is a mocker, strong drink is a brawler, and whoever is led astray by it is not wise.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "A person should examine himself first, and only then drink from the cup.",
+                source="lords-table.pdf",
+                title="The Lord's Table",
+            ),
+        ]
+        notes = format_reference_notes(
+            docs,
+            lambda doc: doc.metadata["title"],
+            max_chars=4000,
+            query="Can Christians drink?",
+        )
+        lowered = notes.lower()
+        self.assertIn("abstinence", lowered)
+        self.assertNotIn("wine is a mocker", lowered)
+        self.assertNotIn("drink from the cup", lowered)
 
 
 if __name__ == "__main__":

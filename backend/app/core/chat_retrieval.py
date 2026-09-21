@@ -19,7 +19,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
-from .note_priority import chunk_thesis_score, looks_like_vice_catalog
+from .note_priority import (
+    chunk_thesis_score,
+    looks_like_kjv_diction,
+    looks_like_stat_slide,
+    looks_like_vice_catalog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +253,12 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "draft",
         "essay",
         "explain",
+        "expand",
+        "expanding",
+        "elaborate",
+        "elaboration",
+        "clarify",
+        "clarification",
         "generate",
         "give",
         "help",
@@ -419,6 +430,13 @@ _SEXUALITY_PHRASES = (
     "lifestyle as normal",
     "stand firmly against the lifestyle",
 )
+_ALCOHOL_APPLICATION_RE = re.compile(
+    r"(?i)("
+    r"total abstinence|only acceptable way|"
+    r"alcoholism is a sin|not a sickness|not a disease|"
+    r"abstain from alcoholic"
+    r")"
+)
 _SEXUALITY_APPLICATION_RE = re.compile(
     r"(?i)("
     r"not an acceptable lifestyle|natural law and the law of god|"
@@ -485,6 +503,16 @@ def text_looks_like_communion_only(text: str) -> bool:
 def text_has_alcohol_teaching(text: str) -> bool:
     blob = _normalized_topic_blob(text)
     return bool(blob) and bool(set(blob.split()) & _ALCOHOL_TERMS)
+
+
+def text_has_alcohol_application(text: str) -> bool:
+    """True for Don's drink theses, not Proverbs dumps or communion lines."""
+    blob = text or ""
+    if looks_like_kjv_diction(blob) or looks_like_stat_slide(blob):
+        return False
+    if text_looks_like_communion_only(blob):
+        return False
+    return bool(_ALCOHOL_APPLICATION_RE.search(blob))
 
 
 def text_has_sexuality_teaching(text: str) -> bool:
@@ -916,7 +944,57 @@ def query_focus_tokens(text: str) -> frozenset[str]:
     if sense == SENSE_SEXUALITY:
         tokens.add("gay")
         tokens.add("homosexuality")
+    try:
+        from .sermon_catalog import TOPIC_ALIASES
+
+        expanded = set(tokens)
+        for token in list(tokens):
+            expanded.update(TOPIC_ALIASES.get(token, ()))
+        tokens = expanded
+    except Exception:
+        pass
     return frozenset(tokens)
+
+
+_TITLE_LOCK_NOISE = frozenset(
+    {
+        "pastor",
+        "don",
+        "susan",
+        "nordin",
+        "nordins",
+        "teach",
+        "teaches",
+        "teaching",
+        "preach",
+        "preaches",
+        "believe",
+        "believes",
+        "say",
+        "says",
+    }
+)
+
+
+def exclusive_title_lock_for_query(query: str) -> bool:
+    """True when leftover slots must stay inside titled sermons.
+
+    Alcohol/sexuality stay exclusive. Multi-word titles such as
+    ``prayer barriers`` stay exclusive. One-word topics such as ``faith``
+    keep dual-lane body hits from other notes. Alias expansion
+    (gratitude/thanksgiving) does not count as extra lock words.
+    """
+    if query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+        return True
+    tokens = {
+        token.lower()
+        for token in keyword_search_query(query).split()
+        if len(token) >= 3
+        and token.lower() not in _GENERIC_FOCUS_STOPWORDS
+        and token.lower() not in {"god", "man", "men", "son", "day", "way", "people"}
+        and token.lower() not in _TITLE_LOCK_NOISE
+    }
+    return len(tokens) >= 2
 
 
 def _token_surface_forms(token: str) -> tuple[str, ...]:
@@ -1159,6 +1237,7 @@ def pin_docs_to_strong_title_matches(
     is_bible: Optional[Callable[[Any], bool]] = None,
     source_key: Optional[Callable[[Any], str]] = None,
     limit: int = 12,
+    exclusive: Optional[bool] = None,
 ) -> list[Any]:
     """Keep titled sermons that name THIS message; stop filling loosely related PDFs.
 
@@ -1166,11 +1245,13 @@ def pin_docs_to_strong_title_matches(
     like "which of those first?" does not collapse notes to the previous sermon
     title, and a real topic change can still pin a new filename. Broad questions
     with no strong filename match are unchanged. Bible/NKJV stays only on verse
-    questions.
+    questions. One-word topics keep related body hits unless ``exclusive``.
     """
     selected = list(docs or [])
     topic = (pin_query or query or "").strip()
     tokens = query_focus_tokens(topic)
+    if exclusive is None:
+        exclusive = exclusive_title_lock_for_query(topic)
     if not selected or not tokens:
         return selected
     bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
@@ -1222,7 +1303,9 @@ def pin_docs_to_strong_title_matches(
             bonus -= 0.35
         if topic_sense == SENSE_SEXUALITY and text_has_sexuality_application(text):
             bonus += 0.55
-        if topic_sense == SENSE_ALCOHOL and text_has_alcohol_teaching(text) and thesis >= 1.5:
+        if topic_sense == SENSE_ALCOHOL and text_has_alcohol_application(text):
+            bonus += 0.55
+        elif topic_sense == SENSE_ALCOHOL and text_has_alcohol_teaching(text) and thesis >= 1.5:
             bonus += 0.45
         if looks_like_vice_catalog(text):
             bonus -= 0.50
@@ -1239,6 +1322,17 @@ def pin_docs_to_strong_title_matches(
             break
     if not pinned:
         return selected
+    if not exclusive:
+        pinned_fps = {chunk_fingerprint(chunk_text(doc)) for doc in pinned}
+        rest: list[Any] = []
+        seen = set(pinned_fps)
+        for doc in selected:
+            fp = chunk_fingerprint(chunk_text(doc)) or f"id:{id(doc)}"
+            if fp in seen:
+                continue
+            seen.add(fp)
+            rest.append(doc)
+        return pinned + rest
     if looks_like_bible_query(pin_query or query):
         bible_docs = [doc for doc in selected if bible_fn(doc)][:2]
         return pinned + bible_docs
@@ -1319,6 +1413,7 @@ def expand_search_queries(
     prior_ai_texts: Optional[Iterable[str]] = None,
     *,
     limit: int = 5,
+    catalog_titles: Optional[Iterable[str]] = None,
 ) -> list[str]:
     """Build distinct Qdrant queries, anchoring follow-ups to prior turns."""
     queries: list[str] = []
@@ -1338,10 +1433,19 @@ def expand_search_queries(
     last_prior = _last_prior_user(current_q, prior)
     prior_focus = keyword_search_query(last_prior) if last_prior else ""
     heading_focus = ""
+    depth_focus = ""
     if last_prior and prior_ai_texts:
         labels = extract_used_headings(prior_ai_texts, limit=6)
         if labels:
             heading_focus = keyword_search_query(" ".join(labels))
+        last_ai = ""
+        for item in reversed(list(prior_ai_texts or [])):
+            text = str(item or "").strip()
+            if text:
+                last_ai = text
+                break
+        if last_ai:
+            depth_focus = keyword_search_query(last_ai[:1500])
 
     bible_names = retrieval_bible_names(current_q)
     focus = keyword_search_query(current_q)
@@ -1361,6 +1465,15 @@ def expand_search_queries(
             add(f"{prior_focus} {heading_focus}")
         if focus and focus.lower() != prior_focus.lower():
             add(f"{prior_focus} {focus}")
+        if depth_focus:
+            add(depth_focus[:240])
+            add(f"{prior_focus} {depth_focus[:160]}")
+
+    for title in catalog_titles or []:
+        cleaned_title = " ".join(str(title or "").split())
+        if cleaned_title:
+            add(cleaned_title)
+            add(f"Pastor Don Nordin {cleaned_title}")
 
     if bible_names:
         joined = " ".join(bible_names)
@@ -1386,6 +1499,16 @@ def expand_search_queries(
             # "generate a sermon based on …".
             add(focus)
             add(f"Pastor Don Nordin {focus}")
+        if sense == SENSE_ALCOHOL:
+            add("total abstinence from alcoholic beverages")
+            add("alcoholism is a sin not a disease")
+            add("the christian and alcohol")
+            add("sippin saints")
+        if sense == SENSE_SEXUALITY:
+            add("christian boundaries")
+            add("love the homosexual")
+            add("not an acceptable lifestyle")
+            add("stone the homosexual")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
@@ -1399,6 +1522,8 @@ def expand_search_queries(
         add("Pastor Don Nordin alcohol")
         add("the christian and alcohol")
         add("sippin saints")
+        add("total abstinence from alcoholic beverages")
+        add("alcoholism is a sin not a disease")
     if sense == SENSE_SEXUALITY:
         add("christian boundaries")
         add("homosexuality")
@@ -1408,6 +1533,7 @@ def expand_search_queries(
         add("Pastor Don Nordin homosexuality")
         add("the christian and homosexuality")
         add("gay")
+        add("stone the homosexual")
 
     return queries[: max(1, limit)]
 
@@ -1690,6 +1816,83 @@ def sources_cited_in_answer(
     return cited
 
 
+def select_major_source_keys(
+    scored_hits: Iterable[tuple[Any, float]],
+    query: str,
+    *,
+    source_key: Callable[[Any], str],
+    is_bible: Optional[Callable[[Any], bool]] = None,
+    catalog_keys: Optional[Iterable[str]] = None,
+    limit: int = 3,
+) -> list[str]:
+    """Pick the sermons that actually teach the prompt, even without a title hit.
+
+    Groups ANN windows by file. Title/catalog matches rank first; otherwise the
+    sources with the most on-topic teaching sentences win. Community intros that
+    only mention the word once lose to notes with real theses.
+    """
+    bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
+    tokens = query_focus_tokens(query)
+    pinned = {str(item).strip() for item in (catalog_keys or []) if str(item).strip()}
+    stats: dict[str, dict[str, float]] = {}
+    for doc, raw_score in scored_hits or []:
+        if bible_fn(doc):
+            continue
+        key = str(source_key(doc) or "").strip()
+        if not key:
+            continue
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            score = 0.0
+        body = chunk_text(doc)
+        thesis = chunk_thesis_score(body)
+        title_ov = title_overlap_score(doc, tokens) if tokens else 0.0
+        topic_ov = topic_overlap_score(doc, tokens) if tokens else 0.0
+        rec = stats.setdefault(
+            key,
+            {
+                "hits": 0.0,
+                "best": 0.0,
+                "thesis": -1.0,
+                "thesis_hits": 0.0,
+                "title_ov": 0.0,
+                "topic_sum": 0.0,
+                "catalog": 1.0 if key in pinned else 0.0,
+            },
+        )
+        rec["hits"] += 1.0
+        rec["best"] = max(rec["best"], score)
+        rec["thesis"] = max(rec["thesis"], thesis)
+        rec["title_ov"] = max(rec["title_ov"], title_ov)
+        rec["topic_sum"] += topic_ov
+        if thesis >= 1.5 and topic_ov > 0:
+            rec["thesis_hits"] += 1.0
+        if key in pinned:
+            rec["catalog"] = 1.0
+    ranked: list[tuple[float, str]] = []
+    for key, rec in stats.items():
+        if rec["catalog"] <= 0 and rec["title_ov"] <= 0 and rec["thesis_hits"] <= 0:
+            continue
+        value = (
+            (6.0 * rec["catalog"])
+            + (5.0 * rec["title_ov"])
+            + (1.6 * rec["thesis_hits"])
+            + (0.5 * max(rec["thesis"], 0.0))
+            + (0.25 * rec["topic_sum"])
+            + (0.2 * rec["best"])
+        )
+        ranked.append((value, key))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    keys = [key for _value, key in ranked[: max(1, limit)]]
+    for extra in pinned:
+        if extra not in keys:
+            keys.append(extra)
+        if len(keys) >= max(1, limit):
+            break
+    return keys[: max(1, limit)]
+
+
 def select_diverse_docs(
     scored_docs: Iterable[tuple[Any, float]],
     *,
@@ -1706,6 +1909,8 @@ def select_diverse_docs(
     relevance: float = 0.72,
     query: str = "",
     pin_query: str = "",
+    catalog_source_keys: Optional[Iterable[str]] = None,
+    exclusive_title_lock: Optional[bool] = None,
 ) -> list[Any]:
     """Pick ``k`` chunks that stay relevant while spreading across sermons, videos, and books.
 
@@ -1761,32 +1966,55 @@ def select_diverse_docs(
     selected_tokens: list[frozenset[str]] = []
     focus_tokens = query_focus_tokens(query)
     pin_topic = (pin_query or query or "").strip()
-    any_strong_title = any(
-        (not item.is_bible) and query_title_match(item.doc, pin_topic)
-        for item in chunks
-    ) if pin_topic else False
+    catalog_keys = {
+        str(item).strip()
+        for item in (catalog_source_keys or [])
+        if str(item).strip()
+    }
+    if exclusive_title_lock is None:
+        exclusive_title_lock = exclusive_title_lock_for_query(pin_topic or query)
+
+    def is_major_chunk(chunk: ScoredChunk) -> bool:
+        if chunk.is_bible:
+            return False
+        if catalog_keys and chunk.source_key in catalog_keys:
+            return True
+        return bool(pin_topic) and query_title_match(chunk.doc, pin_topic)
+
+    any_major = any(is_major_chunk(item) for item in chunks)
 
     def can_take(
         chunk: ScoredChunk,
         *,
         prefer_bible: Optional[bool],
         prefer_video: Optional[bool] = None,
+        require_major: Optional[bool] = None,
     ) -> bool:
         if chunk.fingerprint in selected_fps:
             return False
-        title_hit = (not chunk.is_bible) and bool(pin_topic) and query_title_match(
-            chunk.doc, pin_topic
-        )
-        if any_strong_title and chunk.is_bible and not looks_like_bible_query(
+        title_hit = is_major_chunk(chunk)
+        if require_major is True and not title_hit:
+            return False
+        if exclusive_title_lock and any_major and chunk.is_bible and not looks_like_bible_query(
             pin_query or query
         ):
             return False
-        if any_strong_title and not chunk.is_bible and not title_hit:
+        if exclusive_title_lock and any_major and not chunk.is_bible and not title_hit:
             # Filename already names the question — do not fill leftover slots
             # with Community / Contagious / other loosely related sermons.
             return False
+        if (
+            any_major
+            and not exclusive_title_lock
+            and not chunk.is_bible
+            and not title_hit
+        ):
+            # Dual-lane extras must be real teaching windows, not Community intros
+            # that only mention the topic word.
+            if chunk_thesis_score(chunk_text(chunk.doc)) < 1.5:
+                return False
         source_cap = max_per_source
-        if any_strong_title and title_hit:
+        if any_major and title_hit:
             # Extra same-file windows only for teaching sentences, not statistic slides.
             if chunk_thesis_score(chunk_text(chunk.doc)) > 0:
                 source_cap = max(max_per_source, 4)
@@ -1848,11 +2076,17 @@ def select_diverse_docs(
         prefer_bible: Optional[bool],
         *,
         prefer_video: Optional[bool] = None,
+        require_major: Optional[bool] = None,
     ) -> Optional[ScoredChunk]:
         best: Optional[ScoredChunk] = None
         best_value = float("-inf")
         for chunk in chunks:
-            if not can_take(chunk, prefer_bible=prefer_bible, prefer_video=prefer_video):
+            if not can_take(
+                chunk,
+                prefer_bible=prefer_bible,
+                prefer_video=prefer_video,
+                require_major=require_major,
+            ):
                 continue
             overlap = max((_jaccard(chunk.tokens, tokens) for tokens in selected_tokens), default=0.0)
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
@@ -1860,7 +2094,7 @@ def select_diverse_docs(
             title_boost = 0.90 * chunk.title_overlap
             thesis_boost = 0.0
             chunk_body = chunk_text(chunk.doc)
-            if any_strong_title and not chunk.is_bible:
+            if any_major and not chunk.is_bible:
                 if chunk_thesis_score(chunk_body) > 0:
                     thesis_boost = 0.45
                 sense = query_topic_sense(query)
@@ -1868,15 +2102,14 @@ def select_diverse_docs(
                     thesis_boost += 0.55
                 elif sense == SENSE_SEXUALITY and looks_like_vice_catalog(chunk_body):
                     thesis_boost -= 0.40
+                elif sense == SENSE_ALCOHOL and text_has_alcohol_application(chunk_body):
+                    thesis_boost += 0.55
                 elif sense == SENSE_ALCOHOL and text_has_alcohol_teaching(chunk_body):
                     if chunk_thesis_score(chunk_body) >= 1.5:
                         thesis_boost += 0.25
-            if any_strong_title and not chunk.is_bible and not query_title_match(
-                chunk.doc, pin_topic
-            ):
-                # Generic high-embedding sermons (Community, Contagious Christianity)
-                # should not occupy slots when a title clearly names the topic.
-                title_boost -= 0.55
+            if any_major and not chunk.is_bible and not is_major_chunk(chunk):
+                # Prefer titled/catalog sermons; still allow high-thesis related notes.
+                title_boost -= 0.55 if exclusive_title_lock else 0.20
             value = (
                 (relevance * chunk.score)
                 - ((1.0 - relevance) * overlap)
@@ -1907,6 +2140,19 @@ def select_diverse_docs(
             take(picked)
             count -= 1
 
+    def fill_major(count: int) -> None:
+        while len(selected) < k and count > 0:
+            picked = best_candidate(False, prefer_video=False, require_major=True)
+            if picked is None:
+                picked = best_candidate(False, prefer_video=None, require_major=True)
+            if picked is None:
+                break
+            take(picked)
+            count -= 1
+
+    # Major titled/catalog sermons first on simple topics, then related notes.
+    if any_major and not exclusive_title_lock:
+        fill_major(max(4, (sermon_target * 2) // 3))
     # Written sermon notes and video transcripts first, then Bible, then leftovers.
     fill(document_target, prefer_bible=False, prefer_video=False)
     fill(video_target, prefer_bible=False, prefer_video=True)
@@ -2163,17 +2409,59 @@ def select_chat_source_chips(
     )
 
 
+def _keep_reference_note(doc: Any, query: str) -> bool:
+    """Drop scripture/stat/communion filler when the question has a topical lock."""
+    if not query:
+        return True
+    text = chunk_text(doc)
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        if text_looks_like_communion_only(text) and not text_has_alcohol_teaching(text):
+            return False
+        if looks_like_kjv_diction(text) or looks_like_stat_slide(text):
+            return False
+        if looks_like_vice_catalog(text) and not text_has_alcohol_application(text):
+            return False
+        return True
+    if sense == SENSE_SEXUALITY:
+        if looks_like_kjv_diction(text):
+            return False
+        if looks_like_vice_catalog(text) and not text_has_sexuality_application(text):
+            return False
+        return True
+    return True
+
+
+def _reference_note_rank(doc: Any, query: str, orig_index: int) -> tuple[float, int]:
+    text = chunk_text(doc)
+    score = float(chunk_thesis_score(text))
+    sense = query_topic_sense(query) if query else SENSE_NONE
+    if sense == SENSE_ALCOHOL and text_has_alcohol_application(text):
+        score += 2.0
+    if sense == SENSE_SEXUALITY and text_has_sexuality_application(text):
+        score += 2.0
+    if looks_like_kjv_diction(text) or looks_like_vice_catalog(text) or looks_like_stat_slide(text):
+        score -= 2.0
+    if sense == SENSE_ALCOHOL and text_looks_like_communion_only(text):
+        score -= 3.0
+    return (-score, orig_index)
+
+
 def format_reference_notes(
     docs: Iterable[Any],
     source_label: Callable[[Any], str],
     *,
     max_chars: int,
+    query: str = "",
 ) -> str:
     """Join chunks with source labels, teaching sentences first."""
     indexed = list(enumerate(docs or []))
+    kept = [item for item in indexed if _keep_reference_note(item[1], query)]
+    if not kept:
+        kept = indexed
     ranked = sorted(
-        indexed,
-        key=lambda item: (-chunk_thesis_score(chunk_text(item[1])), item[0]),
+        kept,
+        key=lambda item: _reference_note_rank(item[1], query, item[0]),
     )
     blocks: list[str] = []
     used = 0

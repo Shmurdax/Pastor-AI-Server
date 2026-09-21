@@ -17,6 +17,7 @@ from .chat_retrieval import (
     looks_like_library_pull,
     metadata_source_hint,
     query_topic_sense,
+    text_has_alcohol_application,
     text_has_alcohol_teaching,
     text_has_sexuality_application,
     text_has_sexuality_teaching,
@@ -56,7 +57,17 @@ _APPLICATION_CLIP_RE = re.compile(
     r"(?i)("
     r"not an acceptable lifestyle|love the homosexual|stand firmly|"
     r"those who approve|stone the homosexual|judgment is not ours|"
-    r"natural law"
+    r"natural law|"
+    r"total abstinence|only acceptable way|alcoholism is a sin|"
+    r"not a sickness|not a disease|abstain from alcoholic"
+    r")"
+)
+_PACKED_VERSE_RE = re.compile(r"\d+[A-Z][a-z]")
+_ROMANS_LIBERTY_BLOB_RE = re.compile(
+    r"(?i)("
+    r"whatever is not from faith is sin|"
+    r"does not condemn himself in what he approves|"
+    r"he who doubts is condemned if he eats"
     r")"
 )
 
@@ -96,6 +107,10 @@ _QUERY_TOPIC_WORDS = frozenset(
         "tongues",
         "baptism",
         "giving",
+        "gratitude",
+        "grateful",
+        "thanksgiving",
+        "thankfulness",
     }
 )
 # Words almost every sermon uses. Overlap on these alone must not make a
@@ -290,13 +305,40 @@ def query_topic_tokens(query: str) -> set[str]:
     return kept
 
 
+# Outline leftovers from "3 point sermon on faith" must not outrank the topic.
+_OUTLINE_DISTINCTIVE_STOP = frozenset(
+    {
+        "sermon",
+        "sermons",
+        "point",
+        "points",
+        "outline",
+        "topic",
+        "topics",
+        "week",
+        "notes",
+        "note",
+    }
+)
+
+
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
-    """Query words that are not generic Christian vocabulary (church/love/spirit)."""
-    return {
+    """Query words that identify the topic.
+
+    Outline words (sermon / point) are never distinctive. Weak Christian words
+    (faith, gratitude, church) become distinctive when they are the only topic
+    left, so a one-word faith question keeps faith theses instead of
+    discussion-guide sentences that only say "sermon".
+    """
+    tokens = {
         str(token).lower()
         for token in query_tokens
-        if str(token).strip() and str(token).lower() not in _WEAK_QUERY_WORDS
+        if str(token).strip() and str(token).lower() not in _OUTLINE_DISTINCTIVE_STOP
     }
+    distinctive = {token for token in tokens if token not in _WEAK_QUERY_WORDS}
+    if distinctive:
+        return distinctive
+    return {token for token in tokens if token in _QUERY_TOPIC_WORDS or token in _WEAK_QUERY_WORDS}
 
 
 def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") -> bool:
@@ -337,8 +379,18 @@ def _score_claim(claim: str, query_tokens: set[str], *, query: str = "") -> int:
     overlap = sum(1 for token in query_tokens if token in claim_words)
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
     application = 0
-    if query_topic_sense(query) == SENSE_SEXUALITY and text_has_sexuality_application(claim):
+    sense = query_topic_sense(query)
+    lowered = claim.lower()
+    if sense == SENSE_SEXUALITY and text_has_sexuality_application(claim):
         application = 16
+        if "not an acceptable lifestyle" in lowered or "love the homosexual" in lowered:
+            application += 8
+        if "stone the homosexual" in lowered or "those who approve" in lowered:
+            application += 4
+    if sense == SENSE_ALCOHOL and text_has_alcohol_application(claim):
+        application = 16
+        if "only acceptable way" in lowered or "alcoholism is a sin" in lowered:
+            application += 8
     return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast + application
 
 
@@ -360,6 +412,8 @@ def extract_teaching_claims(
             if looks_like_deck_junk(claim) or looks_like_kjv_diction(claim):
                 continue
             if looks_like_scripture_blob(claim) or looks_like_vice_catalog(claim):
+                continue
+            if _PACKED_VERSE_RE.search(claim) or _ROMANS_LIBERTY_BLOB_RE.search(claim):
                 continue
             if looks_like_stat_slide(claim):
                 continue
@@ -434,6 +488,17 @@ def extract_teaching_claims(
             ranked = topical
         elif query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
             ranked = []
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        applied = [claim for claim in ranked if text_has_alcohol_application(claim)]
+        if applied:
+            rest = [claim for claim in ranked if claim not in applied]
+            ranked = applied + rest
+    elif sense == SENSE_SEXUALITY:
+        applied = [claim for claim in ranked if text_has_sexuality_application(claim)]
+        if applied:
+            rest = [claim for claim in ranked if claim not in applied]
+            ranked = applied + rest
     return ranked[: max(1, limit)]
 
 
@@ -452,8 +517,13 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Teach these numbered points. Do not substitute an LGBTQ inclusion frame, sexual-orientation "
+        "Teach these numbered points in order. The first sentence must paraphrase point 1, "
+        "then continue through the remaining points. Cover every numbered point. "
+        "Do not invent a yes/no that is not in the points. "
+        "Do not substitute an LGBTQ inclusion frame, sexual-orientation "
         "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
+        "Do not teach that alcoholic drink is a personal decision, a Romans 14 liberty issue, "
+        "or that many Christians may drink in moderation unless that idea appears in the points.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part. "
         "Do not fill the gap from general Christian knowledge.",
     ]
@@ -461,6 +531,52 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         lines.append(f"{index}. {claim}")
     lines.append("</required_teaching_points>")
     return "\n".join(lines) + "\n"
+
+
+def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> str:
+    """Last-turn lock so the first generate paraphrases retrieved theses."""
+    question = " ".join((query or "").split()).strip()
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    sense = query_topic_sense(question)
+    lines: list[str] = []
+    if points:
+        lines.append(
+            "Paraphrase every numbered sermon point below, in order. "
+            "They are the doctrine. Do not add theology or a yes/no that is not in them."
+        )
+        for index, claim in enumerate(points, start=1):
+            lines.append(f"{index}. {claim}")
+        if sense == SENSE_ALCOHOL:
+            lines.append(
+                "Do not say drinking is a personal decision, a Romans 14 liberty issue, "
+                "or that many Christians may drink in moderation unless a numbered point says that."
+            )
+        if sense == SENSE_SEXUALITY:
+            lines.append(
+                "Do not begin by saying gay people can be Christians unless a numbered point says that. "
+                "Do not write Certainly. Do not give an LGBTQ inclusion, sexual-orientation acceptance, "
+                "or Mark 12 greatest-commandment answer unless a numbered point says that."
+            )
+        lines.append("")
+        lines.append("User question:")
+        lines.append(question or "(empty)")
+        lines.append(
+            "Write the answer now. Start with a paraphrase of point 1, then paraphrase "
+            "the remaining numbered points in order. Cover every numbered point. "
+            "Do not stop after the first sentence."
+        )
+    elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+        lines.append("User question:")
+        lines.append(question or "(empty)")
+        lines.append("")
+        lines.append(
+            "Retrieved sermon notes did not yield teaching points for this question. "
+            "Say that plainly. Do not answer from general Christian knowledge."
+        )
+    else:
+        lines.append("User question:")
+        lines.append(question or "(empty)")
+    return "\n".join(lines)
 
 
 def claim_is_covered(claim: str, answer: str) -> bool:
