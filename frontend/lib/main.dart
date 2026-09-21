@@ -30,6 +30,7 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
+import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
@@ -2874,7 +2875,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               mainAxisSize: MainAxisSize.min,
               children: [
                 // The Copy button remains available for all messages
-                _buildActionButton(
+                ChatResponseActionButton(
                   icon: Icons.copy_rounded,
                   tooltip: _s.copyToClipboard,
                   onTap: () => _copyToClipboard(_messageDisplayText(msg)),
@@ -2883,7 +2884,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 // The Regenerate button only appears if this is the latest AI message
                 if (isLastMessage) ...[
                   const SizedBox(width: 4),
-                  _buildActionButton(
+                  ChatResponseActionButton(
                     icon: Icons.refresh_rounded,
                     tooltip: _s.regenerateResponse,
                     onTap: _isLoading ? null : () => _regenerateResponse(index),
@@ -2891,7 +2892,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 ],
                 if (msg["message_id"] != null) ...[
                   const SizedBox(width: 4),
-                  _buildActionButton(
+                  ChatResponseActionButton(
                     icon: msg["reported"] == true ? Icons.flag : Icons.flag_outlined,
                     tooltip: msg["reported"] == true ? "Already reported" : "Report response",
                     onTap: msg["reported"] == true || _isLoading
@@ -3168,40 +3169,4 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required String tooltip, required VoidCallback? onTap}) {
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: StatefulBuilder(
-        builder: (context, setState) {
-          bool hovered = false;
-          return StatefulBuilder(
-            builder: (context, setHoverState) {
-              return MouseRegion(
-                onEnter: (_) => setHoverState(() => hovered = true),
-                onExit: (_) => setHoverState(() => hovered = false),
-                child: AnimatedContainer(
-                  duration: hovered ? const Duration(milliseconds: 150) : Duration.zero,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: hovered
-                        ? [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, spreadRadius: 1)]
-                        : [],
-                  ),
-                  child: InkWell(
-                    onTap: onTap,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6.0),
-                      child: Icon(icon, size: 18, color: Colors.black45),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
 }
