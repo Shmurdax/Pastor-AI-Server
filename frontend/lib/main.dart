@@ -30,6 +30,8 @@ import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
+import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
+import 'package:flutter_application_1/widgets/sermon_source_link.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
@@ -2874,7 +2876,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
               mainAxisSize: MainAxisSize.min,
               children: [
                 // The Copy button remains available for all messages
-                _buildActionButton(
+                ChatResponseActionButton(
                   icon: Icons.copy_rounded,
                   tooltip: _s.copyToClipboard,
                   onTap: () => _copyToClipboard(_messageDisplayText(msg)),
@@ -2883,7 +2885,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 // The Regenerate button only appears if this is the latest AI message
                 if (isLastMessage) ...[
                   const SizedBox(width: 4),
-                  _buildActionButton(
+                  ChatResponseActionButton(
                     icon: Icons.refresh_rounded,
                     tooltip: _s.regenerateResponse,
                     onTap: _isLoading ? null : () => _regenerateResponse(index),
@@ -2891,7 +2893,7 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
                 ],
                 if (msg["message_id"] != null) ...[
                   const SizedBox(width: 4),
-                  _buildActionButton(
+                  ChatResponseActionButton(
                     icon: msg["reported"] == true ? Icons.flag : Icons.flag_outlined,
                     tooltip: msg["reported"] == true ? "Already reported" : "Report response",
                     onTap: msg["reported"] == true || _isLoading
@@ -3124,84 +3126,11 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
   }
 
   Widget _buildSermonLink(String sermonTitle) {
-    bool isHovered = false;
-    return StatefulBuilder(
-      builder: (context, setState) => MouseRegion(
-        onEnter: (_) => setState(() => isHovered = true),
-        onExit: (_) => setState(() => isHovered = false),
-        child: AnimatedContainer(
-          duration: isHovered ? const Duration(milliseconds: 250) : Duration.zero,
-          curve: isHovered ? Curves.easeOut : Curves.linear,
-          margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 12.0),
-          transform: isHovered ? (Matrix4.identity()..translate(0.0, -3.0)) : Matrix4.identity(),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: isHovered ? Colors.white.withOpacity(0.07) : Colors.transparent,
-            boxShadow: isHovered
-                ? [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 6), spreadRadius: -4)]
-                : [],
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => _launchSermonDoc(sermonTitle),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isVideoSermonSource(sermonTitle) ? Icons.videocam_outlined : Icons.description_outlined,
-                    color: _gold,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(sermonTitle,
-                        style: GoogleFonts.figtree(
-                            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w400)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SermonSourceLink(
+      key: ValueKey(sermonTitle),
+      title: sermonTitle,
+      onTap: () => _launchSermonDoc(sermonTitle),
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required String tooltip, required VoidCallback? onTap}) {
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: StatefulBuilder(
-        builder: (context, setState) {
-          bool hovered = false;
-          return StatefulBuilder(
-            builder: (context, setHoverState) {
-              return MouseRegion(
-                onEnter: (_) => setHoverState(() => hovered = true),
-                onExit: (_) => setHoverState(() => hovered = false),
-                child: AnimatedContainer(
-                  duration: hovered ? const Duration(milliseconds: 150) : Duration.zero,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: hovered
-                        ? [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6, spreadRadius: 1)]
-                        : [],
-                  ),
-                  child: InkWell(
-                    onTap: onTap,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6.0),
-                      child: Icon(icon, size: 18, color: Colors.black45),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
 }
