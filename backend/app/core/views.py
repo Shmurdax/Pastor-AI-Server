@@ -118,6 +118,7 @@ from .sermon_catalog import (
     lookup_chunks_by_file_hashes,
     match_library_catalog,
 )
+from .rerank import rerank_scored_hits
 from .chat_system_prompt import (
     COMPLETE_ANSWER_MIN_CHARS,
     CONVERSATIONAL_STEER,
@@ -1040,6 +1041,7 @@ class ChatAPIView(APIView):
                     limit=3,
                 )
                 fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
+                catalog_docs = []
                 if fetch_keys:
                     catalog_docs = lookup_chunks_by_file_hashes(
                         client,
@@ -1058,6 +1060,11 @@ class ChatAPIView(APIView):
                             [hit.title for hit in catalog_hits],
                             fetch_keys[:6],
                         )
+                scored_hits = rerank_scored_hits(
+                    topic_query,
+                    scored_hits,
+                    pinned_docs=catalog_docs,
+                )
                 docs = select_diverse_docs(
                     scored_hits,
                     k=RETRIEVAL_K,
