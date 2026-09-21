@@ -84,6 +84,7 @@ from .teaching_claims import (
     claim_repair_steer,
     claim_repair_token_budget,
     extract_teaching_claims,
+    format_generation_user_prompt,
     format_teaching_claims_block,
     notes_only_from_claims,
     paraphrase_too_thin,
@@ -1064,6 +1065,7 @@ class ChatAPIView(APIView):
                     docs,
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
+                    query=topic_query,
                 )
                 teaching_claims = resolve_teaching_claims(
                     docs,
@@ -1072,6 +1074,13 @@ class ChatAPIView(APIView):
                         docs,
                         query=topic_query,
                     ),
+                )
+                logger.warning(
+                    "Teaching claims session=%s count=%s query=%r sample=%s",
+                    session_id[:18],
+                    len(teaching_claims or []),
+                    (topic_query or "")[:120],
+                    (teaching_claims or [])[:2],
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
@@ -1152,6 +1161,11 @@ class ChatAPIView(APIView):
                     format_opening_recall_steer(opening_text)
                     + "\nUser question:\n"
                     + user_query_llm.strip()
+                )
+            else:
+                human_content = format_generation_user_prompt(
+                    user_query_llm,
+                    teaching_claims,
                 )
             human_content = f"{human_content}{language_generation_reminder()}"
             messages = (

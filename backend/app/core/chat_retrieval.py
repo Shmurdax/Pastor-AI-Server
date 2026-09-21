@@ -19,7 +19,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
-from .note_priority import chunk_thesis_score, looks_like_vice_catalog
+from .note_priority import (
+    chunk_thesis_score,
+    looks_like_kjv_diction,
+    looks_like_stat_slide,
+    looks_like_vice_catalog,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +424,13 @@ _SEXUALITY_PHRASES = (
     "lifestyle as normal",
     "stand firmly against the lifestyle",
 )
+_ALCOHOL_APPLICATION_RE = re.compile(
+    r"(?i)("
+    r"total abstinence|only acceptable way|"
+    r"alcoholism is a sin|not a sickness|not a disease|"
+    r"abstain from alcoholic"
+    r")"
+)
 _SEXUALITY_APPLICATION_RE = re.compile(
     r"(?i)("
     r"not an acceptable lifestyle|natural law and the law of god|"
@@ -485,6 +497,16 @@ def text_looks_like_communion_only(text: str) -> bool:
 def text_has_alcohol_teaching(text: str) -> bool:
     blob = _normalized_topic_blob(text)
     return bool(blob) and bool(set(blob.split()) & _ALCOHOL_TERMS)
+
+
+def text_has_alcohol_application(text: str) -> bool:
+    """True for Don's drink theses, not Proverbs dumps or communion lines."""
+    blob = text or ""
+    if looks_like_kjv_diction(blob) or looks_like_stat_slide(blob):
+        return False
+    if text_looks_like_communion_only(blob):
+        return False
+    return bool(_ALCOHOL_APPLICATION_RE.search(blob))
 
 
 def text_has_sexuality_teaching(text: str) -> bool:
@@ -1222,7 +1244,9 @@ def pin_docs_to_strong_title_matches(
             bonus -= 0.35
         if topic_sense == SENSE_SEXUALITY and text_has_sexuality_application(text):
             bonus += 0.55
-        if topic_sense == SENSE_ALCOHOL and text_has_alcohol_teaching(text) and thesis >= 1.5:
+        if topic_sense == SENSE_ALCOHOL and text_has_alcohol_application(text):
+            bonus += 0.55
+        elif topic_sense == SENSE_ALCOHOL and text_has_alcohol_teaching(text) and thesis >= 1.5:
             bonus += 0.45
         if looks_like_vice_catalog(text):
             bonus -= 0.50
@@ -1868,6 +1892,8 @@ def select_diverse_docs(
                     thesis_boost += 0.55
                 elif sense == SENSE_SEXUALITY and looks_like_vice_catalog(chunk_body):
                     thesis_boost -= 0.40
+                elif sense == SENSE_ALCOHOL and text_has_alcohol_application(chunk_body):
+                    thesis_boost += 0.55
                 elif sense == SENSE_ALCOHOL and text_has_alcohol_teaching(chunk_body):
                     if chunk_thesis_score(chunk_body) >= 1.5:
                         thesis_boost += 0.25
@@ -2163,17 +2189,59 @@ def select_chat_source_chips(
     )
 
 
+def _keep_reference_note(doc: Any, query: str) -> bool:
+    """Drop scripture/stat/communion filler when the question has a topical lock."""
+    if not query:
+        return True
+    text = chunk_text(doc)
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        if text_looks_like_communion_only(text) and not text_has_alcohol_teaching(text):
+            return False
+        if looks_like_kjv_diction(text) or looks_like_stat_slide(text):
+            return False
+        if looks_like_vice_catalog(text) and not text_has_alcohol_application(text):
+            return False
+        return True
+    if sense == SENSE_SEXUALITY:
+        if looks_like_kjv_diction(text):
+            return False
+        if looks_like_vice_catalog(text) and not text_has_sexuality_application(text):
+            return False
+        return True
+    return True
+
+
+def _reference_note_rank(doc: Any, query: str, orig_index: int) -> tuple[float, int]:
+    text = chunk_text(doc)
+    score = float(chunk_thesis_score(text))
+    sense = query_topic_sense(query) if query else SENSE_NONE
+    if sense == SENSE_ALCOHOL and text_has_alcohol_application(text):
+        score += 2.0
+    if sense == SENSE_SEXUALITY and text_has_sexuality_application(text):
+        score += 2.0
+    if looks_like_kjv_diction(text) or looks_like_vice_catalog(text) or looks_like_stat_slide(text):
+        score -= 2.0
+    if sense == SENSE_ALCOHOL and text_looks_like_communion_only(text):
+        score -= 3.0
+    return (-score, orig_index)
+
+
 def format_reference_notes(
     docs: Iterable[Any],
     source_label: Callable[[Any], str],
     *,
     max_chars: int,
+    query: str = "",
 ) -> str:
     """Join chunks with source labels, teaching sentences first."""
     indexed = list(enumerate(docs or []))
+    kept = [item for item in indexed if _keep_reference_note(item[1], query)]
+    if not kept:
+        kept = indexed
     ranked = sorted(
-        indexed,
-        key=lambda item: (-chunk_thesis_score(chunk_text(item[1])), item[0]),
+        kept,
+        key=lambda item: _reference_note_rank(item[1], query, item[0]),
     )
     blocks: list[str] = []
     used = 0

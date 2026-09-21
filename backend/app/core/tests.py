@@ -87,6 +87,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
         self.assertIn("LGBTQ inclusion frame", prompt)
+        self.assertIn("Romans 14 liberty", prompt)
+        self.assertIn("NKJV lines in REFERENCE NOTES support the sermon notes", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", CONTINUE_STEER)
         self.assertIn("REFERENCE NOTES", CONTINUE_STEER)
         self.assertIn("REQUIRED TEACHING POINTS", FINISH_STEER)

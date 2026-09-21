@@ -123,12 +123,44 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
         self.assertIn("LGBTQ inclusion frame", block)
+        self.assertIn("Romans 14 liberty", block)
         steer = claim_repair_steer(claims)
         self.assertIn("do not restart", steer.lower())
         self.assertIn("let's continue", steer.lower())
         self.assertIn("covenant", steer)
         self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
+
+    def test_generation_user_prompt_locks_drink_and_gay_theses(self):
+        from core.teaching_claims import format_generation_user_prompt
+
+        drink = format_generation_user_prompt(
+            "Can Christians drink?",
+            [
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                "Alcoholism is a sin; it is not a sickness or a disease!",
+            ],
+        )
+        self.assertIn("Can Christians drink?", drink)
+        self.assertIn("only acceptable way", drink)
+        self.assertIn("Alcoholism is a sin", drink)
+        self.assertIn("Romans 14 liberty", drink)
+        self.assertIn("Do not say drinking is a personal decision", drink)
+
+        gay = format_generation_user_prompt(
+            "Can gay people be Christians?",
+            [
+                "We must love the homosexual but we are to stand firmly against the lifestyle.",
+            ],
+        )
+        self.assertIn("stand firmly", gay)
+        self.assertIn("LGBTQ inclusion", gay)
+        self.assertIn("Mark 12", gay)
+
+        empty = format_generation_user_prompt("Can Christians drink?", [])
+        self.assertIn("did not yield teaching points", empty)
+        self.assertIn("Do not answer from general Christian knowledge", empty)
 
     def test_skips_memoir_and_off_topic_repair_for_faith_query(self):
         docs = [

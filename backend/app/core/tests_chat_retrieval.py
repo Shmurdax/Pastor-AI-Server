@@ -1513,6 +1513,36 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertLess(notes.find("abstinence"), notes.find("3.5%"))
         self.assertIn("[Note 1 | Sippin' Saints]", notes)
 
+    def test_drink_reference_notes_keep_abstinence_drop_proverbs_blob(self):
+        docs = [
+            _doc(
+                "Wine is a mocker, strong drink is a brawler, and whoever is led astray by it is not wise.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "A person should examine himself first, and only then drink from the cup.",
+                source="lords-table.pdf",
+                title="The Lord's Table",
+            ),
+        ]
+        notes = format_reference_notes(
+            docs,
+            lambda doc: doc.metadata["title"],
+            max_chars=4000,
+            query="Can Christians drink?",
+        )
+        lowered = notes.lower()
+        self.assertIn("abstinence", lowered)
+        self.assertNotIn("wine is a mocker", lowered)
+        self.assertNotIn("drink from the cup", lowered)
+
 
 if __name__ == "__main__":
     unittest.main()

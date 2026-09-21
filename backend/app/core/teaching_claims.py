@@ -454,6 +454,8 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
         "Teach these numbered points. Do not substitute an LGBTQ inclusion frame, sexual-orientation "
         "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
+        "Do not teach that alcoholic drink is a personal decision, a Romans 14 liberty issue, "
+        "or that many Christians may drink in moderation unless that idea appears in the points.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part. "
         "Do not fill the gap from general Christian knowledge.",
     ]
@@ -461,6 +463,39 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         lines.append(f"{index}. {claim}")
     lines.append("</required_teaching_points>")
     return "\n".join(lines) + "\n"
+
+
+def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> str:
+    """Last-turn lock so the first generate paraphrases retrieved theses."""
+    question = " ".join((query or "").split()).strip()
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    lines = ["User question:", question or "(empty)"]
+    sense = query_topic_sense(question)
+    if points:
+        lines.append("")
+        lines.append(
+            "Answer by paraphrasing the numbered sermon points below. "
+            "They are the doctrine. Do not add theology that is not in them."
+        )
+        for index, claim in enumerate(points, start=1):
+            lines.append(f"{index}. {claim}")
+        if sense == SENSE_ALCOHOL:
+            lines.append(
+                "Do not say drinking is a personal decision, a Romans 14 liberty issue, "
+                "or that many Christians may drink in moderation unless a numbered point says that."
+            )
+        if sense == SENSE_SEXUALITY:
+            lines.append(
+                "Do not give an LGBTQ inclusion, sexual-orientation acceptance, or Mark 12 "
+                "greatest-commandment answer unless a numbered point says that."
+            )
+    elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+        lines.append("")
+        lines.append(
+            "Retrieved sermon notes did not yield teaching points for this question. "
+            "Say that plainly. Do not answer from general Christian knowledge."
+        )
+    return "\n".join(lines)
 
 
 def claim_is_covered(claim: str, answer: str) -> bool:

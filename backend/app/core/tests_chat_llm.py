@@ -290,6 +290,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("lookup_nkjv_verses", source)
         self.assertIn("extract_teaching_claims", source)
         self.assertIn("format_teaching_claims_block", source)
+        self.assertIn("format_generation_user_prompt", source)
+        self.assertIn("query=topic_query", source)
         self.assertIn("looks_like_library_pull", source)
         self.assertIn("restrict_docs_to_primary_source", source)
         self.assertIn("pin_docs_to_strong_title_matches", source)
