@@ -25,9 +25,19 @@ BGE_QUERY_INSTRUCTION = os.getenv(
 
 _EMBEDDINGS = None
 
+try:
+    from langchain_core.embeddings import Embeddings as LangChainEmbeddings
+except Exception:  # pragma: no cover - unit tests without langchain_core
+    class LangChainEmbeddings:  # type: ignore[no-redef]
+        """Stand-in so tests can construct the wrapper without LangChain."""
 
-class QueryPrefixedEmbeddings:
-    """Prefix embed_query for BGE; leave embed_documents unchanged for ingest."""
+
+class QueryPrefixedEmbeddings(LangChainEmbeddings):
+    """Prefix embed_query for BGE; leave embed_documents unchanged for ingest.
+
+    QdrantVectorStore only accepts langchain ``Embeddings`` instances, so this
+    wrapper subclasses that ABC instead of being an anonymous helper.
+    """
 
     def __init__(self, inner, instruction: str = BGE_QUERY_INSTRUCTION):
         self._inner = inner

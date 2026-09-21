@@ -261,3 +261,8 @@ class QueryPrefixEmbeddingTests(unittest.TestCase):
         )
         self.assertIn("faith", inner.queries[0])
         self.assertEqual(inner.docs, ["Faith must refuse the if factor."])
+        try:
+            from langchain_core.embeddings import Embeddings
+        except Exception:
+            self.skipTest("langchain_core is not installed")
+        self.assertIsInstance(wrapped, Embeddings)
