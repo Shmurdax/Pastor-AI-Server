@@ -149,7 +149,8 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Alcoholism is a sin", drink)
         self.assertIn("Romans 14 liberty", drink)
         self.assertIn("Do not say drinking is a personal decision", drink)
-        self.assertIn("Sentence 1 must paraphrase point 1", drink)
+        self.assertIn("Start with a paraphrase of point 1", drink)
+        self.assertIn("Cover every numbered point", drink)
         self.assertIn("Paraphrase every numbered sermon point", drink)
         self.assertIn("User question:", drink)
 
@@ -164,7 +165,7 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Mark 12", gay)
         self.assertIn("Do not begin by saying gay people can be Christians", gay)
         self.assertIn("Do not write Certainly", gay)
-        self.assertIn("Sentence 1 must paraphrase point 1", gay)
+        self.assertIn("Cover every numbered point", gay)
 
         empty = format_generation_user_prompt("Can Christians drink?", [])
         self.assertIn("did not yield teaching points", empty)

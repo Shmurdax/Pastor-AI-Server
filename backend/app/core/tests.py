@@ -89,6 +89,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("LGBTQ inclusion frame", prompt)
         self.assertIn("Romans 14 liberty", prompt)
         self.assertIn("first sentence must paraphrase point 1", prompt)
+        self.assertIn("Cover every numbered point", prompt)
         self.assertIn("Do not begin by saying gay people can be Christians", prompt)
         self.assertIn("NKJV lines in REFERENCE NOTES support the sermon notes", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", CONTINUE_STEER)

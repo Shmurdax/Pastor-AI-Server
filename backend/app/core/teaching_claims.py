@@ -486,7 +486,8 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Teach these numbered points in order. The first sentence must paraphrase point 1. "
+        "Teach these numbered points in order. The first sentence must paraphrase point 1, "
+        "then continue through the remaining points. Cover every numbered point. "
         "Do not invent a yes/no that is not in the points. "
         "Do not substitute an LGBTQ inclusion frame, sexual-orientation "
         "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
@@ -529,7 +530,9 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
         lines.append("User question:")
         lines.append(question or "(empty)")
         lines.append(
-            "Write the answer now. Sentence 1 must paraphrase point 1 and no other idea."
+            "Write the answer now. Start with a paraphrase of point 1, then paraphrase "
+            "the remaining numbered points in order. Cover every numbered point. "
+            "Do not stop after the first sentence."
         )
     elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
         lines.append("User question:")
