@@ -232,13 +232,15 @@ Production is a CPU-only Secure Cloud pod on the same network volume
 
 | | |
 |--|--|
-| Pod id | `rv1ttmvj5xy02k` |
+| Pod id | `f4dfpc5x5sosvs` |
 | Name | `christian-ai-prd` |
 | Git channel | `master` (`/workspace/pastor-ai/.git_channel`) |
 | Flavor | `cpu3g` (2 vCPU / 8 GB, **no GPU**) |
 | Cost | **$0.08/hr** (the old GPU pod was $0.59/hr) |
-| SSH | `ssh rv1ttmvj5xy02k-644120e4@ssh.runpod.io -i ~/.ssh/id_ed25519` |
+| SSH | `ssh f4dfpc5x5sosvs-64411dd1@ssh.runpod.io -i ~/.ssh/id_ed25519` |
 | Public URL | `https://christianaiapophatictestdomain.com` (named Cloudflare tunnel) |
+
+`bash /workspace/pastor-ai/deploy_update.sh` fetches and **hard-resets** this pod to GitHub `master` (local edits are discarded). The script used to `git checkout` with stderr swallowed, so a dirty tree stayed on an old SHA.
 
 ## Development CPU pod
 

@@ -27,7 +27,7 @@ git checkout master
 bash scripts/promote_to_master.sh
 ```
 
-On a RunPod host, `deploy_update.sh` pulls the channel in `PASTOR_GIT_BRANCH` or `/workspace/pastor-ai/.git_channel` (default `development`). Set `.git_channel` to `master` on `christian-ai-prd`.
+On a RunPod host, `deploy_update.sh` fetches and hard-resets to **`master`** (local pod edits are discarded). Override with `PASTOR_GIT_BRANCH=development` on `christian-ai-dev`.
 
 ## One-command install (RunPod / Ubuntu GPU host)
 

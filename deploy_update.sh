@@ -27,24 +27,31 @@ set -a
 source "$CONFIG_ENV"
 set +a
 
-# Git channel: PASTOR_GIT_BRANCH, REPO_BRANCH, or $WS/.git_channel (development|master).
+# Git channel: PASTOR_GIT_BRANCH / REPO_BRANCH override, else master.
+# christian-ai-dev: PASTOR_GIT_BRANCH=development bash deploy_update.sh
 # shellcheck source=/dev/null
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
 # shellcheck source=/dev/null
 source "$WS/scripts/git_safe_directory.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_safe_directory.sh"
 pastor_allow_git_on_runpod_volume "$WS"
-CHANNEL="$(pastor_git_channel "$WS")"
+if [[ -n "${PASTOR_GIT_BRANCH:-}${REPO_BRANCH:-}" ]]; then
+  CHANNEL="$(pastor_git_channel "$WS")"
+else
+  CHANNEL=master
+fi
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
-  log "Pulling Git channel '$CHANNEL' (development = all new work, master = production)"
-  # Pod remotes often fetch only master. `git fetch origin <branch>` still
-  # updates FETCH_HEAD even when origin/<branch> is not a remote-tracking ref.
-  if git -C "$WS" fetch origin "$CHANNEL" 2>/dev/null; then
-    git -C "$WS" checkout -B "$CHANNEL" FETCH_HEAD 2>/dev/null \
-      || warn "could not checkout $CHANNEL"
-  else
-    warn "origin/$CHANNEL not found — skipped git pull"
-  fi
+  log "Fetching origin/$CHANNEL"
+  git -C "$WS" fetch origin "$CHANNEL" \
+    || die "git fetch origin $CHANNEL failed"
+  log "Resetting to origin/$CHANNEL ($(git -C "$WS" rev-parse --short FETCH_HEAD))"
+  # -f discards a dirty working tree. Without it, checkout -B is a no-op on
+  # pods that have local edits and deploy_update silently stays behind.
+  git -C "$WS" checkout -f -B "$CHANNEL" FETCH_HEAD \
+    || die "git checkout $CHANNEL failed"
+  git -C "$WS" reset --hard FETCH_HEAD \
+    || die "git reset --hard $CHANNEL failed"
+  log "Now at $(git -C "$WS" log -1 --oneline)"
 fi
 
 [[ -x "$VENV_DIR/bin/python" ]] || die "Python venv missing at $VENV_DIR"
