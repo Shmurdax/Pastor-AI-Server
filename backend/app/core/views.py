@@ -76,7 +76,6 @@ from .grounding import (
     select_query_grounded_quotes,
     split_docs_for_grounding,
     strip_retrieval_meta,
-    strip_ungrounded_spans,
     repair_nkjv_citations,
     verify_answer_grounding,
     verse_refs_for_lookup,
@@ -86,8 +85,6 @@ from .teaching_claims import (
     claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
-    ground_to_note_paraphrase,
-    keep_note_paraphrase_sentences,
     notes_only_from_claims,
     paraphrase_too_thin,
     repairable_claims,
@@ -402,7 +399,8 @@ def _join_continuation(answer: str, extra: str) -> str:
 
 
 def _usable_extra(prepared, answer: str, extra: str) -> str:
-    """Keep finish-the-sentence extras that still paraphrase retrieved notes."""
+    """Keep generated continuation text; only drop leaks and restart dumps."""
+    _ = prepared
     raw = (extra or "").strip()
     if not raw:
         return ""
@@ -415,45 +413,6 @@ def _usable_extra(prepared, answer: str, extra: str) -> str:
         return ""
     if looks_like_continue_dump(answer, extra):
         logger.info("Dropped a second-pass continue dump after a finished answer")
-        return ""
-    docs = prepared.get("docs") or []
-    if not docs:
-        return extra
-    sermon, bible = split_docs_for_grounding(docs)
-    query = str(prepared.get("topic_query") or "")
-    claims = resolve_teaching_claims(
-        sermon, query=query, claims=prepared.get("teaching_claims") or []
-    )
-    grounded = keep_note_paraphrase_sentences(
-        extra,
-        sermon_docs=sermon,
-        nkjv_docs=bible,
-        claims=claims,
-        query=query,
-    )
-    if grounded:
-        return grounded
-    joined = _join_continuation(answer, extra)
-    grounded_join = keep_note_paraphrase_sentences(
-        joined,
-        sermon_docs=sermon,
-        nkjv_docs=bible,
-        claims=claims,
-        query=query,
-    )
-    if not grounded_join:
-        logger.info("Dropped a continuation that was not grounded in retrieved notes")
-        return ""
-    extra_words = [
-        token.strip(".,;:!?\"'")
-        for token in extra.lower().split()
-        if len(token.strip(".,;:!?\"'")) >= 4
-    ]
-    grounded_l = grounded_join.lower()
-    if extra_words and sum(1 for token in extra_words if token in grounded_l) < max(
-        1, (len(extra_words) + 1) // 2
-    ):
-        logger.info("Dropped a continuation that was not grounded in retrieved notes")
         return ""
     return extra
 
@@ -468,7 +427,7 @@ def _should_run_expansion(prepared, answer: str, query: str) -> bool:
 
 
 def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    """Coverage gaps are filled by the deterministic paraphrase layer, not a second LLM."""
+    """Do not start a second LLM pass to fill missed teaching points."""
     _ = (prepared, answer, query)
     return None, 0
 
@@ -533,30 +492,13 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
 
 
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Drop ungrounded ideas; keep only a paraphrase of retrieved teaching theses."""
+    """Keep the generated teaching. Do not rewrite it against note theses."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     if not docs:
         return answer
     _quotes, nkjv = _grounding_snippets(prepared)
-    answer = repair_nkjv_citations(answer, nkjv)
-    report, sermon, bible = _rag_check_report(prepared, answer)
-    if not report.ok:
-        stripped = strip_ungrounded_spans(answer, report)
-        if stripped:
-            answer = compact_teaching_answer(stripped)
-    claims = resolve_teaching_claims(
-        sermon,
-        query=str(prepared.get("topic_query") or ""),
-        claims=prepared.get("teaching_claims") or [],
-    )
-    answer = ground_to_note_paraphrase(
-        answer,
-        sermon_docs=sermon,
-        nkjv_docs=bible,
-        claims=claims,
-        query=str(prepared.get("topic_query") or ""),
-    )
+    _ = _rag_check_report(prepared, answer)
     return compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
 
 
