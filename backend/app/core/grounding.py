@@ -9,11 +9,17 @@ from typing import Any, Callable, Iterable, Optional
 
 from .bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs
 from .chat_retrieval import (
+    SENSE_ALCOHOL,
+    SENSE_SEXUALITY,
     chunk_text,
     extract_used_quotes,
     extract_used_verse_refs,
     is_bible_source,
     metadata_source_hint,
+    query_topic_sense,
+    text_has_alcohol_teaching,
+    text_has_sexuality_teaching,
+    text_looks_like_communion_only,
 )
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
 
@@ -80,6 +86,10 @@ def looks_like_scripture_blob(text: str) -> bool:
 
 _HEADING_QUOTE_RE = re.compile(r"^\s*#{1,6}\s+\S")
 _SENTENCE_END_RE = re.compile(r"[.!?…]")
+_OUTLINE_LABEL_RE = re.compile(
+    r"^[A-Z]\.\s+(?:In conclusion|In closing|To conclude|To sum up|In summary|Finally)\b",
+    re.IGNORECASE,
+)
 
 
 def looks_like_heading_quote(text: str) -> bool:
@@ -89,8 +99,18 @@ def looks_like_heading_quote(text: str) -> bool:
         return True
     if cleaned.startswith("#") or _HEADING_QUOTE_RE.match(cleaned):
         return True
+    if _OUTLINE_LABEL_RE.match(cleaned):
+        return True
+    words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
+    caps_core = re.sub(r"[^A-Za-z]+", "", cleaned)
+    if (
+        caps_core
+        and caps_core.isupper()
+        and 1 <= len(words) <= 6
+        and len(cleaned) <= 80
+    ):
+        return True
     if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(cleaned):
-        words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
         if 2 <= len(words) <= 12:
             titled = sum(1 for word in words if word[:1].isupper())
             if titled >= max(2, len(words) - 1):
@@ -107,18 +127,51 @@ def snippet_query_score(text: str, query: str) -> float:
     t_words = set(normalize_grounding_text(text).split())
     if not q_words or not t_words:
         return 0.0
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        if text_looks_like_communion_only(text):
+            return 0.0
+        q_words.update({"alcohol", "alcoholic", "wine", "abstinence"})
+        overlap = len(q_words & t_words) / len(q_words)
+        if text_has_alcohol_teaching(text):
+            return min(1.0, overlap + 0.4)
+        return overlap
+    if sense == SENSE_SEXUALITY:
+        if not text_has_sexuality_teaching(text):
+            return 0.0
+        q_words.update({"homosexuality", "homosexual", "gay"})
+        overlap = len(q_words & t_words) / len(q_words)
+        return min(1.0, overlap + 0.4)
     return len(q_words & t_words) / len(q_words)
+
+
+def _quotes_for_query(quotes: Iterable[str], query: str) -> list[str]:
+    items = [
+        item.strip()
+        for item in quotes
+        if item and str(item).strip() and not looks_like_heading_quote(item)
+    ]
+    sense = query_topic_sense(query)
+    if sense == SENSE_SEXUALITY:
+        sexuality = [item for item in items if text_has_sexuality_teaching(item)]
+        return sexuality
+    if sense != SENSE_ALCOHOL:
+        return items
+    alcohol = [
+        item
+        for item in items
+        if text_has_alcohol_teaching(item) and not text_looks_like_communion_only(item)
+    ]
+    if alcohol:
+        return alcohol
+    return [item for item in items if not text_looks_like_communion_only(item)]
 
 
 def select_query_grounded_quotes(
     quotes: Iterable[str], query: str, *, limit: int = 2, min_score: float = 0.12
 ) -> list[str]:
     ranked = sorted(
-        (
-            item.strip()
-            for item in quotes
-            if item and str(item).strip() and not looks_like_heading_quote(item)
-        ),
+        _quotes_for_query(quotes, query),
         key=lambda item: snippet_query_score(item, query),
         reverse=True,
     )
@@ -269,6 +322,102 @@ class GroundingReport:
     missing_nkjv_refs: list[str] = field(default_factory=list)
 
 
+_PASTOR_ATTR_RE = re.compile(
+    r"\b(?:pastor )?(?:don(?: and susan)?|susan)(?: nordin)?s? "
+    r"(?:also )?(?:teaches|taught|said|says|preach|preaches|preached|writes|wrote)\b"
+)
+_EMPTY_NKJV_RE = re.compile(
+    r"(?is)"
+    r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:\s*[-–]\s*\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*"
+    r"(?:says?|teaches?|reads?|declares?)?,?\s*"
+    r"[\"“]\s*[\"”]"
+)
+_EMPTY_NKJV_LEADIN_RE = re.compile(
+    r"(?is)"
+    r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?\s+\d+:\d+(?:\s*[-–]\s*\d+)?)"
+    r"\s*\(\s*NKJV\s*\)\s*"
+    r"(?:says?|teaches?|reads?|declares?)?,?\s*"
+    r"(?=[.\n]|$)"
+)
+_PACKED_NKJV_RE = re.compile(
+    r"(?is)"
+    r"((?:[1-3]\s+)?[A-Za-z][A-Za-z]+(?:\s+[A-Za-z][A-Za-z]+)?)\s+"
+    r"(\d+):(\d+)\s*[-–]\s*(\d+)"
+    r"(\s*\(\s*NKJV\s*\))"
+)
+
+
+def quote_attributed_to_pastor(answer: str, quote: str) -> bool:
+    """True when this quote is the object of a Pastor Don/Susan 'teaches/says' clause."""
+    blob = (answer or "").replace("\u201c", '"').replace("\u201d", '"')
+    needle = (quote or "").replace("\u201c", '"').replace("\u201d", '"')
+    wrapped = blob.find(f'"{needle}"')
+    if wrapped >= 0:
+        idx = wrapped
+    else:
+        idx = blob.find(needle)
+        if idx < 0:
+            return False
+        if idx > 0 and blob[idx - 1] == '"':
+            idx -= 1
+    prefix = blob[max(0, idx - 80) : idx]
+    prefix = re.split(r'"', prefix)[-1]
+    return bool(_PASTOR_ATTR_RE.search(normalize_grounding_text(prefix)))
+
+
+def _nkjv_fill_for_ref(cited: str, pairs: list[tuple[str, str]]) -> tuple[str, str] | None:
+    if not pairs:
+        return None
+    cited_key = normalize_grounding_text(cited)
+    for ref, wording in pairs:
+        if not wording:
+            continue
+        ref_key = normalize_grounding_text(ref)
+        if ref_key and (ref_key in cited_key or cited_key in ref_key):
+            return ref, wording
+    return pairs[0]
+
+
+def repair_nkjv_citations(
+    answer: str,
+    nkjv_pairs: Iterable[tuple[str, str]] | None = None,
+) -> str:
+    """Fill empty NKJV lead-ins from allowed verses, and collapse packed 4-verse ranges."""
+    text = answer or ""
+    pairs = [
+        (str(ref), str(wording).strip())
+        for ref, wording in (nkjv_pairs or [])
+        if str(wording).strip()
+    ]
+
+    def _fill(match: re.Match) -> str:
+        cited = match.group(1)
+        picked = _nkjv_fill_for_ref(cited, pairs)
+        if not picked:
+            return ""
+        ref, wording = picked
+        return f'{ref} (NKJV) says, "{_clip_excerpt(wording, 240)}"'
+
+    text = _EMPTY_NKJV_RE.sub(_fill, text)
+    text = _EMPTY_NKJV_LEADIN_RE.sub(_fill, text)
+
+    def _collapse(match: re.Match) -> str:
+        start = int(match.group(3))
+        end = int(match.group(4))
+        if end - start < 3:
+            return match.group(0)
+        book = match.group(1)
+        chapter = match.group(2)
+        nkjv = match.group(5)
+        return f"{book} {chapter}:{start}{nkjv}"
+
+    text = _PACKED_NKJV_RE.sub(_collapse, text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def verify_answer_grounding(
     answer: str,
     *,
@@ -298,10 +447,16 @@ def verify_answer_grounding(
     for span in extract_used_quotes([answer]):
         in_notes = text_is_grounded(span, notes)
         in_bible = text_is_grounded(span, bible)
+        attributed = quote_attributed_to_pastor(answer, span)
+        scripture_shaped = bool(
+            looks_like_scripture_blob(span) or parse_verse_refs(span) or "nkjv" in (span or "").lower()
+        )
+        if attributed and (in_bible or scripture_shaped):
+            invented_quotes.append(span)
+            continue
         if in_notes or in_bible:
             continue
-        lowered = (span or "").lower()
-        if "nkjv" in lowered or parse_verse_refs(span):
+        if scripture_shaped:
             invented_scripture.append(span)
         else:
             invented_quotes.append(span)
@@ -563,6 +718,10 @@ GROUNDING_REPAIR_STEER = (
     "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
     "Do not repeat headings, numbered points, or rewrite the sermon already on screen. "
     "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
+    "Never attribute Scripture or NKJV wording to Pastor Don or Susan. "
+    "Stay on the user's question; do not quote communion or Lord's Table lines "
+    "for an alcohol or drinking question. Do not quote Happiness headings or "
+    "Fruit of the Spirit for a homosexuality or gay-people question. "
     "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
     "and one ALLOWED NKJV verse if that list is not empty."
 )

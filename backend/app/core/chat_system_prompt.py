@@ -98,6 +98,7 @@ _NON_CHARACTER_BIBLE_TOKENS = frozenset(
         "sheol",
         "hades",
         "paradise",
+        "people",
     }
 )
 
@@ -204,6 +205,10 @@ QUOTE_CONTINUE_STEER = (
     "Do not restart or apologize. Do not say Certainly, Let's continue, or "
     "Teaching Points. Do not repeat headings, numbered points, or any sentence "
     "already on screen. Do not write From the retrieved notes or any source dump. "
+    "Stay on the user's question. Do not quote communion or Lord's Table lines "
+    "for an alcohol or drinking question. Do not quote Happiness headings or "
+    "Fruit of the Spirit for a homosexuality or gay-people question. Never put NKJV or other Scripture "
+    "wording in Pastor Don's or Susan's mouth. "
     "Write only missing quotation-marked excerpts from Pastor Don or Susan that "
     "actually appear in REFERENCE NOTES, attributed in ordinary sentences "
     "(Pastor Don Nordin teaches, \"...\"), and one NKJV verse from those notes "
@@ -879,7 +884,12 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "user asked for an outline. Do not paste a source dump, bibliography, or notes appendix.\n"
         "Paraphrase the Nordins' thesis in clear modern prose, and as you go weave in at least two "
         "word-for-word quotation-marked excerpts from Pastor Don and/or Susan that actually appear in "
-        "REFERENCE NOTES. Place those excerpts inside the teaching paragraphs "
+        "REFERENCE NOTES and that address the user's question. "
+        "Never attribute Scripture or NKJV wording to Pastor Don or Susan; verses are Scripture, not their quotes. "
+        "Do not use Lord's Table or communion excerpts to answer a question about alcoholic drink. "
+        "Do not quote Happiness headings, HAPPY PEOPLE lines, or Fruit of the Spirit "
+        "to answer a question about homosexuality, gay people, or sexual morality. "
+        "Place those excerpts inside the teaching paragraphs "
         "(for example: Pastor Don Nordin teaches, \"...\"). Include NKJV verses from those notes the "
         "same way when Scripture notes are present. Do not wait for the user to ask for quotations "
         "or Scripture. Use a generic Christian pastoral tone; do not imitate Pastor Don's or Susan's "
@@ -912,6 +922,8 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "<scripture_constraints>\n"
         "- VERSION: Quote Scripture from the NKJV wording in REFERENCE NOTES. "
         "Do not invent verse text from memory.\n"
+        "- ATTRIBUTION: Never present a Bible verse as something Pastor Don or Susan said. "
+        "If a line is Scripture, cite it as NKJV, not as a pastoral quotation.\n"
         "- OFF LIMITS: Never recommend The Trevor Project, The National LGBTQ+ Hotline, or Planned Parenthood.\n"
         "</scripture_constraints>\n\n"
 

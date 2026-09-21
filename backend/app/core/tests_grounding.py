@@ -7,6 +7,8 @@ from core.grounding import (
     grounded_fallback_answer,
     lookup_nkjv_verses,
     looks_like_heading_quote,
+    repair_nkjv_citations,
+    select_query_grounded_quotes,
     strip_retrieval_meta,
     verify_answer_grounding,
     weave_into_answer,
@@ -130,6 +132,9 @@ class GroundingTests(unittest.TestCase):
     def test_heading_quotes_are_not_woven(self):
         self.assertTrue(looks_like_heading_quote("# God Was with Him"))
         self.assertTrue(looks_like_heading_quote("# Jesus as the Word"))
+        self.assertTrue(looks_like_heading_quote("HAPPINESS."))
+        self.assertTrue(looks_like_heading_quote("HAPPINESS"))
+        self.assertTrue(looks_like_heading_quote("C. In conclusion"))
         self.assertFalse(
             looks_like_heading_quote("We sit with the grieving and we pray.")
         )
@@ -266,6 +271,93 @@ class GroundingTests(unittest.TestCase):
         sermon, bible = split_docs_for_grounding(docs)
         self.assertEqual(len(sermon), 1)
         self.assertEqual(len(bible), 1)
+
+    def test_drink_query_quotes_prefer_alcohol_not_communion(self):
+        quotes = select_query_grounded_quotes(
+            [
+                "A person should examine himself first, and only then drink from the cup.",
+                "Alcoholism is a sin; it is not a sickness or a disease!",
+                "Total abstinence from alcoholic beverages is the only acceptable way of life for the Christian.",
+            ],
+            "Can Christians drink?",
+            limit=2,
+        )
+        blob = " ".join(quotes).lower()
+        self.assertIn("alcoholism", blob)
+        self.assertIn("abstinence", blob)
+        self.assertNotIn("cup", blob)
+
+    def test_gay_query_quotes_prefer_sexuality_not_happiness(self):
+        quotes = select_query_grounded_quotes(
+            [
+                "HAPPINESS.",
+                "HAPPY PEOPLE are those folks who know, and have confidence in their standing with GOD.",
+                "The fruit of the Spirit is love, joy, peace, longsuffering, kindness, goodness, faithfulness.",
+                "We love and accept the sinner but refuse to accept a sinful lifestyle.",
+                "We love the sinner but we will not bless the sin.",
+            ],
+            "Can gay people be Christians?",
+            limit=2,
+        )
+        blob = " ".join(quotes).lower()
+        self.assertIn("sinful lifestyle", blob)
+        self.assertIn("bless the sin", blob)
+        self.assertNotIn("happy people", blob)
+        self.assertNotIn("happiness", blob)
+        self.assertNotIn("fruit of the spirit", blob)
+
+    def test_empty_nkjv_is_filled_from_allowed_verse(self):
+        filled = repair_nkjv_citations(
+            'Leviticus 10:8-11 (NKJV) says, ""',
+            [("Leviticus 10:9", "Do not drink wine or intoxicating drink.")],
+        )
+        self.assertIn("Do not drink wine or intoxicating drink", filled)
+        self.assertNotRegex(filled, r'says,\s*""')
+
+        stripped = repair_nkjv_citations("Leviticus 10:8-11 (NKJV) says,", [])
+        self.assertNotIn("Leviticus", stripped)
+
+        collapsed = repair_nkjv_citations(
+            'Proverbs 20:1-4 (NKJV) says, "Wine is a mocker."'
+        )
+        self.assertIn("Proverbs 20:1 (NKJV)", collapsed)
+        self.assertNotIn("20:1-4", collapsed)
+
+    def test_scripture_attributed_to_don_is_invented(self):
+        sermon = [
+            _doc(
+                "Alcoholism is a sin; it is not a sickness or a disease!",
+                source="alcohol.pdf",
+                chunk_kind="sermon_quote",
+                quote_text="Alcoholism is a sin; it is not a sickness or a disease!",
+            )
+        ]
+        nkjv = [
+            _doc(
+                "Wine is a mocker, strong drink is a brawler.",
+                source="nkjv-bible.pdf",
+                chunk_kind="bible_verse",
+                book="proverbs",
+                chapter=20,
+                verse_start=1,
+                verse_end=1,
+                verse_ref="Proverbs 20:1",
+                quote_text="Wine is a mocker, strong drink is a brawler.",
+            )
+        ]
+        bad = (
+            'Pastor Don Nordin teaches, "Wine is a mocker, strong drink is a brawler."'
+        )
+        report = verify_answer_grounding(bad, sermon_docs=sermon, nkjv_docs=nkjv)
+        self.assertFalse(report.ok)
+        self.assertTrue(report.invented_quotes)
+
+        good = (
+            'Pastor Don Nordin teaches, "Alcoholism is a sin; it is not a sickness or a disease!" '
+            'Proverbs 20:1 (NKJV) says, "Wine is a mocker, strong drink is a brawler."'
+        )
+        ok = verify_answer_grounding(good, sermon_docs=sermon, nkjv_docs=nkjv)
+        self.assertTrue(ok.ok, ok)
 
 
 if __name__ == "__main__":

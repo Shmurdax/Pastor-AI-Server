@@ -327,6 +327,172 @@ _NAME_PASSAGES = {
     frozenset({"jonah"}): "Jonah 1",
 }
 
+SENSE_ALCOHOL = "alcohol"
+SENSE_COMMUNION = "communion"
+SENSE_SEXUALITY = "sexuality"
+SENSE_NONE = ""
+
+# "Can Christians drink?" must retrieve alcohol notes, not communion "drink from the cup".
+_DRINK_TERMS = frozenset({"drink", "drinking", "drinks", "drank"})
+_ALCOHOL_TERMS = frozenset(
+    {
+        "alcohol",
+        "alcoholic",
+        "alcoholism",
+        "wine",
+        "beer",
+        "liquor",
+        "drunk",
+        "drunken",
+        "drunkenness",
+        "sippin",
+        "sipping",
+        "abstinence",
+        "abstain",
+        "teetotal",
+        "intoxicating",
+        "intoxication",
+        "beverage",
+        "beverages",
+    }
+)
+_ALCOHOL_TITLE_MARKERS = frozenset(
+    {"alcohol", "alcoholic", "alcoholism", "sippin", "wine", "drunk", "abstinence"}
+)
+_COMMUNION_TERMS = frozenset(
+    {
+        "communion",
+        "eucharist",
+        "sacrament",
+        "supper",
+        "cup",
+    }
+)
+_COMMUNION_PHRASES = (
+    "lord's table",
+    "lords table",
+    "lord's supper",
+    "lords supper",
+    "drink from the cup",
+    "drink of the cup",
+    "eat the bread",
+    "bread and drink",
+    "approach the table",
+)
+_COMMUNION_TITLE_MARKERS = frozenset(
+    {"communion", "eucharist", "sacrament", "supper"}
+)
+
+# "Can gay people be Christians?" must retrieve homosexuality notes, not Happiness.
+_SEXUALITY_TERMS = frozenset(
+    {
+        "gay",
+        "gays",
+        "homosexual",
+        "homosexuals",
+        "homosexuality",
+        "lesbian",
+        "lesbians",
+        "lgbt",
+        "lgbtq",
+        "transgender",
+        "bisexual",
+    }
+)
+_SEXUALITY_PHRASES = (
+    "same sex",
+    "sinful lifestyle",
+    "bless the sin",
+    "love the sinner",
+    "love and accept the sinner",
+)
+_SEXUALITY_TITLE_MARKERS = frozenset(
+    {
+        "homosexuality",
+        "homosexual",
+        "gay",
+        "sexuality",
+        "lgbt",
+        "christian boundaries",
+    }
+)
+
+
+def _normalized_topic_blob(text: str) -> str:
+    folded = (text or "").replace("\u2019", "'").lower()
+    folded = re.sub(r"[^\w\s']+", " ", folded)
+    return re.sub(r"\s+", " ", folded).strip()
+
+
+def query_topic_sense(text: str) -> str:
+    """Alcohol vs Lord's Table for "drink", and gay vs Happiness for sexuality."""
+    blob = _normalized_topic_blob(text)
+    if not blob:
+        return SENSE_NONE
+    words = set(blob.split())
+    has_communion = bool(words & _COMMUNION_TERMS) or any(
+        phrase in blob for phrase in _COMMUNION_PHRASES
+    )
+    has_alcohol = bool(words & _ALCOHOL_TERMS)
+    has_drink = bool(words & _DRINK_TERMS)
+    has_sexuality = bool(words & _SEXUALITY_TERMS) or any(
+        phrase in blob for phrase in _SEXUALITY_PHRASES
+    )
+    if has_communion and not has_alcohol:
+        return SENSE_COMMUNION
+    if has_alcohol or (has_drink and not has_communion):
+        return SENSE_ALCOHOL
+    if has_sexuality:
+        return SENSE_SEXUALITY
+    return SENSE_NONE
+
+
+def text_looks_like_communion_only(text: str) -> bool:
+    """True when a chunk/quote is Lord's Table language without alcohol teaching."""
+    blob = _normalized_topic_blob(text)
+    if not blob:
+        return False
+    words = set(blob.split())
+    has_communion = bool(words & _COMMUNION_TERMS) or any(
+        phrase in blob for phrase in _COMMUNION_PHRASES
+    )
+    has_alcohol = bool(words & _ALCOHOL_TERMS)
+    return has_communion and not has_alcohol
+
+
+def text_has_alcohol_teaching(text: str) -> bool:
+    blob = _normalized_topic_blob(text)
+    return bool(blob) and bool(set(blob.split()) & _ALCOHOL_TERMS)
+
+
+def text_has_sexuality_teaching(text: str) -> bool:
+    """True when a chunk/quote is homosexuality teaching, not generic Christian living."""
+    blob = _normalized_topic_blob(text)
+    if not blob:
+        return False
+    words = set(blob.split())
+    if words & _SEXUALITY_TERMS:
+        return True
+    return any(phrase in blob for phrase in _SEXUALITY_PHRASES)
+
+
+def query_title_match(doc: Any, query: str) -> bool:
+    """Title names the question, including alcohol aliases for drink questions."""
+    tokens = query_focus_tokens(query)
+    if tokens and is_strong_title_match(doc, tokens):
+        return True
+    hay = title_search_blob(doc)
+    if not hay:
+        return False
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        return any(marker in hay for marker in _ALCOHOL_TITLE_MARKERS)
+    if sense == SENSE_COMMUNION:
+        return any(marker in hay for marker in _COMMUNION_TITLE_MARKERS)
+    if sense == SENSE_SEXUALITY:
+        return any(marker in hay for marker in _SEXUALITY_TITLE_MARKERS)
+    return False
+
 
 def bible_source_markers() -> tuple[str, ...]:
     raw = os.environ.get("BIBLE_SOURCE_MARKERS", "")
@@ -701,26 +867,53 @@ def query_focus_tokens(text: str) -> frozenset[str]:
     Named Bible-story questions use the character names, not filler like
     \"sermon\" / \"story\" / \"based\" that matches almost every pastoral clip.
     Aliases are resolved at match time so \"able\" is not a focus token.
+    Alcohol questions that only say \"drink\" also include alcohol.
+    Sexuality questions that say \"gay\" also include homosexuality.
     """
+    sense = query_topic_sense(text)
     entities = query_canonical_entity_tokens(text)
-    if entities:
+    if entities and sense != SENSE_SEXUALITY:
         return entities
-    return frozenset(
+    tokens = {
         token.lower()
         for token in keyword_search_query(text).split()
         if len(token) >= 3
         and token.lower() not in _GENERIC_FOCUS_STOPWORDS
-        and token.lower() not in {"god", "man", "men", "son", "day", "way"}
-    )
+        and token.lower() not in {"god", "man", "men", "son", "day", "way", "people"}
+    }
+    if sense == SENSE_ALCOHOL:
+        tokens.add("alcohol")
+    if sense == SENSE_SEXUALITY:
+        tokens.add("gay")
+        tokens.add("homosexuality")
+    return frozenset(tokens)
+
+
+def _token_surface_forms(token: str) -> tuple[str, ...]:
+    cleaned = (token or "").strip().lower()
+    if not cleaned:
+        return ()
+    forms = {cleaned}
+    if cleaned.endswith("ing") and len(cleaned) > 6:
+        forms.add(cleaned[:-3])
+    if cleaned.endswith("s") and not cleaned.endswith("ss") and len(cleaned) > 4:
+        forms.add(cleaned[:-1])
+    elif len(cleaned) >= 4:
+        forms.add(cleaned + "s")
+    return tuple(forms)
 
 
 def _blob_has_token(hay: str, token: str) -> bool:
     cleaned = (token or "").strip().lower()
     if not cleaned or not hay:
         return False
-    if len(cleaned) <= 4:
-        return bool(re.search(rf"\b{re.escape(cleaned)}\b", hay))
-    return cleaned in hay
+    for form in _token_surface_forms(cleaned):
+        if len(form) <= 4:
+            if re.search(rf"\b{re.escape(form)}\b", hay):
+                return True
+        elif form in hay:
+            return True
+    return False
 
 
 def source_stem_key(label: str) -> str:
@@ -863,7 +1056,7 @@ def source_chip_relevance_score(
     else:
         rank_bonus = 0.0
     score = (2.6 * title) + (0.85 * topic) + rank_bonus
-    if focus and is_strong_title_match(doc, focus):
+    if focus and query_title_match(doc, query):
         score += 3.4
     if cited:
         score += 2.2
@@ -919,7 +1112,7 @@ def retain_title_matches(
         fp = chunk_fingerprint(chunk_text(doc))
         if not fp or fp in kept_fps:
             continue
-        if is_strong_title_match(doc, tokens):
+        if query_title_match(doc, query):
             extras.append((doc, float(score)))
             kept_fps.add(fp)
     if not extras:
@@ -946,7 +1139,8 @@ def pin_docs_to_strong_title_matches(
     questions.
     """
     selected = list(docs or [])
-    tokens = query_focus_tokens(pin_query or query)
+    topic = (pin_query or query or "").strip()
+    tokens = query_focus_tokens(topic)
     if not selected or not tokens:
         return selected
     bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
@@ -956,12 +1150,12 @@ def pin_docs_to_strong_title_matches(
     for doc in selected:
         if bible_fn(doc):
             continue
-        if is_strong_title_match(doc, tokens):
+        if query_title_match(doc, topic):
             match_keys.add(source_fn(doc))
     for doc, _score in hits:
         if bible_fn(doc):
             continue
-        if is_strong_title_match(doc, tokens):
+        if query_title_match(doc, topic):
             match_keys.add(source_fn(doc))
     if not match_keys:
         return selected
@@ -1027,6 +1221,31 @@ def filter_hits_by_topic(
         overlap = topic_overlap_score(doc, tokens)
         ranked.append((doc, score, overlap))
     on_topic = [(doc, score) for doc, score, overlap in ranked if overlap > 0]
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        alcohol_hits = []
+        leftover = []
+        for doc, score in on_topic:
+            blob = _metadata_search_blob(doc)
+            if text_looks_like_communion_only(blob) and not (
+                query_title_match(doc, query) or text_has_alcohol_teaching(blob)
+            ):
+                continue
+            if query_title_match(doc, query) or text_has_alcohol_teaching(blob):
+                alcohol_hits.append((doc, score))
+            else:
+                leftover.append((doc, score))
+        if alcohol_hits:
+            on_topic = alcohol_hits
+        elif leftover:
+            on_topic = leftover
+    if sense == SENSE_SEXUALITY:
+        sexuality_hits = []
+        for doc, score, _overlap in ranked:
+            blob = _metadata_search_blob(doc)
+            if query_title_match(doc, query) or text_has_sexuality_teaching(blob):
+                sexuality_hits.append((doc, score))
+        return sexuality_hits
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
         # generic \"sermon\" clips just to fill the quota. If nothing names the
@@ -1039,6 +1258,8 @@ def filter_hits_by_topic(
             if is_bible_source(metadata_source_hint(doc))
         ]
     min_keep = max(6, retrieval_k)
+    if sense in {SENSE_ALCOHOL, SENSE_SEXUALITY} and on_topic:
+        return on_topic
     if len(on_topic) >= min_keep:
         return on_topic
     # Prefer any overlap, then original rank.
@@ -1066,6 +1287,7 @@ def expand_search_queries(
         queries.append(cleaned)
 
     current_q = (current or "").strip()
+    sense = query_topic_sense(current_q)
     prior = [str(item).strip() for item in (prior_user_queries or []) if str(item).strip()]
     last_prior = _last_prior_user(current_q, prior)
     prior_focus = keyword_search_query(last_prior) if last_prior else ""
@@ -1108,11 +1330,16 @@ def expand_search_queries(
                     aliases.append(alias)
         if aliases:
             add(" ".join(bible_names + aliases))
-    elif focus and (not prior_focus or focus.lower() != prior_focus.lower()):
-        # Embed the topical core (homosexuality, salvation, …), not
-        # "generate a sermon based on …".
-        add(focus)
-        add(f"Pastor Don Nordin {focus}")
+    else:
+        if sense == SENSE_ALCOHOL and "alcohol" not in focus.lower():
+            focus = f"{focus} alcohol".strip()
+        if sense == SENSE_SEXUALITY and "homosexuality" not in focus.lower():
+            focus = f"{focus} homosexuality".strip()
+        if focus and (not prior_focus or focus.lower() != prior_focus.lower()):
+            # Embed the topical core (homosexuality, salvation, …), not
+            # "generate a sermon based on …".
+            add(focus)
+            add(f"Pastor Don Nordin {focus}")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
@@ -1120,6 +1347,19 @@ def expand_search_queries(
 
     if not last_prior and focus:
         add(f"Pastor Don Nordin {focus}")
+
+    if sense == SENSE_ALCOHOL:
+        add("alcohol")
+        add("Pastor Don Nordin alcohol")
+        add("the christian and alcohol")
+        add("sippin saints")
+    if sense == SENSE_SEXUALITY:
+        add("homosexuality")
+        add("christian boundaries")
+        add("the christian and homosexuality")
+        add("Pastor Don Nordin homosexuality")
+        add("gay")
+        add("sinful lifestyle")
 
     return queries[: max(1, limit)]
 
@@ -1472,11 +1712,11 @@ def select_diverse_docs(
     per_book: dict[str, int] = {}
     selected_tokens: list[frozenset[str]] = []
     focus_tokens = query_focus_tokens(query)
-    pin_tokens = query_focus_tokens(pin_query) if (pin_query or "").strip() else focus_tokens
+    pin_topic = (pin_query or query or "").strip()
     any_strong_title = any(
-        (not item.is_bible) and is_strong_title_match(item.doc, pin_tokens)
+        (not item.is_bible) and query_title_match(item.doc, pin_topic)
         for item in chunks
-    )
+    ) if pin_topic else False
 
     def can_take(
         chunk: ScoredChunk,
@@ -1486,8 +1726,8 @@ def select_diverse_docs(
     ) -> bool:
         if chunk.fingerprint in selected_fps:
             return False
-        title_hit = (not chunk.is_bible) and is_strong_title_match(
-            chunk.doc, pin_tokens
+        title_hit = (not chunk.is_bible) and bool(pin_topic) and query_title_match(
+            chunk.doc, pin_topic
         )
         if any_strong_title and chunk.is_bible and not looks_like_bible_query(
             pin_query or query
@@ -1568,8 +1808,8 @@ def select_diverse_docs(
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
             topic_boost = 0.40 * chunk.topic_overlap
             title_boost = 0.90 * chunk.title_overlap
-            if any_strong_title and not chunk.is_bible and not is_strong_title_match(
-                chunk.doc, pin_tokens
+            if any_strong_title and not chunk.is_bible and not query_title_match(
+                chunk.doc, pin_topic
             ):
                 # Generic high-embedding sermons (Community, Contagious Christianity)
                 # should not occupy slots when a title clearly names the topic.
@@ -1642,6 +1882,14 @@ def ensure_source_media_mix(
     want = max(1, min(int(min_count), max_count))
     focus = query_focus_tokens(query)
     allow_bible = looks_like_bible_query(query)
+    title_lock = (
+        bool(query)
+        and query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}
+        and any(
+            (not is_bible_source(metadata_source_hint(doc))) and query_title_match(doc, query)
+            for doc in (docs or [])
+        )
+    )
     mixer = rng if rng is not None else random.Random()
     ranked_docs = list(docs or [])
     n_docs = max(len(ranked_docs), 1)
@@ -1720,16 +1968,29 @@ def ensure_source_media_mix(
     # Named-story sermon questions stay on topical hits. Verse/Bible questions
     # still need NKJV even when a book name like "John" looks like an entity.
     named_story_lock = bool(entity_tokens) and not allow_bible
-    relevant_pool = topical if named_story_lock else topical[:_CHIP_SAMPLE_POOL]
+    title_hit_rows = [
+        item for item in by_stem.values()
+        if item[0] is not None and query_title_match(item[0], query)
+    ]
+    if title_lock and title_hit_rows:
+        topical = [
+            row for row in leftovers
+            if row[0] is not None and query_title_match(row[0], query)
+        ]
+        rest = []
+        want = min(max_count, max(1, len({source_stem_key(row[1]) for row in title_hit_rows})))
+    relevant_pool = topical if (named_story_lock or title_lock) else topical[:_CHIP_SAMPLE_POOL]
     for row in _weighted_shuffle_rows(relevant_pool, mixer):
         ordered.append(row)
-    if not named_story_lock:
+    if not named_story_lock and not title_lock:
         for row in _weighted_shuffle_rows(rest[:_CHIP_SAMPLE_POOL], mixer):
             ordered.append(row)
 
     n_relevant = sum(1 for row in ordered if _is_relevant(row))
     if named_story_lock:
         target = max_count
+    elif title_lock:
+        target = want
     else:
         target = min(max_count, max(want, n_relevant))
 
@@ -1742,6 +2003,8 @@ def ensure_source_media_mix(
         doc, _label, _score = row
         topical = _is_relevant(row)
         if named_story_lock and not topical:
+            continue
+        if title_lock and doc is not None and not query_title_match(doc, query):
             continue
         if not allow_bible and _is_bible_doc(doc):
             continue
@@ -1763,6 +2026,8 @@ def ensure_source_media_mix(
                 continue
             if named_story_lock and not _is_relevant(row):
                 continue
+            if title_lock and not query_title_match(doc, query):
+                continue
             if not allow_bible and _is_bible_doc(doc):
                 continue
             stem = source_stem_key(label)
@@ -1780,7 +2045,7 @@ def ensure_source_media_mix(
         _inject(_is_note)
         if named_story_lock:
             _inject(lambda doc: video_fn(doc) and topic_overlap_score(doc, focus) > 0)
-        else:
+        elif not title_lock:
             _inject(video_fn)
 
     while len(picked) < min(want, len(by_stem)):
@@ -1790,6 +2055,8 @@ def ensure_source_media_mix(
             if stem in picked_stems:
                 continue
             if named_story_lock and not _is_relevant(row):
+                continue
+            if title_lock and row[0] is not None and not query_title_match(row[0], query):
                 continue
             if not allow_bible and _is_bible_doc(row[0]):
                 continue
