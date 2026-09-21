@@ -974,7 +974,7 @@ class ChatAPIView(APIView):
                     user_query_llm,
                     prior_user_queries,
                     prior_ai_texts=prior_ai_texts,
-                    limit=7,
+                    limit=9,
                 )
                 candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
                 logger.debug(
@@ -1076,11 +1076,11 @@ class ChatAPIView(APIView):
                     ),
                 )
                 logger.warning(
-                    "Teaching claims session=%s count=%s query=%r sample=%s",
+                    "Teaching claims session=%s count=%s query=%r claims=%s",
                     session_id[:18],
                     len(teaching_claims or []),
                     (topic_query or "")[:120],
-                    (teaching_claims or [])[:2],
+                    teaching_claims or [],
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))

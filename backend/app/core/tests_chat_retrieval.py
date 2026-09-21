@@ -1201,6 +1201,14 @@ class ChatRetrievalTests(unittest.TestCase):
             any("christian and alcohol" in item.lower() for item in queries),
             queries,
         )
+        self.assertTrue(
+            any("total abstinence" in item.lower() for item in queries),
+            queries,
+        )
+        self.assertTrue(
+            any("alcoholism is a sin" in item.lower() for item in queries),
+            queries,
+        )
         self.assertFalse(any("communion" in item.lower() for item in queries), queries)
 
     def test_drink_query_keeps_alcohol_hits_and_drops_communion(self):

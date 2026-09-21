@@ -17,6 +17,7 @@ from .chat_retrieval import (
     looks_like_library_pull,
     metadata_source_hint,
     query_topic_sense,
+    text_has_alcohol_application,
     text_has_alcohol_teaching,
     text_has_sexuality_application,
     text_has_sexuality_teaching,
@@ -56,7 +57,17 @@ _APPLICATION_CLIP_RE = re.compile(
     r"(?i)("
     r"not an acceptable lifestyle|love the homosexual|stand firmly|"
     r"those who approve|stone the homosexual|judgment is not ours|"
-    r"natural law"
+    r"natural law|"
+    r"total abstinence|only acceptable way|alcoholism is a sin|"
+    r"not a sickness|not a disease|abstain from alcoholic"
+    r")"
+)
+_PACKED_VERSE_RE = re.compile(r"\d+[A-Z][a-z]")
+_ROMANS_LIBERTY_BLOB_RE = re.compile(
+    r"(?i)("
+    r"whatever is not from faith is sin|"
+    r"does not condemn himself in what he approves|"
+    r"he who doubts is condemned if he eats"
     r")"
 )
 
@@ -337,7 +348,10 @@ def _score_claim(claim: str, query_tokens: set[str], *, query: str = "") -> int:
     overlap = sum(1 for token in query_tokens if token in claim_words)
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
     application = 0
-    if query_topic_sense(query) == SENSE_SEXUALITY and text_has_sexuality_application(claim):
+    sense = query_topic_sense(query)
+    if sense == SENSE_SEXUALITY and text_has_sexuality_application(claim):
+        application = 16
+    if sense == SENSE_ALCOHOL and text_has_alcohol_application(claim):
         application = 16
     return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast + application
 
@@ -360,6 +374,8 @@ def extract_teaching_claims(
             if looks_like_deck_junk(claim) or looks_like_kjv_diction(claim):
                 continue
             if looks_like_scripture_blob(claim) or looks_like_vice_catalog(claim):
+                continue
+            if _PACKED_VERSE_RE.search(claim) or _ROMANS_LIBERTY_BLOB_RE.search(claim):
                 continue
             if looks_like_stat_slide(claim):
                 continue
@@ -434,6 +450,17 @@ def extract_teaching_claims(
             ranked = topical
         elif query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
             ranked = []
+    sense = query_topic_sense(query)
+    if sense == SENSE_ALCOHOL:
+        applied = [claim for claim in ranked if text_has_alcohol_application(claim)]
+        if applied:
+            rest = [claim for claim in ranked if claim not in applied]
+            ranked = applied + rest
+    elif sense == SENSE_SEXUALITY:
+        applied = [claim for claim in ranked if text_has_sexuality_application(claim)]
+        if applied:
+            rest = [claim for claim in ranked if claim not in applied]
+            ranked = applied + rest
     return ranked[: max(1, limit)]
 
 
@@ -452,7 +479,9 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Teach these numbered points. Do not substitute an LGBTQ inclusion frame, sexual-orientation "
+        "Teach these numbered points in order. The first sentence must paraphrase point 1. "
+        "Do not invent a yes/no that is not in the points. "
+        "Do not substitute an LGBTQ inclusion frame, sexual-orientation "
         "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
         "Do not teach that alcoholic drink is a personal decision, a Romans 14 liberty issue, "
         "or that many Christians may drink in moderation unless that idea appears in the points.",
@@ -474,8 +503,9 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
     if points:
         lines.append("")
         lines.append(
-            "Answer by paraphrasing the numbered sermon points below. "
-            "They are the doctrine. Do not add theology that is not in them."
+            "Answer by paraphrasing every numbered sermon point below, in order. "
+            "They are the doctrine. The first sentence must paraphrase point 1. "
+            "Do not add theology or a yes/no that is not in them."
         )
         for index, claim in enumerate(points, start=1):
             lines.append(f"{index}. {claim}")
@@ -486,6 +516,7 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
             )
         if sense == SENSE_SEXUALITY:
             lines.append(
+                "Do not begin by saying gay people can be Christians unless a numbered point says that. "
                 "Do not give an LGBTQ inclusion, sexual-orientation acceptance, or Mark 12 "
                 "greatest-commandment answer unless a numbered point says that."
             )

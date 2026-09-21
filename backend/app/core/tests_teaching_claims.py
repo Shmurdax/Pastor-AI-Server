@@ -122,7 +122,9 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
-        self.assertIn("LGBTQ inclusion frame", block)
+        self.assertIn("Teach these numbered points in order", block)
+        self.assertIn("first sentence must paraphrase point 1", block)
+        self.assertIn("Do not invent a yes/no", block)
         self.assertIn("Romans 14 liberty", block)
         steer = claim_repair_steer(claims)
         self.assertIn("do not restart", steer.lower())
@@ -147,6 +149,8 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Alcoholism is a sin", drink)
         self.assertIn("Romans 14 liberty", drink)
         self.assertIn("Do not say drinking is a personal decision", drink)
+        self.assertIn("first sentence must paraphrase point 1", drink)
+        self.assertIn("every numbered sermon point", drink)
 
         gay = format_generation_user_prompt(
             "Can gay people be Christians?",
@@ -157,6 +161,7 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("stand firmly", gay)
         self.assertIn("LGBTQ inclusion", gay)
         self.assertIn("Mark 12", gay)
+        self.assertIn("Do not begin by saying gay people can be Christians", gay)
 
         empty = format_generation_user_prompt("Can Christians drink?", [])
         self.assertIn("did not yield teaching points", empty)
@@ -439,6 +444,46 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("3.5%", blob)
         self.assertNotIn("civic leaders", blob)
         self.assertNotIn("wine is a mocker", blob)
+
+    def test_drink_query_ranks_abstinence_and_skips_romans_14_blob(self):
+        docs = [
+            _doc(
+                "There is quite a difference between taking cough medicine, which contains "
+                "alcohol and drinking socially or responsibly because one wants to drink alcohol!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Happy is he who does not condemn himself in what he approves. 23But he who "
+                "doubts is condemned if he eats, because he does not eat from faith; for "
+                "whatever is not from faith is sin. Paul warns Timothy about the evils of alcohol.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way of "
+                "life for the Christian. Alcoholism is a sin; it is not a sickness or a disease!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "Total abstinence from alcoholic beverages is the only acceptable "
+                    "way of life for the Christian. | Alcoholism is a sin; it is not a "
+                    "sickness or a disease!"
+                ),
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query="Can Christians drink?")
+        blob = " ".join(claims).lower()
+        self.assertTrue(claims, claims)
+        self.assertIn("only acceptable way", blob)
+        self.assertIn("alcoholism is a sin", blob)
+        self.assertNotIn("whatever is not from faith", blob)
+        self.assertNotIn("23but", blob)
+        self.assertTrue(
+            "only acceptable way" in claims[0].lower()
+            or "alcoholism is a sin" in claims[0].lower(),
+            claims,
+        )
 
     def test_loose_overlap_does_not_cover_abstinence_thesis(self):
         claim = (

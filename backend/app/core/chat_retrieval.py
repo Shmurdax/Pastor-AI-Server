@@ -1410,6 +1410,16 @@ def expand_search_queries(
             # "generate a sermon based on …".
             add(focus)
             add(f"Pastor Don Nordin {focus}")
+        if sense == SENSE_ALCOHOL:
+            add("total abstinence from alcoholic beverages")
+            add("alcoholism is a sin not a disease")
+            add("the christian and alcohol")
+            add("sippin saints")
+        if sense == SENSE_SEXUALITY:
+            add("christian boundaries")
+            add("love the homosexual")
+            add("not an acceptable lifestyle")
+            add("stone the homosexual")
 
     # Only embed the raw prompt when it already is the topical core.
     if focus and current_q.lower() == focus.lower():
@@ -1423,6 +1433,8 @@ def expand_search_queries(
         add("Pastor Don Nordin alcohol")
         add("the christian and alcohol")
         add("sippin saints")
+        add("total abstinence from alcoholic beverages")
+        add("alcoholism is a sin not a disease")
     if sense == SENSE_SEXUALITY:
         add("christian boundaries")
         add("homosexuality")
@@ -1432,6 +1444,7 @@ def expand_search_queries(
         add("Pastor Don Nordin homosexuality")
         add("the christian and homosexuality")
         add("gay")
+        add("stone the homosexual")
 
     return queries[: max(1, limit)]
 
