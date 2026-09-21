@@ -76,6 +76,10 @@ void main() {
       );
 
   Future<void> pumpDetail(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(
       MaterialApp(
         home: PrayerRequestDetailScreen(
@@ -108,7 +112,14 @@ void main() {
 
     final selectY = tester.getTopLeft(find.text('Select email platform:')).dy;
     final emailButtonY = tester.getTopLeft(find.text('Email with Gmail')).dy;
+    final saveButtonY = tester.getTopLeft(find.text('Save follow-up')).dy;
     expect(selectY, lessThan(emailButtonY));
+    expect(saveButtonY, lessThan(emailButtonY));
+
+    final saveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save follow-up'),
+    );
+    expect(saveButton.style?.backgroundColor?.resolve({}), const Color(0xFFa1375a));
 
     await tester.tap(find.widgetWithText(FilterChip, 'Outlook'));
     await tester.pumpAndSettle();
@@ -123,6 +134,8 @@ void main() {
     expect(find.text('Email with Default app'), findsOneWidget);
     expect(mockLauncher.launched, isEmpty);
 
+    await tester.ensureVisible(find.text('Email with Default app'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Email with Default app'));
     await tester.pumpAndSettle();
 
@@ -134,6 +147,8 @@ void main() {
     await pumpDetail(tester);
 
     await tester.tap(find.widgetWithText(FilterChip, 'Outlook'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Email with Outlook'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Email with Outlook'));
     await tester.pumpAndSettle();

@@ -468,22 +468,6 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  onPressed: () => _openEmail(email, _preferredEmailClient),
-                  icon: const Icon(Icons.email_outlined, size: 18),
-                  label: Text(
-                    'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
-                    style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _navy,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                ),
-              ),
             ],
             const SizedBox(height: 20),
             Text('Prayer request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
@@ -536,7 +520,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
             FilledButton(
               onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
-                backgroundColor: _navy,
+                backgroundColor: _pink,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -548,6 +532,22 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                     )
                   : Text('Save follow-up', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
             ),
+            if (email != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () => _openEmail(email, _preferredEmailClient),
+                icon: const Icon(Icons.email_outlined, size: 18),
+                label: Text(
+                  'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
+                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _navy,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
