@@ -29,6 +29,33 @@ void main() {
     expect((merged.single['messages'] as List).length, 2);
   });
 
+  test('deleted session ids stay gone when remote still has them', () {
+    final merged = mergeChatHistoryEntries(
+      [
+        {'sessionId': 'keep', 'updatedAt': 5, 'messages': <dynamic>[]},
+      ],
+      [
+        {'sessionId': 'keep', 'updatedAt': 6, 'messages': <dynamic>[]},
+        {'sessionId': 'gone', 'updatedAt': 9, 'messages': <dynamic>[]},
+      ],
+      deletedSessionIds: const ['gone'],
+    );
+    expect(merged.map((e) => e['sessionId']), ['keep']);
+  });
+
+  test('omitDeletedHistoryEntries drops matching session ids', () {
+    expect(
+      omitDeletedHistoryEntries(
+        [
+          {'sessionId': 'keep', 'updatedAt': 1},
+          {'sessionId': 'gone', 'updatedAt': 2},
+        ],
+        const ['gone'],
+      ).map((e) => e['sessionId']),
+      ['keep'],
+    );
+  });
+
   test('keeps distinct sessions from both sides', () {
     final merged = mergeChatHistoryEntries(
       [

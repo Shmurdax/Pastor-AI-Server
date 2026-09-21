@@ -2,15 +2,36 @@
 ///
 /// Prefer the richer live draft over a newer but shorter PUT snapshot so an
 /// in-flight answer is not clobbered. Then fall back to [updatedAt].
+Set<String> normalizeDeletedSessionIds(Iterable<String> ids) {
+  return {
+    for (final id in ids)
+      if (id.trim().isNotEmpty) id.trim(),
+  };
+}
+
+List<Map<String, dynamic>> omitDeletedHistoryEntries(
+  List<Map<String, dynamic>> entries,
+  Iterable<String> deletedSessionIds,
+) {
+  final deleted = normalizeDeletedSessionIds(deletedSessionIds);
+  if (deleted.isEmpty) return entries;
+  return [
+    for (final entry in entries)
+      if (!deleted.contains(entry['sessionId']?.toString().trim() ?? '')) entry,
+  ];
+}
+
 List<Map<String, dynamic>> mergeChatHistoryEntries(
   List<Map<String, dynamic>> local,
-  List<Map<String, dynamic>> remote,
-) {
+  List<Map<String, dynamic>> remote, {
+  Iterable<String> deletedSessionIds = const [],
+}) {
+  final deleted = normalizeDeletedSessionIds(deletedSessionIds);
   final byId = <String, Map<String, dynamic>>{};
 
   void consider(Map<String, dynamic> entry) {
     final id = entry['sessionId']?.toString().trim() ?? '';
-    if (id.isEmpty) return;
+    if (id.isEmpty || deleted.contains(id)) return;
     final next = Map<String, dynamic>.from(entry);
     final existing = byId[id];
     if (existing == null) {

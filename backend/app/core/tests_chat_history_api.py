@@ -49,6 +49,58 @@ class ChatHistoryAPITests(TestCase):
         self.assertEqual(got.data["entries"][0]["sessionId"], "abc-123")
         self.assertEqual(UserChatHistory.objects.filter(user=self.user).count(), 1)
 
+    def test_put_honors_deleted_session_ids(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+        self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [
+                    {
+                        "sessionId": "keep-me",
+                        "title": "Keep",
+                        "updatedAt": 2,
+                        "messages": [{"role": "user", "text": "keep"}],
+                    },
+                    {
+                        "sessionId": "delete-me",
+                        "title": "Delete",
+                        "updatedAt": 1,
+                        "messages": [{"role": "user", "text": "delete"}],
+                    },
+                ],
+                "active_session_id": "keep-me",
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        put = self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [
+                    {
+                        "sessionId": "keep-me",
+                        "title": "Keep",
+                        "updatedAt": 3,
+                        "messages": [{"role": "user", "text": "keep"}],
+                    }
+                ],
+                "active_session_id": "keep-me",
+                "deleted_session_ids": ["delete-me"],
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(put.status_code, 200)
+        self.assertEqual(
+            [entry["sessionId"] for entry in put.data["entries"]],
+            ["keep-me"],
+        )
+        got = self.client.get("/api/chat/history/")
+        self.assertEqual(
+            [entry["sessionId"] for entry in got.data["entries"]],
+            ["keep-me"],
+        )
+
     def test_put_drops_entries_without_session_id(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
         put = self.client.put(
