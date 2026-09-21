@@ -31,6 +31,7 @@ import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
+import 'package:flutter_application_1/widgets/sermon_source_link.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
@@ -3125,47 +3126,10 @@ Widget _buildChatBubble(Map<String, dynamic> msg, bool isUser, bool isMobile, in
   }
 
   Widget _buildSermonLink(String sermonTitle) {
-    bool isHovered = false;
-    return StatefulBuilder(
-      builder: (context, setState) => MouseRegion(
-        onEnter: (_) => setState(() => isHovered = true),
-        onExit: (_) => setState(() => isHovered = false),
-        child: AnimatedContainer(
-          duration: isHovered ? const Duration(milliseconds: 250) : Duration.zero,
-          curve: isHovered ? Curves.easeOut : Curves.linear,
-          margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 12.0),
-          transform: isHovered ? (Matrix4.identity()..translate(0.0, -3.0)) : Matrix4.identity(),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: isHovered ? Colors.white.withOpacity(0.07) : Colors.transparent,
-            boxShadow: isHovered
-                ? [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 6), spreadRadius: -4)]
-                : [],
-          ),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => _launchSermonDoc(sermonTitle),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-              child: Row(
-                children: [
-                  Icon(
-                    isVideoSermonSource(sermonTitle) ? Icons.videocam_outlined : Icons.description_outlined,
-                    color: _gold,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(sermonTitle,
-                        style: GoogleFonts.figtree(
-                            color: Colors.white, fontSize: 14, fontWeight: FontWeight.w400)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SermonSourceLink(
+      key: ValueKey(sermonTitle),
+      title: sermonTitle,
+      onTap: () => _launchSermonDoc(sermonTitle),
     );
   }
 
