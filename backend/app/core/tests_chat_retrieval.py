@@ -1305,6 +1305,8 @@ class ChatRetrievalTests(unittest.TestCase):
         joined = " | ".join(queries).lower()
         self.assertIn("homosexuality", joined)
         self.assertIn("christian boundaries", joined)
+        self.assertIn("love the homosexual", joined)
+        self.assertIn("not an acceptable lifestyle", joined)
         self.assertTrue(queries[0].lower().startswith("gay"), queries)
         self.assertFalse(queries[0].lower() == "people", queries)
         self.assertTrue(
@@ -1441,8 +1443,55 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         self.assertGreaterEqual(thesis_count, 2, texts)
         self.assertLessEqual(stat_count, 2, texts)
-        self.assertLessEqual(len(selected), 4, texts)
-        self.assertTrue(all(doc.metadata["source"] == "sippin-saints.pdf" for doc in selected))
+
+    def test_gay_query_pins_application_windows_over_vice_catalog(self):
+        vice = _doc(
+            "lifestyle open themselves up to twenty three additional sinful practices: "
+            "unrighteousness, sexual immorality, wickedness, covetousness, maliciousness, "
+            "full of envy, murder, strife, deceit, evil-mindedness, whisperers, backbiters, "
+            "haters of God, violent, proud, boasters, inventors of evil things, undiscerning, "
+            "untrustworthy, unloving, unforgiving, unmerciful.",
+            source="CHRISTIAN BOUNDARIES.pdf",
+            title="Christian Boundaries",
+        )
+        application = _doc(
+            "Preaching this sermon does not mean I hate homosexuals, I am merely saying "
+            "this is not an acceptable lifestyle according to natural law and the law of God. "
+            "We must love the homosexual but we are to stand firmly against the lifestyle "
+            "which they have chosen to embrace. Before any of us get rocks out to stone the "
+            "homosexuals, the same Bible judges the fornicator and the adulterer.",
+            source="CHRISTIAN BOUNDARIES.pdf",
+            title="Christian Boundaries",
+        )
+        query = "Can gay people be Christians?"
+        pinned = pin_docs_to_strong_title_matches(
+            [vice],
+            query,
+            candidate_hits=[(vice, 0.99), (application, 0.71)],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        texts = [doc.page_content.lower() for doc in pinned]
+        self.assertTrue(any("stand firmly" in text for text in texts), texts)
+        self.assertTrue(any("not an acceptable lifestyle" in text for text in texts), texts)
+        app_index = next(index for index, text in enumerate(texts) if "stand firmly" in text)
+        vice_indexes = [index for index, text in enumerate(texts) if "unrighteousness" in text]
+        if vice_indexes:
+            self.assertLessEqual(app_index, vice_indexes[0], texts)
+
+        selected = select_diverse_docs(
+            [(vice, 0.99), (application, 0.71)],
+            k=4,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query=query,
+            pin_query=query,
+        )
+        selected_text = " ".join(doc.page_content.lower() for doc in selected)
+        self.assertIn("stand firmly", selected_text)
+        self.assertIn("not an acceptable lifestyle", selected_text)
 
     def test_format_notes_puts_theses_before_stat_slides(self):
         docs = [

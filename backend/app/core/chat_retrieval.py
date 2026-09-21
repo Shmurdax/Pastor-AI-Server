@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
-from .note_priority import chunk_thesis_score
+from .note_priority import chunk_thesis_score, looks_like_vice_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -407,6 +407,26 @@ _SEXUALITY_PHRASES = (
     "bless the sin",
     "love the sinner",
     "love and accept the sinner",
+    "homosexual lifestyle",
+    "homosexual agenda",
+    "hate homosexuals",
+    "love the homosexual",
+    "stone the homosexual",
+    "sin of the homosexual",
+    "not an acceptable lifestyle",
+    "approve such a lifestyle",
+    "practice such a lifestyle",
+    "lifestyle as normal",
+    "stand firmly against the lifestyle",
+)
+_SEXUALITY_APPLICATION_RE = re.compile(
+    r"(?i)("
+    r"not an acceptable lifestyle|natural law and the law of god|"
+    r"love the homosexual|stand firmly against|"
+    r"those who approve|stone the homosexual|"
+    r"love and accept the sinner|will not bless the sin|"
+    r"refuse to accept a sinful lifestyle|does not mean i hate"
+    r")"
 )
 _SEXUALITY_TITLE_MARKERS = frozenset(
     {
@@ -476,6 +496,14 @@ def text_has_sexuality_teaching(text: str) -> bool:
     if words & _SEXUALITY_TERMS:
         return True
     return any(phrase in blob for phrase in _SEXUALITY_PHRASES)
+
+
+def text_has_sexuality_application(text: str) -> bool:
+    """True for Don's application theses, not a Romans 1 vice catalog."""
+    blob = text or ""
+    if looks_like_vice_catalog(blob):
+        return False
+    return bool(_SEXUALITY_APPLICATION_RE.search(blob))
 
 
 def query_title_match(doc: Any, query: str) -> bool:
@@ -1181,10 +1209,26 @@ def pin_docs_to_strong_title_matches(
 
     pinned: list[Any] = []
     seen: set[str] = set()
-    pool.sort(
-        key=lambda doc: scored.get(chunk_fingerprint(chunk_text(doc)), 0.0),
-        reverse=True,
-    )
+    topic_sense = query_topic_sense(topic)
+
+    def _pin_rank(doc: Any) -> float:
+        text = chunk_text(doc)
+        vector = scored.get(chunk_fingerprint(text), 0.0)
+        thesis = chunk_thesis_score(text)
+        bonus = 0.0
+        if thesis >= 1.5:
+            bonus += 0.35
+        elif thesis <= 0:
+            bonus -= 0.35
+        if topic_sense == SENSE_SEXUALITY and text_has_sexuality_application(text):
+            bonus += 0.55
+        if topic_sense == SENSE_ALCOHOL and text_has_alcohol_teaching(text) and thesis >= 1.5:
+            bonus += 0.45
+        if looks_like_vice_catalog(text):
+            bonus -= 0.50
+        return vector + bonus
+
+    pool.sort(key=_pin_rank, reverse=True)
     for doc in pool:
         fp = chunk_fingerprint(chunk_text(doc)) or f"id:{id(doc)}"
         if fp in seen:
@@ -1356,12 +1400,14 @@ def expand_search_queries(
         add("the christian and alcohol")
         add("sippin saints")
     if sense == SENSE_SEXUALITY:
-        add("homosexuality")
         add("christian boundaries")
-        add("the christian and homosexuality")
-        add("Pastor Don Nordin homosexuality")
-        add("gay")
+        add("homosexuality")
+        add("love the homosexual")
+        add("not an acceptable lifestyle")
         add("sinful lifestyle")
+        add("Pastor Don Nordin homosexuality")
+        add("the christian and homosexuality")
+        add("gay")
 
     return queries[: max(1, limit)]
 
@@ -1813,9 +1859,18 @@ def select_diverse_docs(
             topic_boost = 0.40 * chunk.topic_overlap
             title_boost = 0.90 * chunk.title_overlap
             thesis_boost = 0.0
+            chunk_body = chunk_text(chunk.doc)
             if any_strong_title and not chunk.is_bible:
-                if chunk_thesis_score(chunk_text(chunk.doc)) > 0:
+                if chunk_thesis_score(chunk_body) > 0:
                     thesis_boost = 0.45
+                sense = query_topic_sense(query)
+                if sense == SENSE_SEXUALITY and text_has_sexuality_application(chunk_body):
+                    thesis_boost += 0.55
+                elif sense == SENSE_SEXUALITY and looks_like_vice_catalog(chunk_body):
+                    thesis_boost -= 0.40
+                elif sense == SENSE_ALCOHOL and text_has_alcohol_teaching(chunk_body):
+                    if chunk_thesis_score(chunk_body) >= 1.5:
+                        thesis_boost += 0.25
             if any_strong_title and not chunk.is_bible and not query_title_match(
                 chunk.doc, pin_topic
             ):

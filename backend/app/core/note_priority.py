@@ -35,7 +35,22 @@ _TEACHING_RE = re.compile(
     r"(?i)\b("
     r"should|cannot|can't|must|boundary|abstinence|abstain|"
     r"refuse|sin|sinner|lifestyle|never|only acceptable|"
-    r"covenant|not a contract"
+    r"covenant|not a contract|approve|stone|fornicator|"
+    r"natural law|stand firmly"
+    r")\b"
+)
+_VICE_WORDS_RE = re.compile(
+    r"(?i)\b("
+    r"unrighteousness|immorality|wickedness|covetousness|maliciousness|"
+    r"whisperers|backbiters|boasters|undiscerning|untrustworthy|"
+    r"unloving|unforgiving|unmerciful|evil-mindedness|"
+    r"inventors of evil"
+    r")\b"
+)
+_APPLICATION_KEEP_RE = re.compile(
+    r"(?i)\b("
+    r"must|should|love|stand|refuse|acceptable|boundary|"
+    r"approve|stone|natural law"
     r")\b"
 )
 
@@ -69,12 +84,24 @@ def looks_like_stat_slide(text: str) -> bool:
     return not _TEACHING_RE.search(blob)
 
 
+def looks_like_vice_catalog(text: str) -> bool:
+    """True for Romans-1 style sin lists, not Don's application of them."""
+    blob = text or ""
+    if blob.count(",") < 4:
+        return False
+    if len(_VICE_WORDS_RE.findall(blob)) < 3:
+        return False
+    return not _APPLICATION_KEEP_RE.search(blob)
+
+
 def thesis_sentence_score(text: str) -> float:
     """Higher is a complete teaching sentence; junk and Bible fragments score low."""
     cleaned = " ".join((text or "").split())
     if len(cleaned) < 40 or len(cleaned) > 400:
         return -1.0
     if looks_like_deck_junk(cleaned) or looks_like_kjv_diction(cleaned):
+        return -1.0
+    if looks_like_vice_catalog(cleaned):
         return -1.0
     if looks_like_stat_slide(cleaned):
         return -0.5
