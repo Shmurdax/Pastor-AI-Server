@@ -407,7 +407,14 @@ _SEXUALITY_PHRASES = (
     "love and accept the sinner",
 )
 _SEXUALITY_TITLE_MARKERS = frozenset(
-    {"homosexuality", "homosexual", "gay", "sexuality", "lgbt"}
+    {
+        "homosexuality",
+        "homosexual",
+        "gay",
+        "sexuality",
+        "lgbt",
+        "christian boundaries",
+    }
 )
 
 
@@ -1348,6 +1355,8 @@ def expand_search_queries(
         add("sippin saints")
     if sense == SENSE_SEXUALITY:
         add("homosexuality")
+        add("christian boundaries")
+        add("the christian and homosexuality")
         add("Pastor Don Nordin homosexuality")
         add("gay")
         add("sinful lifestyle")

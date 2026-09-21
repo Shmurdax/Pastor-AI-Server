@@ -1304,6 +1304,7 @@ class ChatRetrievalTests(unittest.TestCase):
         queries = expand_search_queries("Can gay people be Christians?", limit=7)
         joined = " | ".join(queries).lower()
         self.assertIn("homosexuality", joined)
+        self.assertIn("christian boundaries", joined)
         self.assertTrue(queries[0].lower().startswith("gay"), queries)
         self.assertFalse(queries[0].lower() == "people", queries)
         self.assertTrue(
@@ -1313,16 +1314,16 @@ class ChatRetrievalTests(unittest.TestCase):
 
     def test_gay_query_keeps_sexuality_hits_and_drops_happiness(self):
         sexuality = _doc(
-            "We love and accept the sinner but refuse to accept a sinful lifestyle. "
-            "We love the sinner but we will not bless the sin.",
-            source="homosexuality.pdf",
-            title="Homosexuality",
+            "While we love and accept the sinner, we refuse to accept a sinful lifestyle "
+            "as normal in the Kingdom of God, and this includes the sin of homosexuality.",
+            source="CHRISTIAN BOUNDARIES.pdf",
+            title="Christian Boundaries",
         )
         happiness = _doc(
             "HAPPINESS. HAPPY PEOPLE are those folks who know, and have confidence "
             "in their standing with GOD. The fruit of the Spirit is love, joy, peace.",
-            source="happiness.pdf",
-            title="HAPPINESS",
+            source="THE PURSUIT OF HAPPINESS.pdf",
+            title="The Pursuit of Happiness",
         )
         fruit = _doc(
             "The fruit of the Spirit is love, joy, peace, longsuffering, kindness, "
@@ -1337,8 +1338,8 @@ class ChatRetrievalTests(unittest.TestCase):
             retrieval_k=8,
         )
         sources = [doc.metadata["source"] for doc, _score in filtered]
-        self.assertIn("homosexuality.pdf", sources)
-        self.assertNotIn("happiness.pdf", sources)
+        self.assertIn("CHRISTIAN BOUNDARIES.pdf", sources)
+        self.assertNotIn("THE PURSUIT OF HAPPINESS.pdf", sources)
         self.assertNotIn("fruit.pdf", sources)
         self.assertEqual(
             filter_hits_by_topic(
@@ -1361,8 +1362,8 @@ class ChatRetrievalTests(unittest.TestCase):
             source_key=lambda doc: doc.metadata["source"],
         )
         pinned_sources = [doc.metadata["source"] for doc in pinned]
-        self.assertIn("homosexuality.pdf", pinned_sources)
-        self.assertNotIn("happiness.pdf", pinned_sources)
+        self.assertIn("CHRISTIAN BOUNDARIES.pdf", pinned_sources)
+        self.assertNotIn("THE PURSUIT OF HAPPINESS.pdf", pinned_sources)
         self.assertTrue(query_title_match(sexuality, query))
         self.assertFalse(query_title_match(happiness, query))
 
@@ -1376,14 +1377,14 @@ class ChatRetrievalTests(unittest.TestCase):
             source_key=lambda doc: doc.metadata["source"],
         )
         selected_sources = {doc.metadata["source"] for doc in selected}
-        self.assertIn("homosexuality.pdf", selected_sources)
-        self.assertNotIn("happiness.pdf", selected_sources)
+        self.assertIn("CHRISTIAN BOUNDARIES.pdf", selected_sources)
+        self.assertNotIn("THE PURSUIT OF HAPPINESS.pdf", selected_sources)
 
         def label(doc):
             return doc.metadata["title"]
 
         chips = ensure_source_media_mix(
-            ["HAPPINESS", "Homosexuality", "Fruit of the Spirit"],
+            ["The Pursuit of Happiness", "Christian Boundaries", "Fruit of the Spirit"],
             [happiness, sexuality, fruit],
             label,
             min_count=3,
@@ -1392,7 +1393,7 @@ class ChatRetrievalTests(unittest.TestCase):
             rng=random.Random(1),
         )
         chip_blob = " | ".join(chips).lower()
-        self.assertIn("homosexuality", chip_blob)
+        self.assertIn("boundar", chip_blob)
         self.assertNotIn("happiness", chip_blob)
         self.assertNotIn("fruit", chip_blob)
 
