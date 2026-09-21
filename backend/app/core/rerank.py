@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 from typing import Any, Callable, Iterable, Optional
 
 from .chat_retrieval import chunk_fingerprint, chunk_text
@@ -21,6 +22,7 @@ RERANK_MAX_CHARS = int(os.getenv("RERANK_MAX_CHARS", "1024"))
 
 _RERANKER = None
 _RERANKER_FAILED = False
+_RERANKER_LOCK = threading.Lock()
 
 
 def rerank_enabled(env: Optional[dict] = None) -> bool:
@@ -102,30 +104,36 @@ def get_reranker(*, force_new: bool = False):
     """Load the BGE cross-encoder once per process, CPU by default."""
     global _RERANKER, _RERANKER_FAILED
     if force_new:
-        _RERANKER = None
-        _RERANKER_FAILED = False
+        with _RERANKER_LOCK:
+            _RERANKER = None
+            _RERANKER_FAILED = False
     if _RERANKER is not None:
         return _RERANKER
     if _RERANKER_FAILED:
         return None
-    device = _rerank_device()
-    if device == "cpu":
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    try:
-        from sentence_transformers import CrossEncoder
-    except Exception as exc:  # pragma: no cover - optional local deps
-        logger.warning("BGE reranker unavailable (sentence-transformers): %s", exc)
-        _RERANKER_FAILED = True
-        return None
-    model_name = (os.getenv("RERANK_MODEL") or DEFAULT_RERANK_MODEL).strip()
-    try:
-        logger.info("Loading reranker %s on device=%s", model_name, device)
-        _RERANKER = CrossEncoder(model_name, device=device)
-    except Exception as exc:
-        logger.warning("BGE reranker failed to load: %s", exc)
-        _RERANKER_FAILED = True
-        return None
-    return _RERANKER
+    with _RERANKER_LOCK:
+        if _RERANKER is not None:
+            return _RERANKER
+        if _RERANKER_FAILED:
+            return None
+        device = _rerank_device()
+        if device == "cpu":
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        try:
+            from sentence_transformers import CrossEncoder
+        except Exception as exc:  # pragma: no cover - optional local deps
+            logger.warning("BGE reranker unavailable (sentence-transformers): %s", exc)
+            _RERANKER_FAILED = True
+            return None
+        model_name = (os.getenv("RERANK_MODEL") or DEFAULT_RERANK_MODEL).strip()
+        try:
+            logger.info("Loading reranker %s on device=%s", model_name, device)
+            _RERANKER = CrossEncoder(model_name, device=device)
+        except Exception as exc:
+            logger.warning("BGE reranker failed to load: %s", exc)
+            _RERANKER_FAILED = True
+            return None
+        return _RERANKER
 
 
 def rerank_scored_hits(
