@@ -1816,6 +1816,83 @@ def sources_cited_in_answer(
     return cited
 
 
+def select_major_source_keys(
+    scored_hits: Iterable[tuple[Any, float]],
+    query: str,
+    *,
+    source_key: Callable[[Any], str],
+    is_bible: Optional[Callable[[Any], bool]] = None,
+    catalog_keys: Optional[Iterable[str]] = None,
+    limit: int = 3,
+) -> list[str]:
+    """Pick the sermons that actually teach the prompt, even without a title hit.
+
+    Groups ANN windows by file. Title/catalog matches rank first; otherwise the
+    sources with the most on-topic teaching sentences win. Community intros that
+    only mention the word once lose to notes with real theses.
+    """
+    bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
+    tokens = query_focus_tokens(query)
+    pinned = {str(item).strip() for item in (catalog_keys or []) if str(item).strip()}
+    stats: dict[str, dict[str, float]] = {}
+    for doc, raw_score in scored_hits or []:
+        if bible_fn(doc):
+            continue
+        key = str(source_key(doc) or "").strip()
+        if not key:
+            continue
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            score = 0.0
+        body = chunk_text(doc)
+        thesis = chunk_thesis_score(body)
+        title_ov = title_overlap_score(doc, tokens) if tokens else 0.0
+        topic_ov = topic_overlap_score(doc, tokens) if tokens else 0.0
+        rec = stats.setdefault(
+            key,
+            {
+                "hits": 0.0,
+                "best": 0.0,
+                "thesis": -1.0,
+                "thesis_hits": 0.0,
+                "title_ov": 0.0,
+                "topic_sum": 0.0,
+                "catalog": 1.0 if key in pinned else 0.0,
+            },
+        )
+        rec["hits"] += 1.0
+        rec["best"] = max(rec["best"], score)
+        rec["thesis"] = max(rec["thesis"], thesis)
+        rec["title_ov"] = max(rec["title_ov"], title_ov)
+        rec["topic_sum"] += topic_ov
+        if thesis >= 1.5 and topic_ov > 0:
+            rec["thesis_hits"] += 1.0
+        if key in pinned:
+            rec["catalog"] = 1.0
+    ranked: list[tuple[float, str]] = []
+    for key, rec in stats.items():
+        if rec["catalog"] <= 0 and rec["title_ov"] <= 0 and rec["thesis_hits"] <= 0:
+            continue
+        value = (
+            (6.0 * rec["catalog"])
+            + (5.0 * rec["title_ov"])
+            + (1.6 * rec["thesis_hits"])
+            + (0.5 * max(rec["thesis"], 0.0))
+            + (0.25 * rec["topic_sum"])
+            + (0.2 * rec["best"])
+        )
+        ranked.append((value, key))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    keys = [key for _value, key in ranked[: max(1, limit)]]
+    for extra in pinned:
+        if extra not in keys:
+            keys.append(extra)
+        if len(keys) >= max(1, limit):
+            break
+    return keys[: max(1, limit)]
+
+
 def select_diverse_docs(
     scored_docs: Iterable[tuple[Any, float]],
     *,

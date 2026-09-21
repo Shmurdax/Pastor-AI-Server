@@ -105,6 +105,7 @@ from .chat_retrieval import (
     pin_docs_to_strong_title_matches,
     restrict_docs_to_primary_source,
     retain_title_matches,
+    select_major_source_keys,
     topic_anchor_query,
     is_bible_source,
     is_video_chunk,
@@ -1026,11 +1027,24 @@ class ChatAPIView(APIView):
                 scored_hits = retain_title_matches(
                     before_threshold, scored_hits, topic_query
                 )
-                if catalog_keys:
+                source_fn = lambda doc: (
+                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
+                    or _doc_source_name(doc)
+                )
+                major_keys = select_major_source_keys(
+                    scored_hits,
+                    topic_query,
+                    source_key=source_fn,
+                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                    catalog_keys=catalog_keys,
+                    limit=3,
+                )
+                fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
+                if fetch_keys:
                     catalog_docs = lookup_chunks_by_file_hashes(
                         client,
                         collection_name,
-                        catalog_keys,
+                        fetch_keys,
                         limit_per_file=8,
                     )
                     if catalog_docs:
@@ -1038,9 +1052,10 @@ class ChatAPIView(APIView):
                             [scored_hits, [(doc, 1.0) for doc in catalog_docs]]
                         )
                         logger.warning(
-                            "Catalog sermons session=%s titles=%s",
+                            "Catalog sermons session=%s titles=%s majors=%s",
                             session_id[:18],
                             [hit.title for hit in catalog_hits],
+                            fetch_keys[:6],
                         )
                 docs = select_diverse_docs(
                     scored_hits,
@@ -1053,13 +1068,10 @@ class ChatAPIView(APIView):
                     used_verses=used_verses,
                     is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
                     is_video=is_video_chunk,
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
+                    source_key=source_fn,
                     query=topic_query,
                     pin_query=user_query_llm,
-                    catalog_source_keys=catalog_keys,
+                    catalog_source_keys=fetch_keys,
                 )
                 if looks_like_library_pull(user_query_llm):
                     docs = restrict_docs_to_primary_source(

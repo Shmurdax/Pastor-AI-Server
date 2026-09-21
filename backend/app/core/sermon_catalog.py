@@ -120,7 +120,11 @@ class CatalogHit:
 def _title_words(text: str) -> list[str]:
     cleaned = (text or "").lower().replace("&", " ")
     cleaned = re.sub(r"[_\-./]+", " ", cleaned)
-    return [word for word in _WORD_RE.findall(cleaned) if word]
+    return [
+        word
+        for word in _WORD_RE.findall(cleaned)
+        if len(word) >= 3 and not word.isdigit()
+    ]
 
 
 def catalog_tokens(query: str) -> set[str]:

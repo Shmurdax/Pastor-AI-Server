@@ -16,6 +16,7 @@ from core.chat_retrieval import (
     exclusive_title_lock_for_query,
     expand_search_queries,
     select_diverse_docs,
+    select_major_source_keys,
     is_bible_source,
 )
 
@@ -42,6 +43,7 @@ class SermonCatalogTests(unittest.TestCase):
             _entry("Contagious Christianity", "contagious-hash"),
             _entry("Faith That Moves Mountains", "faith-hash"),
             _entry("Works, Hope, Faith & Patience", "works-hash"),
+            _entry("3 D Resurrection", "resurrection-hash"),
             _entry("New King James Version", "nkjv-hash", source_name="nkjv-bible.pdf"),
         ]
         hits = match_catalog_entries(entries, "Give me a 3 point sermon on faith", limit=3)
@@ -49,6 +51,7 @@ class SermonCatalogTests(unittest.TestCase):
         self.assertIn("Faith That Moves Mountains", titles)
         self.assertIn("Works, Hope, Faith & Patience", titles)
         self.assertNotIn("Community", titles)
+        self.assertNotIn("3 D Resurrection", titles)
         self.assertTrue(hits[0].title.startswith("Faith"), hits)
         self.assertGreater(
             score_catalog_title(entries[2], catalog_tokens("faith")),
@@ -177,6 +180,29 @@ class DualLaneRetrievalTests(unittest.TestCase):
         self.assertIn("faith.pdf", sources)
         self.assertIn("giver.pdf", sources)
         self.assertNotIn("community.pdf", sources)
+
+    def test_major_sources_prefer_thesis_windows_over_community(self):
+        faith = _doc(
+            "Faith must refuse the if factor of doubt and see the unseen promise.",
+            source="hope.pdf",
+            file_hash="hope-hash",
+            title="Prisoners of Hope",
+        )
+        community = _doc(
+            "Faith and hope show up in community life together as we love one another.",
+            source="community.pdf",
+            file_hash="com-hash",
+            title="Community",
+        )
+        keys = select_major_source_keys(
+            [(community, 0.94), (faith, 0.71)],
+            "Give me a 3 point sermon on faith",
+            source_key=lambda doc: doc.metadata["file_hash"],
+            is_bible=lambda doc: False,
+            limit=2,
+        )
+        self.assertEqual(keys[0], "hope-hash")
+        self.assertNotIn("com-hash", keys)
 
 
 class FaithClaimDistinctiveTests(unittest.TestCase):
