@@ -38,6 +38,20 @@ def _rerank_device() -> str:
     return raw
 
 
+def _as_score_list(raw_scores) -> list[float]:
+    """CrossEncoder.predict returns a numpy array; never use `or []` on it."""
+    if raw_scores is None:
+        return []
+    if hasattr(raw_scores, "tolist"):
+        try:
+            raw_scores = raw_scores.tolist()
+        except Exception:
+            pass
+    if isinstance(raw_scores, (float, int)):
+        return [float(raw_scores)]
+    return [float(value) for value in list(raw_scores)]
+
+
 def _sigmoid(value: float) -> float:
     clipped = max(-30.0, min(30.0, float(value)))
     return 1.0 / (1.0 + math.exp(-clipped))
@@ -174,7 +188,7 @@ def rerank_scored_hits(
         scorer = reranker.predict
 
     try:
-        raw_scores = list(scorer(pairs) or [])
+        raw_scores = _as_score_list(scorer(pairs))
     except Exception as exc:
         logger.warning("BGE reranker predict failed; keeping ANN scores: %s", exc)
         return original
@@ -192,6 +206,12 @@ def rerank_scored_hits(
         if fp:
             chosen_fps.add(fp)
     reranked.sort(key=lambda item: item[1], reverse=True)
+    logger.warning(
+        "BGE reranked %s/%s windows query=%s",
+        len(reranked),
+        len(unique),
+        topic[:80],
+    )
 
     rest = [
         (doc, score)
