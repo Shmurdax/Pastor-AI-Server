@@ -307,6 +307,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("_finalize_teaching_answer", source)
         self.assertNotIn("weave_into_answer", source)
         self.assertIn("keep_note_paraphrase_sentences", source)
+        self.assertIn("ground_to_note_paraphrase", source)
         self.assertIn("notes_only_from_claims", source)
         self.assertIn("strip_retrieval_meta", source)
         self.assertIn("_missing_required_quotes", source)

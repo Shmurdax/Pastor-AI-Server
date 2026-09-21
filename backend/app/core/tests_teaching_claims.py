@@ -7,6 +7,7 @@ from core.teaching_claims import (
     claim_repair_steer,
     extract_teaching_claims,
     format_teaching_claims_block,
+    keep_note_paraphrase_sentences,
     query_topic_tokens,
     uncovered_claims,
 )
@@ -117,6 +118,7 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("<required_teaching_points>", block)
         self.assertIn("generic Christian pastoral tone", block)
         self.assertIn("only ideas you may teach", block)
+        self.assertIn("not a license to invent a new outline", block)
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
@@ -433,6 +435,89 @@ class TeachingClaimTests(unittest.TestCase):
         fallback = notes_only_from_claims(drink_claims)
         self.assertIn("abstinence", fallback.lower())
         self.assertNotIn("Wine is a mocker", fallback)
+
+    def test_stat_slides_are_not_allowed_ideas(self):
+        from core.teaching_claims import allowed_idea_texts, thesis_sentences_from_docs
+
+        docs = [
+            _doc(
+                "3.5% of all wine in America is consumed by civic leaders every year. "
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        theses = thesis_sentences_from_docs(docs)
+        blob = " ".join(theses).lower()
+        self.assertIn("abstinence", blob)
+        self.assertNotIn("3.5%", blob)
+        self.assertNotIn("civic leaders", blob)
+        allowed = " ".join(allowed_idea_texts(docs, theses)).lower()
+        self.assertNotIn("3.5%", allowed)
+
+    def test_seminar_extras_are_replaced_with_note_theses(self):
+        from core.teaching_claims import ground_to_note_paraphrase
+
+        docs = [
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian. Alcoholism is a sin; it is not a sickness "
+                "or a disease!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "Total abstinence from alcoholic beverages is the only acceptable "
+                    "way of life for the Christian."
+                ),
+            )
+        ]
+        claims = [
+            "Total abstinence from alcoholic beverages is the only acceptable way of "
+            "life for the Christian."
+        ]
+        seminar = (
+            "Based on the teachings referenced, Christians are encouraged to practice "
+            "total abstinence from alcohol. "
+            "Theological Foundations: The Bible provides guidance through numerous verses "
+            "that warn against the dangers of alcohol. "
+            "Historical Context: Ancient wine in biblical times was non-alcoholic or "
+            "significantly diluted. "
+            "Practical Considerations: Given fatalities from drunk driving, increased "
+            "risk of violence, adhering to a policy of total abstinence aligns with "
+            "protecting oneself. "
+            "Community Impact: Practicing total abstinence helps create a community "
+            "environment fostering a supportive atmosphere for all members."
+        )
+        grounded = ground_to_note_paraphrase(
+            seminar, sermon_docs=docs, claims=claims
+        )
+        lowered = grounded.lower()
+        self.assertNotIn("theological foundations", lowered)
+        self.assertNotIn("historical context", lowered)
+        self.assertNotIn("supportive atmosphere", lowered)
+        self.assertNotIn("diluted", lowered)
+        self.assertIn("abstinence", lowered)
+
+    def test_continuation_extra_without_notes_is_dropped(self):
+        docs = [
+            _doc(
+                "We love and accept the sinner but refuse to accept a sinful lifestyle.",
+                source="boundaries.pdf",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        claims = [
+            "We love and accept the sinner but refuse to accept a sinful lifestyle."
+        ]
+        extra = (
+            "Community Impact: this also fosters a supportive atmosphere for all members "
+            "including every identity in the church."
+        )
+        kept = keep_note_paraphrase_sentences(
+            extra, sermon_docs=docs, claims=claims
+        )
+        self.assertEqual(kept, "")
 
 
 if __name__ == "__main__":

@@ -77,6 +77,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertNotIn("at least two word-for-word quotation-marked excerpts", prompt)
         self.assertIn("Every idea in the reply must come from REFERENCE NOTES", prompt)
         self.assertIn("Do not fill the gap from general Christian knowledge", prompt)
+        self.assertIn("headings, categories, or pastoral advice", prompt)
         self.assertIn("Skipping quotations and Scripture citations is correct", prompt)
         self.assertIn("Never attribute Scripture", prompt)
         self.assertIn("communion excerpts", prompt.lower())

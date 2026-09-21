@@ -872,7 +872,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "user asked for an outline. Do not paste a source dump, bibliography, or notes appendix.\n"
         "Every idea in the reply must come from REFERENCE NOTES or REQUIRED TEACHING POINTS. "
         "Paraphrase those ideas in clear modern prose. Do not add theology, caveats, inclusion frames, "
-        "or pastoral advice that is not in the notes. If the notes do not address part of the question, "
+        "headings, categories, or pastoral advice that is not in the notes. If the notes do not address part of the question, "
         "say that plainly. Do not fill the gap from general Christian knowledge. "
         "Never attribute Scripture or NKJV wording to Pastor Don or Susan; verses are Scripture, not their quotes. "
         "Do not use Lord's Table or communion excerpts to answer a question about alcoholic drink. "
