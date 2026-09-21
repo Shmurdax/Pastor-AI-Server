@@ -95,7 +95,9 @@ TOPIC_ALIASES: dict[str, tuple[str, ...]] = {
     "patience": ("patience", "patient"),
     "hope": ("hope",),
     "marriage": ("marriage", "married", "marital", "wedding", "spouse"),
-    "alcohol": ("alcohol", "wine", "sippin"),
+    "alcohol": ("alcohol", "wine", "sippin", "drink", "drinking"),
+    "drink": ("alcohol", "wine", "sippin", "drink", "drinking"),
+    "drinking": ("alcohol", "wine", "sippin", "drink", "drinking"),
     "homosexuality": ("homosexuality", "homosexual", "gay"),
     "gay": ("homosexuality", "homosexual", "gay"),
 }

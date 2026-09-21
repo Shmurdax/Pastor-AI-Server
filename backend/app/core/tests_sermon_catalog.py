@@ -101,6 +101,19 @@ class SermonCatalogTests(unittest.TestCase):
         )
         self.assertEqual([item.title for item in hits], ["Marriage That Lasts"])
 
+    def test_drink_query_matches_sippin_saints(self):
+        entries = [
+            _entry("Community", "community-hash"),
+            _entry("Sippin’ Saints", "sippin-hash"),
+            _entry("Crying for Wine", "wine-hash"),
+            _entry("Happy People", "happy-hash"),
+        ]
+        hits = match_catalog_entries(entries, "Can Christians drink?", limit=3)
+        titles = [item.title for item in hits]
+        self.assertIn("Sippin’ Saints", titles)
+        self.assertIn("Crying for Wine", titles)
+        self.assertNotIn("Happy People", titles)
+
     def test_catalog_title_queries_include_pastor_don(self):
         hits = match_catalog_entries(
             [_entry("Faith That Moves Mountains", "faith-hash")],
