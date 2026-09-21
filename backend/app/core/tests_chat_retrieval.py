@@ -19,6 +19,7 @@ from core.chat_retrieval import (
     extract_used_verse_refs,
     filter_hits_by_topic,
     format_reference_notes,
+    exclusive_title_lock_for_query,
     is_bible_source,
     is_strong_title_match,
     is_video_chunk,
@@ -75,7 +76,7 @@ class ChatRetrievalTests(unittest.TestCase):
         joined = " | ".join(queries).lower()
         self.assertIn("gay", joined)
         self.assertTrue(queries[0].lower().startswith("gay"), queries)
-        self.assertTrue(any("clarify" in item.lower() for item in queries))
+        self.assertFalse(any("clarify" in item.lower() for item in queries), queries)
         self.assertGreaterEqual(len(queries), 2)
 
     def test_followup_query_leads_with_prior_topic(self):

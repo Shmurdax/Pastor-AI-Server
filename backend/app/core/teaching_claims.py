@@ -107,6 +107,10 @@ _QUERY_TOPIC_WORDS = frozenset(
         "tongues",
         "baptism",
         "giving",
+        "gratitude",
+        "grateful",
+        "thanksgiving",
+        "thankfulness",
     }
 )
 # Words almost every sermon uses. Overlap on these alone must not make a
@@ -301,13 +305,40 @@ def query_topic_tokens(query: str) -> set[str]:
     return kept
 
 
+# Outline leftovers from "3 point sermon on faith" must not outrank the topic.
+_OUTLINE_DISTINCTIVE_STOP = frozenset(
+    {
+        "sermon",
+        "sermons",
+        "point",
+        "points",
+        "outline",
+        "topic",
+        "topics",
+        "week",
+        "notes",
+        "note",
+    }
+)
+
+
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
-    """Query words that are not generic Christian vocabulary (church/love/spirit)."""
-    return {
+    """Query words that identify the topic.
+
+    Outline words (sermon / point) are never distinctive. Weak Christian words
+    (faith, gratitude, church) become distinctive when they are the only topic
+    left, so a one-word faith question keeps faith theses instead of
+    discussion-guide sentences that only say "sermon".
+    """
+    tokens = {
         str(token).lower()
         for token in query_tokens
-        if str(token).strip() and str(token).lower() not in _WEAK_QUERY_WORDS
+        if str(token).strip() and str(token).lower() not in _OUTLINE_DISTINCTIVE_STOP
     }
+    distinctive = {token for token in tokens if token not in _WEAK_QUERY_WORDS}
+    if distinctive:
+        return distinctive
+    return {token for token in tokens if token in _QUERY_TOPIC_WORDS or token in _WEAK_QUERY_WORDS}
 
 
 def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") -> bool:
