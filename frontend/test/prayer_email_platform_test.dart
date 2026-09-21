@@ -90,9 +90,16 @@ void main() {
   testWidgets('email chips select platform without opening compose', (tester) async {
     await pumpDetail(tester);
 
+    expect(find.text('Prayer Response'), findsOneWidget);
+    expect(find.text('Jane Member'), findsOneWidget);
+    expect(find.text('Call'), findsNothing);
     expect(find.text('Select email platform:'), findsOneWidget);
     expect(find.text('Or open compose in:'), findsNothing);
     expect(find.text('Email with Gmail'), findsOneWidget);
+
+    final nameY = tester.getTopLeft(find.text('Jane Member')).dy;
+    final dateY = tester.getTopLeft(find.textContaining('2026')).dy;
+    expect(nameY, lessThan(dateY));
 
     final selectHeading = tester.widget<Text>(find.text('Select email platform:'));
     final prayerHeading = tester.widget<Text>(find.text('Prayer request'));

@@ -411,13 +411,18 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     return Scaffold(
       backgroundColor: _surface,
       appBar: brandGradientAppBar(
-        title: Text(item.displayName, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+        title: Text('Prayer Response', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              item.displayName,
+              style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 16, color: _navy),
+            ),
+            const SizedBox(height: 4),
             Text(
               dateFmt.format(item.createdAt.toLocal()),
               style: GoogleFonts.figtree(color: Colors.black54, fontSize: 13),
@@ -438,8 +443,8 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                   style: GoogleFonts.figtree(fontSize: 12, color: Colors.black54),
                 ),
               ),
-            const SizedBox(height: 16),
             if (email != null) ...[
+              const SizedBox(height: 16),
               Text(
                 'Select email platform:',
                 style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
@@ -464,42 +469,22 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                 ],
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => _openEmail(email, _preferredEmailClient),
-                    icon: const Icon(Icons.email_outlined, size: 18),
-                    label: Text(
-                      'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
-                      style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _navy,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: () => _openEmail(email, _preferredEmailClient),
+                  icon: const Icon(Icons.email_outlined, size: 18),
+                  label: Text(
+                    'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
+                    style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
                   ),
-                  if (item.phone.trim().isNotEmpty)
-                    OutlinedButton.icon(
-                      onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
-                      icon: const Icon(Icons.phone_outlined, size: 18),
-                      label: const Text('Call'),
-                    ),
-                ],
-              ),
-            ] else if (item.phone.trim().isNotEmpty)
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
-                    icon: const Icon(Icons.phone_outlined, size: 18),
-                    label: const Text('Call'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _navy,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                ],
+                ),
               ),
+            ],
             const SizedBox(height: 20),
             Text('Prayer request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
             const SizedBox(height: 8),
