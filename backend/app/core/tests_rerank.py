@@ -104,6 +104,39 @@ class RerankTests(unittest.TestCase):
         chosen = _select_candidates(hits, pinned_docs=catalog, limit=40)
         self.assertEqual(len(chosen), 48)
 
+    def test_numpy_array_scores_are_not_boolean_checked(self):
+        intro = _doc("Welcome and opening announcements.", source="sippin.pdf")
+        thesis = _doc(
+            "Total abstinence from alcoholic beverages is the only acceptable lifestyle.",
+            source="sippin.pdf",
+        )
+        hits = [(intro, 1.0), (thesis, 0.62)]
+
+        class FakeArray:
+            def __init__(self, values):
+                self._values = values
+
+            def __bool__(self):
+                raise ValueError(
+                    "The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()"
+                )
+
+            def __iter__(self):
+                return iter(self._values)
+
+            def tolist(self):
+                return list(self._values)
+
+        out = rerank_scored_hits(
+            "Can Christians drink?",
+            hits,
+            pinned_docs=[intro, thesis],
+            predict=lambda pairs: FakeArray([ -4.0, 8.0 ]),
+            enabled=True,
+        )
+        self.assertEqual(out[0][0].page_content, thesis.page_content)
+        self.assertGreater(out[0][1], 0.9)
+
     def test_predict_failure_keeps_original_hits(self):
         intro = _doc("Opening slide.", source="a.pdf")
         thesis = _doc("We must love the homosexual but stand against the lifestyle.", source="a.pdf")
