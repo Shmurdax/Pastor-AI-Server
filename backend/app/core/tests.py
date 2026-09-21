@@ -1,6 +1,7 @@
 import unittest
 
 from .chat_system_prompt import (
+    CONTINUE_STEER,
     FINISH_STEER,
     FOLLOWUP_STEER,
     OPENING_RECALL_STEER,
@@ -77,6 +78,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertNotIn("at least two word-for-word quotation-marked excerpts", prompt)
         self.assertIn("Every idea in the reply must come from REFERENCE NOTES", prompt)
         self.assertIn("Do not fill the gap from general Christian knowledge", prompt)
+        self.assertIn("headings, categories, or pastoral advice", prompt)
         self.assertIn("Skipping quotations and Scripture citations is correct", prompt)
         self.assertIn("Never attribute Scripture", prompt)
         self.assertIn("communion excerpts", prompt.lower())
@@ -84,6 +86,10 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("homosexuality", prompt.lower())
         self.assertIn("generic Christian pastoral tone", prompt)
         self.assertIn("REQUIRED TEACHING POINTS", prompt)
+        self.assertIn("REQUIRED TEACHING POINTS", CONTINUE_STEER)
+        self.assertIn("REFERENCE NOTES", CONTINUE_STEER)
+        self.assertIn("REQUIRED TEACHING POINTS", FINISH_STEER)
+        self.assertNotIn("bold headings", FINISH_STEER)
         self.assertIn("Follow-up turns may expand the last answer", prompt)
         self.assertIn("Do not invent a recap", FOLLOWUP_STEER)
         self.assertNotIn("2000 characters", prompt)
@@ -188,6 +194,16 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertEqual(continuation_token_budget(("x" * 2299) + ".", completion_tokens=1024), 0)
         brush_off = "The church exists to worship God and love people."
         self.assertTrue(answer_needs_expansion(brush_off, query=query))
+        from .chat_system_prompt import should_run_expansion
+        self.assertFalse(
+            should_run_expansion(brush_off, query, has_retrieved_notes=True)
+        )
+        self.assertTrue(
+            should_run_expansion(brush_off, query, has_retrieved_notes=False)
+        )
+        self.assertFalse(
+            should_run_expansion(answer, query, has_retrieved_notes=False)
+        )
 
     def test_missing_quotes_do_not_trigger_quote_repair(self):
         from .chat_system_prompt import (

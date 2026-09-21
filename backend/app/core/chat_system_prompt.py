@@ -184,18 +184,18 @@ def biblical_characters_instruction(names: list[str]) -> str:
 
 
 CONTINUE_STEER = (
-    "Your previous reply was too short. Add the next material the user still "
-    "needs without restarting or apologizing. Do not repeat any sentence already "
-    "written—the previous text is already on screen. Do not open with a "
-    "conversational continuer. Write the next teaching, then stop when the "
-    "answer is complete."
+    "Your previous reply was too short. Add only remaining REQUIRED TEACHING "
+    "POINTS that are not already on screen. Paraphrase those notes. "
+    "Do not add theology, headings, or advice that is not in REFERENCE NOTES. "
+    "Do not repeat any sentence already written—the previous text is already "
+    "on screen. Do not open with a conversational continuer. Then stop."
 )
 
 FINISH_STEER = (
     "Your previous reply was cut off mid-sentence. Continue from the exact "
-    "words where you stopped. Finish that sentence, then keep the same "
-    "Markdown teaching already on screen: **bold headings**, bullet points, "
-    "and NKJV from the retrieved notes where it belongs. "
+    "words where you stopped. Finish that sentence using only ideas already "
+    "present in REQUIRED TEACHING POINTS or REFERENCE NOTES. "
+    "Do not add new headings, categories, verses, or advice. "
     "Do not restart, do not summarize, do not apologize, and do "
     "not replace the draft with a shorter answer."
 )
@@ -468,6 +468,20 @@ def answer_needs_expansion(answer: str, *, query: str) -> bool:
     # A finished reply must not get a second generation pass. That pass is what
     # emits "Certainly, let's continue" and dumps leftover retrieved notes.
     if answer_char_count(answer) >= COMPLETE_ANSWER_MIN_CHARS:
+        return False
+    return True
+
+
+def should_run_expansion(
+    answer: str,
+    query: str,
+    *,
+    has_retrieved_notes: bool,
+) -> bool:
+    """Second LLM expansion invents seminar outlines; notes complete the answer."""
+    if not answer_needs_expansion(answer, query=query):
+        return False
+    if has_retrieved_notes:
         return False
     return True
 
@@ -872,7 +886,7 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "user asked for an outline. Do not paste a source dump, bibliography, or notes appendix.\n"
         "Every idea in the reply must come from REFERENCE NOTES or REQUIRED TEACHING POINTS. "
         "Paraphrase those ideas in clear modern prose. Do not add theology, caveats, inclusion frames, "
-        "or pastoral advice that is not in the notes. If the notes do not address part of the question, "
+        "headings, categories, or pastoral advice that is not in the notes. If the notes do not address part of the question, "
         "say that plainly. Do not fill the gap from general Christian knowledge. "
         "Never attribute Scripture or NKJV wording to Pastor Don or Susan; verses are Scripture, not their quotes. "
         "Do not use Lord's Table or communion excerpts to answer a question about alcoholic drink. "

@@ -86,10 +86,12 @@ from .teaching_claims import (
     claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
+    ground_to_note_paraphrase,
     keep_note_paraphrase_sentences,
     notes_only_from_claims,
     paraphrase_too_thin,
     repairable_claims,
+    resolve_teaching_claims,
 )
 from .chat_retrieval import (
     apply_retrieval_threshold,
@@ -123,6 +125,7 @@ from .chat_system_prompt import (
     answer_looks_incomplete,
     answer_missing_required_quotes,
     answer_needs_expansion,
+    should_run_expansion,
     build_chat_system_prompt,
     compact_teaching_answer,
     continuation_token_budget,
@@ -398,8 +401,8 @@ def _join_continuation(answer: str, extra: str) -> str:
     return join_continuation(answer, extra)
 
 
-def _usable_extra(answer: str, extra: str) -> str:
-    """Keep finish-the-sentence extras; drop a second teaching dump."""
+def _usable_extra(prepared, answer: str, extra: str) -> str:
+    """Keep finish-the-sentence extras that still paraphrase retrieved notes."""
     raw = (extra or "").strip()
     if not raw:
         return ""
@@ -413,29 +416,61 @@ def _usable_extra(answer: str, extra: str) -> str:
     if looks_like_continue_dump(answer, extra):
         logger.info("Dropped a second-pass continue dump after a finished answer")
         return ""
+    docs = prepared.get("docs") or []
+    if not docs:
+        return extra
+    sermon, bible = split_docs_for_grounding(docs)
+    query = str(prepared.get("topic_query") or "")
+    claims = resolve_teaching_claims(
+        sermon, query=query, claims=prepared.get("teaching_claims") or []
+    )
+    grounded = keep_note_paraphrase_sentences(
+        extra,
+        sermon_docs=sermon,
+        nkjv_docs=bible,
+        claims=claims,
+        query=query,
+    )
+    if grounded:
+        return grounded
+    joined = _join_continuation(answer, extra)
+    grounded_join = keep_note_paraphrase_sentences(
+        joined,
+        sermon_docs=sermon,
+        nkjv_docs=bible,
+        claims=claims,
+        query=query,
+    )
+    if not grounded_join:
+        logger.info("Dropped a continuation that was not grounded in retrieved notes")
+        return ""
+    extra_words = [
+        token.strip(".,;:!?\"'")
+        for token in extra.lower().split()
+        if len(token.strip(".,;:!?\"'")) >= 4
+    ]
+    grounded_l = grounded_join.lower()
+    if extra_words and sum(1 for token in extra_words if token in grounded_l) < max(
+        1, (len(extra_words) + 1) // 2
+    ):
+        logger.info("Dropped a continuation that was not grounded in retrieved notes")
+        return ""
     return extra
 
 
+def _should_run_expansion(prepared, answer: str, query: str) -> bool:
+    """Do not start a second generate pass when sermon notes already bind the answer."""
+    return should_run_expansion(
+        answer,
+        query,
+        has_retrieved_notes=bool(prepared.get("docs") or prepared.get("teaching_claims")),
+    )
+
+
 def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    # A finished teaching answer already had required points in the first pass.
-    # Repairing leftover notes is what concatenates "Certainly, let's continue".
-    if (
-        not answer_looks_incomplete(answer)
-        and answer_char_count(answer) >= COMPLETE_ANSWER_MIN_CHARS
-    ):
-        return None, 0
-    missing = repairable_claims(
-        answer, prepared.get("teaching_claims") or [], query=query
-    )
-    if not missing:
-        return None, 0
-    budget = claim_repair_token_budget(
-        completion_tokens=prepared.get("completion_tokens") or 0
-    )
-    if budget <= 0:
-        return None, 0
-    logger.info("Claim coverage missed %s retrieved teaching point(s)", len(missing))
-    return claim_repair_steer(missing), budget
+    """Coverage gaps are filled by the deterministic paraphrase layer, not a second LLM."""
+    _ = (prepared, answer, query)
+    return None, 0
 
 
 def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
@@ -478,22 +513,9 @@ def _grounding_snippets(prepared):
 
 
 def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    """Follow each teaching reply with a RAG check against retrieved notes."""
-    if skip_rewrite_repair(answer):
-        return None, 0
-    docs = prepared.get("docs") or []
-    if not docs:
-        return None, 0
-    report, _sermon, _bible = _rag_check_report(prepared, answer)
-    if report.ok:
-        return None, 0
-    budget = quote_repair_token_budget(
-        answer, completion_tokens=prepared.get("completion_tokens") or 0
-    )
-    if budget <= 0:
-        return None, 0
-    quotes, nkjv = _grounding_snippets(prepared)
-    return grounding_repair_steer(report, quotes, nkjv), budget
+    """Invented quotes are dropped in finalize; do not start a second LLM pass."""
+    _ = (prepared, answer)
+    return None, 0
 
 
 def _missing_required_quotes(prepared, answer: str) -> bool:
@@ -511,7 +533,7 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
 
 
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Drop ungrounded ideas and invented quotes; never weave replacement excerpts."""
+    """Drop ungrounded ideas; keep only a paraphrase of retrieved teaching theses."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     if not docs:
@@ -523,18 +545,18 @@ def _finalize_teaching_answer(prepared, answer: str) -> str:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:
             answer = compact_teaching_answer(stripped)
-    claims = list(prepared.get("teaching_claims") or [])
-    paraphrased = keep_note_paraphrase_sentences(
+    claims = resolve_teaching_claims(
+        sermon,
+        query=str(prepared.get("topic_query") or ""),
+        claims=prepared.get("teaching_claims") or [],
+    )
+    answer = ground_to_note_paraphrase(
         answer,
         sermon_docs=sermon,
         nkjv_docs=bible,
         claims=claims,
+        query=str(prepared.get("topic_query") or ""),
     )
-    if paraphrase_too_thin(paraphrased, claims):
-        fallback = notes_only_from_claims(claims)
-        answer = fallback or paraphrased or answer
-    else:
-        answer = paraphrased
     return compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
 
 
@@ -560,7 +582,7 @@ def _finish_incomplete_extra(prepared, answer: str) -> str:
     except Exception:
         logger.exception("Finish-cut-off pass failed; keeping the truncated answer")
         return ""
-    return _usable_extra(answer, "".join(extra_parts).strip())
+    return _usable_extra(prepared, answer, "".join(extra_parts).strip())
 
 
 def _trim_continuation_messages(messages):
@@ -1101,9 +1123,13 @@ class ChatAPIView(APIView):
                     _doc_source_label,
                     max_chars=MAX_CONTEXT_CHARS,
                 )
-                teaching_claims = extract_teaching_claims(
+                teaching_claims = resolve_teaching_claims(
                     docs,
                     query=topic_query,
+                    claims=extract_teaching_claims(
+                        docs,
+                        query=topic_query,
+                    ),
                 )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
@@ -1386,7 +1412,7 @@ class ChatAPIView(APIView):
                 expansion_pass = 0
                 while (
                     not leaked
-                    and answer_needs_expansion(answer, query=user_query_llm)
+                    and _should_run_expansion(prepared, answer, user_query_llm)
                     and expansion_pass < MAX_EXPANSION_PASSES
                 ):
                     expansion_pass += 1
@@ -1403,7 +1429,7 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Continuation failed; keeping the first answer")
                         break
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
                     if not extra:
                         break
                     if emit_live:
@@ -1428,7 +1454,7 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
@@ -1452,7 +1478,7 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("Quote repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
@@ -1476,7 +1502,7 @@ class ChatAPIView(APIView):
                             extra_parts.append(text)
                     except Exception:
                         logger.exception("RAG grounding repair failed; keeping the first answer")
-                    extra = _usable_extra(answer, "".join(extra_parts))
+                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
                     if extra:
                         if emit_live:
                             yield _sse({"type": "delta", "text": "\n\n" + extra})
@@ -1562,7 +1588,7 @@ class ChatAPIView(APIView):
             expansion_pass = 0
             while (
                 not leaked
-                and answer_needs_expansion(answer, query=user_query_llm)
+                and _should_run_expansion(prepared, answer, user_query_llm)
                 and expansion_pass < MAX_EXPANSION_PASSES
             ):
                 expansion_pass += 1
@@ -1598,7 +1624,7 @@ class ChatAPIView(APIView):
                         break
                 if not extra_text:
                     break
-                extra_text = _usable_extra(answer, extra_text)
+                extra_text = _usable_extra(prepared, answer, extra_text)
                 if not extra_text:
                     break
                 answer = _join_continuation(answer, extra_text)
@@ -1629,7 +1655,7 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Claim-coverage repair failed; keeping the first answer")
                         extra_text = ""
-                extra_text = _usable_extra(answer, extra_text)
+                extra_text = _usable_extra(prepared, answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
             quote_steer, quote_budget = (
@@ -1659,7 +1685,7 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("Quote repair failed; keeping the first answer")
                         extra_text = ""
-                extra_text = _usable_extra(answer, extra_text)
+                extra_text = _usable_extra(prepared, answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
             grounding_steer, grounding_budget = (
@@ -1687,7 +1713,7 @@ class ChatAPIView(APIView):
                     except Exception:
                         logger.exception("RAG grounding repair failed; keeping the first answer")
                         extra_text = ""
-                extra_text = _usable_extra(answer, extra_text)
+                extra_text = _usable_extra(prepared, answer, extra_text)
                 if extra_text:
                     answer = _join_continuation(answer, extra_text)
             finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)

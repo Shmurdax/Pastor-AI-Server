@@ -23,10 +23,8 @@ from .chat_retrieval import (
 )
 from .grounding import (
     looks_like_scripture_blob,
-    nkjv_corpus,
     normalize_grounding_text,
     quote_attributed_to_pastor,
-    sermon_note_corpus,
 )
 from .note_priority import (
     looks_like_deck_junk,
@@ -330,7 +328,8 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "<required_teaching_points>",
         "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
         "The numbered points are the only ideas you may teach. Paraphrase them in your own words. "
-        "Do not add theology, caveats, verses, or advice that is not in these points or REFERENCE NOTES.",
+        "Do not add theology, caveats, verses, headings, or advice that is not in these points. "
+        "REFERENCE NOTES are the source of these points, not a license to invent a new outline.",
         "In your own words means the same thesis with different wording. Keep the contrast "
         "(the not / only if / same power / rather than). Do not keep a story or illustration "
         "and teach a different point with it.",
@@ -414,6 +413,94 @@ def _content_ngrams(text: str, size: int) -> list[str]:
     return [" ".join(tokens[index : index + size]) for index in range(0, max(0, len(tokens) - size + 1))]
 
 
+_THESIS_ALLOWED_MIN = 1.5
+
+
+def thesis_sentences_from_docs(
+    docs: Iterable[Any] | None,
+    *,
+    limit: int = 12,
+) -> list[str]:
+    """Teaching sentences from retrieved sermon notes, excluding stats and KJV."""
+    scored: list[tuple[float, str]] = []
+    seen: set[str] = set()
+    for doc in docs or []:
+        if _is_bible_doc(doc):
+            continue
+        body = spoken_text_without_timestamps(chunk_text(doc))
+        for sentence in split_sentences(body) or []:
+            score = thesis_sentence_score(sentence)
+            if score < _THESIS_ALLOWED_MIN:
+                continue
+            claim = _clip_claim(sentence)
+            key = normalize_grounding_text(claim)
+            if len(key) < 16 or key in seen:
+                continue
+            seen.add(key)
+            scored.append((score, claim))
+    scored.sort(key=lambda item: (-item[0], len(item[1])))
+    return [claim for _score, claim in scored[: max(1, limit)]]
+
+
+def resolve_teaching_claims(
+    docs: Iterable[Any] | None,
+    *,
+    query: str = "",
+    claims: Iterable[str] | None = None,
+    limit: int = _DEFAULT_LIMIT,
+) -> list[str]:
+    """Use extracted claims when present; otherwise topical theses from the notes."""
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    if points:
+        return points[: max(1, limit)]
+    fallback = thesis_sentences_from_docs(docs, limit=max(limit, 12))
+    if not query:
+        return fallback[: max(1, limit)]
+    query_tokens = query_topic_tokens(query)
+    topical = [
+        claim
+        for claim in fallback
+        if claim_matches_query(claim, query_tokens, query=query)
+    ]
+    if topical:
+        return topical[: max(1, limit)]
+    if query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+        return []
+    return fallback[: max(1, limit)]
+
+
+def allowed_idea_texts(
+    docs: Iterable[Any] | None,
+    claims: Iterable[str] | None,
+    *,
+    query: str = "",
+) -> list[str]:
+    """The only ideas generation may teach: retrieved theses, not side slides."""
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    seen = {normalize_grounding_text(item) for item in points}
+    query_tokens = query_topic_tokens(query) if query else set()
+    for sentence in thesis_sentences_from_docs(docs):
+        key = normalize_grounding_text(sentence)
+        if key in seen:
+            continue
+        if query and not claim_matches_query(sentence, query_tokens, query=query):
+            continue
+        seen.add(key)
+        points.append(sentence)
+    return points
+
+
+def allowed_idea_hay(
+    docs: Iterable[Any] | None,
+    claims: Iterable[str] | None,
+    *,
+    query: str = "",
+) -> str:
+    return normalize_grounding_text(
+        " ".join(allowed_idea_texts(docs, claims, query=query))
+    )
+
+
 def _scripture_attributed_to_pastor(answer: str, sentence: str) -> bool:
     """True when this sentence puts Bible wording in Pastor Don's or Susan's mouth."""
     cleaned = (sentence or "").strip()
@@ -437,25 +524,38 @@ def _scripture_attributed_to_pastor(answer: str, sentence: str) -> bool:
     return False
 
 
+def _hay_content_text(hay: str, claims: Iterable[str]) -> str:
+    parts = [hay or ""]
+    for claim in claims or []:
+        parts.append(str(claim or ""))
+    return " ".join(claim_content_tokens(" ".join(parts)))
+
+
 def sentence_idea_is_in_notes(sentence: str, hay: str, claims: Iterable[str]) -> bool:
-    """True when this sentence paraphrases retrieved notes rather than new theology."""
+    """True when this sentence is mostly made of retrieved thesis words.
+
+    Sharing two thesis words is not enough: a seminar heading can mention
+    "total abstinence" and then teach drunk-driving statistics that are not
+    in the notes.
+    """
     cleaned = (sentence or "").strip()
     if not cleaned:
         return False
     tokens = claim_content_tokens(cleaned)
     if len(tokens) < 2:
         return False
-    hay_norm = hay or ""
-    for size in (3, 2):
-        for gram in _content_ngrams(cleaned, size):
-            if gram and gram in hay_norm:
-                return True
-    sent_set = set(tokens)
-    for claim in claims or []:
-        overlap = set(claim_content_tokens(claim)) & sent_set
-        if len(overlap) >= 2:
-            return True
-    return False
+    hay_content = _hay_content_text(hay, claims)
+    if not hay_content:
+        return False
+    hay_set = set(hay_content.split())
+    hits = [token for token in tokens if token in hay_set]
+    needed = max(2, (len(tokens) * 3 + 4) // 5)
+    if len(hits) < needed:
+        return False
+    grams = _content_ngrams(cleaned, 2)
+    if any(gram and gram in hay_content for gram in grams):
+        return True
+    return len(hits) == len(tokens)
 
 
 def keep_note_paraphrase_sentences(
@@ -464,19 +564,12 @@ def keep_note_paraphrase_sentences(
     sermon_docs: Iterable[Any] | None = None,
     nkjv_docs: Iterable[Any] | None = None,
     claims: Iterable[str] | None = None,
+    query: str = "",
 ) -> str:
-    """Drop sentences whose ideas are not in the retrieved notes or teaching points."""
-    point_list = [item.strip() for item in (claims or []) if item and str(item).strip()]
-    hay = normalize_grounding_text(
-        " ".join(
-            [
-                sermon_note_corpus(sermon_docs),
-                nkjv_corpus(nkjv_docs),
-                " ".join(point_list),
-            ]
-        )
-    )
-    bible_hay = normalize_grounding_text(nkjv_corpus(nkjv_docs))
+    """Drop sentences whose ideas are not in retrieved teaching theses."""
+    _ = nkjv_docs
+    point_list = resolve_teaching_claims(sermon_docs, query=query, claims=claims)
+    hay = allowed_idea_hay(sermon_docs, point_list, query=query)
     kept: list[str] = []
     for sentence in split_sentences(answer) or [answer or ""]:
         cleaned = (sentence or "").strip()
@@ -484,12 +577,7 @@ def keep_note_paraphrase_sentences(
             continue
         if _scripture_attributed_to_pastor(answer, cleaned):
             continue
-        scripture_shaped = looks_like_kjv_diction(cleaned) or looks_like_scripture_blob(
-            cleaned
-        )
-        if scripture_shaped:
-            if bible_hay and sentence_idea_is_in_notes(cleaned, bible_hay, []):
-                kept.append(cleaned)
+        if looks_like_kjv_diction(cleaned) or looks_like_scripture_blob(cleaned):
             continue
         if sentence_idea_is_in_notes(cleaned, hay, point_list):
             kept.append(cleaned)
@@ -510,3 +598,25 @@ def paraphrase_too_thin(answer: str, claims: Iterable[str] | None) -> bool:
     if point_list and not any(claim_is_covered(claim, text) for claim in point_list[:2]):
         return True
     return False
+
+
+def ground_to_note_paraphrase(
+    answer: str,
+    *,
+    sermon_docs: Iterable[Any] | None = None,
+    nkjv_docs: Iterable[Any] | None = None,
+    claims: Iterable[str] | None = None,
+    query: str = "",
+) -> str:
+    """Single paraphrase layer: keep note-backed sentences or emit the theses."""
+    point_list = resolve_teaching_claims(sermon_docs, query=query, claims=claims)
+    kept = keep_note_paraphrase_sentences(
+        answer,
+        sermon_docs=sermon_docs,
+        nkjv_docs=nkjv_docs,
+        claims=point_list,
+        query=query,
+    )
+    if paraphrase_too_thin(kept, point_list):
+        return notes_only_from_claims(point_list) or kept
+    return kept
