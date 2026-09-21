@@ -1045,6 +1045,7 @@ class ChatAPIView(APIView):
                         client,
                         collection_name,
                         fetch_keys,
+                        query=topic_query,
                         limit_per_file=8,
                     )
                     if catalog_docs:

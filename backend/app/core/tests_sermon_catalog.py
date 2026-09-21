@@ -67,6 +67,40 @@ class SermonCatalogTests(unittest.TestCase):
         hits = match_catalog_entries(entries, "gratitude", limit=3)
         self.assertEqual([item.title for item in hits], ["A Lifestyle of Thanksgiving"])
 
+    def test_prayer_matches_plural_title(self):
+        entries = [
+            _entry("Community", "community-hash"),
+            _entry("Prayers That Prevail for the Lost", "prayer-hash"),
+            _entry("Happy People", "happy-hash"),
+        ]
+        hits = match_catalog_entries(
+            entries, "What does Pastor Don teach about prayer?", limit=3
+        )
+        self.assertEqual([item.title for item in hits], ["Prayers That Prevail for the Lost"])
+
+    def test_gay_people_does_not_match_happy_people(self):
+        entries = [
+            _entry("Happy People", "happy-hash"),
+            _entry("Christian Boundaries", "bound-hash"),
+            _entry("Community", "community-hash"),
+        ]
+        hits = match_catalog_entries(entries, "Can gay people be Christians?", limit=3)
+        titles = [item.title for item in hits]
+        self.assertNotIn("Happy People", titles)
+        self.assertNotIn("Christian Boundaries", titles)
+
+    def test_marriage_does_not_match_church_covenant_titles(self):
+        entries = [
+            _entry("Covenant Bringers", "bring-hash"),
+            _entry("Covenant Servanthood", "serve-hash"),
+            _entry("Going Beyond Covenant 3 Mq Edit", "beyond-hash"),
+            _entry("Marriage That Lasts", "marriage-hash"),
+        ]
+        hits = match_catalog_entries(
+            entries, "Give me a 3 point sermon on marriage", limit=3
+        )
+        self.assertEqual([item.title for item in hits], ["Marriage That Lasts"])
+
     def test_catalog_title_queries_include_pastor_don(self):
         hits = match_catalog_entries(
             [_entry("Faith That Moves Mountains", "faith-hash")],
@@ -125,6 +159,69 @@ class SermonCatalogTests(unittest.TestCase):
         self.assertEqual(len(docs), 1)
         self.assertIn("if factor", docs[0].page_content.lower())
         client.scroll.assert_called()
+
+    def test_lookup_chunks_ranks_topical_theses_over_intros(self):
+        intro = SimpleNamespace(
+            payload={
+                "text": "BOUNDARIES. Do not remove the ancient landmark. God only gave us ten rules.",
+                "file_hash": "bound-hash",
+                "title": "Christian Boundaries",
+                "chunk_kind": "sermon_quote",
+                "metadata": {"file_hash": "bound-hash", "title": "Christian Boundaries"},
+            }
+        )
+        thesis = SimpleNamespace(
+            payload={
+                "text": (
+                    "We must love the homosexual and stand firmly against the lifestyle. "
+                    "Homosexuality is not an acceptable lifestyle by natural law or the law of God."
+                ),
+                "file_hash": "bound-hash",
+                "title": "Christian Boundaries",
+                "chunk_kind": "sermon_quote",
+                "metadata": {"file_hash": "bound-hash", "title": "Christian Boundaries"},
+            }
+        )
+        client = Mock()
+        client.scroll.return_value = ([intro, thesis], None)
+
+        class _Filter:
+            def __init__(self, must=None):
+                self.must = must
+
+        class _FieldCondition:
+            def __init__(self, key=None, match=None):
+                self.key = key
+                self.match = match
+
+        class _MatchValue:
+            def __init__(self, value=None):
+                self.value = value
+
+        fake_models = SimpleNamespace(
+            Filter=_Filter,
+            FieldCondition=_FieldCondition,
+            MatchValue=_MatchValue,
+        )
+        fake_http = SimpleNamespace(models=fake_models)
+        fake_client_mod = SimpleNamespace(http=fake_http)
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": fake_client_mod,
+                "qdrant_client.http": fake_http,
+                "qdrant_client.http.models": fake_models,
+            },
+        ):
+            docs = lookup_chunks_by_file_hashes(
+                client,
+                "sermon_brain",
+                ["bound-hash"],
+                query="Can gay people be Christians?",
+                limit_per_file=1,
+            )
+        self.assertEqual(len(docs), 1)
+        self.assertIn("love the homosexual", docs[0].page_content.lower())
 
 
 class DualLaneRetrievalTests(unittest.TestCase):

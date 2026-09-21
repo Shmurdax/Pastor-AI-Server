@@ -70,6 +70,16 @@ _CATALOG_STOP = frozenset(
         "three",
         "four",
         "five",
+        "people",
+        "person",
+        "persons",
+        "someone",
+        "anyone",
+        "everyone",
+        "christian",
+        "christians",
+        "believer",
+        "believers",
     }
 )
 
@@ -84,7 +94,7 @@ TOPIC_ALIASES: dict[str, tuple[str, ...]] = {
     "tithe": ("tithe", "tithing", "tithes"),
     "patience": ("patience", "patient"),
     "hope": ("hope",),
-    "marriage": ("marriage", "covenant"),
+    "marriage": ("marriage", "married", "marital", "wedding", "spouse"),
     "alcohol": ("alcohol", "wine", "sippin"),
     "homosexuality": ("homosexuality", "homosexual", "gay"),
     "gay": ("homosexuality", "homosexual", "gay"),
@@ -127,6 +137,26 @@ def _title_words(text: str) -> list[str]:
     ]
 
 
+def _word_forms(word: str) -> set[str]:
+    """Light stemming so prayer matches Prayers That Prevail."""
+    raw = (word or "").lower().strip()
+    if not raw:
+        return set()
+    forms = {raw}
+    if len(raw) >= 5 and raw.endswith("ies"):
+        forms.add(raw[:-3] + "y")
+    if len(raw) >= 5 and raw.endswith("ing"):
+        stem = raw[:-3]
+        forms.add(stem)
+        if stem:
+            forms.add(stem + "e")
+    if len(raw) >= 4 and raw.endswith("es") and not raw.endswith("ss"):
+        forms.add(raw[:-2])
+    if len(raw) >= 4 and raw.endswith("s") and not raw.endswith("ss"):
+        forms.add(raw[:-1])
+    return {item for item in forms if len(item) >= 3}
+
+
 def catalog_tokens(query: str) -> set[str]:
     """Content tokens plus title aliases for catalog matching."""
     words = {word for word in _title_words(query) if word not in _CATALOG_STOP}
@@ -151,15 +181,18 @@ def score_catalog_title(entry: CatalogEntry, tokens: Iterable[str]) -> float:
     wanted = {str(token).lower() for token in tokens if str(token).strip()}
     if not wanted:
         return 0.0
+    wanted_forms: set[str] = set()
+    for token in wanted:
+        wanted_forms.update(_word_forms(token))
     words = _title_words(entry.title) or _title_words(entry.topic_title)
     if not words:
         return 0.0
-    hits = sum(1 for word in words if word in wanted)
+    hits = sum(1 for word in words if _word_forms(word) & wanted_forms)
     if hits <= 0:
         return 0.0
     score = float(hits) * 2.0
     score += hits / max(len(words), 1)
-    if words[0] in wanted:
+    if _word_forms(words[0]) & wanted_forms:
         score += 2.5
     # One weak hit in a long unrelated title is not a "major sermon".
     if hits == 1 and len(words) > 8:
@@ -292,14 +325,36 @@ def _point_to_doc(point: Any) -> Optional[Any]:
     return SimpleNamespace(page_content=text, metadata=metadata)
 
 
+def _rank_catalog_chunk(doc: Any, tokens: set[str]) -> float:
+    """Prefer on-topic theses over the opening slides of a PDF."""
+    from .note_priority import chunk_thesis_score
+
+    body = str(getattr(doc, "page_content", "") or "")
+    if not body.strip():
+        return -1.0
+    body_l = body.lower()
+    forms: set[str] = set()
+    for token in tokens:
+        forms.update(_word_forms(token))
+    words = set(_WORD_RE.findall(body_l))
+    overlap = 0.0
+    if forms:
+        overlap = float(sum(1 for word in words if _word_forms(word) & forms))
+    thesis = float(chunk_thesis_score(body))
+    if tokens and overlap <= 0:
+        return thesis * 0.15
+    return (3.0 * overlap) + max(thesis, 0.0) + (2.0 if overlap and thesis >= 1.5 else 0.0)
+
+
 def lookup_chunks_by_file_hashes(
     client: Any,
     collection_name: str,
     file_hashes: Iterable[str],
     *,
+    query: str = "",
     limit_per_file: int = 8,
 ) -> list[Any]:
-    """Fetch note windows for catalog-matched PDFs via the file_hash payload index."""
+    """Fetch the most on-topic windows for catalog/major PDFs by file_hash."""
     if client is None:
         return []
     hashes = []
@@ -315,28 +370,39 @@ def lookup_chunks_by_file_hashes(
 
     from qdrant_client.http import models as qdrant_models
 
+    tokens = catalog_tokens(query) if query else set()
     found: list[Any] = []
     seen_text: set[str] = set()
+    per_file = max(1, limit_per_file)
     for file_hash in hashes[:6]:
+        points: list[Any] = []
+        offset = None
         try:
-            points, _offset = client.scroll(
-                collection_name=collection_name,
-                scroll_filter=qdrant_models.Filter(
-                    must=[
-                        qdrant_models.FieldCondition(
-                            key="file_hash",
-                            match=qdrant_models.MatchValue(value=file_hash),
-                        ),
-                    ]
-                ),
-                limit=max(4, limit_per_file),
-                with_payload=True,
-                with_vectors=False,
-            )
+            while len(points) < 200:
+                batch, offset = client.scroll(
+                    collection_name=collection_name,
+                    scroll_filter=qdrant_models.Filter(
+                        must=[
+                            qdrant_models.FieldCondition(
+                                key="file_hash",
+                                match=qdrant_models.MatchValue(value=file_hash),
+                            ),
+                        ]
+                    ),
+                    limit=64,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                if not batch:
+                    break
+                points.extend(batch)
+                if offset is None:
+                    break
         except Exception:
             logger.debug("Catalog file_hash lookup failed for %s", file_hash[:12], exc_info=True)
             points = []
-        matched = 0
+        ranked: list[tuple[float, Any, str]] = []
         for point in points or []:
             doc = _point_to_doc(point)
             if doc is None:
@@ -347,9 +413,13 @@ def lookup_chunks_by_file_hashes(
             kind = str((doc.metadata or {}).get("chunk_kind") or "").lower()
             if kind == "bible_verse":
                 continue
+            ranked.append((_rank_catalog_chunk(doc, tokens), doc, key))
+        ranked.sort(key=lambda item: -item[0])
+        kept = 0
+        for _score, doc, key in ranked:
             seen_text.add(key)
             found.append(doc)
-            matched += 1
-            if matched >= limit_per_file:
+            kept += 1
+            if kept >= per_file:
                 break
     return found
