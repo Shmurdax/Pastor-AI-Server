@@ -8,7 +8,17 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from .chat_retrieval import chunk_text, is_bible_source, looks_like_library_pull, metadata_source_hint
+from .chat_retrieval import (
+    SENSE_ALCOHOL,
+    SENSE_NONE,
+    chunk_text,
+    is_bible_source,
+    looks_like_library_pull,
+    metadata_source_hint,
+    query_topic_sense,
+    text_has_alcohol_teaching,
+    text_looks_like_communion_only,
+)
 from .grounding import normalize_grounding_text
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
 
@@ -172,6 +182,8 @@ def query_topic_tokens(query: str) -> set[str]:
         if word in _STOP and word not in _QUERY_TOPIC_WORDS:
             continue
         kept.add(word)
+    if query_topic_sense(query) == SENSE_ALCOHOL:
+        kept.add("alcohol")
     return kept
 
 
@@ -184,7 +196,17 @@ def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
     }
 
 
-def claim_matches_query(claim: str, query_tokens: set[str]) -> bool:
+def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") -> bool:
+    """True when a retrieved thesis still belongs to the user's question.
+
+    Alcohol/drink questions must keep alcohol teaching, not Lord's Table
+    sentences that only share the word drink.
+    """
+    sense = query_topic_sense(query) if query else SENSE_NONE
+    if sense == SENSE_ALCOHOL:
+        if text_looks_like_communion_only(claim):
+            return False
+        return text_has_alcohol_teaching(claim)
     if not query_tokens:
         return True
     claim_words = set(normalize_grounding_text(claim).split())
@@ -258,9 +280,15 @@ def extract_teaching_claims(
     scored.sort(key=lambda item: (-item[0], len(item[1])))
     ranked = [claim for score, claim in scored if score >= 0]
     if query_tokens and ranked and not looks_like_library_pull(query):
-        topical = [claim for claim in ranked if claim_matches_query(claim, query_tokens)]
+        topical = [
+            claim
+            for claim in ranked
+            if claim_matches_query(claim, query_tokens, query=query)
+        ]
         if topical:
             ranked = topical
+        elif query_topic_sense(query) == SENSE_ALCOHOL:
+            ranked = []
     return ranked[: max(1, limit)]
 
 
@@ -319,7 +347,11 @@ def repairable_claims(answer: str, claims: Iterable[str], *, query: str = "") ->
     query_tokens = query_topic_tokens(query)
     if not query_tokens:
         return missing
-    return [claim for claim in missing if claim_matches_query(claim, query_tokens)]
+    return [
+        claim
+        for claim in missing
+        if claim_matches_query(claim, query_tokens, query=query)
+    ]
 
 
 def claim_repair_steer(missing: Iterable[str]) -> str:

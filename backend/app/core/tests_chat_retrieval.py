@@ -31,6 +31,10 @@ from core.chat_retrieval import (
     retain_title_matches,
     merge_scored_hits,
     query_focus_tokens,
+    query_title_match,
+    query_topic_sense,
+    SENSE_ALCOHOL,
+    SENSE_COMMUNION,
     looks_like_bible_query,
     search_queries_on_store,
     select_chat_source_chips,
@@ -1181,6 +1185,110 @@ class ChatRetrievalTests(unittest.TestCase):
             source_key=lambda doc: doc.metadata["source"],
         )
         self.assertEqual([doc.metadata["source"] for doc in pinned], ["abundance.pdf"])
+
+    def test_drink_query_is_alcohol_sense_not_communion(self):
+        self.assertEqual(query_topic_sense("Can Christians drink?"), SENSE_ALCOHOL)
+        self.assertEqual(
+            query_topic_sense("What does Pastor Don teach about communion?"),
+            SENSE_COMMUNION,
+        )
+        self.assertIn("alcohol", query_focus_tokens("Can Christians drink?"))
+        queries = expand_search_queries("Can Christians drink?", limit=7)
+        joined = " | ".join(queries).lower()
+        self.assertIn("alcohol", joined)
+        self.assertTrue(
+            any("christian and alcohol" in item.lower() for item in queries),
+            queries,
+        )
+        self.assertFalse(any("communion" in item.lower() for item in queries), queries)
+
+    def test_drink_query_keeps_alcohol_hits_and_drops_communion(self):
+        alcohol = _doc(
+            "Alcoholism is a sin; it is not a sickness or a disease!",
+            source="the-christian-and-alcohol.pdf",
+            title="THE CHRISTIAN AND ALCOHOL",
+        )
+        sippin = _doc(
+            "Total abstinence from alcoholic beverages is the only acceptable way of life "
+            "for the Christian.",
+            source="sippin-saints.pdf",
+            title="SIPPIN' SAINTS",
+        )
+        communion = _doc(
+            "A person should examine himself first, and only then eat the bread and "
+            "drink from the cup at the Lord's Table.",
+            source="lords-table.pdf",
+            title="The Lord's Table",
+        )
+        packed = _doc(
+            "Wine is a mocker, strong drink is a brawler, and whoever is led astray "
+            "by it is not wise.",
+            source="nkjv-bible.pdf",
+            title="Proverbs 20:1-4",
+        )
+        query = "Can Christians drink?"
+        filtered = filter_hits_by_topic(
+            [(communion, 0.97), (packed, 0.93), (alcohol, 0.71), (sippin, 0.68)],
+            query,
+            retrieval_k=8,
+        )
+        sources = [doc.metadata["source"] for doc, _score in filtered]
+        self.assertIn("the-christian-and-alcohol.pdf", sources)
+        self.assertIn("sippin-saints.pdf", sources)
+        self.assertNotIn("lords-table.pdf", sources)
+
+        pinned = pin_docs_to_strong_title_matches(
+            [communion, packed, alcohol, sippin],
+            query,
+            candidate_hits=[
+                (communion, 0.97),
+                (packed, 0.93),
+                (alcohol, 0.71),
+                (sippin, 0.68),
+            ],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        pinned_sources = [doc.metadata["source"] for doc in pinned]
+        self.assertIn("the-christian-and-alcohol.pdf", pinned_sources)
+        self.assertIn("sippin-saints.pdf", pinned_sources)
+        self.assertNotIn("lords-table.pdf", pinned_sources)
+        self.assertNotIn("nkjv-bible.pdf", pinned_sources)
+        self.assertTrue(query_title_match(alcohol, query))
+        self.assertTrue(query_title_match(sippin, query))
+        self.assertFalse(query_title_match(communion, query))
+
+        selected = select_diverse_docs(
+            [(communion, 0.97), (packed, 0.93), (alcohol, 0.71), (sippin, 0.68)],
+            k=8,
+            bible_ratio=0.4,
+            query=query,
+            pin_query=query,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        selected_sources = {doc.metadata["source"] for doc in selected}
+        self.assertIn("the-christian-and-alcohol.pdf", selected_sources)
+        self.assertNotIn("lords-table.pdf", selected_sources)
+        self.assertNotIn("nkjv-bible.pdf", selected_sources)
+
+        def label(doc):
+            return doc.metadata["title"]
+
+        chips = ensure_source_media_mix(
+            ["The Lord's Table", "THE CHRISTIAN AND ALCOHOL", "SIPPIN' SAINTS"],
+            [communion, alcohol, sippin, packed],
+            label,
+            min_count=3,
+            limit=5,
+            query=query,
+            rng=random.Random(1),
+        )
+        chip_blob = " | ".join(chips).lower()
+        self.assertIn("alcohol", chip_blob)
+        self.assertNotIn("lord", chip_blob)
+        self.assertNotIn("proverbs", chip_blob)
+        self.assertLessEqual(len(chips), 3)
 
 
 if __name__ == "__main__":
