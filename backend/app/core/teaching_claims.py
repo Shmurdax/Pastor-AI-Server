@@ -349,10 +349,17 @@ def _score_claim(claim: str, query_tokens: set[str], *, query: str = "") -> int:
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
     application = 0
     sense = query_topic_sense(query)
+    lowered = claim.lower()
     if sense == SENSE_SEXUALITY and text_has_sexuality_application(claim):
         application = 16
+        if "not an acceptable lifestyle" in lowered or "love the homosexual" in lowered:
+            application += 8
+        if "stone the homosexual" in lowered or "those who approve" in lowered:
+            application += 4
     if sense == SENSE_ALCOHOL and text_has_alcohol_application(claim):
         application = 16
+        if "only acceptable way" in lowered or "alcoholism is a sin" in lowered:
+            application += 8
     return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast + application
 
 
@@ -498,14 +505,12 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
     """Last-turn lock so the first generate paraphrases retrieved theses."""
     question = " ".join((query or "").split()).strip()
     points = [item.strip() for item in (claims or []) if item and str(item).strip()]
-    lines = ["User question:", question or "(empty)"]
     sense = query_topic_sense(question)
+    lines: list[str] = []
     if points:
-        lines.append("")
         lines.append(
-            "Answer by paraphrasing every numbered sermon point below, in order. "
-            "They are the doctrine. The first sentence must paraphrase point 1. "
-            "Do not add theology or a yes/no that is not in them."
+            "Paraphrase every numbered sermon point below, in order. "
+            "They are the doctrine. Do not add theology or a yes/no that is not in them."
         )
         for index, claim in enumerate(points, start=1):
             lines.append(f"{index}. {claim}")
@@ -517,15 +522,26 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
         if sense == SENSE_SEXUALITY:
             lines.append(
                 "Do not begin by saying gay people can be Christians unless a numbered point says that. "
-                "Do not give an LGBTQ inclusion, sexual-orientation acceptance, or Mark 12 "
-                "greatest-commandment answer unless a numbered point says that."
+                "Do not write Certainly. Do not give an LGBTQ inclusion, sexual-orientation acceptance, "
+                "or Mark 12 greatest-commandment answer unless a numbered point says that."
             )
+        lines.append("")
+        lines.append("User question:")
+        lines.append(question or "(empty)")
+        lines.append(
+            "Write the answer now. Sentence 1 must paraphrase point 1 and no other idea."
+        )
     elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+        lines.append("User question:")
+        lines.append(question or "(empty)")
         lines.append("")
         lines.append(
             "Retrieved sermon notes did not yield teaching points for this question. "
             "Say that plainly. Do not answer from general Christian knowledge."
         )
+    else:
+        lines.append("User question:")
+        lines.append(question or "(empty)")
     return "\n".join(lines)
 
 

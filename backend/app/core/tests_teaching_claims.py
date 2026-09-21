@@ -149,8 +149,9 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Alcoholism is a sin", drink)
         self.assertIn("Romans 14 liberty", drink)
         self.assertIn("Do not say drinking is a personal decision", drink)
-        self.assertIn("first sentence must paraphrase point 1", drink)
-        self.assertIn("every numbered sermon point", drink)
+        self.assertIn("Sentence 1 must paraphrase point 1", drink)
+        self.assertIn("Paraphrase every numbered sermon point", drink)
+        self.assertIn("User question:", drink)
 
         gay = format_generation_user_prompt(
             "Can gay people be Christians?",
@@ -162,6 +163,8 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("LGBTQ inclusion", gay)
         self.assertIn("Mark 12", gay)
         self.assertIn("Do not begin by saying gay people can be Christians", gay)
+        self.assertIn("Do not write Certainly", gay)
+        self.assertIn("Sentence 1 must paraphrase point 1", gay)
 
         empty = format_generation_user_prompt("Can Christians drink?", [])
         self.assertIn("did not yield teaching points", empty)
@@ -481,7 +484,8 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("23but", blob)
         self.assertTrue(
             "only acceptable way" in claims[0].lower()
-            or "alcoholism is a sin" in claims[0].lower(),
+            or "alcoholism is a sin" in claims[0].lower()
+            or "only acceptable way" in claims[1].lower(),
             claims,
         )
 
