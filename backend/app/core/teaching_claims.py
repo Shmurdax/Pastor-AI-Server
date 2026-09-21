@@ -18,6 +18,7 @@ from .chat_retrieval import (
     metadata_source_hint,
     query_topic_sense,
     text_has_alcohol_teaching,
+    text_has_sexuality_application,
     text_has_sexuality_teaching,
     text_looks_like_communion_only,
 )
@@ -30,6 +31,7 @@ from .note_priority import (
     looks_like_deck_junk,
     looks_like_kjv_diction,
     looks_like_stat_slide,
+    looks_like_vice_catalog,
     thesis_sentence_score,
 )
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
@@ -38,14 +40,24 @@ _MARKUP_RE = re.compile(r"[*_`>#]+")
 _SPACE_RE = re.compile(r"\s+")
 _CLAIM_MAX_CHARS = 280
 _CLAIM_MIN_CHARS = 24
-_DEFAULT_LIMIT = 6
+_DEFAULT_LIMIT = 8
 _CONTRAST_RE = re.compile(
     r"\b("
     r"not just|rather than|only if|only indicative|same power|"
     r"fool'?s paradise|come let us|instead of|but the|"
-    r"do not|don't|cannot|can't"
+    r"do not|don't|cannot|can't|does not mean|"
+    r"stand firmly|not an acceptable|judgment is not ours"
     r")\b",
     re.IGNORECASE,
+)
+_BULLET_SPLIT_RE = re.compile(r"[•●▪]\s*")
+_ELLIPSIS_SPLIT_RE = re.compile(r"\s*(?:\u2026|\.{3})\s+")
+_APPLICATION_CLIP_RE = re.compile(
+    r"(?i)("
+    r"not an acceptable lifestyle|love the homosexual|stand firmly|"
+    r"those who approve|stone the homosexual|judgment is not ours|"
+    r"natural law"
+    r")"
 )
 
 # Topic words we still want when matching a user question, even though they are
@@ -177,7 +189,82 @@ def _clip_claim(text: str) -> str:
     cleaned = _SPACE_RE.sub(" ", cleaned).strip(" \"“”'")
     if len(cleaned) <= _CLAIM_MAX_CHARS:
         return cleaned
+    match = _APPLICATION_CLIP_RE.search(cleaned)
+    if match:
+        start = max(0, match.start() - 48)
+        if start:
+            snapped = cleaned.rfind(" ", 0, start)
+            if snapped >= 0:
+                start = snapped + 1
+        window = cleaned[start : start + _CLAIM_MAX_CHARS]
+        if " " in window:
+            window = window.rsplit(" ", 1)[0]
+        window = window.strip(" \"“”'")
+        if len(window) >= _CLAIM_MIN_CHARS:
+            return window
     return cleaned[: _CLAIM_MAX_CHARS - 3].rsplit(" ", 1)[0].rstrip(".,;:") + "..."
+
+
+def _merge_short_units(parts: list[str]) -> list[str]:
+    merged: list[str] = []
+    for part in parts:
+        piece = " ".join((part or "").split()).strip(" •●▪-\t")
+        if not piece:
+            continue
+        if merged and len(piece) < 40:
+            merged[-1] = merged[-1].rstrip(";,. ") + "; " + piece
+        else:
+            merged.append(piece)
+    return merged
+
+
+def _looks_like_parallel_list(part: str) -> bool:
+    clauses = [item.strip() for item in (part or "").split("; ") if item.strip()]
+    if len(clauses) < 3:
+        return False
+    headed = sum(
+        1
+        for item in clauses
+        if item.lower().startswith("those who") or item.lower().startswith("the ")
+    )
+    return headed >= max(2, len(clauses) - 1)
+
+
+def _split_long_part(part: str) -> list[str]:
+    cleaned = " ".join((part or "").split()).strip()
+    if not cleaned:
+        return []
+    if len(cleaned) <= _CLAIM_MAX_CHARS:
+        return [cleaned]
+    ellipsis_bits = [item.strip() for item in _ELLIPSIS_SPLIT_RE.split(cleaned) if item.strip()]
+    if len(ellipsis_bits) > 1:
+        split_bits = _merge_short_units(ellipsis_bits)
+        if len(split_bits) > 1:
+            units: list[str] = []
+            for bit in split_bits:
+                units.extend(_split_long_part(bit) if len(bit) > _CLAIM_MAX_CHARS else [bit])
+            return units
+    if not _looks_like_parallel_list(cleaned):
+        clauses = [item.strip() for item in cleaned.split("; ") if item.strip()]
+        if len(clauses) > 1:
+            split_bits = _merge_short_units(clauses)
+            if len(split_bits) > 1:
+                units = []
+                for bit in split_bits:
+                    units.extend(_split_long_part(bit) if len(bit) > _CLAIM_MAX_CHARS else [bit])
+                return units
+    return [_clip_claim(cleaned)]
+
+
+def _split_claim_units(raw: str) -> list[str]:
+    """Break long sermon bullets so application theses survive clipping."""
+    units: list[str] = []
+    for sentence in split_sentences(raw) or [raw or ""]:
+        bullets = [item.strip() for item in _BULLET_SPLIT_RE.split(sentence) if item.strip()]
+        parts = bullets or [sentence]
+        for part in parts:
+            units.extend(_split_long_part(part))
+    return units
 
 
 def claim_content_tokens(text: str) -> list[str]:
@@ -240,7 +327,7 @@ def _looks_like_memoir(claim: str) -> bool:
     return bool(_MEMOIR_RE.search(claim or ""))
 
 
-def _score_claim(claim: str, query_tokens: set[str]) -> int:
+def _score_claim(claim: str, query_tokens: set[str], *, query: str = "") -> int:
     tokens = claim_content_tokens(claim)
     if not tokens:
         return -1
@@ -249,7 +336,10 @@ def _score_claim(claim: str, query_tokens: set[str]) -> int:
     dist_overlap = sum(1 for token in distinctive if token in claim_words)
     overlap = sum(1 for token in query_tokens if token in claim_words)
     contrast = 6 if _CONTRAST_RE.search(claim) else 0
-    return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast
+    application = 0
+    if query_topic_sense(query) == SENSE_SEXUALITY and text_has_sexuality_application(claim):
+        application = 16
+    return dist_overlap * 6 + overlap * 3 + min(len(tokens), 8) + contrast + application
 
 
 def extract_teaching_claims(
@@ -265,26 +355,53 @@ def extract_teaching_claims(
     allow_memoir = bool(_TESTIMONY_QUERY_RE.search(query or ""))
 
     def add(raw: str, *, bonus: int = 0) -> None:
-        claim = _clip_claim(raw)
-        if looks_like_deck_junk(claim) or looks_like_kjv_diction(claim):
-            return
-        if looks_like_scripture_blob(claim):
-            return
-        if looks_like_stat_slide(claim):
-            return
-        if thesis_sentence_score(claim) < 0:
-            return
-        if len(claim) < _CLAIM_MIN_CHARS:
-            return
-        if len(claim_content_tokens(claim)) < 2 and bonus <= 0:
-            return
-        if _looks_like_memoir(claim) and not allow_memoir:
-            return
-        key = normalize_grounding_text(claim)
-        if len(key) < 16 or key in seen:
-            return
-        seen.add(key)
-        scored.append((_score_claim(claim, query_tokens) + bonus + int(thesis_sentence_score(claim) * 4), claim))
+        for unit in _split_claim_units(raw) or [raw]:
+            claim = _clip_claim(unit)
+            if looks_like_deck_junk(claim) or looks_like_kjv_diction(claim):
+                continue
+            if looks_like_scripture_blob(claim) or looks_like_vice_catalog(claim):
+                continue
+            if looks_like_stat_slide(claim):
+                continue
+            if thesis_sentence_score(claim) < 0:
+                continue
+            if len(claim) < _CLAIM_MIN_CHARS:
+                continue
+            if len(claim_content_tokens(claim)) < 2 and bonus <= 0:
+                continue
+            if _looks_like_memoir(claim) and not allow_memoir:
+                continue
+            key = normalize_grounding_text(claim)
+            if len(key) < 16 or key in seen:
+                continue
+            seen.add(key)
+            scored.append(
+                (
+                    _score_claim(claim, query_tokens, query=query)
+                    + bonus
+                    + int(thesis_sentence_score(claim) * 4),
+                    claim,
+                )
+            )
+
+    for doc in docs or []:
+        if _is_bible_doc(doc):
+            continue
+        meta = _metadata(doc)
+        kind = str(meta.get("chunk_kind") or "").lower()
+        if "overview" in kind:
+            continue
+        stored = str(meta.get("quote_text") or "").strip()
+        if stored:
+            for part in stored.split(" | "):
+                add(part, bonus=4)
+        body = spoken_text_without_timestamps(chunk_text(doc))
+        if not body:
+            continue
+        for span in extract_quote_spans(body):
+            add(span, bonus=2)
+        for sentence in split_sentences(body):
+            add(sentence)
 
     for doc in docs or []:
         if _is_bible_doc(doc):
@@ -335,6 +452,8 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
+        "Teach these numbered points. Do not substitute an LGBTQ inclusion frame, sexual-orientation "
+        "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part. "
         "Do not fill the gap from general Christian knowledge.",
     ]
@@ -428,8 +547,12 @@ def thesis_sentences_from_docs(
         if _is_bible_doc(doc):
             continue
         body = spoken_text_without_timestamps(chunk_text(doc))
-        for sentence in split_sentences(body) or []:
+        for sentence in _split_claim_units(body) or split_sentences(body) or []:
+            if looks_like_vice_catalog(sentence):
+                continue
             score = thesis_sentence_score(sentence)
+            if text_has_sexuality_application(sentence):
+                score += 0.8
             if score < _THESIS_ALLOWED_MIN:
                 continue
             claim = _clip_claim(sentence)

@@ -122,6 +122,7 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
+        self.assertIn("LGBTQ inclusion frame", block)
         steer = claim_repair_steer(claims)
         self.assertIn("do not restart", steer.lower())
         self.assertIn("let's continue", steer.lower())
@@ -310,6 +311,66 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("bless the sin", blob)
         self.assertNotIn("happy people", blob)
         self.assertNotIn("fruit of the spirit", blob)
+
+    def test_gay_query_extracts_christian_boundaries_application_theses(self):
+        notes = (
+            "lifestyle open themselves up to twenty three additional sinful practices.: "
+            "“…unrighteousness, sexual immorality, wickedness, covetousness, maliciousness; "
+            "full of envy, murder, strife, deceit, evil-mindedness; they are whisperers, "
+            "30backbiters, haters of God, violent, proud, boasters, inventors of evil things, "
+            "disobedient to parents, 31undiscerning, untrustworthy, unloving, unforgiving, "
+            "unmerciful.” This explains why the modern day homosexual agenda is filled with "
+            "venom toward anyone who dares to speak out against such a lifestyle. It seems "
+            "that very few people who practice a homosexual lifestyle are capable of allowing "
+            "the sin to be spoken of without internalizing it and making it personal. Just "
+            "because I choose to speak out against alcoholism does not mean I do not respect "
+            "or care for the alcoholic. Preaching this sermon does not mean I hate homosexuals, "
+            "I am merely saying this is not an acceptable lifestyle according to natural law "
+            "and the law of God. • In verse thirty two, Paul lets us know, those who practice "
+            "such a lifestyle are deserving of death… He also tells us, those who approve such "
+            "a lifestyle are worthy of the same penalty. What does he mean by “those who approve "
+            "them”? Those who accept this kind of a lifestyle as normal; those who encourage "
+            "others to follow such a pattern; those who push legislation to legalize it; those "
+            "who vote for those who vote to legalize it; those who watch it in the privacy of "
+            "their own bedroom; those who watch it at the theatre or bring it into their home! "
+            "Before anyone cocks a gun to carry out the punishment of God upon those who "
+            "practice a homosexual lifestyle, let me remind us, life is precious in the sight "
+            "of God and God alone has the authority to give or take life; judgment is not ours, "
+            "it is Gods; we must love the homosexual but we are to stand firmly against the "
+            "lifestyle which they have chosen to embrace. Before any of us get rocks out to "
+            "stone the homosexuals, let me remind us, the same Bible which pronounces judgment "
+            "upon the sin of the homosexual, pronounces judgment upon the sin of the fornicator; "
+            "the adulterer; the"
+        )
+        docs = [
+            _doc(
+                notes,
+                source="christian-boundaries.pdf",
+                title="Christian Boundaries",
+                chunk_kind="sermon_quote",
+            )
+        ]
+        claims = extract_teaching_claims(docs, query="Can gay people be Christians?")
+        blob = " ".join(claims).lower()
+        self.assertTrue(claims, claims)
+        self.assertIn("not an acceptable lifestyle", blob)
+        self.assertIn("natural law", blob)
+        self.assertIn("love the homosexual", blob)
+        self.assertIn("stand firmly", blob)
+        self.assertTrue("approve" in blob or "lifestyle as normal" in blob, claims)
+        self.assertTrue(
+            any("lifestyle as normal" in item.lower() for item in claims)
+            or any("those who approve" in item.lower() for item in claims),
+            claims,
+        )
+        self.assertIn("stone", blob)
+        self.assertIn("fornicator", blob)
+        self.assertNotIn("unrighteousness", blob)
+        self.assertNotIn("evil-mindedness", blob)
+        self.assertTrue(
+            any("love the homosexual" in item.lower() and "stand firmly" in item.lower() for item in claims),
+            claims,
+        )
 
     def test_skips_deck_junk_kjv_and_stat_slides(self):
         docs = [
