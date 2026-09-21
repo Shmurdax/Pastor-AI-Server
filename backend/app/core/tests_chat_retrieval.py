@@ -35,6 +35,7 @@ from core.chat_retrieval import (
     query_topic_sense,
     SENSE_ALCOHOL,
     SENSE_COMMUNION,
+    SENSE_SEXUALITY,
     looks_like_bible_query,
     search_queries_on_store,
     select_chat_source_chips,
@@ -1289,6 +1290,111 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertNotIn("lord", chip_blob)
         self.assertNotIn("proverbs", chip_blob)
         self.assertLessEqual(len(chips), 3)
+
+    def test_gay_query_is_sexuality_sense_not_happiness(self):
+        self.assertEqual(
+            query_topic_sense("Can gay people be Christians?"),
+            SENSE_SEXUALITY,
+        )
+        self.assertEqual(query_topic_sense("Can Christians drink?"), SENSE_ALCOHOL)
+        focus = query_focus_tokens("Can gay people be Christians?")
+        self.assertIn("gay", focus)
+        self.assertIn("homosexuality", focus)
+        self.assertNotIn("people", focus)
+        queries = expand_search_queries("Can gay people be Christians?", limit=7)
+        joined = " | ".join(queries).lower()
+        self.assertIn("homosexuality", joined)
+        self.assertTrue(queries[0].lower().startswith("gay"), queries)
+        self.assertFalse(queries[0].lower() == "people", queries)
+        self.assertTrue(
+            any("homosexuality" in item.lower() and "pastor don" in item.lower() for item in queries),
+            queries,
+        )
+
+    def test_gay_query_keeps_sexuality_hits_and_drops_happiness(self):
+        sexuality = _doc(
+            "We love and accept the sinner but refuse to accept a sinful lifestyle. "
+            "We love the sinner but we will not bless the sin.",
+            source="homosexuality.pdf",
+            title="Homosexuality",
+        )
+        happiness = _doc(
+            "HAPPINESS. HAPPY PEOPLE are those folks who know, and have confidence "
+            "in their standing with GOD. The fruit of the Spirit is love, joy, peace.",
+            source="happiness.pdf",
+            title="HAPPINESS",
+        )
+        fruit = _doc(
+            "The fruit of the Spirit is love, joy, peace, longsuffering, kindness, "
+            "goodness, faithfulness.",
+            source="fruit.pdf",
+            title="Fruit of the Spirit",
+        )
+        query = "Can gay people be Christians?"
+        filtered = filter_hits_by_topic(
+            [(happiness, 0.97), (fruit, 0.93), (sexuality, 0.71)],
+            query,
+            retrieval_k=8,
+        )
+        sources = [doc.metadata["source"] for doc, _score in filtered]
+        self.assertIn("homosexuality.pdf", sources)
+        self.assertNotIn("happiness.pdf", sources)
+        self.assertNotIn("fruit.pdf", sources)
+        self.assertEqual(
+            filter_hits_by_topic(
+                [(happiness, 0.97), (fruit, 0.93)],
+                query,
+                retrieval_k=8,
+            ),
+            [],
+        )
+
+        pinned = pin_docs_to_strong_title_matches(
+            [happiness, fruit, sexuality],
+            query,
+            candidate_hits=[
+                (happiness, 0.97),
+                (fruit, 0.93),
+                (sexuality, 0.71),
+            ],
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        pinned_sources = [doc.metadata["source"] for doc in pinned]
+        self.assertIn("homosexuality.pdf", pinned_sources)
+        self.assertNotIn("happiness.pdf", pinned_sources)
+        self.assertTrue(query_title_match(sexuality, query))
+        self.assertFalse(query_title_match(happiness, query))
+
+        selected = select_diverse_docs(
+            [(happiness, 0.97), (fruit, 0.93), (sexuality, 0.71)],
+            k=8,
+            bible_ratio=0.4,
+            query=query,
+            pin_query=query,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+        )
+        selected_sources = {doc.metadata["source"] for doc in selected}
+        self.assertIn("homosexuality.pdf", selected_sources)
+        self.assertNotIn("happiness.pdf", selected_sources)
+
+        def label(doc):
+            return doc.metadata["title"]
+
+        chips = ensure_source_media_mix(
+            ["HAPPINESS", "Homosexuality", "Fruit of the Spirit"],
+            [happiness, sexuality, fruit],
+            label,
+            min_count=3,
+            limit=5,
+            query=query,
+            rng=random.Random(1),
+        )
+        chip_blob = " | ".join(chips).lower()
+        self.assertIn("homosexuality", chip_blob)
+        self.assertNotIn("happiness", chip_blob)
+        self.assertNotIn("fruit", chip_blob)
 
 
 if __name__ == "__main__":

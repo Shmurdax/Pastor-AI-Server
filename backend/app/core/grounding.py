@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable, Optional
 from .bible_refs import canonical_book_key, format_verse_ref, parse_verse_refs
 from .chat_retrieval import (
     SENSE_ALCOHOL,
+    SENSE_SEXUALITY,
     chunk_text,
     extract_used_quotes,
     extract_used_verse_refs,
@@ -17,6 +18,7 @@ from .chat_retrieval import (
     metadata_source_hint,
     query_topic_sense,
     text_has_alcohol_teaching,
+    text_has_sexuality_teaching,
     text_looks_like_communion_only,
 )
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
@@ -84,6 +86,10 @@ def looks_like_scripture_blob(text: str) -> bool:
 
 _HEADING_QUOTE_RE = re.compile(r"^\s*#{1,6}\s+\S")
 _SENTENCE_END_RE = re.compile(r"[.!?…]")
+_OUTLINE_LABEL_RE = re.compile(
+    r"^[A-Z]\.\s+(?:In conclusion|In closing|To conclude|To sum up|In summary|Finally)\b",
+    re.IGNORECASE,
+)
 
 
 def looks_like_heading_quote(text: str) -> bool:
@@ -93,8 +99,18 @@ def looks_like_heading_quote(text: str) -> bool:
         return True
     if cleaned.startswith("#") or _HEADING_QUOTE_RE.match(cleaned):
         return True
+    if _OUTLINE_LABEL_RE.match(cleaned):
+        return True
+    words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
+    caps_core = re.sub(r"[^A-Za-z]+", "", cleaned)
+    if (
+        caps_core
+        and caps_core.isupper()
+        and 1 <= len(words) <= 6
+        and len(cleaned) <= 80
+    ):
+        return True
     if len(cleaned) <= 80 and not _SENTENCE_END_RE.search(cleaned):
-        words = [word for word in re.findall(r"[A-Za-z']+", cleaned)]
         if 2 <= len(words) <= 12:
             titled = sum(1 for word in words if word[:1].isupper())
             if titled >= max(2, len(words) - 1):
@@ -120,6 +136,12 @@ def snippet_query_score(text: str, query: str) -> float:
         if text_has_alcohol_teaching(text):
             return min(1.0, overlap + 0.4)
         return overlap
+    if sense == SENSE_SEXUALITY:
+        if not text_has_sexuality_teaching(text):
+            return 0.0
+        q_words.update({"homosexuality", "homosexual", "gay"})
+        overlap = len(q_words & t_words) / len(q_words)
+        return min(1.0, overlap + 0.4)
     return len(q_words & t_words) / len(q_words)
 
 
@@ -129,7 +151,11 @@ def _quotes_for_query(quotes: Iterable[str], query: str) -> list[str]:
         for item in quotes
         if item and str(item).strip() and not looks_like_heading_quote(item)
     ]
-    if query_topic_sense(query) != SENSE_ALCOHOL:
+    sense = query_topic_sense(query)
+    if sense == SENSE_SEXUALITY:
+        sexuality = [item for item in items if text_has_sexuality_teaching(item)]
+        return sexuality
+    if sense != SENSE_ALCOHOL:
         return items
     alcohol = [
         item
@@ -694,7 +720,8 @@ GROUNDING_REPAIR_STEER = (
     "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
     "Never attribute Scripture or NKJV wording to Pastor Don or Susan. "
     "Stay on the user's question; do not quote communion or Lord's Table lines "
-    "for an alcohol or drinking question. "
+    "for an alcohol or drinking question. Do not quote Happiness headings or "
+    "Fruit of the Spirit for a homosexuality or gay-people question. "
     "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
     "and one ALLOWED NKJV verse if that list is not empty."
 )

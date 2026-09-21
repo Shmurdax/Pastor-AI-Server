@@ -132,6 +132,9 @@ class GroundingTests(unittest.TestCase):
     def test_heading_quotes_are_not_woven(self):
         self.assertTrue(looks_like_heading_quote("# God Was with Him"))
         self.assertTrue(looks_like_heading_quote("# Jesus as the Word"))
+        self.assertTrue(looks_like_heading_quote("HAPPINESS."))
+        self.assertTrue(looks_like_heading_quote("HAPPINESS"))
+        self.assertTrue(looks_like_heading_quote("C. In conclusion"))
         self.assertFalse(
             looks_like_heading_quote("We sit with the grieving and we pray.")
         )
@@ -283,6 +286,25 @@ class GroundingTests(unittest.TestCase):
         self.assertIn("alcoholism", blob)
         self.assertIn("abstinence", blob)
         self.assertNotIn("cup", blob)
+
+    def test_gay_query_quotes_prefer_sexuality_not_happiness(self):
+        quotes = select_query_grounded_quotes(
+            [
+                "HAPPINESS.",
+                "HAPPY PEOPLE are those folks who know, and have confidence in their standing with GOD.",
+                "The fruit of the Spirit is love, joy, peace, longsuffering, kindness, goodness, faithfulness.",
+                "We love and accept the sinner but refuse to accept a sinful lifestyle.",
+                "We love the sinner but we will not bless the sin.",
+            ],
+            "Can gay people be Christians?",
+            limit=2,
+        )
+        blob = " ".join(quotes).lower()
+        self.assertIn("sinful lifestyle", blob)
+        self.assertIn("bless the sin", blob)
+        self.assertNotIn("happy people", blob)
+        self.assertNotIn("happiness", blob)
+        self.assertNotIn("fruit of the spirit", blob)
 
     def test_empty_nkjv_is_filled_from_allowed_verse(self):
         filled = repair_nkjv_citations(

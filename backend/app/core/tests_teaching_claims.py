@@ -247,6 +247,67 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("communion", blob)
         self.assertNotIn("cup", blob)
 
+    def test_gay_query_claims_keep_sexuality_not_happiness(self):
+        query = "Can gay people be Christians?"
+        tokens = query_topic_tokens(query)
+        self.assertIn("gay", tokens)
+        self.assertIn("homosexuality", tokens)
+        self.assertFalse(
+            claim_matches_query(
+                "HAPPY PEOPLE are those folks who know, and have confidence in their standing with GOD.",
+                tokens,
+                query=query,
+            )
+        )
+        self.assertFalse(
+            claim_matches_query(
+                "The fruit of the Spirit is love, joy, peace, longsuffering, kindness, goodness, faithfulness.",
+                tokens,
+                query=query,
+            )
+        )
+        self.assertTrue(
+            claim_matches_query(
+                "We love and accept the sinner but refuse to accept a sinful lifestyle.",
+                tokens,
+                query=query,
+            )
+        )
+        self.assertTrue(
+            claim_matches_query(
+                "We love the sinner but we will not bless the sin.",
+                tokens,
+                query=query,
+            )
+        )
+        docs = [
+            _doc(
+                "HAPPY PEOPLE are those folks who know, and have confidence in their standing with GOD. "
+                "The fruit of the Spirit is love, joy, peace.",
+                source="happiness.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "HAPPY PEOPLE are those folks who know, and have confidence in their standing with GOD."
+                ),
+            ),
+            _doc(
+                "We love and accept the sinner but refuse to accept a sinful lifestyle. "
+                "We love the sinner but we will not bless the sin.",
+                source="homosexuality.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "We love and accept the sinner but refuse to accept a sinful lifestyle. | "
+                    "We love the sinner but we will not bless the sin."
+                ),
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query=query)
+        blob = " ".join(claims).lower()
+        self.assertIn("sinful lifestyle", blob)
+        self.assertIn("bless the sin", blob)
+        self.assertNotIn("happy people", blob)
+        self.assertNotIn("fruit of the spirit", blob)
+
 
 if __name__ == "__main__":
     unittest.main()

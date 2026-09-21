@@ -11,12 +11,14 @@ from typing import Any, Iterable
 from .chat_retrieval import (
     SENSE_ALCOHOL,
     SENSE_NONE,
+    SENSE_SEXUALITY,
     chunk_text,
     is_bible_source,
     looks_like_library_pull,
     metadata_source_hint,
     query_topic_sense,
     text_has_alcohol_teaching,
+    text_has_sexuality_teaching,
     text_looks_like_communion_only,
 )
 from .grounding import normalize_grounding_text
@@ -48,6 +50,7 @@ _QUERY_TOPIC_WORDS = frozenset(
         "prayer",
         "barriers",
         "alcohol",
+        "gay",
         "church",
         "lord",
         "god",
@@ -177,13 +180,16 @@ def query_topic_tokens(query: str) -> set[str]:
     words = normalize_grounding_text(query).split()
     kept: set[str] = set()
     for word in words:
-        if len(word) < 4:
+        if len(word) < 4 and word not in _QUERY_TOPIC_WORDS:
             continue
         if word in _STOP and word not in _QUERY_TOPIC_WORDS:
             continue
         kept.add(word)
     if query_topic_sense(query) == SENSE_ALCOHOL:
         kept.add("alcohol")
+    if query_topic_sense(query) == SENSE_SEXUALITY:
+        kept.add("gay")
+        kept.add("homosexuality")
     return kept
 
 
@@ -201,12 +207,16 @@ def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") 
 
     Alcohol/drink questions must keep alcohol teaching, not Lord's Table
     sentences that only share the word drink.
+    Homosexuality questions must keep sexuality teaching, not Happiness notes
+    that only share people/Christians.
     """
     sense = query_topic_sense(query) if query else SENSE_NONE
     if sense == SENSE_ALCOHOL:
         if text_looks_like_communion_only(claim):
             return False
         return text_has_alcohol_teaching(claim)
+    if sense == SENSE_SEXUALITY:
+        return text_has_sexuality_teaching(claim)
     if not query_tokens:
         return True
     claim_words = set(normalize_grounding_text(claim).split())
@@ -287,7 +297,7 @@ def extract_teaching_claims(
         ]
         if topical:
             ranked = topical
-        elif query_topic_sense(query) == SENSE_ALCOHOL:
+        elif query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
             ranked = []
     return ranked[: max(1, limit)]
 

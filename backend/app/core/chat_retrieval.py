@@ -329,6 +329,7 @@ _NAME_PASSAGES = {
 
 SENSE_ALCOHOL = "alcohol"
 SENSE_COMMUNION = "communion"
+SENSE_SEXUALITY = "sexuality"
 SENSE_NONE = ""
 
 # "Can Christians drink?" must retrieve alcohol notes, not communion "drink from the cup".
@@ -382,6 +383,33 @@ _COMMUNION_TITLE_MARKERS = frozenset(
     {"communion", "eucharist", "sacrament", "supper"}
 )
 
+# "Can gay people be Christians?" must retrieve homosexuality notes, not Happiness.
+_SEXUALITY_TERMS = frozenset(
+    {
+        "gay",
+        "gays",
+        "homosexual",
+        "homosexuals",
+        "homosexuality",
+        "lesbian",
+        "lesbians",
+        "lgbt",
+        "lgbtq",
+        "transgender",
+        "bisexual",
+    }
+)
+_SEXUALITY_PHRASES = (
+    "same sex",
+    "sinful lifestyle",
+    "bless the sin",
+    "love the sinner",
+    "love and accept the sinner",
+)
+_SEXUALITY_TITLE_MARKERS = frozenset(
+    {"homosexuality", "homosexual", "gay", "sexuality", "lgbt"}
+)
+
 
 def _normalized_topic_blob(text: str) -> str:
     folded = (text or "").replace("\u2019", "'").lower()
@@ -390,7 +418,7 @@ def _normalized_topic_blob(text: str) -> str:
 
 
 def query_topic_sense(text: str) -> str:
-    """Alcohol vs Lord's Table when the query only says "drink"."""
+    """Alcohol vs Lord's Table for "drink", and gay vs Happiness for sexuality."""
     blob = _normalized_topic_blob(text)
     if not blob:
         return SENSE_NONE
@@ -400,10 +428,15 @@ def query_topic_sense(text: str) -> str:
     )
     has_alcohol = bool(words & _ALCOHOL_TERMS)
     has_drink = bool(words & _DRINK_TERMS)
+    has_sexuality = bool(words & _SEXUALITY_TERMS) or any(
+        phrase in blob for phrase in _SEXUALITY_PHRASES
+    )
     if has_communion and not has_alcohol:
         return SENSE_COMMUNION
     if has_alcohol or (has_drink and not has_communion):
         return SENSE_ALCOHOL
+    if has_sexuality:
+        return SENSE_SEXUALITY
     return SENSE_NONE
 
 
@@ -425,6 +458,17 @@ def text_has_alcohol_teaching(text: str) -> bool:
     return bool(blob) and bool(set(blob.split()) & _ALCOHOL_TERMS)
 
 
+def text_has_sexuality_teaching(text: str) -> bool:
+    """True when a chunk/quote is homosexuality teaching, not generic Christian living."""
+    blob = _normalized_topic_blob(text)
+    if not blob:
+        return False
+    words = set(blob.split())
+    if words & _SEXUALITY_TERMS:
+        return True
+    return any(phrase in blob for phrase in _SEXUALITY_PHRASES)
+
+
 def query_title_match(doc: Any, query: str) -> bool:
     """Title names the question, including alcohol aliases for drink questions."""
     tokens = query_focus_tokens(query)
@@ -438,6 +482,8 @@ def query_title_match(doc: Any, query: str) -> bool:
         return any(marker in hay for marker in _ALCOHOL_TITLE_MARKERS)
     if sense == SENSE_COMMUNION:
         return any(marker in hay for marker in _COMMUNION_TITLE_MARKERS)
+    if sense == SENSE_SEXUALITY:
+        return any(marker in hay for marker in _SEXUALITY_TITLE_MARKERS)
     return False
 
 
@@ -815,19 +861,24 @@ def query_focus_tokens(text: str) -> frozenset[str]:
     \"sermon\" / \"story\" / \"based\" that matches almost every pastoral clip.
     Aliases are resolved at match time so \"able\" is not a focus token.
     Alcohol questions that only say \"drink\" also include alcohol.
+    Sexuality questions that say \"gay\" also include homosexuality.
     """
+    sense = query_topic_sense(text)
     entities = query_canonical_entity_tokens(text)
-    if entities:
+    if entities and sense != SENSE_SEXUALITY:
         return entities
     tokens = {
         token.lower()
         for token in keyword_search_query(text).split()
         if len(token) >= 3
         and token.lower() not in _GENERIC_FOCUS_STOPWORDS
-        and token.lower() not in {"god", "man", "men", "son", "day", "way"}
+        and token.lower() not in {"god", "man", "men", "son", "day", "way", "people"}
     }
-    if query_topic_sense(text) == SENSE_ALCOHOL:
+    if sense == SENSE_ALCOHOL:
         tokens.add("alcohol")
+    if sense == SENSE_SEXUALITY:
+        tokens.add("gay")
+        tokens.add("homosexuality")
     return frozenset(tokens)
 
 
@@ -1181,6 +1232,13 @@ def filter_hits_by_topic(
             on_topic = alcohol_hits
         elif leftover:
             on_topic = leftover
+    if sense == SENSE_SEXUALITY:
+        sexuality_hits = []
+        for doc, score, _overlap in ranked:
+            blob = _metadata_search_blob(doc)
+            if query_title_match(doc, query) or text_has_sexuality_teaching(blob):
+                sexuality_hits.append((doc, score))
+        return sexuality_hits
     if entities:
         # A Cain/Abel question with 1–3 true hits should not fall back to 24
         # generic \"sermon\" clips just to fill the quota. If nothing names the
@@ -1193,7 +1251,7 @@ def filter_hits_by_topic(
             if is_bible_source(metadata_source_hint(doc))
         ]
     min_keep = max(6, retrieval_k)
-    if sense == SENSE_ALCOHOL and on_topic:
+    if sense in {SENSE_ALCOHOL, SENSE_SEXUALITY} and on_topic:
         return on_topic
     if len(on_topic) >= min_keep:
         return on_topic
@@ -1268,6 +1326,8 @@ def expand_search_queries(
     else:
         if sense == SENSE_ALCOHOL and "alcohol" not in focus.lower():
             focus = f"{focus} alcohol".strip()
+        if sense == SENSE_SEXUALITY and "homosexuality" not in focus.lower():
+            focus = f"{focus} homosexuality".strip()
         if focus and (not prior_focus or focus.lower() != prior_focus.lower()):
             # Embed the topical core (homosexuality, salvation, …), not
             # "generate a sermon based on …".
@@ -1286,6 +1346,11 @@ def expand_search_queries(
         add("Pastor Don Nordin alcohol")
         add("the christian and alcohol")
         add("sippin saints")
+    if sense == SENSE_SEXUALITY:
+        add("homosexuality")
+        add("Pastor Don Nordin homosexuality")
+        add("gay")
+        add("sinful lifestyle")
 
     return queries[: max(1, limit)]
 
@@ -1810,7 +1875,7 @@ def ensure_source_media_mix(
     allow_bible = looks_like_bible_query(query)
     title_lock = (
         bool(query)
-        and query_topic_sense(query) == SENSE_ALCOHOL
+        and query_topic_sense(query) in {SENSE_ALCOHOL, SENSE_SEXUALITY}
         and any(
             (not is_bible_source(metadata_source_hint(doc))) and query_title_match(doc, query)
             for doc in (docs or [])
