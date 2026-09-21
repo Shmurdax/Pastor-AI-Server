@@ -81,14 +81,26 @@ def richer_history_entry(
     return incoming if incoming_at >= existing_at else existing
 
 
-def merge_history_entries(existing, incoming) -> list[dict[str, Any]]:
+def normalize_deleted_session_ids(raw) -> set[str]:
+    if not isinstance(raw, list):
+        return set()
+    deleted: set[str] = set()
+    for item in raw:
+        sid = str(item or "").strip()[:64]
+        if sid:
+            deleted.add(sid)
+    return deleted
+
+
+def merge_history_entries(existing, incoming, deleted_ids=None) -> list[dict[str, Any]]:
+    deleted = normalize_deleted_session_ids(deleted_ids)
     by_id: dict[str, dict[str, Any]] = {}
 
     def consider(entry) -> None:
         if not isinstance(entry, dict):
             return
         sid = str(entry.get("sessionId") or "").strip()
-        if not sid:
+        if not sid or sid in deleted:
             return
         current = by_id.get(sid)
         if current is None:

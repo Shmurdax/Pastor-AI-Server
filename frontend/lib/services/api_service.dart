@@ -185,11 +185,13 @@ class ApiService {
     required List<Map<String, dynamic>> entries,
     required String activeSessionId,
     int schemaVersion = 1,
+    List<String> deletedSessionIds = const [],
   }) {
     return _apiClient.putChatHistory(
       entries: entries,
       activeSessionId: activeSessionId,
       schemaVersion: schemaVersion,
+      deletedSessionIds: deletedSessionIds,
     );
   }
 }

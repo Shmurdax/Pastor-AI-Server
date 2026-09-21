@@ -288,6 +288,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   bool _eventsNavPanelOpen = false;
   bool _ingestedDocsOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
+  final Set<String> _deletedSessionIds = {};
   Timer? _liveHistoryTimer;
   bool _liveHistoryPollInFlight = false;
   /// When true, do not steal the visible thread for a different live session.
@@ -671,7 +672,12 @@ final bibleRefRegex = RegExp(
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
-        history = mergeChatHistoryEntries(history, remoteEntries);
+        history = mergeChatHistoryEntries(
+          history,
+          remoteEntries,
+          deletedSessionIds: _deletedSessionIds,
+        );
+        _forgetConfirmedDeletedSessions(remoteEntries);
         final active = preferActiveSessionId(
           savedSession,
           remote['active_session_id']?.toString(),
@@ -731,7 +737,12 @@ final bibleRefRegex = RegExp(
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
       if (remoteEntries.isEmpty) return;
-      final merged = mergeChatHistoryEntries(_chatHistoryEntries, remoteEntries);
+      final merged = mergeChatHistoryEntries(
+        _chatHistoryEntries,
+        remoteEntries,
+        deletedSessionIds: _deletedSessionIds,
+      );
+      _forgetConfirmedDeletedSessions(remoteEntries);
       final localGenerating = _sessions.current.activeClient != null;
       var nextSessionId = sessionId;
       Map<String, dynamic>? currentRemote;
@@ -798,6 +809,14 @@ final bibleRefRegex = RegExp(
     }
   }
 
+  void _forgetConfirmedDeletedSessions(List<Map<String, dynamic>> remoteEntries) {
+    final remoteIds = {
+      for (final entry in remoteEntries)
+        (entry['sessionId']?.toString().trim() ?? ''),
+    }..remove('');
+    _deletedSessionIds.removeWhere((id) => !remoteIds.contains(id));
+  }
+
   Future<void> _pushChatHistoryToServer(List<Map<String, dynamic>> entries) async {
     final auth = context.read<AuthController>();
     if (!auth.isAuthenticated) return;
@@ -807,6 +826,7 @@ final bibleRefRegex = RegExp(
         entries: entries,
         activeSessionId: sessionId,
         schemaVersion: TokenStorage.chatHistorySchemaVersion,
+        deletedSessionIds: _deletedSessionIds.toList(),
       );
     } catch (e) {
       debugPrint('Chat history server save failed: $e');
@@ -868,9 +888,13 @@ final bibleRefRegex = RegExp(
     final storageId = _historyStorageId;
     final snapshot = _currentChatSnapshot(session);
     final sid = session.sessionId;
+    if (_deletedSessionIds.contains(sid)) return;
     final updated = <Map<String, dynamic>>[
       snapshot,
-      ..._chatHistoryEntries.where((e) => e['sessionId'] != sid),
+      ...omitDeletedHistoryEntries(
+        _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList(),
+        _deletedSessionIds,
+      ),
     ]..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
 
     // Free/guest: only the most recent chat is kept; Premium keeps many.
@@ -927,7 +951,9 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
-    final trimmed = entries.take(_maxHistoryEntries).toList();
+    final trimmed = omitDeletedHistoryEntries(entries, _deletedSessionIds)
+        .take(_maxHistoryEntries)
+        .toList();
     await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
     if (mounted) setState(() => _chatHistoryEntries = trimmed);
     unawaited(_pushChatHistoryToServer(trimmed));
@@ -958,6 +984,7 @@ final bibleRefRegex = RegExp(
     );
     if (delete != true || !mounted) return;
 
+    _deletedSessionIds.add(sid);
     final updated = _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList();
     await _saveChatHistoryEntries(updated);
     _sessions.disposeSession(sid, cancelledText: _s.responseCancelled);
@@ -1473,6 +1500,7 @@ final bibleRefRegex = RegExp(
         if (!mounted) return;
         _liveHistoryTimer?.cancel();
         _holdCurrentSession = false;
+        _deletedSessionIds.clear();
         _sessions.disposeAll(cancelledText: _s.responseCancelled);
         setState(() {
           _sessions.startNewChat(const Uuid().v4());
@@ -1818,6 +1846,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     onSignedOut: () {
                       if (!mounted) return;
                       _sessions.disposeAll(cancelledText: _s.responseCancelled);
+                      _deletedSessionIds.clear();
                       setState(() {
                         _sessions.startNewChat(const Uuid().v4());
                         _chatHistoryEntries = [];

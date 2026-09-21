@@ -592,6 +592,7 @@ class ApiClient {
     required List<Map<String, dynamic>> entries,
     required String activeSessionId,
     int schemaVersion = 1,
+    List<String> deletedSessionIds = const [],
   }) async {
     final res = await _client.put(
       Uri.parse(_resolveUrl('/api/chat/history/')),
@@ -600,6 +601,7 @@ class ApiClient {
         'entries': entries,
         'active_session_id': activeSessionId,
         'schema_version': schemaVersion,
+        'deleted_session_ids': deletedSessionIds,
       }),
     );
     _ensureOk(res);

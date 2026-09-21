@@ -57,6 +57,7 @@ class ChatHistoryAPIView(APIView):
 
     def put(self, request):
         incoming = sanitize_history_entries(request.data.get("entries"))
+        deleted_ids = request.data.get("deleted_session_ids") or []
         active = request.data.get("active_session_id") or ""
         if not isinstance(active, str):
             active = ""
@@ -77,12 +78,16 @@ class ChatHistoryAPIView(APIView):
             if row is None:
                 row = UserChatHistory.objects.create(
                     user=request.user,
-                    entries=incoming,
+                    entries=merge_history_entries([], incoming, deleted_ids),
                     active_session_id=active,
                     schema_version=schema,
                 )
             else:
-                merged = merge_history_entries(row.entries or [], incoming)
+                merged = merge_history_entries(
+                    row.entries or [],
+                    incoming,
+                    deleted_ids,
+                )
                 row.entries = merged
                 row.active_session_id = pick_active_session_id(
                     merged,
