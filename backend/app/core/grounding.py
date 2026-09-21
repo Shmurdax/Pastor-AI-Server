@@ -21,6 +21,7 @@ from .chat_retrieval import (
     text_has_sexuality_teaching,
     text_looks_like_communion_only,
 )
+from .note_priority import looks_like_kjv_diction
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ _QUERY_STOPWORDS = frozenset(
 
 def looks_like_scripture_blob(text: str) -> bool:
     blob = text or ""
+    if looks_like_kjv_diction(blob):
+        return True
     if _SCRIPTURE_HINT_RE.search(blob) and parse_verse_refs(blob[:1200]):
         return True
     return bool(parse_verse_refs(blob[:400]) and len(parse_verse_refs(blob[:800])) >= 2)
@@ -225,7 +228,7 @@ def collect_allowed_sermon_quotes(docs: Iterable[Any], *, limit: int = 12) -> li
             key = normalize_grounding_text(cleaned)
             if len(cleaned) < 12 or key in seen:
                 continue
-            if looks_like_heading_quote(cleaned):
+            if looks_like_heading_quote(cleaned) or looks_like_scripture_blob(cleaned):
                 continue
             seen.add(key)
             quotes.append(cleaned)
@@ -451,7 +454,7 @@ def verify_answer_grounding(
         scripture_shaped = bool(
             looks_like_scripture_blob(span) or parse_verse_refs(span) or "nkjv" in (span or "").lower()
         )
-        if attributed and (in_bible or scripture_shaped):
+        if attributed and (in_bible or scripture_shaped or looks_like_scripture_blob(span)):
             invented_quotes.append(span)
             continue
         if in_notes or in_bible:
@@ -717,13 +720,12 @@ GROUNDING_REPAIR_STEER = (
     "A RAG check found quotations or verses that are not in the retrieved notes. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or Teaching Points. "
     "Do not repeat headings, numbered points, or rewrite the sermon already on screen. "
-    "Drop any quotation or verse that is not copied from ALLOWED SERMON QUOTES or ALLOWED NKJV. "
-    "Never attribute Scripture or NKJV wording to Pastor Don or Susan. "
+    "Drop ungrounded quotations and verses. Do not invent replacement Pastor Don quotes "
+    "or NKJV lines to fill the gap. Never attribute Scripture to Pastor Don or Susan. "
     "Stay on the user's question; do not quote communion or Lord's Table lines "
     "for an alcohol or drinking question. Do not quote Happiness headings or "
     "Fruit of the Spirit for a homosexuality or gay-people question. "
-    "Write only replacement ALLOWED SERMON QUOTES (at least two, attributed) "
-    "and one ALLOWED NKJV verse if that list is not empty."
+    "Then stop."
 )
 
 
@@ -753,19 +755,8 @@ def grounding_repair_steer(
         parts.append("Drop these ungrounded Scripture lines or refs:")
         for span in dropped[:6]:
             parts.append(f"- {(span or '')[:220]}")
-    quote_list = [item.strip() for item in quotes if item and str(item).strip()][:4]
-    if quote_list:
-        parts.append("ALLOWED SERMON QUOTES (copy word-for-word):")
-        for quote in quote_list:
-            parts.append(f'- "{quote[:240]}"')
-    nkjv_list = [
-        (str(ref), str(text).strip())
-        for ref, text in nkjv_pairs
-        if text and str(text).strip()
-    ][:4]
-    if nkjv_list:
-        parts.append("ALLOWED NKJV (copy word-for-word):")
-        for ref, wording in nkjv_list:
-            parts.append(f'- {ref}: "{wording[:240]}"')
+    # Quotes stay optional. Listing allowed excerpts here caused the model to
+    # invent Pastor Don lines just to fill a quota.
+    _ = (quotes, nkjv_pairs)
     parts.append("Then stop.")
     return "\n".join(parts)
