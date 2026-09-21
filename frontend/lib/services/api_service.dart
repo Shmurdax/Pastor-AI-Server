@@ -73,6 +73,9 @@ class ApiService {
 
   Future<Uint8List> getDocumentFile(int id) => _apiClient.getDocumentFile(id);
 
+  Future<Uint8List> getSermonPdfByName(String sermonName) =>
+      _apiClient.getSermonPdfByName(sermonName);
+
   Future<Map<String, dynamic>> submitPrayerRequest({
     required String prayerText,
     String? name,

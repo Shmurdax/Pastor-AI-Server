@@ -7,6 +7,8 @@ import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
+import 'package:flutter_application_1/widgets/new_tab.dart';
+import 'package:flutter_application_1/widgets/vimeo_player_src.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -232,6 +234,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   void _openItem(MediaItem item, {int? seekSeconds}) {
     if (item.isPlayable) {
+      final watchUrl = mediaItemWatchUrl(item, startSeconds: seekSeconds);
+      if (watchUrl != null) {
+        openNewTab().openUrl(watchUrl);
+        return;
+      }
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => _WatchEpisodeScreen(

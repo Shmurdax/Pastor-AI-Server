@@ -19,7 +19,6 @@ import 'package:flutter_application_1/screens/landing_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/media_library_screen.dart';
 import 'package:flutter_application_1/screens/paywall_screen.dart';
-import 'package:flutter_application_1/screens/pdf_viewer_screen.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
@@ -32,6 +31,7 @@ import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
 import 'package:flutter_application_1/widgets/sermon_source_link.dart';
+import 'package:flutter_application_1/widgets/new_tab.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
 import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
@@ -41,6 +41,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_application_1/widgets/vimeo_player_src.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1211,9 +1212,13 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _launchSermonDoc(String sermonName) async {
+    final tab = openNewTab();
     final ref = parseSermonSourceRef(sermonName);
     final stem = ref.displayStem;
-    if (stem.isEmpty) return;
+    if (stem.isEmpty) {
+      tab.close();
+      return;
+    }
 
     try {
       final data = await _apiService.getIngestedDocuments(limit: 5, match: stem);
@@ -1224,23 +1229,23 @@ final bibleRefRegex = RegExp(
         final fileUrl =
             (doc['file_url'] ?? doc['file_path'] ?? '').toString();
         final vimeoId = (doc['vimeo_id'] ?? '').toString().trim();
+        final privacyHash = (doc['privacy_hash'] ?? '').toString().trim();
         final isVideo = sourceKind == 'video' ||
             isVideoFileUrl(fileUrl, sourceKind: sourceKind) ||
             isVideoSermonSource(sermonName);
 
         if (isVideo) {
           if (vimeoId.isNotEmpty) {
-            _closeLibraryDrawer(jump: true);
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => MediaLibraryScreen(
-                  openVimeoId: vimeoId,
-                  openSeekSeconds: ref.seekSeconds,
-                ),
+            tab.openUrl(
+              vimeoPlayerSrc(
+                vimeoId,
+                privacyHash: privacyHash.isEmpty ? null : privacyHash,
+                startSeconds: ref.seekSeconds,
               ),
             );
             return;
           }
+          tab.close();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -1256,45 +1261,22 @@ final bibleRefRegex = RegExp(
 
         final parsed = IngestedDocumentItem.fromJson(doc);
         if (parsed.id > 0) {
-          if (!mounted) return;
-          await _openIngestedPdf(parsed);
+          final bytes = await _apiService.getDocumentFile(parsed.id);
+          tab.openPdfBytes(bytes);
           return;
         }
 
         if (!parsed.viewOnly && fileUrl.isNotEmpty) {
-          final launched = await launchUrl(
-            Uri.parse(fileUrl),
-            mode: LaunchMode.externalApplication,
-            webOnlyWindowName: '_blank',
-          );
-          if (launched) return;
+          tab.openUrl(fileUrl);
+          return;
         }
       }
-    } catch (e, st) {
-      debugPrint('Ingested source lookup failed: $e\n$st');
-    }
 
-    // Same-origin PDF route: uploaded file when present, else rebuilt from Qdrant notes.
-    final Uri fileUri = Uri(
-      scheme: Uri.base.scheme.isEmpty ? 'https' : Uri.base.scheme,
-      host: Uri.base.host,
-      port: Uri.base.hasPort ? Uri.base.port : null,
-      pathSegments: <String>['sermons', '$stem.pdf'],
-    );
-
-    try {
-      final launched = await launchUrl(
-        fileUri,
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank',
-      );
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_s.couldNotOpenSource(stem))),
-        );
-      }
+      final bytes = await _apiService.getSermonPdfByName(stem);
+      tab.openPdfBytes(bytes);
     } catch (e, st) {
       debugPrint('Error opening sermon link: $e\n$st');
+      tab.close();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_s.couldNotOpenSource(stem))),
@@ -1430,16 +1412,18 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _openIngestedPdf(IngestedDocumentItem document) async {
-    _closeLibraryDrawer(jump: true);
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(
-          apiService: _apiService,
-          document: document,
-        ),
-      ),
-    );
+    final tab = openNewTab();
+    try {
+      final bytes = await _apiService.getDocumentFile(document.id);
+      tab.openPdfBytes(bytes);
+    } catch (e, st) {
+      debugPrint('Error opening library document: $e\n$st');
+      tab.close();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_s.couldNotOpenSource(document.title))),
+      );
+    }
   }
 
   void _focusChatNav() {
