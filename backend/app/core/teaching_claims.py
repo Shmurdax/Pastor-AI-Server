@@ -21,7 +21,19 @@ from .chat_retrieval import (
     text_has_sexuality_teaching,
     text_looks_like_communion_only,
 )
-from .grounding import normalize_grounding_text
+from .grounding import (
+    looks_like_scripture_blob,
+    nkjv_corpus,
+    normalize_grounding_text,
+    quote_attributed_to_pastor,
+    sermon_note_corpus,
+)
+from .note_priority import (
+    looks_like_deck_junk,
+    looks_like_kjv_diction,
+    looks_like_stat_slide,
+    thesis_sentence_score,
+)
 from .quote_chunking import extract_quote_spans, spoken_text_without_timestamps, split_sentences
 
 _MARKUP_RE = re.compile(r"[*_`>#]+")
@@ -256,6 +268,14 @@ def extract_teaching_claims(
 
     def add(raw: str, *, bonus: int = 0) -> None:
         claim = _clip_claim(raw)
+        if looks_like_deck_junk(claim) or looks_like_kjv_diction(claim):
+            return
+        if looks_like_scripture_blob(claim):
+            return
+        if looks_like_stat_slide(claim):
+            return
+        if thesis_sentence_score(claim) < 0:
+            return
         if len(claim) < _CLAIM_MIN_CHARS:
             return
         if len(claim_content_tokens(claim)) < 2 and bonus <= 0:
@@ -266,7 +286,7 @@ def extract_teaching_claims(
         if len(key) < 16 or key in seen:
             return
         seen.add(key)
-        scored.append((_score_claim(claim, query_tokens) + bonus, claim))
+        scored.append((_score_claim(claim, query_tokens) + bonus + int(thesis_sentence_score(claim) * 4), claim))
 
     for doc in docs or []:
         if _is_bible_doc(doc):
@@ -309,13 +329,15 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
     lines = [
         "<required_teaching_points>",
         "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
-        "The numbered points are the retrieved teaching content for this answer. Teach them in your own words.",
+        "The numbered points are the only ideas you may teach. Paraphrase them in your own words. "
+        "Do not add theology, caveats, verses, or advice that is not in these points or REFERENCE NOTES.",
         "In your own words means the same thesis with different wording. Keep the contrast "
         "(the not / only if / same power / rather than). Do not keep a story or illustration "
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part.",
+        "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part. "
+        "Do not fill the gap from general Christian knowledge.",
     ]
     for index, claim in enumerate(points, start=1):
         lines.append(f"{index}. {claim}")
@@ -337,9 +359,9 @@ def claim_is_covered(claim: str, answer: str) -> bool:
             if all(token in answer_words for token in tokens[index : index + 3]):
                 return True
         later = tokens[len(tokens) // 2 :]
-        for index in range(len(later) - 1):
-            if later[index] in answer_words and later[index + 1] in answer_words and hits >= 3:
-                return True
+        later_hits = sum(1 for token in later if token in answer_words)
+        if later_hits >= 2 and hits >= max(3, (len(tokens) + 1) // 2):
+            return True
         return False
     phrases = [" ".join(tokens[index : index + 2]) for index in range(len(tokens) - 1)]
     if any(phrase in answer_norm for phrase in phrases):
@@ -385,3 +407,106 @@ def claim_repair_token_budget(*, completion_tokens: int, limit: int = 384) -> in
     if completion <= 0:
         return 0
     return min(completion, max(128, int(limit)))
+
+
+def _content_ngrams(text: str, size: int) -> list[str]:
+    tokens = claim_content_tokens(text)
+    return [" ".join(tokens[index : index + size]) for index in range(0, max(0, len(tokens) - size + 1))]
+
+
+def _scripture_attributed_to_pastor(answer: str, sentence: str) -> bool:
+    """True when this sentence puts Bible wording in Pastor Don's or Susan's mouth."""
+    cleaned = (sentence or "").strip()
+    if not cleaned:
+        return False
+    spans = extract_quote_spans(cleaned) or [cleaned]
+    if looks_like_kjv_diction(cleaned) or looks_like_scripture_blob(cleaned):
+        spans = [cleaned] + [span for span in spans if span != cleaned]
+    for span in spans:
+        if not (looks_like_kjv_diction(span) or looks_like_scripture_blob(span)):
+            continue
+        if quote_attributed_to_pastor(answer, span):
+            return True
+        prefix = normalize_grounding_text(cleaned[:160])
+        if re.search(
+            r"\b(?:pastor )?(?:don(?: and susan)?|susan)(?: nordin)?s? "
+            r"(?:also )?(?:teaches|taught|said|says|preach|preaches|preached|writes|wrote)\b",
+            prefix,
+        ):
+            return True
+    return False
+
+
+def sentence_idea_is_in_notes(sentence: str, hay: str, claims: Iterable[str]) -> bool:
+    """True when this sentence paraphrases retrieved notes rather than new theology."""
+    cleaned = (sentence or "").strip()
+    if not cleaned:
+        return False
+    tokens = claim_content_tokens(cleaned)
+    if len(tokens) < 2:
+        return False
+    hay_norm = hay or ""
+    for size in (3, 2):
+        for gram in _content_ngrams(cleaned, size):
+            if gram and gram in hay_norm:
+                return True
+    sent_set = set(tokens)
+    for claim in claims or []:
+        overlap = set(claim_content_tokens(claim)) & sent_set
+        if len(overlap) >= 2:
+            return True
+    return False
+
+
+def keep_note_paraphrase_sentences(
+    answer: str,
+    *,
+    sermon_docs: Iterable[Any] | None = None,
+    nkjv_docs: Iterable[Any] | None = None,
+    claims: Iterable[str] | None = None,
+) -> str:
+    """Drop sentences whose ideas are not in the retrieved notes or teaching points."""
+    point_list = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    hay = normalize_grounding_text(
+        " ".join(
+            [
+                sermon_note_corpus(sermon_docs),
+                nkjv_corpus(nkjv_docs),
+                " ".join(point_list),
+            ]
+        )
+    )
+    bible_hay = normalize_grounding_text(nkjv_corpus(nkjv_docs))
+    kept: list[str] = []
+    for sentence in split_sentences(answer) or [answer or ""]:
+        cleaned = (sentence or "").strip()
+        if not cleaned:
+            continue
+        if _scripture_attributed_to_pastor(answer, cleaned):
+            continue
+        scripture_shaped = looks_like_kjv_diction(cleaned) or looks_like_scripture_blob(
+            cleaned
+        )
+        if scripture_shaped:
+            if bible_hay and sentence_idea_is_in_notes(cleaned, bible_hay, []):
+                kept.append(cleaned)
+            continue
+        if sentence_idea_is_in_notes(cleaned, hay, point_list):
+            kept.append(cleaned)
+    return " ".join(kept).strip()
+
+
+def notes_only_from_claims(claims: Iterable[str] | None) -> str:
+    """Fallback reply built only from retrieved teaching sentences."""
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    return " ".join(points[:4]).strip()
+
+
+def paraphrase_too_thin(answer: str, claims: Iterable[str] | None) -> bool:
+    text = (answer or "").strip()
+    if len(text) < 80:
+        return True
+    point_list = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    if point_list and not any(claim_is_covered(claim, text) for claim in point_list[:2]):
+        return True
+    return False

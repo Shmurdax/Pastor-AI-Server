@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
+from .note_priority import chunk_thesis_score
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BIBLE_SOURCE_MARKERS = (
@@ -1739,7 +1741,9 @@ def select_diverse_docs(
             return False
         source_cap = max_per_source
         if any_strong_title and title_hit:
-            source_cap = max(max_per_source, 8)
+            # Extra same-file windows only for teaching sentences, not statistic slides.
+            if chunk_thesis_score(chunk_text(chunk.doc)) > 0:
+                source_cap = max(max_per_source, 4)
         if per_source.get(chunk.source_key, 0) >= source_cap:
             return False
         if prefer_bible is True and not chunk.is_bible:
@@ -1808,6 +1812,10 @@ def select_diverse_docs(
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
             topic_boost = 0.40 * chunk.topic_overlap
             title_boost = 0.90 * chunk.title_overlap
+            thesis_boost = 0.0
+            if any_strong_title and not chunk.is_bible:
+                if chunk_thesis_score(chunk_text(chunk.doc)) > 0:
+                    thesis_boost = 0.45
             if any_strong_title and not chunk.is_bible and not query_title_match(
                 chunk.doc, pin_topic
             ):
@@ -1821,6 +1829,7 @@ def select_diverse_docs(
                 - source_pen
                 + topic_boost
                 + title_boost
+                + thesis_boost
             )
             if value > best_value:
                 best_value = value
@@ -2105,15 +2114,20 @@ def format_reference_notes(
     *,
     max_chars: int,
 ) -> str:
-    """Join chunks with source labels so the model can quote across sermons."""
+    """Join chunks with source labels, teaching sentences first."""
+    indexed = list(enumerate(docs or []))
+    ranked = sorted(
+        indexed,
+        key=lambda item: (-chunk_thesis_score(chunk_text(item[1])), item[0]),
+    )
     blocks: list[str] = []
     used = 0
-    for index, doc in enumerate(docs, start=1):
+    for display_index, (_orig, doc) in enumerate(ranked, start=1):
         label = source_label(doc) or "Unknown"
         text = chunk_text(doc)
         if not text:
             continue
-        block = f"[Note {index} | {label}]\n{text}"
+        block = f"[Note {display_index} | {label}]\n{text}"
         extra = (2 if blocks else 0) + len(block)
         if used + extra > max_chars:
             remain = max_chars - used - (2 if blocks else 0)

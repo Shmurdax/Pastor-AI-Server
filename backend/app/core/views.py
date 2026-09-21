@@ -70,7 +70,6 @@ from .bible_refs import scripture_refs_from_metadata
 from .grounding import (
     collect_allowed_nkjv,
     collect_allowed_sermon_quotes,
-    grounded_fallback_answer,
     grounding_repair_steer,
     lookup_nkjv_verses,
     select_query_grounded_nkjv,
@@ -81,13 +80,15 @@ from .grounding import (
     repair_nkjv_citations,
     verify_answer_grounding,
     verse_refs_for_lookup,
-    weave_into_answer,
 )
 from .teaching_claims import (
     claim_repair_steer,
     claim_repair_token_budget,
     extract_teaching_claims,
     format_teaching_claims_block,
+    keep_note_paraphrase_sentences,
+    notes_only_from_claims,
+    paraphrase_too_thin,
     repairable_claims,
 )
 from .chat_retrieval import (
@@ -118,7 +119,6 @@ from .chat_system_prompt import (
     OPENING_RECALL_STEER,
     format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
-    QUOTE_CONTINUE_STEER,
     answer_char_count,
     answer_looks_incomplete,
     answer_missing_required_quotes,
@@ -439,29 +439,9 @@ def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
 
 
 def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    """Add a quote pass when notes were retrieved but quotes or NKJV are missing."""
-    if skip_rewrite_repair(answer):
-        return None, 0
-    docs = prepared.get("docs") or []
-    if not docs:
-        return None, 0
-    has_bible_notes = any(
-        _is_bible_source(_doc_source_name(doc)) for doc in docs
-    )
-    if not answer_missing_required_quotes(
-        answer,
-        query=query,
-        has_reference_notes=True,
-        has_bible_notes=has_bible_notes,
-    ):
-        return None, 0
-    budget = quote_repair_token_budget(
-        answer, completion_tokens=prepared.get("completion_tokens") or 0
-    )
-    if budget <= 0:
-        return None, 0
-    logger.info("Quote repair: retrieved notes were not quoted in the answer")
-    return QUOTE_CONTINUE_STEER, budget
+    """Quotes are optional; never start a second LLM pass to insert them."""
+    _ = (prepared, answer, query)
+    return None, 0
 
 
 def _rag_check_report(prepared, answer: str):
@@ -507,14 +487,12 @@ def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
     report, _sermon, _bible = _rag_check_report(prepared, answer)
     if report.ok:
         return None, 0
-    quotes, nkjv = _grounding_snippets(prepared)
-    if not quotes and not nkjv:
-        return None, 0
     budget = quote_repair_token_budget(
         answer, completion_tokens=prepared.get("completion_tokens") or 0
     )
     if budget <= 0:
         return None, 0
+    quotes, nkjv = _grounding_snippets(prepared)
     return grounding_repair_steer(report, quotes, nkjv), budget
 
 
@@ -532,40 +510,31 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
     )
 
 
-def _rag_grounding_fallback(prepared, answer: str, *, force: bool = False) -> str:
-    docs = prepared.get("docs") or []
-    if not docs:
-        return ""
-    report, _sermon, _bible = _rag_check_report(prepared, answer)
-    if report.ok and not force:
-        return ""
-    quotes, nkjv = _grounding_snippets(prepared)
-    if not quotes and not nkjv:
-        return ""
-    logger.warning("RAG check still failing; weaving on-topic Pastor Don excerpts into the reply")
-    return grounded_fallback_answer(quotes, nkjv)
-
-
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Collapse duplicate outlines, drop invented quotes, weave Pastor Don into the reply."""
+    """Drop ungrounded ideas and invented quotes; never weave replacement excerpts."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     if not docs:
         return answer
     _quotes, nkjv = _grounding_snippets(prepared)
     answer = repair_nkjv_citations(answer, nkjv)
-    report, _sermon, _bible = _rag_check_report(prepared, answer)
-    missing_quotes = _missing_required_quotes(prepared, answer)
-    if report.ok and not missing_quotes:
-        return answer
+    report, sermon, bible = _rag_check_report(prepared, answer)
     if not report.ok:
         stripped = strip_ungrounded_spans(answer, report)
         if stripped:
             answer = compact_teaching_answer(stripped)
-        missing_quotes = True
-    fallback = _rag_grounding_fallback(prepared, answer, force=missing_quotes)
-    if fallback and fallback not in (answer or ""):
-        answer = weave_into_answer(answer, fallback)
+    claims = list(prepared.get("teaching_claims") or [])
+    paraphrased = keep_note_paraphrase_sentences(
+        answer,
+        sermon_docs=sermon,
+        nkjv_docs=bible,
+        claims=claims,
+    )
+    if paraphrase_too_thin(paraphrased, claims):
+        fallback = notes_only_from_claims(claims)
+        answer = fallback or paraphrased or answer
+    else:
+        answer = paraphrased
     return compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
 
 

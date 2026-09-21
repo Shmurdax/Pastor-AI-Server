@@ -192,7 +192,7 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertEqual(len(found), 1)
 
-    def test_grounding_repair_steer_lists_allowed_lines(self):
+    def test_grounding_repair_steer_drops_without_replacement_quotes(self):
         from core.grounding import GroundingReport, grounding_repair_steer
 
         report = GroundingReport(
@@ -208,8 +208,11 @@ class GroundingTests(unittest.TestCase):
         )
         self.assertIn("RAG check", steer)
         self.assertIn("dog heaven", steer)
-        self.assertIn("We sit with the grieving", steer)
-        self.assertIn("Psalm 34:18", steer)
+        self.assertIn("Jeremiah 9:24", steer)
+        self.assertNotIn("ALLOWED SERMON QUOTES", steer)
+        self.assertNotIn("copy word-for-word", steer)
+        self.assertNotIn("We sit with the grieving", steer)
+        self.assertIn("Do not invent replacement", steer)
         self.assertIn("Do not say Certainly", steer)
 
     def test_scripture_blobs_are_not_sermon_quotes(self):
@@ -358,6 +361,15 @@ class GroundingTests(unittest.TestCase):
         )
         ok = verify_answer_grounding(good, sermon_docs=sermon, nkjv_docs=nkjv)
         self.assertTrue(ok.ok, ok)
+
+    def test_kjv_diction_counts_as_scripture_blob(self):
+        from core.grounding import looks_like_scripture_blob
+        from core.note_priority import looks_like_kjv_diction
+
+        self.assertTrue(looks_like_kjv_diction("Ye are waxen fat, ye are grown thick."))
+        self.assertTrue(looks_like_scripture_blob("Ye are waxen fat, ye are grown thick."))
+        self.assertTrue(looks_like_kjv_diction("wine and strong drink"))
+        self.assertFalse(looks_like_kjv_diction("Alcoholism is a sin, not a sickness."))
 
 
 if __name__ == "__main__":

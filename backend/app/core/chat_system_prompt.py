@@ -201,18 +201,16 @@ FINISH_STEER = (
 )
 
 QUOTE_CONTINUE_STEER = (
-    "The previous reply taught the topic but is missing required grounding. "
+    "The previous reply wandered from the retrieved notes. "
     "Do not restart or apologize. Do not say Certainly, Let's continue, or "
     "Teaching Points. Do not repeat headings, numbered points, or any sentence "
     "already on screen. Do not write From the retrieved notes or any source dump. "
-    "Stay on the user's question. Do not quote communion or Lord's Table lines "
-    "for an alcohol or drinking question. Do not quote Happiness headings or "
-    "Fruit of the Spirit for a homosexuality or gay-people question. Never put NKJV or other Scripture "
-    "wording in Pastor Don's or Susan's mouth. "
-    "Write only missing quotation-marked excerpts from Pastor Don or Susan that "
-    "actually appear in REFERENCE NOTES, attributed in ordinary sentences "
-    "(Pastor Don Nordin teaches, \"...\"), and one NKJV verse from those notes "
-    "if unused. Two excerpts and one verse are enough. Then stop."
+    "Stay on the user's question. Do not invent Pastor Don or Susan quotations. "
+    "Do not invent NKJV or put Scripture wording in Pastor Don's or Susan's mouth. "
+    "Do not add a quotation or verse just to have one. "
+    "Do not quote communion or Lord's Table lines for an alcohol or drinking question. "
+    "Do not quote Happiness headings or Fruit of the Spirit for a homosexuality "
+    "or gay-people question. Then stop."
 )
 QUOTE_CONTINUE_MIN_TOKENS = 160
 
@@ -481,19 +479,7 @@ def answer_missing_required_quotes(
     has_reference_notes: bool,
     has_bible_notes: bool = False,
 ) -> bool:
-    """True when teaching notes were retrieved but quotes or NKJV are missing."""
-    if not has_reference_notes:
-        return False
-    if not query_expects_long_answer(query):
-        return False
-    if text_looks_degenerate(answer):
-        return False
-    from .chat_retrieval import extract_used_quotes, extract_used_verse_refs
-
-    if not extract_used_quotes([answer or ""]):
-        return True
-    if has_bible_notes and not extract_used_verse_refs([answer or ""]):
-        return True
+    """Quotes and NKJV citations are optional; missing them is not a defect."""
     return False
 
 
@@ -875,24 +861,24 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "found or missing when excerpts are present.\n"
         "Let the user's question and the notes decide length, outline, and whether to continue "
         "or rewrite earlier points. Follow-up turns may expand the last answer when the user asks for that.\n"
-        "Keep teaching answers focused: usually two to four short points. Two Pastor Don or Susan "
-        "quotations and one NKJV verse are enough for the whole answer—do not quote under every heading. "
+        "Keep teaching answers focused: usually two to four short points. "
+        "Do not invent Pastor Don or Susan quotations. Do not invent verse wording. "
+        "Skipping quotations and Scripture citations is correct when the notes already "
+        "state the teaching in prose. "
         "Do not recap the same points after the last item. Do not repeat a heading or numbered outline "
         "that is already on screen.\n"
         "Write a clean, fluent reply the way a modern assistant would: natural paragraphs, direct and "
         "specific, easy to read. Use Markdown sparingly—short headings or a tight list only when the "
         "user asked for an outline. Do not paste a source dump, bibliography, or notes appendix.\n"
-        "Paraphrase the Nordins' thesis in clear modern prose, and as you go weave in at least two "
-        "word-for-word quotation-marked excerpts from Pastor Don and/or Susan that actually appear in "
-        "REFERENCE NOTES and that address the user's question. "
+        "Every idea in the reply must come from REFERENCE NOTES or REQUIRED TEACHING POINTS. "
+        "Paraphrase those ideas in clear modern prose. Do not add theology, caveats, inclusion frames, "
+        "or pastoral advice that is not in the notes. If the notes do not address part of the question, "
+        "say that plainly. Do not fill the gap from general Christian knowledge. "
         "Never attribute Scripture or NKJV wording to Pastor Don or Susan; verses are Scripture, not their quotes. "
         "Do not use Lord's Table or communion excerpts to answer a question about alcoholic drink. "
         "Do not quote Happiness headings, HAPPY PEOPLE lines, or Fruit of the Spirit "
         "to answer a question about homosexuality, gay people, or sexual morality. "
-        "Place those excerpts inside the teaching paragraphs "
-        "(for example: Pastor Don Nordin teaches, \"...\"). Include NKJV verses from those notes the "
-        "same way when Scripture notes are present. Do not wait for the user to ask for quotations "
-        "or Scripture. Use a generic Christian pastoral tone; do not imitate Pastor Don's or Susan's "
+        "Use a generic Christian pastoral tone; do not imitate Pastor Don's or Susan's "
         "speaking style. Keep the contrast. Do not keep an illustration and teach a different point "
         "with it. "
         "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "

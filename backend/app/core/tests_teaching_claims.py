@@ -116,6 +116,7 @@ class TeachingClaimTests(unittest.TestCase):
         block = format_teaching_claims_block(claims)
         self.assertIn("<required_teaching_points>", block)
         self.assertIn("generic Christian pastoral tone", block)
+        self.assertIn("only ideas you may teach", block)
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
@@ -307,6 +308,131 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("bless the sin", blob)
         self.assertNotIn("happy people", blob)
         self.assertNotIn("fruit of the spirit", blob)
+
+    def test_skips_deck_junk_kjv_and_stat_slides(self):
+        docs = [
+            _doc(
+                "LEAVE ON THE SCREEN until the next point is taught.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "3.5% of all wine in America is consumed by civic leaders every year.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Wine is a mocker, strong drink is a brawler, and whoever is led astray by it is not wise.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way of "
+                "life for the Christian.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "Total abstinence from alcoholic beverages is the only acceptable "
+                    "way of life for the Christian."
+                ),
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query="Can Christians drink?")
+        blob = " ".join(claims).lower()
+        self.assertIn("abstinence", blob)
+        self.assertNotIn("leave on the screen", blob)
+        self.assertNotIn("3.5%", blob)
+        self.assertNotIn("civic leaders", blob)
+        self.assertNotIn("wine is a mocker", blob)
+
+    def test_loose_overlap_does_not_cover_abstinence_thesis(self):
+        claim = (
+            "Total abstinence from alcoholic beverages is the only acceptable way "
+            "of life for the Christian."
+        )
+        loose = "Abstinence from alcohol aligns closely with a wise Christian lifestyle."
+        self.assertFalse(claim_is_covered(claim, loose))
+        kept = (
+            "The boundary a Christian should set is total abstinence from alcoholic beverages."
+        )
+        self.assertTrue(claim_is_covered(claim, kept))
+
+    def test_strips_inclusive_and_hedging_sentences_not_in_notes(self):
+        from core.teaching_claims import (
+            keep_note_paraphrase_sentences,
+            notes_only_from_claims,
+            paraphrase_too_thin,
+        )
+
+        gay_docs = [
+            _doc(
+                "We love and accept the sinner but refuse to accept a sinful lifestyle. "
+                "We love the sinner but we will not bless the sin.",
+                source="boundaries.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "We love and accept the sinner but refuse to accept a sinful lifestyle."
+                ),
+            )
+        ]
+        gay_claims = [
+            "We love and accept the sinner but refuse to accept a sinful lifestyle.",
+            "We love the sinner but we will not bless the sin.",
+        ]
+        gay_answer = (
+            "LGBTQ+ people can find acceptance and salvation in the church including sexual orientation. "
+            "Christians should love the sinner and refuse a sinful lifestyle."
+        )
+        gay_kept = keep_note_paraphrase_sentences(
+            gay_answer, sermon_docs=gay_docs, claims=gay_claims
+        )
+        self.assertNotIn("LGBTQ", gay_kept)
+        self.assertNotIn("sexual orientation", gay_kept.lower())
+        self.assertIn("sinful lifestyle", gay_kept.lower())
+
+        drink_docs = [
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian. Alcoholism is a sin; it is not a sickness "
+                "or a disease!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "Total abstinence from alcoholic beverages is the only acceptable "
+                    "way of life for the Christian."
+                ),
+            )
+        ]
+        drink_claims = [
+            "Total abstinence from alcoholic beverages is the only acceptable way of "
+            "life for the Christian."
+        ]
+        drink_answer = (
+            "Christians should consider the risks and drink in moderation if they choose. "
+            "The boundary a Christian should set is total abstinence from alcoholic beverages."
+        )
+        drink_kept = keep_note_paraphrase_sentences(
+            drink_answer, sermon_docs=drink_docs, claims=drink_claims
+        )
+        self.assertNotIn("moderation", drink_kept.lower())
+        self.assertNotIn("consider the risks", drink_kept.lower())
+        self.assertIn("abstinence", drink_kept.lower())
+        self.assertFalse(paraphrase_too_thin(drink_kept, drink_claims))
+
+        invented = (
+            'Pastor Don Nordin teaches, "Wine is a mocker, strong drink is a brawler, '
+            'and whoever is led astray by it is not wise." '
+            "Some churches welcome every identity equally."
+        )
+        stripped = keep_note_paraphrase_sentences(
+            invented, sermon_docs=drink_docs, nkjv_docs=[], claims=drink_claims
+        )
+        self.assertNotIn("Wine is a mocker", stripped)
+        self.assertNotIn("every identity", stripped.lower())
+        self.assertTrue(paraphrase_too_thin(stripped, drink_claims))
+        fallback = notes_only_from_claims(drink_claims)
+        self.assertIn("abstinence", fallback.lower())
+        self.assertNotIn("Wine is a mocker", fallback)
 
 
 if __name__ == "__main__":

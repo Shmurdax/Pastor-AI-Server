@@ -73,8 +73,11 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Let the user's question and the notes decide", prompt)
         self.assertIn("Write a clean, fluent reply", prompt)
         self.assertIn("From the retrieved notes", prompt)
-        self.assertIn("Do not wait for the user to ask for quotations or Scripture", prompt)
-        self.assertIn("at least two word-for-word quotation-marked excerpts", prompt)
+        self.assertNotIn("Do not wait for the user to ask for quotations or Scripture", prompt)
+        self.assertNotIn("at least two word-for-word quotation-marked excerpts", prompt)
+        self.assertIn("Every idea in the reply must come from REFERENCE NOTES", prompt)
+        self.assertIn("Do not fill the gap from general Christian knowledge", prompt)
+        self.assertIn("Skipping quotations and Scripture citations is correct", prompt)
         self.assertIn("Never attribute Scripture", prompt)
         self.assertIn("communion excerpts", prompt.lower())
         self.assertIn("happiness headings", prompt.lower())
@@ -186,13 +189,14 @@ class ChatSystemPromptTests(unittest.TestCase):
         brush_off = "The church exists to worship God and love people."
         self.assertTrue(answer_needs_expansion(brush_off, query=query))
 
-    def test_quote_repair_runs_on_complete_paraphrase_without_quotes(self):
+    def test_missing_quotes_do_not_trigger_quote_repair(self):
         from .chat_system_prompt import (
             QUOTE_CONTINUE_MIN_TOKENS,
             QUOTE_CONTINUE_STEER,
             answer_missing_required_quotes,
             continuation_token_budget,
             quote_repair_token_budget,
+            skip_rewrite_repair,
         )
 
         query = "Recount what Pastor Don believes about faith?"
@@ -202,7 +206,7 @@ class ChatSystemPromptTests(unittest.TestCase):
         )
         self.assertGreaterEqual(len(paraphrase.strip()), 800)
         self.assertFalse(answer_needs_expansion(paraphrase, query=query))
-        self.assertTrue(
+        self.assertFalse(
             answer_missing_required_quotes(
                 paraphrase, query=query, has_reference_notes=True
             )
@@ -242,17 +246,16 @@ class ChatSystemPromptTests(unittest.TestCase):
             ),
             QUOTE_CONTINUE_MIN_TOKENS,
         )
-        self.assertIn("quotation-marked excerpts", QUOTE_CONTINUE_STEER)
+        self.assertIn("Do not invent Pastor Don or Susan quotations", QUOTE_CONTINUE_STEER)
+        self.assertIn("Do not add a quotation or verse just to have one", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not say Certainly", QUOTE_CONTINUE_STEER)
         self.assertIn("Do not repeat headings", QUOTE_CONTINUE_STEER)
-        self.assertIn("Never put NKJV", QUOTE_CONTINUE_STEER)
         self.assertIn("communion or Lord's Table", QUOTE_CONTINUE_STEER)
         self.assertIn("Happiness headings", QUOTE_CONTINUE_STEER)
         self.assertIn("homosexuality or gay-people", QUOTE_CONTINUE_STEER)
-        from .chat_system_prompt import skip_rewrite_repair
         self.assertTrue(skip_rewrite_repair(paraphrase))
         self.assertTrue(skip_rewrite_repair(quoted))
-        self.assertTrue(
+        self.assertFalse(
             answer_missing_required_quotes(
                 quoted, query=query, has_reference_notes=True, has_bible_notes=True
             )

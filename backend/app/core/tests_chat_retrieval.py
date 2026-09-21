@@ -1397,6 +1397,73 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertNotIn("happiness", chip_blob)
         self.assertNotIn("fruit", chip_blob)
 
+    def test_title_lock_does_not_keep_eight_stat_windows_over_theses(self):
+        stats = [
+            _doc(
+                f"3.5% of wine in America is consumed by civic leaders group {index} every year.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            )
+            for index in range(8)
+        ]
+        theses = [
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "Alcoholism is a sin; it is not a sickness or a disease, and Christians "
+                "should refuse that lifestyle.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+        ]
+        scored = [(doc, 0.99 - (index * 0.001)) for index, doc in enumerate(stats)]
+        scored.extend((doc, 0.70) for doc in theses)
+        selected = select_diverse_docs(
+            scored,
+            k=8,
+            bible_ratio=0.3,
+            max_per_source=2,
+            is_bible=lambda doc: is_bible_source(doc.metadata["source"]),
+            source_key=lambda doc: doc.metadata["source"],
+            query="Can Christians drink?",
+            pin_query="Can Christians drink?",
+        )
+        texts = [doc.page_content for doc in selected]
+        stat_count = sum(1 for text in texts if "3.5%" in text)
+        thesis_count = sum(
+            1
+            for text in texts
+            if "abstinence" in text.lower() or "alcoholism is a sin" in text.lower()
+        )
+        self.assertGreaterEqual(thesis_count, 2, texts)
+        self.assertLessEqual(stat_count, 2, texts)
+        self.assertLessEqual(len(selected), 4, texts)
+        self.assertTrue(all(doc.metadata["source"] == "sippin-saints.pdf" for doc in selected))
+
+    def test_format_notes_puts_theses_before_stat_slides(self):
+        docs = [
+            _doc(
+                "3.5% of wine in America is consumed by civic leaders every year.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                source="sippin-saints.pdf",
+                title="Sippin' Saints",
+            ),
+        ]
+        notes = format_reference_notes(
+            docs, lambda doc: doc.metadata["title"], max_chars=4000
+        )
+        self.assertLess(notes.find("abstinence"), notes.find("3.5%"))
+        self.assertIn("[Note 1 | Sippin' Saints]", notes)
+
 
 if __name__ == "__main__":
     unittest.main()
