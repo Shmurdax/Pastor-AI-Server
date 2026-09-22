@@ -8,6 +8,7 @@ from core.teaching_claims import (
     extract_teaching_claims,
     format_teaching_claims_block,
     keep_note_paraphrase_sentences,
+    looks_like_sermon_outline_request,
     query_topic_tokens,
     uncovered_claims,
 )
@@ -122,13 +123,90 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
-        self.assertIn("LGBTQ inclusion frame", block)
+        self.assertIn("You may use paragraphs, bullets, or headings for layout", block)
+        self.assertIn("Do not invent extra points", block)
+        self.assertIn("Cover every numbered point", block)
+        self.assertNotIn("Teach these numbered points in order", block)
+        self.assertNotIn("first sentence must paraphrase point 1", block)
+        self.assertIn("Do not invent a yes/no", block)
+        self.assertIn("Romans 14 liberty", block)
         steer = claim_repair_steer(claims)
         self.assertIn("do not restart", steer.lower())
         self.assertIn("let's continue", steer.lower())
         self.assertIn("covenant", steer)
         self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
+
+    def test_outline_request_detects_n_point_sermon(self):
+        self.assertTrue(
+            looks_like_sermon_outline_request("Give a 3 point sermon outline on marriage")
+        )
+        self.assertTrue(looks_like_sermon_outline_request("Give me a 3 point sermon on faith"))
+        self.assertFalse(looks_like_sermon_outline_request("Can Christians drink?"))
+        self.assertFalse(looks_like_sermon_outline_request("What does Pastor Don teach about hope?"))
+
+    def test_generation_user_prompt_locks_drink_and_gay_theses(self):
+        from core.teaching_claims import format_generation_user_prompt
+
+        drink = format_generation_user_prompt(
+            "Can Christians drink?",
+            [
+                "Total abstinence from alcoholic beverages is the only acceptable way "
+                "of life for the Christian.",
+                "Alcoholism is a sin; it is not a sickness or a disease!",
+            ],
+        )
+        self.assertIn("Can Christians drink?", drink)
+        self.assertIn("only acceptable way", drink)
+        self.assertIn("Alcoholism is a sin", drink)
+        self.assertIn("Romans 14 liberty", drink)
+        self.assertIn("Do not say drinking is a personal decision", drink)
+        self.assertIn("Cover every numbered point", drink)
+        self.assertIn("Paraphrase every numbered sermon point", drink)
+        self.assertIn("Mix short paragraphs and bullets", drink)
+        self.assertNotIn("Start with a paraphrase of point 1", drink)
+        self.assertIn("User question:", drink)
+
+        outline = format_generation_user_prompt(
+            "Give a 3 point sermon outline on marriage",
+            [
+                "Marriage is a covenant, not a contract.",
+                "A wife who does not meet her husband's needs sins against God.",
+                "Flexibility is key in disagreements.",
+            ],
+        )
+        self.assertIn("Give a 3 point sermon outline on marriage", outline)
+        self.assertIn("The user asked for an outline", outline)
+        self.assertIn("Markdown outline", outline)
+        self.assertIn("If they asked for N points, use N", outline)
+        self.assertIn("Do not invent extra points", outline)
+        self.assertIn("covenant", outline)
+
+        gay = format_generation_user_prompt(
+            "Can gay people be Christians?",
+            [
+                "We must love the homosexual but we are to stand firmly against the lifestyle.",
+            ],
+        )
+        self.assertIn("stand firmly", gay)
+        self.assertIn("LGBTQ inclusion", gay)
+        self.assertIn("Mark 12", gay)
+        self.assertIn("Do not begin by saying gay people can be Christians", gay)
+        self.assertIn("Do not write Certainly", gay)
+        self.assertIn("Cover every numbered point", gay)
+
+        empty = format_generation_user_prompt("Can Christians drink?", [])
+        self.assertIn("did not yield teaching points", empty)
+        self.assertNotIn("This is a follow-up", outline)
+        followup = format_generation_user_prompt(
+            "Expand on the first point",
+            ["Faith is the conviction of things hoped for and not yet seen."],
+            followup_focus="faith — Faith as Evidence of Things Unseen",
+        )
+        self.assertIn("Faith as Evidence of Things Unseen", followup)
+        self.assertIn("Do not answer a different sermon subject", followup)
+        self.assertIn("Expand on the first point", followup)
+        self.assertIn("Do not answer from general Christian knowledge", empty)
 
     def test_skips_memoir_and_off_topic_repair_for_faith_query(self):
         docs = [
@@ -407,6 +485,47 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("3.5%", blob)
         self.assertNotIn("civic leaders", blob)
         self.assertNotIn("wine is a mocker", blob)
+
+    def test_drink_query_ranks_abstinence_and_skips_romans_14_blob(self):
+        docs = [
+            _doc(
+                "There is quite a difference between taking cough medicine, which contains "
+                "alcohol and drinking socially or responsibly because one wants to drink alcohol!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Happy is he who does not condemn himself in what he approves. 23But he who "
+                "doubts is condemned if he eats, because he does not eat from faith; for "
+                "whatever is not from faith is sin. Paul warns Timothy about the evils of alcohol.",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+            ),
+            _doc(
+                "Total abstinence from alcoholic beverages is the only acceptable way of "
+                "life for the Christian. Alcoholism is a sin; it is not a sickness or a disease!",
+                source="sippin.pdf",
+                chunk_kind="sermon_quote",
+                quote_text=(
+                    "Total abstinence from alcoholic beverages is the only acceptable "
+                    "way of life for the Christian. | Alcoholism is a sin; it is not a "
+                    "sickness or a disease!"
+                ),
+            ),
+        ]
+        claims = extract_teaching_claims(docs, query="Can Christians drink?")
+        blob = " ".join(claims).lower()
+        self.assertTrue(claims, claims)
+        self.assertIn("only acceptable way", blob)
+        self.assertIn("alcoholism is a sin", blob)
+        self.assertNotIn("whatever is not from faith", blob)
+        self.assertNotIn("23but", blob)
+        self.assertTrue(
+            "only acceptable way" in claims[0].lower()
+            or "alcoholism is a sin" in claims[0].lower()
+            or "only acceptable way" in claims[1].lower(),
+            claims,
+        )
 
     def test_loose_overlap_does_not_cover_abstinence_thesis(self):
         claim = (

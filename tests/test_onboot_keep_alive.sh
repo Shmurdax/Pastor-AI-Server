@@ -14,6 +14,8 @@ grep -q 'sleep infinity' "$ROOT/onboot.sh" \
   || fail "onboot.sh must sleep infinity after start.sh"
 grep -q 'PASTOR_KEEP_ALIVE' "$ROOT/start.sh" \
   || fail "start.sh must honor PASTOR_KEEP_ALIVE"
+grep -q 'pastor_sync_git_channel' "$ROOT/onboot.sh" \
+  || fail "onboot.sh must fetch origin before start.sh"
 
 mkdir -p "$TMP/bin" "$TMP/pastor-ai" "$TMP/persistent"
 printf '%s\n' '#!/bin/bash' 'echo started > "'"$TMP"'/started"' 'exit 0' > "$TMP/start.sh"

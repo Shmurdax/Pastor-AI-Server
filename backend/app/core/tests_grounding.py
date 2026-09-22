@@ -368,6 +368,12 @@ class GroundingTests(unittest.TestCase):
 
         self.assertTrue(looks_like_kjv_diction("Ye are waxen fat, ye are grown thick."))
         self.assertTrue(looks_like_scripture_blob("Ye are waxen fat, ye are grown thick."))
+        self.assertTrue(
+            looks_like_scripture_blob(
+                "Happy is he who does not condemn himself in what he approves. "
+                "23But he who doubts is condemned if he eats."
+            )
+        )
         self.assertTrue(looks_like_kjv_diction("wine and strong drink"))
         self.assertFalse(looks_like_kjv_diction("Alcoholism is a sin, not a sickness."))
 

@@ -82,6 +82,15 @@ def looks_like_scripture_blob(text: str) -> bool:
     blob = text or ""
     if looks_like_kjv_diction(blob):
         return True
+    if re.search(r"\d+[A-Z][a-z]", blob):
+        return True
+    if re.search(
+        r"(?i)whatever is not from faith is sin|"
+        r"does not condemn himself in what he approves|"
+        r"he who doubts is condemned if he eats",
+        blob,
+    ):
+        return True
     if _SCRIPTURE_HINT_RE.search(blob) and parse_verse_refs(blob[:1200]):
         return True
     return bool(parse_verse_refs(blob[:400]) and len(parse_verse_refs(blob[:800])) >= 2)

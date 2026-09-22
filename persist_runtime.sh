@@ -38,6 +38,10 @@ PERSIST_BOOT_SCRIPTS=(
   vllm_runtime.sh
   apply-tokens.sh
   install.sh
+  deploy_update.sh
+  scripts/git_channel.sh
+  scripts/git_safe_directory.sh
+  scripts/sync_git_channel.sh
 )
 
 # Must match backend/app/pastor_ai/admin_url.py DEFAULT_ADMIN_URL_PATH
@@ -463,6 +467,7 @@ ensure_persistent_boot_bundle() {
   for name in "${PERSIST_BOOT_SCRIPTS[@]}"; do
     src="$ws_root/$name"
     if [[ -f "$src" ]]; then
+      mkdir -p "$(dirname "$PERSIST_BOOT/$name")"
       cp -a "$src" "$PERSIST_BOOT/$name"
       chmod +x "$PERSIST_BOOT/$name" 2>/dev/null || true
     fi
@@ -491,6 +496,7 @@ restore_workspace_from_persist() {
   local name
   for name in "${PERSIST_BOOT_SCRIPTS[@]}"; do
     if [[ ! -f "$ws_root/$name" && -f "$PERSIST_BOOT/$name" ]]; then
+      mkdir -p "$(dirname "$ws_root/$name")"
       cp -a "$PERSIST_BOOT/$name" "$ws_root/$name"
       chmod +x "$ws_root/$name" 2>/dev/null || true
       log "Restored $name from $PERSIST_BOOT"

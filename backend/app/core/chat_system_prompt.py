@@ -186,7 +186,9 @@ def biblical_characters_instruction(names: list[str]) -> str:
 CONTINUE_STEER = (
     "Your previous reply was too short. Add only remaining REQUIRED TEACHING "
     "POINTS that are not already on screen. Paraphrase those notes. "
-    "Do not add theology, headings, or advice that is not in REFERENCE NOTES. "
+    "Do not add theology or advice that is not in REFERENCE NOTES. "
+    "You may use paragraphs, bullets, or headings that match the draft. "
+    "Do not invent extra outline points. "
     "Do not repeat any sentence already written—the previous text is already "
     "on screen. Do not open with a conversational continuer. Then stop."
 )
@@ -195,7 +197,8 @@ FINISH_STEER = (
     "Your previous reply was cut off mid-sentence. Continue from the exact "
     "words where you stopped. Finish that sentence using only ideas already "
     "present in REQUIRED TEACHING POINTS or REFERENCE NOTES. "
-    "Do not add new headings, categories, verses, or advice. "
+    "Do not add new categories, verses, or advice that are not in the notes. "
+    "You may finish a heading or list item already started. "
     "Do not restart, do not summarize, do not apologize, and do "
     "not replace the draft with a shorter answer."
 )
@@ -374,6 +377,38 @@ OPENING_RECALL_STEER = (
 def format_opening_recall_steer(opening: str) -> str:
     text = (opening or "").strip() or "(the first question in this chat)"
     return OPENING_RECALL_STEER.replace("{opening}", text)
+
+
+def format_followup_topic_steer(
+    topic: str,
+    point_title: str = "",
+    point_body: str = "",
+) -> str:
+    """Keep a follow-up on the topic and point already taught."""
+    lines = [
+        "<follow_up>",
+        "This is a follow-up in the same chat. Stay on this topic:",
+        (topic or "").strip() or "(the previous topic)",
+    ]
+    title = " ".join((point_title or "").split())
+    body = " ".join((point_body or "").split())
+    if title:
+        lines.append("The user asked to go deeper on this part of the previous answer:")
+        lines.append(title)
+        if body:
+            lines.append(body[:400])
+        lines.append(
+            "Deepen that part from REFERENCE NOTES and REQUIRED TEACHING POINTS "
+            "that belong to this topic. You may bring in other retrieved notes on "
+            "the same topic. Do not switch to a different sermon subject."
+        )
+    else:
+        lines.append(
+            "Answer from REFERENCE NOTES about this topic, including other retrieved "
+            "notes that belong to the same topic. Do not switch to a different sermon subject."
+        )
+    lines.append("</follow_up>")
+    return "\n".join(lines) + "\n"
 
 
 CONVERSATIONAL_STEER = (
@@ -881,12 +916,15 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "state the teaching in prose. "
         "Do not recap the same points after the last item. Do not repeat a heading or numbered outline "
         "that is already on screen.\n"
-        "Write a clean, fluent reply the way a modern assistant would: natural paragraphs, direct and "
-        "specific, easy to read. Use Markdown sparingly—short headings or a tight list only when the "
-        "user asked for an outline. Do not paste a source dump, bibliography, or notes appendix.\n"
+        "Write a clean, fluent reply the way a modern assistant would: direct, specific, easy to read. "
+        "Match the user's requested layout. Mix short paragraphs, bullets, and light Markdown headings "
+        "when that makes the teaching clearer. If they asked for a sermon outline or N points, present "
+        "that many retrieved theses as labeled points (a short paragraph under a point is fine). "
+        "Do not invent extra points, seminar titles, or categories that are not in the notes. "
+        "Do not paste a source dump, bibliography, or notes appendix.\n"
         "Every idea in the reply must come from REFERENCE NOTES or REQUIRED TEACHING POINTS. "
-        "Paraphrase those ideas in clear modern prose. Do not add theology, caveats, inclusion frames, "
-        "headings, categories, or pastoral advice that is not in the notes. If the notes do not address part of the question, "
+        "Paraphrase those ideas in clear modern English. Do not add theology, caveats, inclusion frames, "
+        "or pastoral advice that is not in the notes. If the notes do not address part of the question, "
         "say that plainly. Do not fill the gap from general Christian knowledge. "
         "Never attribute Scripture or NKJV wording to Pastor Don or Susan; verses are Scripture, not their quotes. "
         "Do not use Lord's Table or communion excerpts to answer a question about alcoholic drink. "
@@ -895,12 +933,21 @@ def build_chat_system_prompt(*, biblical_names: list[str] | None = None) -> str:
         "Use a generic Christian pastoral tone; do not imitate Pastor Don's or Susan's "
         "speaking style. Keep the contrast. Do not keep an illustration and teach a different point "
         "with it. "
-        "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and outline for this answer. "
-        "Paraphrase them. Do not replace them with generic Christian teaching that is absent from the points "
+        "When REQUIRED TEACHING POINTS are listed, those points are the doctrine and the only ideas "
+        "you may teach. Cover every numbered point. Paraphrase them; do not invent a competing outline. "
+        "If the user asked for an outline or N sermon points, present that many of these theses as "
+        "labeled Markdown points, then continue with any remaining theses. "
+        "Do not invent a yes/no that is not in the points. "
+        "Do not replace them with generic Christian teaching that is absent from the points "
         "and notes. Represent Pastor Don's and Susan's positions faithfully. "
         "Do not invent quotations or verse wording that is not in the notes. "
         "Do not substitute an LGBTQ inclusion frame, sexual-orientation acceptance, or a greatest-commandment "
-        "answer unless that idea is in REQUIRED TEACHING POINTS or REFERENCE NOTES.\n"
+        "answer unless that idea is in REQUIRED TEACHING POINTS or REFERENCE NOTES. "
+        "Do not begin by saying gay people can be Christians unless that idea is in REQUIRED TEACHING POINTS. "
+        "Do not teach that alcoholic drink is a personal decision, a Romans 14 liberty issue, "
+        "or that moderate drinking is acceptable unless that idea is in REQUIRED TEACHING POINTS. "
+        "NKJV lines in REFERENCE NOTES support the sermon notes; do not replace the notes' application "
+        "with a different common evangelical reading of a verse.\n"
         "When a labeled video note includes a time range, you may mention that moment. Do not invent times.\n"
         "Never reply with a one-line brush-off such as \"No relevant sermon notes found.\" Only when "
         "REFERENCE NOTES are empty should you say you do not have material for this question.\n"
