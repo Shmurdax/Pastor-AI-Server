@@ -1,7 +1,7 @@
 """CPU BGE cross-encoder rerank for retrieved sermon windows.
 
-Runs after ANN + catalog merge and before select_diverse_docs. Does not search
-Qdrant, does not rewrite the generated answer, and does not touch embeddings.
+Runs after embedding search. Does not search Qdrant, does not rewrite the
+generated answer, and does not touch embeddings.
 """
 
 from __future__ import annotations

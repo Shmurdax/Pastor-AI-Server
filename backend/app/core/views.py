@@ -67,108 +67,39 @@ from .chat_sse import (
     wants_chat_stream,
 )
 from .bible_refs import scripture_refs_from_metadata
-from .grounding import (
-    collect_allowed_nkjv,
-    collect_allowed_sermon_quotes,
-    grounding_repair_steer,
-    lookup_nkjv_verses,
-    select_query_grounded_nkjv,
-    select_query_grounded_quotes,
-    split_docs_for_grounding,
-    strip_retrieval_meta,
-    strip_ungrounded_spans,
-    repair_nkjv_citations,
-    verify_answer_grounding,
-    verse_refs_for_lookup,
-)
-from .teaching_claims import (
-    claim_repair_steer,
-    claim_repair_token_budget,
-    extract_teaching_claims,
-    format_generation_user_prompt,
-    format_teaching_claims_block,
-    notes_only_from_claims,
-    paraphrase_too_thin,
-    repairable_claims,
-    restore_note_backed_answer,
-    resolve_teaching_claims,
-)
+from .grounding import strip_retrieval_meta
 from .chat_retrieval import (
-    INTENT_NEW_TOPIC,
-    _CONTINUING_INTENTS,
-    apply_retrieval_threshold,
-    classify_followup_intent,
-    expand_search_queries,
-    extract_used_quotes,
-    extract_used_verse_refs,
-    filter_hits_by_topic,
     format_reference_notes,
-    looks_like_library_pull,
-    merge_scored_hits,
-    pin_docs_to_strong_title_matches,
-    resolve_followup_retrieval,
-    restrict_docs_to_primary_source,
-    retain_title_matches,
-    refine_major_source_keys,
-    select_major_source_keys,
-    topic_anchor_query,
     is_bible_source,
     is_video_chunk,
     search_queries_on_store,
-    select_chat_source_chips,
-    select_diverse_docs,
-)
-from .sermon_catalog import (
-    catalog_title_queries,
-    lookup_chunks_by_file_hashes,
-    match_library_catalog,
 )
 from .rerank import rerank_scored_hits
 from .chat_system_prompt import (
-    COMPLETE_ANSWER_MIN_CHARS,
-    CONVERSATIONAL_STEER,
     CONTINUE_STEER,
     FINISH_STEER,
-    LIBRARY_PULL_STEER,
-    FOLLOWUP_STEER,
-    OPENING_RECALL_STEER,
-    format_followup_topic_steer,
-    format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
     answer_char_count,
     answer_looks_incomplete,
-    answer_missing_required_quotes,
-    answer_needs_expansion,
     should_run_expansion,
     build_chat_system_prompt,
     compact_teaching_answer,
     continuation_token_budget,
-    quote_repair_token_budget,
     find_biblical_character_names,
     join_continuation,
-    looks_like_brief_social,
     looks_like_continue_dump,
-    looks_like_opening_recall,
     novel_continuation,
-    skip_rewrite_repair,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .live_chat_history import LiveHistoryPublisher
 from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdrant_url
-from .scope_gate import generate_out_of_scope_reply, query_in_scope
 from .storage_paths import ingested_media_path
 
 logger = logging.getLogger(__name__)
 PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
-RETRIEVAL_BIBLE_RATIO = float(os.getenv("RETRIEVAL_BIBLE_RATIO", "0.40"))
-RETRIEVAL_VIDEO_RATIO = float(os.getenv("RETRIEVAL_VIDEO_RATIO", "0.45"))
-RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.72"))
 RETRIEVAL_CANDIDATE_MULTIPLIER = int(os.getenv("RETRIEVAL_CANDIDATE_MULTIPLIER", "8"))
-RETRIEVAL_MAX_PER_SOURCE = int(os.getenv("RETRIEVAL_MAX_PER_SOURCE", "2"))
-RETRIEVAL_MAX_PER_BIBLE_BOOK = int(os.getenv("RETRIEVAL_MAX_PER_BIBLE_BOOK", "2"))
-RETRIEVAL_SOURCE_MIN = int(os.getenv("RETRIEVAL_SOURCE_MIN", "3"))
 RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
@@ -455,74 +386,16 @@ def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str |
     return None, 0
 
 
-def _rag_check_report(prepared, answer: str):
-    docs = prepared.get("docs") or []
-    sermon, bible = split_docs_for_grounding(docs)
-    report = verify_answer_grounding(answer, sermon_docs=sermon, nkjv_docs=bible)
-    logger.warning(
-        "RAG check: ok=%s invented_quotes=%s invented_scripture=%s missing_nkjv=%s sample_quotes=%s sample_refs=%s",
-        report.ok,
-        len(report.invented_quotes),
-        len(report.invented_scripture),
-        len(report.missing_nkjv_refs),
-        report.invented_quotes[:2],
-        report.missing_nkjv_refs[:5],
-    )
-    return report, sermon, bible
-
-
-def _grounding_snippets(prepared):
-    docs = prepared.get("docs") or []
-    sermon, bible = split_docs_for_grounding(docs)
-    query = str(prepared.get("topic_query") or "")
-    quotes = select_query_grounded_quotes(collect_allowed_sermon_quotes(sermon), query)
-    if not quotes:
-        quotes = select_query_grounded_quotes(
-            collect_allowed_sermon_quotes(sermon, limit=8),
-            query,
-            min_score=0.0,
-        )
-    nkjv = select_query_grounded_nkjv(collect_allowed_nkjv(bible), query)
-    if not nkjv:
-        nkjv = collect_allowed_nkjv(bible, limit=1)
-    return quotes[:2], nkjv[:1]
-
-
 def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    """Invented quotes are dropped in finalize; do not start a second LLM pass."""
+    """Do not start a second LLM pass after generation."""
     _ = (prepared, answer)
     return None, 0
 
 
-def _missing_required_quotes(prepared, answer: str) -> bool:
-    docs = prepared.get("docs") or []
-    if not docs:
-        return False
-    query = str(prepared.get("topic_query") or "")
-    has_bible_notes = any(_is_bible_source(_doc_source_name(doc)) for doc in docs)
-    return answer_missing_required_quotes(
-        answer,
-        query=query,
-        has_reference_notes=True,
-        has_bible_notes=has_bible_notes,
-    )
-
-
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Drop invented quotations, then use the notes when the reply left them."""
-    answer = compact_teaching_answer(strip_retrieval_meta(answer))
-    docs = prepared.get("docs") or []
-    if not docs:
-        return answer
-    _quotes, nkjv = _grounding_snippets(prepared)
-    report, _sermon, _bible = _rag_check_report(prepared, answer)
-    answer = strip_ungrounded_spans(answer, report)
-    answer = compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
-    return restore_note_backed_answer(
-        answer,
-        prepared.get("teaching_claims") or [],
-        str(prepared.get("topic_query") or ""),
-    )
+    """Return the generated reply without a retrieval or grounding replacement."""
+    _ = prepared
+    return compact_teaching_answer(strip_retrieval_meta(answer))
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -909,32 +782,6 @@ class ChatAPIView(APIView):
                     .first()
                 )
 
-            # Follow-ups in an existing thread skip the LLM scope classifier.
-            # "Recap the original Joseph teaching" and "How does the great fish
-            # complete the lesson?" have no Bible/church keywords, so the gate
-            # sometimes answers NO and the redirect skips RAG.
-            has_prior_turns = ChatMessage.objects.filter(session_id=session_id).exists()
-            if not has_prior_turns and not query_in_scope(llm, user_query_llm):
-                out_of_scope_reply = sanitize_chat_answer(
-                    generate_out_of_scope_reply(
-                        llm, user_query_llm, language="en"
-                    )
-                )
-                saved_message = _save_ai_response(
-                    regenerate=regenerate,
-                    target_message=target_message,
-                    session_id=session_id,
-                    chat_user=chat_user,
-                    user_query_stored=user_query_stored,
-                    answer=out_of_scope_reply,
-                    allow_create=not regenerate,
-                )
-                payload = _chat_payload(
-                    display_reply(out_of_scope_reply, chat_language),
-                    message_id=None if saved_message is None else saved_message.id,
-                )
-                return {"kind": "final", "payload": payload}
-
             db_messages = ChatMessage.objects.filter(session_id=session_id).order_by("-timestamp")
             if regenerate and target_message:
                 db_messages = db_messages.exclude(id=target_message.id)
@@ -954,45 +801,7 @@ class ChatAPIView(APIView):
                 )
             if first_row and all(row.id != first_row.id for row in history_rows):
                 history_rows.append(first_row)
-            prior_user_queries = [row.user_query for row in reversed(history_rows)]
-            prior_ai_texts = [row.ai_response for row in reversed(history_rows)]
-            if regenerate and target_message and target_message.ai_response:
-                prior_ai_texts.append(target_message.ai_response)
-            used_quotes = extract_used_quotes(prior_ai_texts)
-            used_verses = extract_used_verse_refs(prior_ai_texts)
-            followup_intent = classify_followup_intent(
-                user_query_llm,
-                prior_user_queries,
-                prior_ai_texts,
-            )
-            followup_retrieval = None
-            if followup_intent in _CONTINUING_INTENTS:
-                followup_retrieval = resolve_followup_retrieval(
-                    user_query_llm,
-                    prior_user_queries,
-                    prior_ai_texts,
-                )
-            if followup_retrieval is not None:
-                topic_query = followup_retrieval.query
-                catalog_query = followup_retrieval.query
-                search_current = followup_retrieval.query
-                logger.warning(
-                    "Follow-up topic session=%s intent=%s query=%r point=%r",
-                    session_id[:18],
-                    followup_intent,
-                    topic_query[:180],
-                    (followup_retrieval.point_title or "")[:120],
-                )
-            elif followup_intent == INTENT_NEW_TOPIC:
-                topic_query = user_query_llm
-                catalog_query = user_query_llm
-                search_current = user_query_llm
-            else:
-                topic_query = topic_anchor_query(user_query_llm, prior_user_queries)
-                catalog_query = topic_query
-                search_current = user_query_llm
-            catalog_hits = match_library_catalog(catalog_query, limit=3)
-            catalog_keys = [hit.file_hash for hit in catalog_hits if hit.file_hash]
+            topic_query = user_query_llm
 
             embeddings = _get_embeddings()
             collection_name = get_collection_name()
@@ -1006,187 +815,32 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            brief_social = looks_like_brief_social(user_query_llm)
-            opening_recall = looks_like_opening_recall(user_query_llm)
-            # Pure greetings should not pull sermon notes—those notes trigger
-            # quote/timestamp dumps. Informational questions keep full RAG.
-            # "What did we start this chat with?" must not retrieve an unrelated
-            # sermon theme (parenting, generic wisdom) that then becomes the recap.
-            if brief_social or opening_recall:
-                search_queries = [user_query_llm]
-                docs = []
-                context = ""
-                teaching_claims = []
-                logger.warning(
-                    "Skipping Qdrant for brief social message (session=%s)"
-                    if brief_social
-                    else "Skipping Qdrant for opening-recall (session=%s)",
-                    session_id[:18],
-                )
-            else:
-                search_queries = expand_search_queries(
-                    search_current,
-                    prior_user_queries,
-                    prior_ai_texts=prior_ai_texts,
-                    limit=9,
-                    catalog_titles=catalog_title_queries(catalog_hits),
-                )
-                candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
-                logger.debug(
-                    "Searching Qdrant with %s queries (k=%s each, session=%s): %s",
-                    len(search_queries),
-                    candidate_k,
-                    session_id[:18],
-                    search_queries,
-                )
-                scored_hits = search_queries_on_store(
-                    vectorstore,
-                    search_queries,
-                    k_per_query=candidate_k,
-                )
-                # Lexical topic filter first so a 0.93 intro cannot bury a 0.74
-                # Cain/Abel clip under the similarity threshold.
-                scored_hits = filter_hits_by_topic(
-                    scored_hits,
-                    topic_query,
-                    retrieval_k=RETRIEVAL_K,
-                )
-                before_threshold = scored_hits
-                scored_hits = apply_retrieval_threshold(
-                    scored_hits,
-                    threshold=RETRIEVAL_THRESHOLD,
-                    retrieval_k=RETRIEVAL_K,
-                )
-                scored_hits = retain_title_matches(
-                    before_threshold, scored_hits, topic_query
-                )
-                source_fn = lambda doc: (
-                    str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                    or _doc_source_name(doc)
-                )
-                probe_keys = select_major_source_keys(
-                    scored_hits,
-                    topic_query,
-                    source_key=source_fn,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    catalog_keys=catalog_keys,
-                    limit=6,
-                )
-                probe_fetch = list(dict.fromkeys(list(catalog_keys) + list(probe_keys)))
-                catalog_docs = []
-                major_keys = list(probe_keys[:3])
-                if probe_fetch:
-                    probed_docs = lookup_chunks_by_file_hashes(
-                        client,
-                        collection_name,
-                        probe_fetch,
-                        query=topic_query,
-                        limit_per_file=8,
-                    )
-                    major_keys = refine_major_source_keys(
-                        scored_hits,
-                        topic_query,
-                        source_key=source_fn,
-                        is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                        catalog_keys=catalog_keys,
-                        file_windows=[(doc, 1.0) for doc in probed_docs],
-                        limit=3,
-                    )
-                    keep_keys = set(dict.fromkeys(list(catalog_keys) + list(major_keys)))
-                    catalog_docs = [
-                        doc for doc in probed_docs if source_fn(doc) in keep_keys
-                    ]
-                    if catalog_docs:
-                        scored_hits = merge_scored_hits(
-                            [scored_hits, [(doc, 1.0) for doc in catalog_docs]]
-                        )
-                        logger.warning(
-                            "Catalog sermons session=%s titles=%s majors=%s",
-                            session_id[:18],
-                            [hit.title for hit in catalog_hits],
-                            major_keys[:6],
-                        )
-                fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
-                scored_hits = rerank_scored_hits(
-                    topic_query,
-                    scored_hits,
-                    pinned_docs=catalog_docs,
-                )
-                docs = select_diverse_docs(
-                    scored_hits,
-                    k=RETRIEVAL_K,
-                    bible_ratio=RETRIEVAL_BIBLE_RATIO,
-                    video_ratio=RETRIEVAL_VIDEO_RATIO,
-                    max_per_source=RETRIEVAL_MAX_PER_SOURCE,
-                    max_per_bible_book=RETRIEVAL_MAX_PER_BIBLE_BOOK,
-                    used_quotes=used_quotes,
-                    used_verses=used_verses,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    is_video=is_video_chunk,
-                    source_key=source_fn,
-                    query=topic_query,
-                    pin_query=user_query_llm,
-                    catalog_source_keys=fetch_keys,
-                )
-                if looks_like_library_pull(user_query_llm):
-                    docs = restrict_docs_to_primary_source(
-                        docs,
-                        topic=topic_query,
-                        is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                        source_key=lambda doc: (
-                            str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                            or _doc_source_name(doc)
-                        ),
-                    )
-                refs = verse_refs_for_lookup(topic_query, docs)
-                nkjv_docs = lookup_nkjv_verses(
-                    client,
-                    collection_name,
-                    refs,
-                    retrieved_docs=docs,
-                )
-                seen_nkjv = {
-                    (getattr(doc, "page_content", None) or "")[:120]
-                    for doc in docs
-                    if _is_bible_source(_doc_source_name(doc))
-                }
-                for extra in nkjv_docs:
-                    key = (getattr(extra, "page_content", None) or "")[:120]
-                    if key and key not in seen_nkjv:
-                        docs.append(extra)
-                        seen_nkjv.add(key)
-                docs = pin_docs_to_strong_title_matches(
-                    docs,
-                    topic_query,
-                    pin_query=user_query_llm,
-                    candidate_hits=scored_hits,
-                    is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
-                    source_key=lambda doc: (
-                        str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
-                        or _doc_source_name(doc)
-                    ),
-                )
-                context = format_reference_notes(
-                    docs,
-                    _doc_source_label,
-                    max_chars=MAX_CONTEXT_CHARS,
-                    query=topic_query,
-                )
-                teaching_claims = resolve_teaching_claims(
-                    docs,
-                    query=topic_query,
-                    claims=extract_teaching_claims(
-                        docs,
-                        query=topic_query,
-                    ),
-                )
-                logger.warning(
-                    "Teaching claims session=%s count=%s query=%r claims=%s",
-                    session_id[:18],
-                    len(teaching_claims or []),
-                    (topic_query or "")[:120],
-                    teaching_claims or [],
-                )
+            search_queries = [user_query_llm]
+            candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
+            logger.debug(
+                "Searching Qdrant with %s queries (k=%s each, session=%s): %s",
+                len(search_queries),
+                candidate_k,
+                session_id[:18],
+                search_queries,
+            )
+            scored_hits = search_queries_on_store(
+                vectorstore,
+                search_queries,
+                k_per_query=candidate_k,
+            )
+            scored_hits = rerank_scored_hits(
+                user_query_llm,
+                scored_hits,
+            )
+            docs = [doc for doc, _score in scored_hits[:RETRIEVAL_K]]
+            context = format_reference_notes(
+                docs,
+                _doc_source_label,
+                max_chars=MAX_CONTEXT_CHARS,
+                preserve_order=True,
+            )
+            teaching_claims = []
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -1225,31 +879,8 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
-            opening_text = (first_row.user_query or "").strip() if first_row else ""
-            followup_focus = ""
-            if looks_like_opening_recall(user_query_llm) and opening_text:
-                followup_block = format_opening_recall_steer(opening_text)
-            elif followup_retrieval is not None:
-                focus_bits = [followup_retrieval.topic]
-                if followup_retrieval.point_title:
-                    focus_bits.append(followup_retrieval.point_title)
-                if followup_retrieval.point_body:
-                    focus_bits.append(followup_retrieval.point_body)
-                followup_focus = " — ".join(bit for bit in focus_bits if bit)
-                followup_block = format_followup_topic_steer(
-                    followup_retrieval.topic,
-                    followup_retrieval.point_title,
-                    followup_retrieval.point_body,
-                )
-            elif prior_user_queries:
-                followup_block = FOLLOWUP_STEER
-            else:
-                followup_block = ""
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + (LIBRARY_PULL_STEER if looks_like_library_pull(user_query_llm) else "")
-                + followup_block
-                + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -1271,22 +902,7 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
-            human_content = user_query_llm
-            if brief_social:
-                human_content = f"{CONVERSATIONAL_STEER}{user_query_llm.strip()}"
-            elif opening_recall and opening_text:
-                human_content = (
-                    format_opening_recall_steer(opening_text)
-                    + "\nUser question:\n"
-                    + user_query_llm.strip()
-                )
-            else:
-                human_content = format_generation_user_prompt(
-                    user_query_llm,
-                    teaching_claims,
-                    followup_focus=followup_focus,
-                )
-            human_content = f"{human_content}{language_generation_reminder()}"
+            human_content = f"{user_query_llm.strip()}{language_generation_reminder()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -1306,25 +922,20 @@ class ChatAPIView(APIView):
             }
 
         def _response_sources(docs, answer: str, query: str = ""):
-            """3–5 distinct sources: cited first, then a relevant weighted sample.
-
-            Knowledge-only books stay in REFERENCE NOTES but never in this list, so
-            members cannot open those files from chat sermon sources. Uncited
-            leftovers are not filled A–Z — that buried Prayer Barriers under
-            Community / Contagious / NKJV.
-            """
-            public_docs = visible_chat_source_docs(docs)
-            if not public_docs:
-                return []
-            return select_chat_source_chips(
-                public_docs,
-                answer,
-                _doc_source_label,
-                is_video=is_video_chunk,
-                min_count=RETRIEVAL_SOURCE_MIN,
-                limit=RETRIEVAL_SOURCE_MAX,
-                query=query,
-            )
+            """Source chips in rerank order. Hidden library books stay out of the list."""
+            _ = (answer, query)
+            labels = []
+            seen = set()
+            for doc in visible_chat_source_docs(docs):
+                label = (_doc_source_label(doc) or "").strip()
+                key = label.lower()
+                if not label or key in seen:
+                    continue
+                seen.add(key)
+                labels.append(label)
+                if len(labels) >= RETRIEVAL_SOURCE_MAX:
+                    break
+            return labels
 
         def _kick_worker():
             from .vllm_warmup import warmup_vllm_worker
