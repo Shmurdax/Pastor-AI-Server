@@ -352,6 +352,59 @@ class AuthService {
     throw AuthException(_authErrorMessage(res, fallback: 'Could not change password'));
   }
 
+  /// Asks the server to email a reset code. The response does not say whether
+  /// the address has an account.
+  Future<String> requestPasswordReset({required String email}) async {
+    const fallback =
+        'If an account with that email exists, we sent password reset instructions.';
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return fallback;
+    }
+
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/forgot-password/')),
+      headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({'email': email.trim()}),
+    );
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final body = _tryDecode(res.body);
+      final detail = body?['detail'];
+      if (detail is String && detail.isNotEmpty) return detail;
+      return fallback;
+    }
+    throw AuthException(_authErrorMessage(res, fallback: 'Could not send a reset code'));
+  }
+
+  Future<String> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    const fallback = 'Password updated. You can sign in with your new password.';
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return fallback;
+    }
+
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/reset-password/')),
+      headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({
+        'email': email.trim(),
+        'code': code.trim(),
+        'new_password': newPassword,
+      }),
+    );
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final body = _tryDecode(res.body);
+      final detail = body?['detail'];
+      if (detail is String && detail.isNotEmpty) return detail;
+      return fallback;
+    }
+    throw AuthException(_authErrorMessage(res, fallback: 'Could not reset password'));
+  }
+
   Future<AuthUser> changeName({
     required String token,
     required String name,

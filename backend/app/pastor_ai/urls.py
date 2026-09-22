@@ -13,11 +13,13 @@ from api.auth_views import (
     ChangeEmailView,
     ChangeNameView,
     ChangePasswordView,
+    ForgotPasswordView,
     GoogleAuthView,
     LoginView,
     LogoutView,
     MeView,
     RegisterView,
+    ResetPasswordView,
     SendEmailCodeView,
     VerifyEmailCodeView,
 )
@@ -88,6 +90,8 @@ urlpatterns = [
     path('api/auth/change-email/', ChangeEmailView.as_view()),
     path('api/auth/send-email-code/', SendEmailCodeView.as_view()),
     path('api/auth/verify-email-code/', VerifyEmailCodeView.as_view()),
+    path('api/auth/forgot-password/', ForgotPasswordView.as_view()),
+    path('api/auth/reset-password/', ResetPasswordView.as_view()),
 
     # Stripe billing
     path('api/billing/config/', BillingConfigView.as_view()),

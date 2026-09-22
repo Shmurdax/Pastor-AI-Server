@@ -162,6 +162,27 @@ class EmailVerificationCode(models.Model):
         return f"EmailVerificationCode({self.user_id})"
 
 
+class PasswordResetCode(models.Model):
+    """One-time 6-digit code emailed from the sign-in Forgot password flow."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="password_reset_codes",
+    )
+    code_hash = models.CharField(max_length=64, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(blank=True, null=True)
+    attempt_count = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PasswordResetCode({self.user_id})"
+
+
 class MediaVideo(models.Model):
     """Walk through the Word video synced from a Vimeo Folder."""
 
