@@ -25,6 +25,10 @@ class EmailVerificationScreen extends StatefulWidget {
     @visibleForTesting this.autoSend = true,
   }) : _api = api;
 
+  @visibleForTesting
+  static void debugResetAutoSendGuard() =>
+      _EmailVerificationScreenState.debugResetAutoSendGuard();
+
   final ApiService? _api;
   final bool autoSend;
 
@@ -33,6 +37,13 @@ class EmailVerificationScreen extends StatefulWidget {
 }
 
 class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
+  /// Stops a second mount (Flutter web rebuild) from emailing another code.
+  static final Map<String, DateTime> _autoSendAt = {};
+  static const _autoSendGap = Duration(seconds: 45);
+
+  @visibleForTesting
+  static void debugResetAutoSendGuard() => _autoSendAt.clear();
+
   late final ApiService _api = widget._api ?? ApiService();
   final _codeController = TextEditingController();
   final _codeFocus = FocusNode();
@@ -42,12 +53,26 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   String? _error;
   String? _info;
 
+  bool _claimAutoSend(String email) {
+    final key = email.trim().toLowerCase();
+    final now = DateTime.now();
+    final last = _autoSendAt[key];
+    if (last != null && now.difference(last) < _autoSendGap) {
+      return false;
+    }
+    _autoSendAt[key] = now;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.autoSend) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_sendCode());
+        if (!mounted) return;
+        final email = context.read<AuthController>().user?.email ?? '';
+        if (!_claimAutoSend(email)) return;
+        unawaited(_sendCode());
       });
     }
   }
@@ -64,7 +89,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
   Future<void> _sendCode({bool userRequested = false}) async {
     final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated) return;
+    if (!auth.isAuthenticated || _sending) return;
     _api.setAccessToken(auth.token);
     setState(() {
       _sending = true;
