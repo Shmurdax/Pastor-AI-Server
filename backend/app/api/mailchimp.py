@@ -20,6 +20,7 @@ SKIP_EXISTING_STATUSES = frozenset({"unsubscribed", "cleaned"})
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 REQUEST_TIMEOUT_S = 15
 PING_TIMEOUT_S = 8
+VERIFY_SAMPLE_LIMIT = 20
 
 
 class MailchimpError(Exception):
@@ -55,6 +56,64 @@ class AudienceStatus:
     connected: bool
     audience_name: str = ""
     error: str = ""
+
+
+@dataclass(frozen=True)
+class MemberCheck:
+    email: str
+    outcome: str
+    status: str = ""
+    tagged: bool = False
+    detail: str = ""
+
+    def label(self) -> str:
+        if self.outcome == "ok":
+            return "Subscribed and tagged nordin-ai"
+        if self.outcome == "untagged":
+            return "Subscribed, missing the nordin-ai tag"
+        if self.outcome == "left_alone":
+            status = self.status or "unsubscribed"
+            return f"{status.capitalize()} — left alone"
+        if self.outcome == "missing":
+            return "Not in the audience"
+        if self.outcome == "error":
+            return self.detail or "Could not check"
+        tag_bit = "tagged nordin-ai" if self.tagged else "missing the nordin-ai tag"
+        return f"{(self.status or 'unknown').capitalize()} — {tag_bit}"
+
+
+@dataclass
+class AudienceCheck:
+    checked: int = 0
+    total: int = 0
+    ok: int = 0
+    untagged: int = 0
+    left_alone: int = 0
+    missing: int = 0
+    other: int = 0
+    failed: int = 0
+    rows: list[MemberCheck] = field(default_factory=list)
+
+    def summary(self) -> str:
+        scope = f"Checked {self.checked}"
+        if self.total and self.checked < self.total:
+            scope += f" of {self.total}"
+        parts = [f"{scope}."]
+        if self.ok:
+            parts.append(f"{self.ok} subscribed and tagged.")
+        if self.untagged:
+            parts.append(f"{self.untagged} missing the nordin-ai tag.")
+        if self.left_alone:
+            parts.append(f"{self.left_alone} unsubscribed or cleaned (left alone).")
+        if self.missing:
+            parts.append(f"{self.missing} not in the audience.")
+        if self.other:
+            parts.append(f"{self.other} with another status.")
+        if self.failed:
+            parts.append(f"{self.failed} could not be checked.")
+        if len(parts) == 1:
+            parts.append("No exportable emails to check.")
+        return " ".join(parts)
 
 
 def mailchimp_configured() -> bool:
@@ -165,6 +224,62 @@ def audience_status() -> AudienceStatus:
     return AudienceStatus(configured=True, connected=True, audience_name=name)
 
 
+def sample_members_for_check(
+    members: list[ExportableMember],
+    limit: int = VERIFY_SAMPLE_LIMIT,
+) -> list[ExportableMember]:
+    """Spread a read-back across the export list so a large audience stays quick."""
+    if limit < 1 or len(members) <= limit:
+        return list(members)
+    if limit == 1:
+        return [members[0]]
+    step = (len(members) - 1) / (limit - 1)
+    picked: list[ExportableMember] = []
+    seen: set[int] = set()
+    for i in range(limit):
+        index = round(i * step)
+        if index in seen:
+            continue
+        seen.add(index)
+        picked.append(members[index])
+    return picked
+
+
+def check_members(
+    members: list[ExportableMember],
+    *,
+    total: int | None = None,
+) -> AudienceCheck:
+    """Read members back from Mailchimp. Does not create or update contacts."""
+    if not mailchimp_configured():
+        raise MailchimpError(
+            "Mailchimp is not configured. Set MAILCHIMP_API_KEY and MAILCHIMP_AUDIENCE_ID."
+        )
+    audience_id = (settings.MAILCHIMP_AUDIENCE_ID or "").strip()
+    session = _session()
+    root = _api_root()
+    result = AudienceCheck(
+        checked=len(members),
+        total=len(members) if total is None else total,
+    )
+    for member in members:
+        row = _check_one(session, root, audience_id, member)
+        result.rows.append(row)
+        if row.outcome == "ok":
+            result.ok += 1
+        elif row.outcome == "untagged":
+            result.untagged += 1
+        elif row.outcome == "left_alone":
+            result.left_alone += 1
+        elif row.outcome == "missing":
+            result.missing += 1
+        elif row.outcome == "error":
+            result.failed += 1
+        else:
+            result.other += 1
+    return result
+
+
 def upsert_members(members: list[ExportableMember]) -> ExportResult:
     if not mailchimp_configured():
         raise MailchimpError(
@@ -228,6 +343,61 @@ def _upsert_one(
         result.updated += 1
     else:
         result.added += 1
+
+
+def _check_one(
+    session: requests.Session,
+    root: str,
+    audience_id: str,
+    member: ExportableMember,
+) -> MemberCheck:
+    url = f"{root}/lists/{audience_id}/members/{subscriber_hash(member.email)}"
+    try:
+        response = session.get(url, timeout=PING_TIMEOUT_S)
+    except requests.RequestException as exc:
+        return MemberCheck(email=member.email, outcome="error", detail=str(exc)[:240])
+    if response.status_code == 404:
+        return MemberCheck(email=member.email, outcome="missing")
+    if response.status_code >= 400:
+        return MemberCheck(
+            email=member.email,
+            outcome="error",
+            detail=_error_detail(response),
+        )
+    try:
+        body = response.json() or {}
+    except ValueError:
+        body = {}
+    status = str(body.get("status") or "").lower()
+    tagged = _has_nordin_ai_tag(body.get("tags"))
+    if status in SKIP_EXISTING_STATUSES:
+        return MemberCheck(
+            email=member.email,
+            outcome="left_alone",
+            status=status,
+            tagged=tagged,
+        )
+    if status == "subscribed" and tagged:
+        return MemberCheck(email=member.email, outcome="ok", status=status, tagged=True)
+    if status == "subscribed":
+        return MemberCheck(email=member.email, outcome="untagged", status=status, tagged=False)
+    return MemberCheck(
+        email=member.email,
+        outcome="other",
+        status=status,
+        tagged=tagged,
+    )
+
+
+def _has_nordin_ai_tag(tags) -> bool:
+    if not isinstance(tags, list):
+        return False
+    for tag in tags:
+        if not isinstance(tag, dict):
+            continue
+        if str(tag.get("name") or "").strip().lower() == NORDIN_AI_TAG:
+            return True
+    return False
 
 
 def _apply_nordin_ai_tag(

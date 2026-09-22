@@ -6,9 +6,12 @@ from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from api.mailchimp import (
+    ExportableMember,
     MailchimpError,
+    check_members,
     collect_exportable_members,
     member_email,
+    sample_members_for_check,
     subscriber_hash,
     upsert_members,
 )
@@ -143,6 +146,88 @@ class UpsertMembersTests(TestCase):
         self.assertTrue(result.errors[0].startswith(self.member.email))
 
 
+class CheckMembersTests(TestCase):
+    def setUp(self):
+        self.member = _user()
+        self.members = collect_exportable_members()
+
+    def _member_body(self, status, tagged=True):
+        tags = [{"id": 1, "name": "nordin-ai"}] if tagged else []
+        return {"status": status, "email_address": self.member.email, "tags": tags}
+
+    @override_settings(MAILCHIMP_API_KEY="abc-us21", MAILCHIMP_AUDIENCE_ID="aud123")
+    @patch("api.mailchimp.requests.Session")
+    def test_reports_subscribed_tagged_member(self, session_cls):
+        session = session_cls.return_value
+        session.get.return_value.status_code = 200
+        session.get.return_value.json.return_value = self._member_body("subscribed")
+
+        result = check_members(self.members, total=1)
+
+        self.assertEqual(result.ok, 1)
+        self.assertEqual(result.rows[0].label(), "Subscribed and tagged nordin-ai")
+        session.put.assert_not_called()
+        session.post.assert_not_called()
+
+    @override_settings(MAILCHIMP_API_KEY="abc-us21", MAILCHIMP_AUDIENCE_ID="aud123")
+    @patch("api.mailchimp.requests.Session")
+    def test_reports_missing_untagged_and_unsubscribed(self, session_cls):
+        others = [
+            _user(username="gone@church.org", email="gone@church.org"),
+            _user(username="plain@church.org", email="plain@church.org"),
+            _user(username="out@church.org", email="out@church.org"),
+        ]
+        members = collect_exportable_members(
+            User.objects.filter(pk__in=[self.member.pk, *[u.pk for u in others]])
+        )
+        bodies = {
+            subscriber_hash(self.member.email): (200, self._member_body("subscribed", tagged=False)),
+            subscriber_hash("gone@church.org"): (200, {"status": "unsubscribed", "tags": []}),
+            subscriber_hash("plain@church.org"): (200, {"status": "pending", "tags": []}),
+            subscriber_hash("out@church.org"): (404, {}),
+        }
+
+        def get(url, timeout=None):
+            email_hash = url.rstrip("/").rsplit("/", 1)[-1]
+            status_code, body = bodies[email_hash]
+            response = session_cls.return_value.get.return_value
+            response.status_code = status_code
+            response.json.return_value = body
+            return response
+
+        session = session_cls.return_value
+        session.get.side_effect = get
+
+        result = check_members(members, total=len(members))
+
+        self.assertEqual(result.untagged, 1)
+        self.assertEqual(result.left_alone, 1)
+        self.assertEqual(result.other, 1)
+        self.assertEqual(result.missing, 1)
+        self.assertEqual(result.ok, 0)
+        summary = result.summary()
+        self.assertIn("1 missing the nordin-ai tag", summary)
+        self.assertIn("1 not in the audience", summary)
+        self.assertNotIn("subscribed and tagged", summary)
+        session.put.assert_not_called()
+
+    def test_sample_spreads_across_a_long_list(self):
+        members = [
+            ExportableMember(email=f"user{i}@church.org", first_name="", last_name="", user_id=i)
+            for i in range(25)
+        ]
+        sample = sample_members_for_check(members, limit=5)
+        self.assertEqual(len(sample), 5)
+        self.assertEqual(sample[0].email, "user0@church.org")
+        self.assertEqual(sample[-1].email, "user24@church.org")
+
+    def test_sample_keeps_short_lists(self):
+        members = [
+            ExportableMember(email="a@church.org", first_name="", last_name="", user_id=1)
+        ]
+        self.assertEqual(sample_members_for_check(members, limit=5), members)
+
+
 _ADMIN_TEST_STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
@@ -197,6 +282,36 @@ class MailchimpAdminExportTests(TestCase):
         self.assertEqual(run.updated, 1)
         self.assertEqual(run.candidate_count, 2)
         self.assertContains(res, "Added 1")
+
+    @patch("api.mailchimp_admin.check_members")
+    @patch("api.mailchimp_admin.audience_status")
+    def test_staff_check_reads_back_without_exporting(self, mock_status, mock_check):
+        from api.mailchimp import AudienceCheck, MemberCheck
+
+        mock_status.return_value.configured = True
+        mock_status.return_value.connected = True
+        mock_status.return_value.audience_name = "Nordin AI"
+        mock_status.return_value.error = ""
+        mock_check.return_value = AudienceCheck(
+            checked=1,
+            total=2,
+            ok=1,
+            rows=[
+                MemberCheck(
+                    email=self.member.email,
+                    outcome="ok",
+                    status="subscribed",
+                    tagged=True,
+                )
+            ],
+        )
+        res = self.client.post(self.url, {"action": "check"})
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Subscribed and tagged nordin-ai")
+        self.assertContains(res, self.member.email)
+        self.assertContains(res, "Checked 1 of 2")
+        self.assertEqual(MailchimpExportRun.objects.count(), 0)
+        mock_check.assert_called_once()
 
     @patch("api.mailchimp_admin.upsert_members")
     @patch("api.mailchimp_admin.dump_persistent_postgres")

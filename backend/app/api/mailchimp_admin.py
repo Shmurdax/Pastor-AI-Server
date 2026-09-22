@@ -9,8 +9,10 @@ from core.persist_db import dump_persistent_postgres
 from .mailchimp import (
     ExportResult,
     audience_status,
+    check_members,
     collect_exportable_members,
     mailchimp_configured,
+    sample_members_for_check,
     upsert_members,
     MailchimpError,
 )
@@ -47,6 +49,7 @@ def mailchimp_export_view(request):
         return HttpResponseRedirect("../")
 
     members = collect_exportable_members()
+    check = None
     if request.method == "POST":
         if not mailchimp_configured():
             messages.error(
@@ -55,17 +58,31 @@ def mailchimp_export_view(request):
                 "MAILCHIMP_AUDIENCE_ID in tokens.env, then run apply-tokens.sh.",
             )
             return HttpResponseRedirect(request.path)
-        try:
-            result = export_members_to_mailchimp(
-                members,
-                started_by=request.user.get_username() or "admin",
-            )
-        except MailchimpError as exc:
-            messages.error(request, str(exc))
+        action = (request.POST.get("action") or "export").strip()
+        if action == "check":
+            try:
+                check = check_members(
+                    sample_members_for_check(members),
+                    total=len(members),
+                )
+            except MailchimpError as exc:
+                messages.error(request, str(exc))
+                return HttpResponseRedirect(request.path)
+            problem = check.missing or check.untagged or check.other or check.failed
+            level = messages.WARNING if problem else messages.SUCCESS
+            messages.add_message(request, level, check.summary())
         else:
-            level = messages.WARNING if result.failed else messages.SUCCESS
-            messages.add_message(request, level, result.summary())
-        return HttpResponseRedirect(request.path)
+            try:
+                result = export_members_to_mailchimp(
+                    members,
+                    started_by=request.user.get_username() or "admin",
+                )
+            except MailchimpError as exc:
+                messages.error(request, str(exc))
+            else:
+                level = messages.WARNING if result.failed else messages.SUCCESS
+                messages.add_message(request, level, result.summary())
+            return HttpResponseRedirect(request.path)
 
     context = {
         **admin.site.each_context(request),
@@ -73,5 +90,6 @@ def mailchimp_export_view(request):
         "audience": audience_status(),
         "exportable_count": len(members),
         "latest_runs": MailchimpExportRun.objects.all()[:8],
+        "check": check,
     }
     return TemplateResponse(request, "admin/core/mailchimp_export.html", context)

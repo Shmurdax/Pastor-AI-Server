@@ -9,6 +9,12 @@
     from Mailchimp. Contacts are tagged <code>nordin-ai</code>. Existing
     unsubscribes are left alone.
   </p>
+  <p>
+    You do not need the Mailchimp login to confirm this. The connection line
+    below means the API key can read that audience. Export counts come from
+    Mailchimp's own responses. <strong>Check a sample</strong> reads those
+    emails back and shows whether each one is subscribed and tagged.
+  </p>
 
   <h2>Connection</h2>
   {% if audience.configured and audience.connected %}
@@ -37,10 +43,46 @@
 
   <form method="post" style="margin-top: 16px;">
     {% csrf_token %}
-    <button type="submit" class="default"{% if not audience.configured %} disabled{% endif %}>
+    <button type="submit" name="action" value="export" class="default"{% if not audience.configured %} disabled{% endif %}>
       Export members to Mailchimp
     </button>
+    <button type="submit" name="action" value="check"{% if not audience.configured %} disabled{% endif %}>
+      Check a sample in Mailchimp
+    </button>
   </form>
+
+  {% if check %}
+  <h2 style="margin-top: 24px;">Audience check</h2>
+  <p>{{ check.summary }}</p>
+  {% if check.checked < check.total %}
+  <p>
+    Spot check of {{ check.checked }} emails spread across
+    {{ check.total }} exportable logins. This only reads Mailchimp.
+  </p>
+  {% else %}
+  <p>Every exportable login was read back from Mailchimp. This only reads Mailchimp.</p>
+  {% endif %}
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Email</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">In Mailchimp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in check.rows %}
+      <tr>
+        <td style="padding: 6px 8px 6px 0;">{{ row.email }}</td>
+        <td style="padding: 6px 0;">{{ row.label }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="2" style="padding: 6px 0;">No exportable emails to check.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 
   <h2 style="margin-top: 24px;">Recent exports</h2>
   <table style="width: 100%; border-collapse: collapse;">
