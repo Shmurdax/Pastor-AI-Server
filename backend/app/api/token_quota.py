@@ -2,18 +2,26 @@
 
 Superusers are never limited. Only Premium (paid) members are enforced.
 Unused monthly balance rolls into the next month silently — clients never see
-the bank or rollover; they only see daily exhaustion wait copy.
+the bank or rollover; they only see wait-until copy when exhausted.
+
+Monthly grants land on the member's subscription anniversary day (the calendar
+day they first became Premium), every month — independent of monthly vs yearly
+billing.
 """
 
 from __future__ import annotations
 
+import calendar
 import os
+import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from django.db import transaction
 from django.utils import timezone
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def monthly_token_limit() -> int:
@@ -25,15 +33,18 @@ def monthly_token_limit() -> int:
 
 
 def daily_token_budget() -> int:
-    """Max tokens a Premium user may spend in one calendar day before cooldown."""
+    """Max tokens a Premium user may spend in one calendar day before cooldown.
+
+    Default is 1/10 of the full monthly allotment so binge use trips the
+    multi-day cooldown before the whole month is gone.
+    """
     raw = (os.getenv("DAILY_TOKEN_BUDGET") or "").strip()
     if raw:
         try:
             return max(1, int(raw))
         except ValueError:
             pass
-    # ~one day of an equal monthly split (100k / 30).
-    return max(1, monthly_token_limit() // 30)
+    return max(1, monthly_token_limit() // 10)
 
 
 def token_cooldown_days() -> int:
@@ -53,11 +64,57 @@ def token_limits_enabled() -> bool:
     }
 
 
-def period_key_for(when: Optional[datetime] = None) -> str:
-    """Calendar month key for secret monthly grants (YYYY-MM)."""
-    now = when or timezone.now()
-    local = timezone.localtime(now)
-    return f"{local.year:04d}-{local.month:02d}"
+def add_calendar_months(value: date, months: int) -> date:
+    """Advance ``value`` by ``months``, clamping the day for short months."""
+    month_index = value.month - 1 + int(months)
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def current_allotment_start(anchor: date, today: Optional[date] = None) -> date:
+    """Most recent anniversary date on or before ``today``."""
+    today = today or timezone.localdate()
+    if today < anchor:
+        return anchor
+    start = anchor
+    while True:
+        nxt = add_calendar_months(start, 1)
+        if nxt > today:
+            return start
+        start = nxt
+
+
+def next_allotment_date(profile, *, today: Optional[date] = None) -> Optional[date]:
+    """Next monthly token grant date for this profile."""
+    today = today or timezone.localdate()
+    anchor = profile.token_cycle_anchor
+    if anchor is None:
+        return None
+    key = (profile.token_period_key or "").strip()
+    if _ISO_DATE.match(key):
+        last = date.fromisoformat(key)
+        return add_calendar_months(last, 1)
+    return add_calendar_months(current_allotment_start(anchor, today), 1)
+
+
+def next_allotment_at(profile, *, today: Optional[date] = None) -> Optional[datetime]:
+    """Timezone-aware local midnight of the next allotment date."""
+    nxt = next_allotment_date(profile, today=today)
+    if nxt is None:
+        return None
+    tz = timezone.get_current_timezone()
+    return timezone.make_aware(datetime.combine(nxt, time.min), tz)
+
+
+def period_key_for(profile, when: Optional[datetime] = None) -> str:
+    """Anniversary period start (YYYY-MM-DD) for ``when``."""
+    local = timezone.localtime(when or timezone.now()).date()
+    anchor = profile.token_cycle_anchor
+    if anchor is None:
+        return local.isoformat()
+    return current_allotment_start(anchor, local).isoformat()
 
 
 def should_enforce_token_limits(user) -> bool:
@@ -116,30 +173,79 @@ def _format_wait_message(until: datetime) -> str:
     stamp = local.strftime("%b %d at %I:%M %p").lstrip("0").replace(" 0", " ")
     if local.date() == now.date():
         stamp = local.strftime("%I:%M %p").lstrip("0")
+    elif local.hour == 0 and local.minute == 0:
+        stamp = local.strftime("%b %d").lstrip("0").replace(" 0", " ")
     return (
         f"You've run out of responses for now. "
         f"Please wait {wait} (until {stamp}) before asking again."
     )
 
 
-def _empty_balance_message() -> str:
-    return (
-        "You've run out of responses for now. "
-        "Please wait until your allotment renews before asking again."
-    )
+def _empty_balance_message(profile) -> tuple[str, int, Optional[str]]:
+    """User-facing copy when the monthly bank is empty (until next allotment)."""
+    until = next_allotment_at(profile)
+    if until is None:
+        return (
+            "You've run out of responses for now. "
+            "Please wait until your allotment renews before asking again.",
+            0,
+            None,
+        )
+    seconds = max(1, int((until - timezone.now()).total_seconds()))
+    return _format_wait_message(until), seconds, until.isoformat()
+
+
+def ensure_token_cycle_anchor(profile, *, when: Optional[datetime] = None, save: bool = False) -> Optional[date]:
+    """Pin the first-subscribe anniversary day once; never move it afterward."""
+    if profile.token_cycle_anchor is not None:
+        return profile.token_cycle_anchor
+    if not profile.is_premium:
+        return None
+    local = timezone.localtime(when or timezone.now()).date()
+    profile.token_cycle_anchor = local
+    if save:
+        profile.save(update_fields=["token_cycle_anchor"])
+    return local
 
 
 def ensure_monthly_grant(profile, *, save: bool = True) -> bool:
-    """Add this month's grant once; unused balance rolls over silently."""
-    key = period_key_for()
-    if (profile.token_period_key or "") == key:
+    """Add due monthly grants on the subscription anniversary; unused rolls over."""
+    ensure_token_cycle_anchor(profile, save=False)
+    anchor = profile.token_cycle_anchor
+    if anchor is None:
         return False
+
+    today = timezone.localdate()
+    key = (profile.token_period_key or "").strip()
+    # Legacy calendar-month keys (YYYY-MM) from the first ship — re-anchor once.
+    if key and not _ISO_DATE.match(key):
+        key = ""
+
     grant = monthly_token_limit()
-    profile.token_balance = int(profile.token_balance or 0) + grant
-    profile.token_period_key = key
+    granted = False
+
+    if not key:
+        start = current_allotment_start(anchor, today)
+        profile.token_balance = int(profile.token_balance or 0) + grant
+        profile.token_period_key = start.isoformat()
+        granted = True
+    else:
+        last = date.fromisoformat(key)
+        while True:
+            nxt = add_calendar_months(last, 1)
+            if nxt > today:
+                break
+            profile.token_balance = int(profile.token_balance or 0) + grant
+            last = nxt
+            granted = True
+        if granted:
+            profile.token_period_key = last.isoformat()
+
     if save:
-        profile.save(update_fields=["token_balance", "token_period_key"])
-    return True
+        profile.save(
+            update_fields=["token_balance", "token_period_key", "token_cycle_anchor"]
+        )
+    return granted
 
 
 def _reset_daily_counters_if_needed(profile, today: date) -> None:
@@ -179,7 +285,13 @@ def check_chat_allowed(user) -> TokenGateResult:
     if cooldown is not None:
         seconds = max(1, int((cooldown - timezone.now()).total_seconds()))
         profile.save(
-            update_fields=["tokens_used_today", "token_usage_day", "token_balance", "token_period_key"]
+            update_fields=[
+                "tokens_used_today",
+                "token_usage_day",
+                "token_balance",
+                "token_period_key",
+                "token_cycle_anchor",
+            ]
         )
         return TokenGateResult(
             allowed=False,
@@ -196,19 +308,23 @@ def check_chat_allowed(user) -> TokenGateResult:
 
     balance = int(profile.token_balance or 0)
     if balance <= 0:
+        error, seconds, retry_at = _empty_balance_message(profile)
         profile.save(
             update_fields=[
                 "tokens_used_today",
                 "token_usage_day",
                 "token_balance",
                 "token_period_key",
+                "token_cycle_anchor",
                 "token_cooldown_until",
             ]
         )
         return TokenGateResult(
             allowed=False,
-            error=_empty_balance_message(),
+            error=error,
             code="token_balance_exhausted",
+            retry_after_seconds=seconds,
+            retry_at=retry_at,
             tokens_remaining_today=0,
         )
 
@@ -224,6 +340,7 @@ def check_chat_allowed(user) -> TokenGateResult:
                 "token_usage_day",
                 "token_balance",
                 "token_period_key",
+                "token_cycle_anchor",
                 "token_cooldown_until",
             ]
         )
@@ -243,6 +360,7 @@ def check_chat_allowed(user) -> TokenGateResult:
             "token_usage_day",
             "token_balance",
             "token_period_key",
+            "token_cycle_anchor",
             "token_cooldown_until",
         ]
     )
@@ -293,6 +411,7 @@ def record_token_usage(user, tokens: int) -> Optional[TokenGateResult]:
             "tokens_used_today",
             "token_usage_day",
             "token_period_key",
+            "token_cycle_anchor",
             "token_cooldown_until",
         ]
     )
@@ -306,9 +425,12 @@ def admin_adjust_tokens(profile, delta: int) -> int:
     ensure_monthly_grant(locked, save=False)
     new_balance = int(locked.token_balance or 0) + int(delta)
     locked.token_balance = max(0, new_balance)
-    locked.save(update_fields=["token_balance", "token_period_key"])
+    locked.save(
+        update_fields=["token_balance", "token_period_key", "token_cycle_anchor"]
+    )
     profile.token_balance = locked.token_balance
     profile.token_period_key = locked.token_period_key
+    profile.token_cycle_anchor = locked.token_cycle_anchor
     return locked.token_balance
 
 

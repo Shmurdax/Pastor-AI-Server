@@ -241,15 +241,16 @@ Stripe, when live, updates these fields from checkout and webhooks. Manual edits
 
 ### Chat token budgets (Premium)
 
-Paid Premium members receive **100,000 tokens per calendar month**. Unused tokens roll into the next month automatically (members are not told about rollover). Superusers are never limited.
+Paid Premium members receive **100,000 tokens per month**. Grants land on the **same calendar day they first subscribed**, every month — whether they pay monthly or yearly. Unused tokens roll into the next month automatically (members are not told about rollover). Superusers are never limited.
 
 To keep heavy users from emptying a month in one sitting:
 
-- About **1/30 of the monthly grant** can be spent in a single day
+- Up to **1/10 of the monthly allotment** (~10,000 tokens) can be spent in a single day
 - Hitting that daily ceiling starts a **2-day cooldown** before chat works again
-- The app shows: *You've run out of responses for now. Please wait…*
+- If the full bank is empty, the app shows how long until the **next anniversary allotment**
+- Daily cooldown / empty-bank copy: *You've run out of responses for now. Please wait…*
 
-In **Pastoral → Users** (or Profiles) you can see **Tokens left** and **Tokens spent**. Use **Adjust tokens** on the profile (positive to add, negative to remove) for support comps. Do not tell members their exact bank balance or that unused tokens roll over.
+In **Pastoral → Users** (or Profiles) you can see **Tokens left**, **Tokens spent**, and the **token cycle anchor** (first-subscribe day). Use **Adjust tokens** on the profile (positive to add, negative to remove) for support comps. Do not tell members their exact bank balance or that unused tokens roll over.
 
 Env knobs (operators): `MONTHLY_TOKEN_LIMIT_PER_USER`, `DAILY_TOKEN_BUDGET`, `TOKEN_COOLDOWN_DAYS`, `TOKEN_LIMIT_ENFORCE`.
 

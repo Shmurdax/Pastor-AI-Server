@@ -66,10 +66,15 @@ class Profile(models.Model):
         help_text="Lifetime tokens consumed by chat generations.",
     )
     token_period_key = models.CharField(
-        max_length=7,
+        max_length=10,
         blank=True,
         default="",
-        help_text="YYYY-MM of the last monthly token grant applied.",
+        help_text="YYYY-MM-DD start of the last anniversary token grant period.",
+    )
+    token_cycle_anchor = models.DateField(
+        blank=True,
+        null=True,
+        help_text="First Premium subscribe day; monthly token grants land on this day each month.",
     )
     tokens_used_today = models.PositiveIntegerField(
         default=0,
@@ -85,6 +90,20 @@ class Profile(models.Model):
         null=True,
         help_text="When set, chat is blocked until this time (daily binge cooldown).",
     )
+
+    def save(self, *args, **kwargs):
+        # Pin the token anniversary on the first transition to Active Premium.
+        if (
+            self.subscription_status == self.SubscriptionStatus.ACTIVE
+            and self.token_cycle_anchor is None
+        ):
+            self.token_cycle_anchor = timezone.localdate()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                fields = set(update_fields)
+                fields.add("token_cycle_anchor")
+                kwargs["update_fields"] = list(fields)
+        super().save(*args, **kwargs)
 
     def expire_canceled_subscription_if_needed(self) -> None:
         """Drop Premium after a scheduled cancel once the paid period ends."""

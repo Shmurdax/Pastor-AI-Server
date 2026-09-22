@@ -1,6 +1,6 @@
 """Tests for Premium chat token budgets, daily pacing, and secret rollover."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -11,11 +11,14 @@ from rest_framework.test import APIClient
 
 from api.models import Profile
 from api.token_quota import (
+    add_calendar_months,
     admin_adjust_tokens,
     check_chat_allowed,
+    current_allotment_start,
     daily_token_budget,
     ensure_monthly_grant,
     monthly_token_limit,
+    next_allotment_date,
     period_key_for,
     record_token_usage,
     should_enforce_token_limits,
@@ -36,7 +39,11 @@ class TokenQuotaHelpersTests(TestCase):
 
     def test_monthly_defaults(self):
         self.assertEqual(monthly_token_limit(), 100000)
-        self.assertEqual(daily_token_budget(), 100000 // 30)
+        self.assertEqual(daily_token_budget(), 100000 // 10)
+
+    def test_add_calendar_months_clamps_short_months(self):
+        self.assertEqual(add_calendar_months(date(2024, 1, 31), 1), date(2024, 2, 29))
+        self.assertEqual(add_calendar_months(date(2024, 1, 31), 2), date(2024, 3, 31))
 
     def test_superuser_is_exempt(self):
         self.user.is_superuser = True
@@ -50,29 +57,54 @@ class TokenQuotaHelpersTests(TestCase):
         self.profile.save(update_fields=["subscription_status"])
         self.assertFalse(should_enforce_token_limits(self.user))
 
-    def test_monthly_grant_and_secret_rollover(self):
+    def test_anchor_set_on_first_premium_activation(self):
+        self.assertIsNotNone(self.profile.token_cycle_anchor)
+        self.assertEqual(self.profile.token_cycle_anchor, timezone.localdate())
+
+    def test_monthly_grant_on_anniversary_and_secret_rollover(self):
         self.assertTrue(ensure_monthly_grant(self.profile))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.token_balance, 100000)
-        self.assertEqual(self.profile.token_period_key, period_key_for())
+        self.assertEqual(self.profile.token_period_key, period_key_for(self.profile))
+        anchor = self.profile.token_cycle_anchor
 
-        # Spend some, then pretend a new month arrives — unused balance rolls over.
+        # Spend some, then advance past the next anniversary — unused rolls over.
         self.profile.token_balance = 40000
-        self.profile.token_period_key = "2020-01"
+        self.profile.token_period_key = anchor.isoformat()
         self.profile.save(update_fields=["token_balance", "token_period_key"])
-        self.assertTrue(ensure_monthly_grant(self.profile))
+
+        with mock.patch("api.token_quota.timezone.localdate", return_value=add_calendar_months(anchor, 1)):
+            self.assertTrue(ensure_monthly_grant(self.profile))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.token_balance, 140000)
-        self.assertEqual(self.profile.token_period_key, period_key_for())
+        self.assertEqual(
+            self.profile.token_period_key,
+            add_calendar_months(anchor, 1).isoformat(),
+        )
 
-        # Same month again does not double-grant.
-        self.assertFalse(ensure_monthly_grant(self.profile))
+        # Same anniversary period again does not double-grant.
+        with mock.patch("api.token_quota.timezone.localdate", return_value=add_calendar_months(anchor, 1)):
+            self.assertFalse(ensure_monthly_grant(self.profile))
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.token_balance, 140000)
 
-    def test_daily_limit_starts_cooldown(self):
+    def test_yearly_subscriber_still_gets_monthly_anniversary_grants(self):
+        self.profile.billing_period = Profile.BillingPeriod.YEARLY
+        self.profile.save(update_fields=["billing_period"])
+        ensure_monthly_grant(self.profile)
+        anchor = self.profile.token_cycle_anchor
+        self.assertEqual(
+            next_allotment_date(self.profile),
+            add_calendar_months(anchor, 1),
+        )
+        # Mid-year still uses the subscribe day, not Stripe's yearly period end.
+        mid = add_calendar_months(anchor, 6)
+        self.assertEqual(current_allotment_start(anchor, mid), mid)
+
+    def test_daily_limit_is_one_tenth_and_starts_cooldown(self):
         ensure_monthly_grant(self.profile)
         daily = daily_token_budget()
+        self.assertEqual(daily, 10000)
         gate = record_token_usage(self.user, daily)
         self.assertIsNotNone(gate)
         self.assertFalse(gate.allowed)
@@ -101,13 +133,19 @@ class TokenQuotaHelpersTests(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.token_balance, 0)
 
-    def test_balance_exhausted_message(self):
+    def test_balance_exhausted_points_to_next_allotment(self):
         ensure_monthly_grant(self.profile)
         self.profile.token_balance = 0
         self.profile.save(update_fields=["token_balance"])
         gate = check_chat_allowed(self.user)
         self.assertFalse(gate.allowed)
         self.assertEqual(gate.code, "token_balance_exhausted")
+        self.assertIn("run out of responses", gate.error.lower())
+        self.assertGreater(gate.retry_after_seconds, 0)
+        self.assertIsNotNone(gate.retry_at)
+        expected = next_allotment_date(self.profile)
+        self.assertIsNotNone(expected)
+        self.assertIn(expected.strftime("%b").lstrip(), gate.error)
 
 
 @override_settings(ROOT_URLCONF="pastor_ai.urls")
@@ -148,8 +186,6 @@ class ChatTokenGateAPITests(TestCase):
         self.profile.token_balance = 0
         self.profile.save(update_fields=["token_cooldown_until", "token_balance"])
 
-        # Gate must not fire; the request may still fail later if vLLM is down.
-        # Patch the heavy RAG path so we only assert the token gate is skipped.
         with mock.patch("core.views.get_chat_llm") as mocked_llm:
             mocked_llm.side_effect = RuntimeError("stop-after-gate")
             res = self.client.post(
@@ -157,6 +193,5 @@ class ChatTokenGateAPITests(TestCase):
                 {"query": "Hello", "session_id": "t2"},
                 format="json",
             )
-        # Superuser passed the quota gate; failure is the mocked RAG error (500).
         self.assertEqual(res.status_code, 500)
         self.assertNotEqual(res.data.get("code"), "token_cooldown")

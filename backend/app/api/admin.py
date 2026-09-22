@@ -78,6 +78,7 @@ class ProfileInline(admin.StackedInline):
         "token_usage_day",
         "token_cooldown_until",
         "token_period_key",
+        "token_cycle_anchor",
         "adjust_tokens",
         "stripe_customer_id",
         "stripe_subscription_id",
@@ -92,6 +93,7 @@ class ProfileInline(admin.StackedInline):
         "token_usage_day",
         "token_cooldown_until",
         "token_period_key",
+        "token_cycle_anchor",
     )
 
 
@@ -237,6 +239,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "token_usage_day",
         "token_cooldown_until",
         "token_period_key",
+        "token_cycle_anchor",
     )
     fields = (
         "user",
@@ -252,6 +255,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "token_usage_day",
         "token_cooldown_until",
         "token_period_key",
+        "token_cycle_anchor",
         "adjust_tokens",
         "stripe_customer_id",
         "stripe_subscription_id",
