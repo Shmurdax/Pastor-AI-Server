@@ -8,7 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class _OnscreenCodeApi extends ApiService {
+class _SentEmailApi extends ApiService {
   @override
   void setAccessToken(String? token) {}
 
@@ -18,7 +18,7 @@ class _OnscreenCodeApi extends ApiService {
       'ok': true,
       'already_verified': false,
       'email': 'newpaid@test.com',
-      'emailed': false,
+      'emailed': true,
       'debug_code': '482193',
     };
   }
@@ -61,7 +61,7 @@ void main() {
     expect(find.text('Verify your email'), findsOneWidget);
     expect(
       find.text(
-        'Enter this code to verify your email. After that you can continue to payment.',
+        'Enter the 6-digit code we sent to your email. After that you can continue to payment.',
       ),
       findsOneWidget,
     );
@@ -79,7 +79,7 @@ void main() {
     );
   });
 
-  testWidgets('shows the pre-generated on-screen verification code', (tester) async {
+  testWidgets('does not show an on-screen verification code even if the API leaks one', (tester) async {
     final auth = AuthController(restoreSession: false);
     auth.sessionReady = true;
     auth.token = 'tok';
@@ -95,7 +95,7 @@ void main() {
         value: auth,
         child: MaterialApp(
           home: EmailVerificationScreen(
-            api: _OnscreenCodeApi(),
+            api: _SentEmailApi(),
           ),
         ),
       ),
@@ -103,12 +103,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(const Key('email-verification-onscreen-code')), findsOneWidget);
-    expect(find.text('Your verification code'), findsOneWidget);
-    expect(find.text('482193'), findsOneWidget);
+    expect(find.byKey(const Key('email-verification-onscreen-code')), findsNothing);
+    expect(find.text('Your verification code'), findsNothing);
+    expect(find.text('482193'), findsNothing);
     expect(
       find.text(
-        'Enter this code to verify your email. After that you can continue to payment.',
+        'Enter the 6-digit code we sent to newpaid@test.com. After that you can continue to payment.',
       ),
       findsOneWidget,
     );

@@ -41,7 +41,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   bool _verifying = false;
   String? _error;
   String? _info;
-  String? _debugCode;
 
   @override
   void initState() {
@@ -80,24 +79,21 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         if (mounted) setState(() => _sending = false);
         return;
       }
-      final debug = result['debug_code']?.toString();
       final emailed = result['emailed'] != false;
-      final onscreen = (debug != null && debug.length == 6) ? debug : null;
       setState(() {
         _sending = false;
-        _debugCode = onscreen;
-        if (onscreen != null && !emailed) {
-          _info = userRequested
-              ? 'Use this new verification code, then continue to payment.'
-              : 'Enter this code to verify your email. After that you can continue to payment.';
+        if (!emailed) {
+          _error = 'We could not send the verification email. Please try again.';
+          _info = null;
         } else if (userRequested) {
           _info = 'A new code was sent to ${auth.user?.email ?? 'your email'}.';
+          _error = null;
         } else {
           _info =
               'Enter the 6-digit code we sent to ${auth.user?.email ?? 'your email'}. '
               'After that you can continue to payment.';
+          _error = null;
         }
-        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -207,7 +203,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                 const SizedBox(height: 14),
                 Text(
                   _info ??
-                      'Enter this code to verify your email. After that you can continue to payment.',
+                      'Enter the 6-digit code we sent to your email. After that you can continue to payment.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.figtree(
                     fontSize: 15,
@@ -215,42 +211,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     height: 1.45,
                   ),
                 ),
-                if (_debugCode != null) ...[
-                  const SizedBox(height: 24),
-                  Container(
-                    key: const Key('email-verification-onscreen-code'),
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F4EA),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _gold, width: 1.5),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          'Your verification code',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.figtree(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black54,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _debugCode!,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.figtree(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 8,
-                            color: _navy,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 28),
                 TextField(
                   key: const Key('email-verification-code'),

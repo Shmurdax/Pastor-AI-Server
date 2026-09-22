@@ -12,6 +12,7 @@ import json
 import logging
 import os
 from email.message import EmailMessage
+from email.utils import formataddr, parseaddr
 from pathlib import Path
 
 import requests
@@ -52,9 +53,8 @@ def formatted_from_header(sender: str | None = None) -> str:
     address = (sender or gmail_sender()).strip()
     if not address:
         return ""
-    if "<" in address and ">" in address:
-        return address
-    return f"{GMAIL_FROM_NAME} <{address}>"
+    name, addr = parseaddr(address)
+    return formataddr((name or GMAIL_FROM_NAME, addr or address))
 
 
 def _workspace_root() -> Path:
@@ -183,7 +183,8 @@ def _access_token(creds) -> str:
 def build_raw_message(*, sender: str, to_email: str, subject: str, body: str) -> str:
     message = EmailMessage()
     message["To"] = to_email
-    message["From"] = sender
+    name, addr = parseaddr(sender)
+    message["From"] = formataddr((name or GMAIL_FROM_NAME, addr or sender))
     message["Subject"] = subject
     message.set_content(body)
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")

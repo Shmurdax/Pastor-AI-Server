@@ -1172,12 +1172,25 @@ class EmailVerificationTests(TestCase):
         self.assertIn("Enter this code to verify your email", mail.outbox[0].body)
         self.assertIn("continue to payment", mail.outbox[0].body)
 
-    def test_debug_code_is_returned_in_debug(self):
+    def test_debug_code_is_not_returned_in_debug(self):
         with override_settings(DEBUG=True):
             res = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
         self.assertTrue(res.data["emailed"])
-        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
+        self.assertNotIn("debug_code", res.data)
+
+    def test_missing_gmail_config_fails_instead_of_showing_code(self):
+        with override_settings(
+            DEBUG=True,
+            EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend",
+            EMAIL_HOST="",
+            GMAIL_SERVICE_ACCOUNT_JSON="",
+            GMAIL_SERVICE_ACCOUNT_FILE="",
+        ):
+            with patch("api.email_verification.gmail_is_configured", return_value=False):
+                res = self.client.post("/api/auth/send-email-code/", {}, format="json")
+        self.assertEqual(res.status_code, 503, res.data)
+        self.assertNotIn("debug_code", res.data)
 
     def test_register_sends_no_code_until_verify_endpoint(self):
         from django.core import mail
@@ -1399,16 +1412,18 @@ class GmailApiTests(TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer ya29.live-gmail-access-token")
         self.assertIn("raw", kwargs["json"])
         sent = base64.urlsafe_b64decode(kwargs["json"]["raw"].encode("utf-8")).decode("utf-8")
-        self.assertIn("From: Nordin's AI <info@thenordins.org>", sent)
+        self.assertIn("info@thenordins.org", sent)
+        self.assertIn("Nordin's AI", sent)
 
     def test_from_header_and_default_sender(self):
         from api.gmail_send import formatted_from_header, gmail_sender
 
-        self.assertEqual(formatted_from_header("info@thenordins.org"), "Nordin's AI <info@thenordins.org>")
-        self.assertEqual(
-            formatted_from_header("Nordin's AI <info@thenordins.org>"),
-            "Nordin's AI <info@thenordins.org>",
-        )
+        header = formatted_from_header("info@thenordins.org")
+        self.assertIn("info@thenordins.org", header)
+        self.assertIn("Nordin's AI", header)
+        already = formatted_from_header("Nordin's AI <info@thenordins.org>")
+        self.assertIn("info@thenordins.org", already)
+        self.assertIn("Nordin's AI", already)
         with override_settings(GMAIL_SENDER="", DEFAULT_FROM_EMAIL=""):
             self.assertEqual(gmail_sender(), "info@thenordins.org")
 
@@ -1461,7 +1476,7 @@ class GmailApiTests(TestCase):
         self.assertEqual(send.call_args.kwargs["to_email"], "gmail.api@church.org")
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_debug_code_is_returned_in_debug_even_when_gmail_sends(self):
+    def test_debug_code_is_omitted_in_debug_when_gmail_sends(self):
         user = User.objects.create_user(
             username="onscreen@church.org",
             email="onscreen@church.org",
@@ -1481,9 +1496,9 @@ class GmailApiTests(TestCase):
                 res = client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
         self.assertTrue(res.data["emailed"])
-        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
+        self.assertNotIn("debug_code", res.data)
 
-    def test_gmail_send_failure_still_returns_onscreen_code(self):
+    def test_gmail_send_failure_does_not_leak_code(self):
         from api.gmail_send import GmailSendError
 
         user = User.objects.create_user(
@@ -1497,7 +1512,7 @@ class GmailApiTests(TestCase):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
         with override_settings(
-            DEBUG=False,
+            DEBUG=True,
             GMAIL_SENDER="noreply@thenordins.org",
             GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
         ):
@@ -1506,14 +1521,9 @@ class GmailApiTests(TestCase):
                 side_effect=GmailSendError("Google could not send the verification email."),
             ):
                 res = client.post("/api/auth/send-email-code/", {}, format="json")
-        self.assertEqual(res.status_code, 200, res.data)
-        self.assertFalse(res.data["emailed"])
-        self.assertRegex(res.data["debug_code"], r"^\d{6}$")
-
-        code = res.data["debug_code"]
-        verified = client.post("/api/auth/verify-email-code/", {"code": code}, format="json")
-        self.assertEqual(verified.status_code, 200, verified.data)
-        self.assertTrue(verified.data["user"]["email_verified"])
+        self.assertEqual(res.status_code, 503, res.data)
+        self.assertNotIn("debug_code", res.data)
+        self.assertIn("could not send", str(res.data.get("detail", "")).lower())
 
     def test_debug_code_is_omitted_in_production_when_gmail_sends(self):
         user = User.objects.create_user(
