@@ -176,6 +176,28 @@ class GoogleAuthSerializer(serializers.Serializer):
     id_token = serializers.CharField()
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return value.lower().strip()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_email(self, value):
+        return value.lower().strip()
+
+    def validate_code(self, value):
+        digits = "".join(ch for ch in value if ch.isdigit())
+        if len(digits) != 6:
+            raise serializers.ValidationError("Enter the 6-digit code from your email.")
+        return digits
+
+
 class PrayerRequestSerializer(serializers.ModelSerializer):
     submitter_user_email = serializers.SerializerMethodField()
     submitter_user_name = serializers.SerializerMethodField()

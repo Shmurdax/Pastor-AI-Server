@@ -17,13 +17,21 @@ from .email_verification import (
     verify_email_code,
 )
 from .gmail_send import email_delivery_mode
+from .password_reset import (
+    GENERIC_DETAIL,
+    PasswordResetError,
+    request_password_reset,
+    reset_password,
+)
 from .serializers import (
     ChangeEmailSerializer,
     ChangeNameSerializer,
     ChangePasswordSerializer,
+    ForgotPasswordSerializer,
     GoogleAuthSerializer,
     LoginSerializer,
     RegisterSerializer,
+    ResetPasswordSerializer,
     UserSerializer,
 )
 
@@ -339,6 +347,48 @@ class SendEmailCodeView(_AuthenticatedAuthView):
             "emailed": issued.emailed,
         }
         return Response(payload)
+
+
+class ForgotPasswordView(APIView):
+    """Email a reset code. Unknown addresses get the same success response."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            request_password_reset(serializer.validated_data["email"])
+        except PasswordResetError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        return Response({"ok": True, "detail": GENERIC_DETAIL})
+
+
+class ResetPasswordView(APIView):
+    """Set a new password with the emailed 6-digit code."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            reset_password(
+                email=serializer.validated_data["email"],
+                code=serializer.validated_data["code"],
+                new_password=serializer.validated_data["new_password"],
+            )
+        except PasswordResetError as exc:
+            return Response({"detail": str(exc)}, status=exc.status)
+        dump_persistent_postgres()
+        return Response(
+            {
+                "ok": True,
+                "detail": "Password updated. You can sign in with your new password.",
+            }
+        )
 
 
 class VerifyEmailCodeView(_AuthenticatedAuthView):

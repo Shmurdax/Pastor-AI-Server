@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/screens/forgot_password_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/google_auth_button.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -97,6 +98,22 @@ class _LoginScreenState extends State<LoginScreen> {
     if (ok) Navigator.of(context).pop(true);
   }
 
+  Future<void> _openForgotPassword() async {
+    final reset = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(
+          initialEmail: _emailController.text.trim(),
+        ),
+      ),
+    );
+    if (!mounted || reset != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password updated. Sign in with your new password.'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -186,7 +203,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
                   ),
-                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: const Key('forgot-password-button'),
+                      onPressed: auth.isLoading ? null : _openForgotPassword,
+                      style: TextButton.styleFrom(
+                        foregroundColor: _pink,
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      ),
+                      child: Text(
+                        'Forgot password?',
+                        style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   FilledButton(
                     onPressed: auth.isLoading ? null : _submit,
                     style: FilledButton.styleFrom(
