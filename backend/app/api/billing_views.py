@@ -352,13 +352,6 @@ def _apply_subscription_to_profile(
     if current_period_end is not None:
         profile.current_period_end = current_period_end
         update_fields.append("current_period_end")
-    if (
-        status_value == Profile.SubscriptionStatus.ACTIVE
-        and profile.token_cycle_anchor is None
-    ):
-        # First Premium activation — monthly token grants land on this day forever.
-        profile.token_cycle_anchor = timezone.localdate()
-        update_fields.append("token_cycle_anchor")
     profile.save(update_fields=update_fields)
     dump_persistent_postgres()
 
