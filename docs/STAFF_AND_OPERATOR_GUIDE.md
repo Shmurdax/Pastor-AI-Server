@@ -99,7 +99,7 @@ The landing page and checkout use the current Premium prices. There is no public
 
 | Plan | Price | What is advertised |
 | --- | --- | --- |
-| Premium monthly | $15 / month | Chat, longer history, daily 15-minute video devotionals, the Nordins' study notes, daily Bible reading |
+| Premium monthly | $15 / month | Chat, longer history, Walk through the Word videos, the Nordins' study notes, daily Bible reading |
 | Premium yearly | $150 / year | Same Premium perks |
 
 Checkout requires a signed-in account and happens immediately after signup/sign-in if the account is not Premium. If Stripe keys are configured, payment goes through Stripe Embedded Checkout. If Stripe is not configured yet, the site uses a **temporary mock checkout** that grants Premium without charging. Treat mock checkout as a test/demo path, not live billing.
@@ -123,7 +123,7 @@ Anyone with Premium (or staff) can submit a prayer from the chat screen (the pra
 
 ### Media
 
-**Nordin's AI → Media** is the Daily Devotionals library. Treat it as a front-end shell until real videos are wired in. The media API requires Premium (or staff).
+**Nordin's AI → Media** is the Walk through the Word library. Treat it as a front-end shell until real videos are wired in. The media API requires Premium (or staff).
 
 ---
 

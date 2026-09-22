@@ -1,4 +1,4 @@
-"""Sync Daily Devotionals from a Vimeo Folder (project) into MediaVideo rows."""
+"""Sync Walk through the Word videos from a Vimeo Folder (project) into MediaVideo rows."""
 
 from __future__ import annotations
 

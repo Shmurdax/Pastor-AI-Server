@@ -36,7 +36,7 @@ double mediaGridChildAspectRatio({
   return tileWidth / (tileWidth * 9 / 16 + captionHeight);
 }
 
-/// Patreon-style media library for The NORDINS Daily Devotionals (video).
+/// Patreon-style media library for The NORDINS Walk through the Word (video).
 /// Catalog loads from GET /api/media/ (Vimeo sync).
 class MediaLibraryScreen extends StatefulWidget {
   const MediaLibraryScreen({
@@ -555,9 +555,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             const SizedBox(height: 4),
                             Text(
                               _catalogLoading
-                                  ? 'Loading devotionals…'
+                                  ? 'Loading Walk through the Word…'
                                   : _hasPremiumAccess
-                                      ? '${_sort.label} · ${_catalogItems.length} devotionals in catalog'
+                                      ? '${_sort.label} · ${_catalogItems.length} videos in catalog'
                                       : 'Free preview · Subscribe to unlock the full library',
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),

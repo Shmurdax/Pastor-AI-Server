@@ -163,7 +163,7 @@ class EmailVerificationCode(models.Model):
 
 
 class MediaVideo(models.Model):
-    """Daily Devotional video synced from a Vimeo Folder."""
+    """Walk through the Word video synced from a Vimeo Folder."""
 
     class AccessTier(models.TextChoices):
         FREE_PREVIEW = "free_preview", "Free preview"

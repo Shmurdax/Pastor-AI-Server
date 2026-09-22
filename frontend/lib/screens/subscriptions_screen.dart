@@ -25,7 +25,7 @@ const _pink = Color(0xFFa1375a);
 
 const premiumPerks = [
   'Customized, biblical AI chat experience',
-  'Access to daily 15-minute devotional videos',
+  'Access to Walk through the Word videos',
   'Over 40 years of study notes and preached on material',
 ];
 
