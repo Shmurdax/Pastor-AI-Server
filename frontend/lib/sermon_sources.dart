@@ -158,3 +158,58 @@ List<String> withoutVideoSermonSources(Iterable<String> titles) {
       if (title.trim().isNotEmpty && !isVideoSermonSource(title)) title,
   ];
 }
+
+/// Sidebar lists after one completed answer.
+class LibrarySermonLists {
+  const LibrarySermonLists({
+    required this.library,
+    required this.previous,
+  });
+
+  final List<String> library;
+  final List<String> previous;
+}
+
+/// Move the current library into previous, then show [sources] as current.
+///
+/// Matches the chat screen: document titles only, videos stay out, previous
+/// keeps the latest 25 unique names.
+LibrarySermonLists advanceLibrarySermons({
+  required List<String> library,
+  required List<String> previous,
+  required dynamic sources,
+}) {
+  var nextPrevious = previous;
+  if (library.isNotEmpty) {
+    nextPrevious = withoutVideoSermonSources(
+      [...library, ...previous],
+    ).toSet().take(25).toList();
+  }
+  final newSources = librarySermonSources(sources);
+  var nextLibrary = library;
+  if (newSources.isNotEmpty) {
+    nextLibrary = newSources;
+    nextPrevious = [
+      for (final sermon in nextPrevious)
+        if (!nextLibrary.contains(sermon)) sermon,
+    ];
+  }
+  return LibrarySermonLists(library: nextLibrary, previous: nextPrevious);
+}
+
+/// Rebuild the sidebar from saved AI `sources` so a refresh matches the chat.
+LibrarySermonLists libraryStateFromMessages(List<dynamic> messages) {
+  var state = const LibrarySermonLists(library: [], previous: []);
+  for (final item in messages) {
+    if (item is! Map) continue;
+    if (item['role'] != 'ai') continue;
+    if (item['streaming'] == true) continue;
+    if (item['sources'] is! List) continue;
+    state = advanceLibrarySermons(
+      library: state.library,
+      previous: state.previous,
+      sources: item['sources'],
+    );
+  }
+  return state;
+}

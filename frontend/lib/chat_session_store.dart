@@ -56,12 +56,20 @@ class ChatSessionRuntime {
             .whereType<Map>()
             .map((m) => Map<String, dynamic>.from(m)),
       );
-    librarySermons = withoutVideoSermonSources(
+    final savedLibrary = withoutVideoSermonSources(
       List<String>.from(entry['librarySermons'] ?? const []),
     );
-    previousSermons = withoutVideoSermonSources(
+    final savedPrevious = withoutVideoSermonSources(
       List<String>.from(entry['previousSermons'] ?? const []),
     );
+    final replayed = libraryStateFromMessages(messages);
+    if (replayed.library.isNotEmpty || replayed.previous.isNotEmpty) {
+      librarySermons = replayed.library;
+      previousSermons = replayed.previous;
+    } else {
+      librarySermons = savedLibrary;
+      previousSermons = savedPrevious;
+    }
     isFirstMessage = messages.isEmpty;
   }
 

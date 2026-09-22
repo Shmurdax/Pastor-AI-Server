@@ -1676,11 +1676,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     final messageId = data['message_id'];
     setState(() {
       if (!mounted || !_isCurrentStream(runtime, epoch)) return;
-      if (runtime.librarySermons.isNotEmpty) {
-        runtime.previousSermons = withoutVideoSermonSources(
-          [...runtime.librarySermons, ...runtime.previousSermons],
-        ).toSet().take(25).toList();
-      }
 
       final sources = List<String>.from(data['sources'] ?? []);
       var completed = completeChatStreamAnswer(
@@ -1703,12 +1698,13 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       }
       if (!completed) return;
 
-      final newSources = librarySermonSources(data['sources']);
-      if (newSources.isNotEmpty) {
-        runtime.librarySermons = newSources;
-        runtime.previousSermons
-            .removeWhere((s) => runtime.librarySermons.contains(s));
-      }
+      final nextLibrary = advanceLibrarySermons(
+        library: runtime.librarySermons,
+        previous: runtime.previousSermons,
+        sources: data['sources'],
+      );
+      runtime.librarySermons = nextLibrary.library;
+      runtime.previousSermons = nextLibrary.previous;
     });
     if (!_isCurrentStream(runtime, epoch)) return;
     if (boundSessionId == _sessions.currentSessionId) {
