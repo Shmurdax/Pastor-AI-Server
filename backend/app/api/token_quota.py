@@ -161,7 +161,7 @@ def _format_wait_message(until: datetime) -> str:
     seconds = max(0, int((until - timezone.now()).total_seconds()))
     if seconds <= 0:
         return (
-            "You've run out of responses for now. "
+            "You have used up your allotted responses currently. "
             "Please try again in a moment."
         )
     hours = max(1, (seconds + 3599) // 3600)
@@ -176,8 +176,8 @@ def _format_wait_message(until: datetime) -> str:
     elif local.hour == 0 and local.minute == 0:
         stamp = local.strftime("%b %d").lstrip("0").replace(" 0", " ")
     return (
-        f"You've run out of responses for now. "
-        f"Please wait {wait} (until {stamp}) before asking again."
+        f"You have used up your allotted responses currently. "
+        f"Please wait {wait} (until {stamp})."
     )
 
 
@@ -186,13 +186,37 @@ def _empty_balance_message(profile) -> tuple[str, int, Optional[str]]:
     until = next_allotment_at(profile)
     if until is None:
         return (
-            "You've run out of responses for now. "
-            "Please wait until your allotment renews before asking again.",
+            "You have used up your allotted responses currently. "
+            "Please wait until your allotment renews.",
             0,
             None,
         )
     seconds = max(1, int((until - timezone.now()).total_seconds()))
     return _format_wait_message(until), seconds, until.isoformat()
+
+
+@transaction.atomic
+def admin_set_chat_restriction(profile, *, until: Optional[datetime] = None, hours: Optional[int] = None) -> Optional[datetime]:
+    """Impose or clear a chat restriction (token_cooldown_until).
+
+    Pass ``until=None`` and ``hours=None`` to clear. ``hours`` sets a restriction
+    that many hours from now. ``until`` sets an absolute end time.
+    """
+    locked = type(profile).objects.select_for_update().get(pk=profile.pk)
+    if hours is not None:
+        hrs = max(0, int(hours))
+        locked.token_cooldown_until = (
+            timezone.now() + timedelta(hours=hrs) if hrs > 0 else None
+        )
+    else:
+        locked.token_cooldown_until = until
+    locked.save(update_fields=["token_cooldown_until"])
+    profile.token_cooldown_until = locked.token_cooldown_until
+    return locked.token_cooldown_until
+
+
+def admin_clear_chat_restriction(profile) -> None:
+    admin_set_chat_restriction(profile, until=None)
 
 
 def ensure_token_cycle_anchor(profile, *, when: Optional[datetime] = None, save: bool = False) -> Optional[date]:

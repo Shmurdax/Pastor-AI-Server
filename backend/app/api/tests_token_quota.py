@@ -109,7 +109,7 @@ class TokenQuotaHelpersTests(TestCase):
         self.assertIsNotNone(gate)
         self.assertFalse(gate.allowed)
         self.assertEqual(gate.code, "token_daily_limit")
-        self.assertIn("run out of responses", gate.error.lower())
+        self.assertIn("used up your allotted responses", gate.error.lower())
         self.assertGreater(gate.retry_after_seconds, 0)
 
         self.profile.refresh_from_db()
@@ -133,6 +133,25 @@ class TokenQuotaHelpersTests(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.token_balance, 0)
 
+    def test_admin_set_and_clear_chat_restriction(self):
+        from api.token_quota import admin_clear_chat_restriction, admin_set_chat_restriction
+
+        ensure_monthly_grant(self.profile)
+        until = admin_set_chat_restriction(self.profile, hours=48)
+        self.assertIsNotNone(until)
+        self.profile.refresh_from_db()
+        self.assertIsNotNone(self.profile.token_cooldown_until)
+        blocked = check_chat_allowed(self.user)
+        self.assertFalse(blocked.allowed)
+        self.assertEqual(blocked.code, "token_cooldown")
+        self.assertIn("used up your allotted responses", blocked.error.lower())
+
+        admin_clear_chat_restriction(self.profile)
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.token_cooldown_until)
+        allowed = check_chat_allowed(self.user)
+        self.assertTrue(allowed.allowed)
+
     def test_balance_exhausted_points_to_next_allotment(self):
         ensure_monthly_grant(self.profile)
         self.profile.token_balance = 0
@@ -140,7 +159,7 @@ class TokenQuotaHelpersTests(TestCase):
         gate = check_chat_allowed(self.user)
         self.assertFalse(gate.allowed)
         self.assertEqual(gate.code, "token_balance_exhausted")
-        self.assertIn("run out of responses", gate.error.lower())
+        self.assertIn("used up your allotted responses", gate.error.lower())
         self.assertGreater(gate.retry_after_seconds, 0)
         self.assertIsNotNone(gate.retry_at)
         expected = next_allotment_date(self.profile)
@@ -175,7 +194,7 @@ class ChatTokenGateAPITests(TestCase):
             format="json",
         )
         self.assertEqual(res.status_code, 429)
-        self.assertIn("run out of responses", res.data.get("error", "").lower())
+        self.assertIn("used up your allotted responses", res.data.get("error", "").lower())
         self.assertEqual(res.data.get("code"), "token_cooldown")
 
     def test_superuser_chat_not_gated(self):

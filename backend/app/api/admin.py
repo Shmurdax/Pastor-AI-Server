@@ -3,13 +3,37 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import User
 from django.forms.models import BaseInlineFormSet
+from django.utils import timezone
+from django.utils.html import format_html
 
 from core.persist_db import dump_persistent_postgres
 
 from .mailchimp import MailchimpError, collect_exportable_members
 from .mailchimp_admin import export_members_to_mailchimp
 from .models import MediaVideo, Profile
-from .token_quota import admin_adjust_tokens
+from .token_quota import (
+    admin_adjust_tokens,
+    admin_clear_chat_restriction,
+    admin_set_chat_restriction,
+)
+
+
+def _apply_restriction_form_fields(profile, cleaned_data) -> str | None:
+    """Apply clear / duration helpers. Returns an optional admin flash message."""
+    if cleaned_data.get("clear_chat_restriction"):
+        admin_clear_chat_restriction(profile)
+        return "Chat restriction cleared."
+
+    hours = cleaned_data.get("restrict_chat_hours")
+    days = cleaned_data.get("restrict_chat_days")
+    if hours or days:
+        total_hours = int(hours or 0) + int(days or 0) * 24
+        if total_hours > 0:
+            until = admin_set_chat_restriction(profile, hours=total_hours)
+            local = timezone.localtime(until) if until else None
+            stamp = local.strftime("%Y-%m-%d %H:%M %Z") if local else ""
+            return f"Chat restricted until {stamp}."
+    return None
 
 
 class ProfileInlineFormSet(BaseInlineFormSet):
@@ -19,8 +43,17 @@ class ProfileInlineFormSet(BaseInlineFormSet):
         existing = Profile.objects.filter(user_id=self.instance.pk).first()
         if existing is None:
             return super().save_new(form, commit=commit)
+        skip = {
+            "id",
+            "user",
+            "DELETE",
+            "adjust_tokens",
+            "clear_chat_restriction",
+            "restrict_chat_hours",
+            "restrict_chat_days",
+        }
         for name, value in form.cleaned_data.items():
-            if name in {"id", "user", "DELETE", "adjust_tokens"}:
+            if name in skip:
                 continue
             if hasattr(existing, name):
                 setattr(existing, name, value)
@@ -29,6 +62,7 @@ class ProfileInlineFormSet(BaseInlineFormSet):
             delta = form.cleaned_data.get("adjust_tokens") or 0
             if delta:
                 admin_adjust_tokens(existing, int(delta))
+            _apply_restriction_form_fields(existing, form.cleaned_data)
         form.instance = existing
         return existing
 
@@ -38,6 +72,7 @@ class ProfileInlineFormSet(BaseInlineFormSet):
             delta = form.cleaned_data.get("adjust_tokens") or 0
             if delta:
                 admin_adjust_tokens(obj, int(delta))
+            _apply_restriction_form_fields(obj, form.cleaned_data)
         return obj
 
 
@@ -50,6 +85,26 @@ class ProfileAdminForm(forms.ModelForm):
             "Leave 0 to leave the balance unchanged."
         ),
         label="Adjust tokens",
+    )
+    clear_chat_restriction = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Clear chat restriction",
+        help_text="Remove any active chat cooldown / admin restriction immediately.",
+    )
+    restrict_chat_hours = forms.IntegerField(
+        required=False,
+        min_value=0,
+        initial=0,
+        label="Restrict chat for (hours)",
+        help_text="Optional. Starts a restriction this many hours from save.",
+    )
+    restrict_chat_days = forms.IntegerField(
+        required=False,
+        min_value=0,
+        initial=0,
+        label="Restrict chat for (days)",
+        help_text="Optional. Combined with hours. Example: 2 days + 0 hours.",
     )
 
     class Meta:
@@ -77,6 +132,9 @@ class ProfileInline(admin.StackedInline):
         "tokens_used_today",
         "token_usage_day",
         "token_cooldown_until",
+        "clear_chat_restriction",
+        "restrict_chat_days",
+        "restrict_chat_hours",
         "token_period_key",
         "token_cycle_anchor",
         "adjust_tokens",
@@ -91,7 +149,6 @@ class ProfileInline(admin.StackedInline):
         "tokens_spent",
         "tokens_used_today",
         "token_usage_day",
-        "token_cooldown_until",
         "token_period_key",
         "token_cycle_anchor",
     )
@@ -112,6 +169,7 @@ class PastorUserAdmin(DjangoUserAdmin):
         "is_premium_display",
         "token_remaining_display",
         "token_spent_display",
+        "chat_restriction_display",
         "is_active",
     )
     list_filter = (
@@ -124,7 +182,10 @@ class PastorUserAdmin(DjangoUserAdmin):
     )
     list_select_related = ("profile",)
     search_fields = ("username", "email", "first_name", "last_name")
-    actions = list(DjangoUserAdmin.actions) + ["export_selected_to_mailchimp"]
+    actions = list(DjangoUserAdmin.actions) + [
+        "export_selected_to_mailchimp",
+        "clear_chat_restrictions",
+    ]
 
     @admin.action(description="Export selected users to Mailchimp")
     def export_selected_to_mailchimp(self, request, queryset):
@@ -146,6 +207,25 @@ class PastorUserAdmin(DjangoUserAdmin):
             return
         level = messages.WARNING if result.failed else messages.SUCCESS
         self.message_user(request, result.summary(), level=level)
+
+    @admin.action(description="Clear chat restrictions on selected users")
+    def clear_chat_restrictions(self, request, queryset):
+        cleared = 0
+        for user in queryset.select_related("profile"):
+            profile = getattr(user, "profile", None)
+            if profile is None:
+                continue
+            if profile.token_cooldown_until is None:
+                continue
+            admin_clear_chat_restriction(profile)
+            cleared += 1
+        if cleared:
+            dump_persistent_postgres()
+        self.message_user(
+            request,
+            f"Cleared chat restrictions on {cleared} user(s).",
+            level=messages.SUCCESS if cleared else messages.WARNING,
+        )
 
     @admin.display(description="Plan", ordering="profile__billing_period")
     def plan_tier(self, obj):
@@ -180,6 +260,22 @@ class PastorUserAdmin(DjangoUserAdmin):
             return "—"
         return profile.tokens_spent
 
+    @admin.display(description="Chat restriction", ordering="profile__token_cooldown_until")
+    def chat_restriction_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None or profile.token_cooldown_until is None:
+            return "—"
+        until = profile.token_cooldown_until
+        if timezone.is_naive(until):
+            until = timezone.make_aware(until, timezone.get_current_timezone())
+        if until <= timezone.now():
+            return "—"
+        local = timezone.localtime(until)
+        return format_html(
+            '<span style="color:#b45309;font-weight:600;">Until {}</span>',
+            local.strftime("%Y-%m-%d %H:%M"),
+        )
+
     def get_inline_instances(self, request, obj=None):
         # The add view saves the User first; api.signals then creates Profile.
         # Showing the OneToOne inline on add POSTs a second INSERT for the same
@@ -212,6 +308,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "has_premium_access_display",
         "token_balance",
         "tokens_spent",
+        "chat_restriction_display",
         "email_verified",
         "cancel_at_period_end",
         "current_period_end",
@@ -237,7 +334,6 @@ class ProfileAdmin(admin.ModelAdmin):
         "tokens_spent",
         "tokens_used_today",
         "token_usage_day",
-        "token_cooldown_until",
         "token_period_key",
         "token_cycle_anchor",
     )
@@ -254,6 +350,9 @@ class ProfileAdmin(admin.ModelAdmin):
         "tokens_used_today",
         "token_usage_day",
         "token_cooldown_until",
+        "clear_chat_restriction",
+        "restrict_chat_days",
+        "restrict_chat_hours",
         "token_period_key",
         "token_cycle_anchor",
         "adjust_tokens",
@@ -262,6 +361,23 @@ class ProfileAdmin(admin.ModelAdmin):
         "avatar_url",
     )
     list_select_related = ("user",)
+    actions = ["clear_chat_restrictions"]
+
+    @admin.action(description="Clear chat restrictions on selected profiles")
+    def clear_chat_restrictions(self, request, queryset):
+        cleared = 0
+        for profile in queryset:
+            if profile.token_cooldown_until is None:
+                continue
+            admin_clear_chat_restriction(profile)
+            cleared += 1
+        if cleared:
+            dump_persistent_postgres()
+        self.message_user(
+            request,
+            f"Cleared chat restrictions on {cleared} profile(s).",
+            level=messages.SUCCESS if cleared else messages.WARNING,
+        )
 
     @admin.display(boolean=True, description="Premium")
     def is_premium_display(self, obj):
@@ -270,6 +386,21 @@ class ProfileAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Premium access")
     def has_premium_access_display(self, obj):
         return obj.has_premium_access
+
+    @admin.display(description="Chat restriction", ordering="token_cooldown_until")
+    def chat_restriction_display(self, obj):
+        if obj.token_cooldown_until is None:
+            return "—"
+        until = obj.token_cooldown_until
+        if timezone.is_naive(until):
+            until = timezone.make_aware(until, timezone.get_current_timezone())
+        if until <= timezone.now():
+            return "—"
+        local = timezone.localtime(until)
+        return format_html(
+            '<span style="color:#b45309;font-weight:600;">Until {}</span>',
+            local.strftime("%Y-%m-%d %H:%M"),
+        )
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -281,6 +412,9 @@ class ProfileAdmin(admin.ModelAdmin):
                 f"Token balance is now {obj.token_balance}.",
                 level=messages.SUCCESS,
             )
+        note = _apply_restriction_form_fields(obj, form.cleaned_data)
+        if note:
+            self.message_user(request, note, level=messages.SUCCESS)
         dump_persistent_postgres()
 
 
