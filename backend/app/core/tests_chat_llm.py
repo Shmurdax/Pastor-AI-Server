@@ -271,6 +271,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertNotIn("trim_runaway_generation", source)
         self.assertNotIn("generation_should_stop", source)
         self.assertNotIn("next_stream_payload", source)
+        self.assertNotIn("def prepare_chat", source)
+        self.assertNotIn("prepare_chat()", source)
         self.assertIn("search_queries_on_store", source)
         self.assertIn("scored_hits[:RETRIEVAL_K]", source)
         self.assertIn("preserve_order=True", source)

@@ -759,7 +759,7 @@ class ChatAPIView(APIView):
             )
             live_history.publish("", streaming=True, force=True)
 
-        def prepare_chat():
+        try:
             llm = get_chat_llm(
                 # Qwen2.5-14B-Instruct-AWQ: official Instruct sampling, not
                 # OpenAI frequency_penalty (that pushes unused Chinese tokens).
@@ -913,7 +913,7 @@ class ChatAPIView(APIView):
                 + [HumanMessage(content=human_content)]
             )
             bound = llm.bind(max_tokens=completion_tokens)
-            return {
+            prepared = {
                 "kind": "generate",
                 "llm": llm,
                 "bound": bound,
@@ -924,6 +924,13 @@ class ChatAPIView(APIView):
                 "teaching_claims": teaching_claims,
                 "topic_query": topic_query,
             }
+
+        except Exception as exc:
+            logger.exception("Error in Memory-RAG loop: %s", str(exc))
+            return Response(
+                {"error": "I encountered a processing error while generating this answer. Please retry."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         def _response_sources(docs, answer: str, query: str = ""):
             """Source chips in rerank order. Hidden library books stay out of the list."""
@@ -1058,7 +1065,6 @@ class ChatAPIView(APIView):
             def produce_events():
                 emit_live = chat_language == "en"
                 yield _sse({"type": "status", "phase": "started"})
-                prepared = prepare_chat()
                 if prepared["kind"] == "final":
                     yield from _immediate_sse(prepared["payload"])
                     return
@@ -1265,7 +1271,6 @@ class ChatAPIView(APIView):
             return _sse_response(token_events())
 
         try:
-            prepared = prepare_chat()
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
