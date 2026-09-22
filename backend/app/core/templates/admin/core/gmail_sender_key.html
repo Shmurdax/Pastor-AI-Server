@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 760px;">
+  <h1>Gmail sender key</h1>
+  <p>
+    Upload the Google Cloud JSON key file so Nordin's AI can email 6-digit
+    signup codes from <strong>{{ gmail_sender }}</strong>. Choose the downloaded
+    <code>.json</code> file from your computer — do not paste it into a terminal.
+  </p>
+
+  <h2>Current key</h2>
+  {% if gmail_status.configured %}
+    <p>
+      Ready: <strong>{{ gmail_status.client_email }}</strong>
+      ({{ gmail_status.bytes }} bytes) at <code>{{ gmail_status.path }}</code>.
+    </p>
+  {% elif gmail_status.bytes %}
+    <p>
+      A file is at <code>{{ gmail_status.path }}</code>
+      ({{ gmail_status.bytes }} bytes) but it is not a complete service-account key.
+      Re-download it from Google Cloud and upload that file here.
+    </p>
+  {% else %}
+    <p>No Gmail JSON key is installed yet.</p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" style="margin-top: 16px;">
+    {% csrf_token %}
+    <p>
+      <input type="file" name="gmail_json" accept=".json,application/json" required>
+    </p>
+    <button type="submit" class="default">Install Gmail key</button>
+  </form>
+</div>
+{% endblock %}

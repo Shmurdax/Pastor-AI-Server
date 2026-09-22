@@ -1809,6 +1809,96 @@ class GmailApiTests(TestCase):
         self.assertTrue(res.data["emailed"])
         self.assertNotIn("debug_code", res.data)
 
+    def test_install_gmail_json_rejects_truncated_and_writes_valid_key(self):
+        from api.gmail_send import GmailSendError, gmail_key_status, install_gmail_service_account_json
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            persist = root / "persist"
+            with override_settings(WORKSPACE_ROOT=str(root)):
+                with patch.dict(
+                    os.environ,
+                    {"WORKSPACE_ROOT": str(root), "PERSIST_ROOT": str(persist)},
+                    clear=False,
+                ):
+                    with self.assertRaises(GmailSendError):
+                        install_gmail_service_account_json(b'{"type": "service_account"')
+                    info = _rsa_service_account_info()
+                    payload = json.dumps(info).encode("utf-8")
+                    installed = install_gmail_service_account_json(payload)
+                    dest = root / "secrets" / "gmail-sender.json"
+                    self.assertTrue(dest.is_file())
+                    self.assertEqual(installed["client_email"], info["client_email"])
+                    self.assertEqual(dest.read_bytes(), payload)
+                    status = gmail_key_status()
+                    self.assertTrue(status["configured"])
+                    self.assertEqual(status["client_email"], info["client_email"])
+                    self.assertNotIn("BEGIN", json.dumps(status))
+
+
+@override_settings(STORAGES=_ADMIN_TEST_STORAGES)
+class GmailSenderAdminTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_superuser(
+            username="gmail.admin@church.org",
+            email="gmail.admin@church.org",
+            password="AdminPass123!",
+        )
+        self.client = Client()
+        self.client.force_login(self.staff)
+        self.url = f"/{settings.ADMIN_URL_PATH}/core/gmail-sender/"
+
+    def test_staff_can_upload_json_key(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        info = _rsa_service_account_info()
+        payload = json.dumps(info).encode("utf-8")
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            persist = root / "persist"
+            with override_settings(WORKSPACE_ROOT=str(root)):
+                with patch.dict(
+                    os.environ,
+                    {"WORKSPACE_ROOT": str(root), "PERSIST_ROOT": str(persist)},
+                    clear=False,
+                ):
+                    res = self.client.post(
+                        self.url,
+                        {"gmail_json": SimpleUploadedFile("key.json", payload, content_type="application/json")},
+                    )
+                    self.assertEqual(res.status_code, 302, res.content[:500])
+                    dest = root / "secrets" / "gmail-sender.json"
+                    self.assertTrue(dest.is_file())
+                    self.assertEqual(json.loads(dest.read_text())["client_email"], info["client_email"])
+
+    def test_truncated_upload_is_rejected(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            with override_settings(WORKSPACE_ROOT=str(root)):
+                with patch.dict(os.environ, {"WORKSPACE_ROOT": str(root)}, clear=False):
+                    res = self.client.post(
+                        self.url,
+                        {
+                            "gmail_json": SimpleUploadedFile(
+                                "key.json",
+                                b'{"type": "service_account", "private_key": "-----BEGIN',
+                                content_type="application/json",
+                            )
+                        },
+                        follow=True,
+                    )
+                    self.assertEqual(res.status_code, 200)
+                    self.assertContains(res, "Not a complete Google service-account JSON key")
+                    self.assertFalse((root / "secrets" / "gmail-sender.json").exists())
+
+    def test_page_has_file_picker(self):
+        res = self.client.get(self.url)
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'type="file"')
+        self.assertContains(res, "gmail_json")
+
 
 @override_settings(
     BILLING_MOCK_CHECKOUT="false",

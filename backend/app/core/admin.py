@@ -38,6 +38,7 @@ from .video_ingestion import MEDIA_EXTENSIONS, VIDEO_ACCEPT_ATTRIBUTE, is_video_
 from .video_job_queue import video_job_has_staging
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
+from api.gmail_admin import gmail_sender_key_view
 from api.mailchimp_admin import mailchimp_export_view
 
 
@@ -972,6 +973,11 @@ def _get_urls():
             name="core_mailchimp_export",
         ),
         path(
+            "core/gmail-sender/",
+            admin.site.admin_view(gmail_sender_key_view),
+            name="core_gmail_sender",
+        ),
+        path(
             "core/ingestion-jobs/status/",
             admin.site.admin_view(_admin_ingestion_jobs_status_view),
             name="core_ingestion_jobs_status",
@@ -1051,6 +1057,14 @@ def _pastoral_tool_entries():
             "name": "Mailchimp audience",
             "object_name": "MailchimpExportTool",
             "admin_url": reverse("admin:core_mailchimp_export"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Gmail sender key",
+            "object_name": "GmailSenderKeyTool",
+            "admin_url": reverse("admin:core_gmail_sender"),
             "add_url": None,
             "view_only": True,
             "perms": {"add": False, "change": True, "delete": False, "view": True},

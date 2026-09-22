@@ -175,6 +175,116 @@ def _service_account_info() -> dict | None:
     return None
 
 
+MAX_GMAIL_JSON_BYTES = 16_384
+
+
+def _write_secret_file(path: Path, raw: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(raw)
+    os.chmod(path, 0o600)
+
+
+def _point_config_env_at_file(config_path: Path, dest: Path) -> None:
+    if not config_path.is_file():
+        return
+    lines: list[str] = []
+    saw_file = False
+    saw_json = False
+    for line in config_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("GMAIL_SERVICE_ACCOUNT_JSON="):
+            lines.append("GMAIL_SERVICE_ACCOUNT_JSON=")
+            saw_json = True
+        elif line.startswith("GMAIL_SERVICE_ACCOUNT_FILE="):
+            lines.append(f"GMAIL_SERVICE_ACCOUNT_FILE={dest}")
+            saw_file = True
+        else:
+            lines.append(line)
+    if not saw_file:
+        lines.append(f"GMAIL_SERVICE_ACCOUNT_FILE={dest}")
+    if not saw_json:
+        lines.append("GMAIL_SERVICE_ACCOUNT_JSON=")
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def gmail_key_status() -> dict:
+    """Public status for the staff upload page. Never includes the private key."""
+    for path in _service_account_files():
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        info = _parse_service_account_info(raw.decode("utf-8", errors="replace"), source=str(path))
+        if info:
+            return {
+                "configured": True,
+                "path": str(path),
+                "bytes": len(raw),
+                "client_email": str(info.get("client_email") or ""),
+                "error": "",
+            }
+        return {
+            "configured": False,
+            "path": str(path),
+            "bytes": len(raw),
+            "client_email": "",
+            "error": "file is not valid service-account JSON",
+        }
+    dest = _workspace_root() / "secrets" / "gmail-sender.json"
+    return {
+        "configured": False,
+        "path": str(dest),
+        "bytes": 0,
+        "client_email": "",
+        "error": "missing",
+    }
+
+
+def install_gmail_service_account_json(raw: bytes) -> dict:
+    """Validate a Google JSON key and write it to the pod secrets path."""
+    if not raw or not raw.strip():
+        raise GmailSendError("Choose the downloaded JSON key file first.")
+    if len(raw) > MAX_GMAIL_JSON_BYTES:
+        raise GmailSendError("File is too large to be a Google JSON key.")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise GmailSendError("File is not UTF-8 JSON.") from exc
+    info = _parse_service_account_info(text, source="upload")
+    if not info:
+        raise GmailSendError(
+            "Not a complete Google service-account JSON key. "
+            "Re-download the file from Google Cloud and upload that file."
+        )
+    dest = _workspace_root() / "secrets" / "gmail-sender.json"
+    persist = Path(os.environ.get("PERSIST_ROOT") or "/workspace/persistent") / "secrets" / "gmail-sender.json"
+    _write_secret_file(dest, raw)
+    try:
+        _write_secret_file(persist, raw)
+    except OSError:
+        logger.warning("Could not mirror Gmail JSON key to %s", persist)
+    for config_path in (
+        _workspace_root() / "config.env",
+        Path("/workspace/pastor-ai/config.env"),
+    ):
+        try:
+            _point_config_env_at_file(config_path, dest)
+        except OSError:
+            logger.warning("Could not update %s after Gmail key install", config_path)
+    logger.info(
+        "Installed Gmail JSON key at %s (%s bytes) as %s",
+        dest,
+        len(raw),
+        info.get("client_email"),
+    )
+    return {
+        "path": str(dest),
+        "bytes": len(raw),
+        "client_email": str(info.get("client_email") or ""),
+    }
+
+
 def gmail_is_configured() -> bool:
     try:
         if _service_account_info() and gmail_sender():

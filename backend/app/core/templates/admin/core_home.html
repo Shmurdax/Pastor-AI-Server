@@ -299,6 +299,11 @@
         <p class="pastor-tool-description">Export AI login emails into the ministry Mailchimp audience for event and announcement campaigns.</p>
         <a class="pastor-tool-link" href="{% url 'admin:core_mailchimp_export' %}">Open →</a>
       </div>
+      <div class="pastor-tool-card">
+        <h3 class="pastor-tool-title">Gmail sender key</h3>
+        <p class="pastor-tool-description">Upload the Google JSON key so signup codes email from info@thenordins.org. Use the file picker — do not paste the key into a terminal.</p>
+        <a class="pastor-tool-link" href="{% url 'admin:core_gmail_sender' %}">Open →</a>
+      </div>
     </div>
     <div class="pastor-link-row">
       {% for item in pastoral_models %}
