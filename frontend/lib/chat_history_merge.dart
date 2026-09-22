@@ -87,6 +87,34 @@ Map<String, dynamic> richerHistoryEntry(
   final existingAt = existing['updatedAt'] as int? ?? 0;
   final incomingAt = incoming['updatedAt'] as int? ?? 0;
 
+  final chosen = _chooseRicherSnapshot(
+    existing: existing,
+    incoming: incoming,
+    existingStream: existingStream,
+    incomingStream: incomingStream,
+    existingLen: existingLen,
+    incomingLen: incomingLen,
+    existingN: existingN,
+    incomingN: incomingN,
+    existingAt: existingAt,
+    incomingAt: incomingAt,
+  );
+  final other = identical(chosen, existing) ? incoming : existing;
+  return _withPreservedLibrarySermons(chosen, other);
+}
+
+Map<String, dynamic> _chooseRicherSnapshot({
+  required Map<String, dynamic> existing,
+  required Map<String, dynamic> incoming,
+  required bool existingStream,
+  required bool incomingStream,
+  required int existingLen,
+  required int incomingLen,
+  required int existingN,
+  required int incomingN,
+  required int existingAt,
+  required int incomingAt,
+}) {
   if (existingStream &&
       !incomingStream &&
       incomingN <= existingN &&
@@ -109,6 +137,35 @@ Map<String, dynamic> richerHistoryEntry(
     return existingStream ? existing : incoming;
   }
   return incomingAt >= existingAt ? incoming : existing;
+}
+
+List<String> _stringList(dynamic raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is String && item.trim().isNotEmpty) item,
+  ];
+}
+
+/// Keep sermon-library names when the richer text snapshot never recorded them.
+Map<String, dynamic> _withPreservedLibrarySermons(
+  Map<String, dynamic> winner,
+  Map<String, dynamic> loser,
+) {
+  final winnerLibrary = _stringList(winner['librarySermons']);
+  final winnerPrevious = _stringList(winner['previousSermons']);
+  final loserLibrary = _stringList(loser['librarySermons']);
+  final loserPrevious = _stringList(loser['previousSermons']);
+  if (winnerLibrary.isNotEmpty ||
+      winnerPrevious.isNotEmpty ||
+      (loserLibrary.isEmpty && loserPrevious.isEmpty)) {
+    return winner;
+  }
+  return {
+    ...winner,
+    'librarySermons': loserLibrary,
+    'previousSermons': loserPrevious,
+  };
 }
 
 String _lastAiText(Map<String, dynamic> entry) {

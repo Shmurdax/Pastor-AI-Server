@@ -197,4 +197,47 @@ void main() {
       'Faith is trust in God.',
     );
   });
+
+  test('merge keeps sermon library lists from the shorter snapshot', () {
+    final merged = mergeChatHistoryEntries(
+      [
+        {
+          'sessionId': 'a',
+          'updatedAt': 10,
+          'librarySermons': ['Faith That Works'],
+          'previousSermons': ['The Giver'],
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {
+              'role': 'ai',
+              'text': 'Faith.',
+              'sources': ['Faith That Works'],
+            },
+          ],
+        },
+      ],
+      [
+        {
+          'sessionId': 'a',
+          'updatedAt': 50,
+          'librarySermons': <String>[],
+          'previousSermons': <String>[],
+          'messages': [
+            {'role': 'user', 'text': 'What is faith?'},
+            {
+              'role': 'ai',
+              'text': 'Faith is trust in God.',
+              'sources': ['Faith That Works'],
+            },
+          ],
+        },
+      ],
+    );
+    expect(merged.single['librarySermons'], ['Faith That Works']);
+    expect(merged.single['previousSermons'], ['The Giver']);
+    expect(
+      ((merged.single['messages'] as List).last as Map)['text'],
+      'Faith is trust in God.',
+    );
+  });
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, Optional
 
@@ -13,6 +14,25 @@ from .models import UserChatHistory
 logger = logging.getLogger(__name__)
 
 MAX_HISTORY_ENTRIES = 40
+_LIBRARY_SOURCE_LIMIT = 5
+_PREVIOUS_SERMON_LIMIT = 25
+
+_VIDEO_TIMESTAMP_SUFFIX = re.compile(r"\s*\[[0-9:]{4,8}[–-][0-9:]{4,8}\]\s*$")
+_DOCUMENT_EXTENSIONS = (".md", ".docx", ".pdf", ".txt")
+_VIDEO_EXTENSIONS = (
+    ".mp4",
+    ".m4v",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
+    ".wmv",
+    ".flv",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".ogv",
+)
 
 
 def sanitize_history_entries(raw) -> list[dict[str, Any]]:
@@ -55,10 +75,114 @@ def _msg_count(entry: dict[str, Any]) -> int:
     return len(_messages_of(entry))
 
 
+def _is_video_sermon_source(title: str) -> bool:
+    value = (title or "").strip()
+    if not value:
+        return False
+    if _VIDEO_TIMESTAMP_SUFFIX.search(value):
+        return True
+    lower = value.lower()
+    if any(lower.endswith(ext) for ext in _VIDEO_EXTENSIONS):
+        return True
+    return "[" in value
+
+
+def _normalize_sermon_label(raw: str) -> str:
+    value = (raw or "").strip()
+    lower = value.lower()
+    for ext in (*_DOCUMENT_EXTENSIONS, *_VIDEO_EXTENSIONS):
+        if lower.endswith(ext):
+            return value[: -len(ext)].strip()
+    return value
+
+
+def library_sermon_sources(raw, limit: int = _LIBRARY_SOURCE_LIMIT) -> list[str]:
+    """Document titles for the sermon library. Videos stay out of the sidebar."""
+    seen: set[str] = set()
+    out: list[str] = []
+    items = raw if isinstance(raw, list) else []
+    for item in items:
+        original = str(item or "").strip()
+        if not original or _is_video_sermon_source(original):
+            continue
+        display = _normalize_sermon_label(original)
+        if not display or _is_video_sermon_source(display):
+            continue
+        key = display.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(display)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _without_video_sermon_sources(titles) -> list[str]:
+    cleaned: list[str] = []
+    for title in titles or []:
+        text = str(title or "").strip()
+        if text and not _is_video_sermon_source(text):
+            cleaned.append(text)
+    return cleaned
+
+
+def advance_library_sermons(library, previous, sources) -> tuple[list[str], list[str]]:
+    """Same sidebar shift the Flutter client applies when an answer completes."""
+    next_library = _without_video_sermon_sources(library)
+    next_previous = _without_video_sermon_sources(previous)
+    if next_library:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for title in [*next_library, *next_previous]:
+            if title in seen:
+                continue
+            seen.add(title)
+            merged.append(title)
+            if len(merged) >= _PREVIOUS_SERMON_LIMIT:
+                break
+        next_previous = merged
+    new_sources = library_sermon_sources(sources)
+    if new_sources:
+        next_library = new_sources
+        next_previous = [title for title in next_previous if title not in next_library]
+    return next_library, next_previous
+
+
+def _sermon_name_list(raw) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, str) and item.strip()]
+
+
+def _with_preserved_library_sermons(
+    winner: dict[str, Any], loser: dict[str, Any]
+) -> dict[str, Any]:
+    """Keep sermon-library names when the richer text snapshot never recorded them."""
+    winner_library = _sermon_name_list(winner.get("librarySermons"))
+    winner_previous = _sermon_name_list(winner.get("previousSermons"))
+    loser_library = _sermon_name_list(loser.get("librarySermons"))
+    loser_previous = _sermon_name_list(loser.get("previousSermons"))
+    if winner_library or winner_previous or not (loser_library or loser_previous):
+        return winner
+    merged = dict(winner)
+    merged["librarySermons"] = loser_library
+    merged["previousSermons"] = loser_previous
+    return merged
+
+
 def richer_history_entry(
     existing: dict[str, Any], incoming: dict[str, Any]
 ) -> dict[str, Any]:
     """Prefer the snapshot that still has the live draft or more complete text."""
+    chosen = _choose_richer_history_entry(existing, incoming)
+    other = incoming if chosen is existing else existing
+    return _with_preserved_library_sermons(chosen, other)
+
+
+def _choose_richer_history_entry(
+    existing: dict[str, Any], incoming: dict[str, Any]
+) -> dict[str, Any]:
     existing_stream = entry_is_streaming(existing)
     incoming_stream = entry_is_streaming(incoming)
     existing_len = _last_ai_len(existing)
@@ -226,6 +350,14 @@ def upsert_live_chat_turn(
             entry["updatedAt"] = now_ms
             entries.pop(match_idx)
             entries.insert(0, entry)
+        if not streaming:
+            library, previous = advance_library_sermons(
+                entry.get("librarySermons") or [],
+                entry.get("previousSermons") or [],
+                sources or [],
+            )
+            entry["librarySermons"] = library
+            entry["previousSermons"] = previous
         row.entries = entries[:MAX_HISTORY_ENTRIES]
         row.active_session_id = sid
         row.save(update_fields=["entries", "active_session_id", "updated_at"])

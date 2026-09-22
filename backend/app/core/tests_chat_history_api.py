@@ -164,6 +164,79 @@ class LiveChatHistoryTests(TestCase):
         row.refresh_from_db()
         self.assertNotIn("streaming", row.entries[0]["messages"][1])
         self.assertEqual(row.entries[0]["messages"][1]["sources"], ["Faith That Works"])
+        self.assertEqual(row.entries[0]["librarySermons"], ["Faith That Works"])
+        self.assertEqual(row.entries[0]["previousSermons"], [])
+
+    def test_upsert_keeps_library_sermons_across_turns(self):
+        from .live_chat_history import upsert_live_chat_turn
+
+        upsert_live_chat_turn(
+            user=self.user,
+            client_session_id="faith-live",
+            user_query="What is faith?",
+            answer="Faith is trust.",
+            sources=["Faith That Works.pdf", "Hope [00:12–00:34]"],
+            streaming=False,
+        )
+        upsert_live_chat_turn(
+            user=self.user,
+            client_session_id="faith-live",
+            user_query="And grace?",
+            answer="",
+            streaming=True,
+        )
+        row = UserChatHistory.objects.get(user=self.user)
+        self.assertEqual(row.entries[0]["librarySermons"], ["Faith That Works"])
+        self.assertEqual(row.entries[0]["previousSermons"], [])
+
+        upsert_live_chat_turn(
+            user=self.user,
+            client_session_id="faith-live",
+            user_query="And grace?",
+            answer="Grace is a gift.",
+            sources=["The Giver and His Gifts.docx", "clip.mp4"],
+            streaming=False,
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.entries[0]["librarySermons"], ["The Giver and His Gifts"])
+        self.assertEqual(row.entries[0]["previousSermons"], ["Faith That Works"])
+
+    def test_merge_keeps_library_sermons_from_shorter_snapshot(self):
+        from .live_chat_history import merge_history_entries
+
+        merged = merge_history_entries(
+            [
+                {
+                    "sessionId": "a",
+                    "updatedAt": 10,
+                    "librarySermons": ["Faith That Works"],
+                    "previousSermons": ["The Giver"],
+                    "messages": [
+                        {"role": "user", "text": "What is faith?"},
+                        {"role": "ai", "text": "Faith.", "sources": ["Faith That Works"]},
+                    ],
+                }
+            ],
+            [
+                {
+                    "sessionId": "a",
+                    "updatedAt": 50,
+                    "librarySermons": [],
+                    "previousSermons": [],
+                    "messages": [
+                        {"role": "user", "text": "What is faith?"},
+                        {
+                            "role": "ai",
+                            "text": "Faith is trust in God.",
+                            "sources": ["Faith That Works"],
+                        },
+                    ],
+                }
+            ],
+        )
+        self.assertEqual(merged[0]["librarySermons"], ["Faith That Works"])
+        self.assertEqual(merged[0]["previousSermons"], ["The Giver"])
+        self.assertEqual(merged[0]["messages"][1]["text"], "Faith is trust in God.")
 
     def test_put_does_not_clobber_in_flight_stream(self):
         from .live_chat_history import upsert_live_chat_turn

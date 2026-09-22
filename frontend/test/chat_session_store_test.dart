@@ -134,4 +134,42 @@ void main() {
     );
     expect(store.current.messages.last['text'], 'Live');
   });
+
+  test('loadFromHistoryEntry restores library sermons from message sources', () {
+    final runtime = ChatSessionRuntime('a');
+    runtime.loadFromHistoryEntry({
+      'messages': [
+        {'role': 'user', 'text': 'What is faith?'},
+        {
+          'role': 'ai',
+          'text': 'Faith is trust.',
+          'sources': ['Faith That Works.pdf', 'Hope [00:12–00:34]'],
+        },
+        {'role': 'user', 'text': 'And grace?'},
+        {
+          'role': 'ai',
+          'text': 'Grace is a gift.',
+          'sources': ['The Giver and His Gifts'],
+        },
+      ],
+      'librarySermons': <String>[],
+      'previousSermons': <String>[],
+    });
+    expect(runtime.librarySermons, ['The Giver and His Gifts']);
+    expect(runtime.previousSermons, ['Faith That Works']);
+  });
+
+  test('loadFromHistoryEntry keeps saved lists when messages have no sources', () {
+    final runtime = ChatSessionRuntime('a');
+    runtime.loadFromHistoryEntry({
+      'messages': [
+        {'role': 'user', 'text': 'Hi'},
+        {'role': 'ai', 'text': 'Hello'},
+      ],
+      'librarySermons': ['Saved Sermon'],
+      'previousSermons': ['Older Sermon'],
+    });
+    expect(runtime.librarySermons, ['Saved Sermon']);
+    expect(runtime.previousSermons, ['Older Sermon']);
+  });
 }

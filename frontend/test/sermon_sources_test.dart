@@ -113,6 +113,30 @@ void main() {
     );
   });
 
+  test('libraryStateFromMessages restores the sidebar after refresh', () {
+    final state = libraryStateFromMessages([
+      {'role': 'user', 'text': 'What is faith?'},
+      {
+        'role': 'ai',
+        'text': 'Faith is trust.',
+        'sources': ['Faith That Works.pdf', 'Hope [00:12–00:34]'],
+      },
+      {'role': 'user', 'text': 'And grace?'},
+      {
+        'role': 'ai',
+        'text': 'Grace is a gift.',
+        'sources': ['The Giver and His Gifts.docx', 'clip.mp4'],
+      },
+      {
+        'role': 'ai',
+        'text': '',
+        'streaming': true,
+      },
+    ]);
+    expect(state.library, ['The Giver and His Gifts']);
+    expect(state.previous, ['Faith That Works']);
+  });
+
   test('isVideoFileUrl uses source_kind and extension', () {
     expect(
       isVideoFileUrl('https://x/file.bin', sourceKind: 'video'),
