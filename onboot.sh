@@ -70,12 +70,57 @@ if [[ ! -f "$START_SH" ]]; then
   exit 1
 fi
 
+# Fetch origin/$CHANNEL and hard-reset before start.sh. Recreate/remigration
+# used to boot whatever SHA was left on the volume, which is how production
+# silently ran an old master (and leftover file overlays).
+_ONBOOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$WS/scripts/git_channel.sh" 2>/dev/null \
+  || source "$_ONBOOT_DIR/scripts/git_channel.sh" 2>/dev/null \
+  || true
+# shellcheck source=/dev/null
+source "$WS/scripts/git_safe_directory.sh" 2>/dev/null \
+  || source "$_ONBOOT_DIR/scripts/git_safe_directory.sh" 2>/dev/null \
+  || true
+# shellcheck source=/dev/null
+source "$WS/scripts/sync_git_channel.sh" 2>/dev/null \
+  || source "$_ONBOOT_DIR/scripts/sync_git_channel.sh" 2>/dev/null \
+  || true
+
+GIT_CHANGED=0
+if declare -F pastor_sync_git_channel >/dev/null 2>&1; then
+  CHANNEL="$(pastor_resolve_git_channel "$WS")"
+  pastor_write_git_channel "$WS" "$CHANNEL" || true
+  if pastor_sync_git_channel "$WS" "$CHANNEL"; then
+    GIT_CHANGED="${PASTOR_GIT_CHANGED:-0}"
+  else
+    warn "git sync failed — starting the existing checkout (see $WS/DEPLOYED_SYNC_ERROR)"
+  fi
+else
+  warn "sync_git_channel.sh missing — boot will not fetch GitHub"
+fi
+
 # start.sh launches services in screen and returns. Keep this process so the
 # container does not exit (RunPod treats that as a crash and restarts).
-export PASTOR_KEEP_ALIVE="${PASTOR_KEEP_ALIVE:-1}"
+# Do not export PASTOR_KEEP_ALIVE before deploy_update: that script calls
+# start.sh, which would exec sleep infinity and skip its health checks.
+STARTED=0
 set +e
-bash "$START_SH"
-start_rc=$?
+if [[ "$GIT_CHANGED" == "1" && -x "$WS/deploy_update.sh" ]]; then
+  log "Checkout moved or discarded overlays — running deploy_update.sh"
+  PASTOR_SKIP_GIT_SYNC=1 PASTOR_KEEP_ALIVE=0 bash "$WS/deploy_update.sh"
+  if [[ $? -eq 0 ]]; then
+    STARTED=1
+  else
+    warn "deploy_update.sh failed after git sync — falling back to start.sh"
+  fi
+fi
+if [[ "$STARTED" -eq 0 ]]; then
+  bash "$START_SH"
+  start_rc=$?
+else
+  start_rc=0
+fi
 set -e
 if [[ "$start_rc" -ne 0 ]]; then
   warn "start.sh exited $start_rc — keeping container alive"

@@ -240,7 +240,7 @@ Production is a CPU-only Secure Cloud pod on the same network volume
 | SSH | `ssh f4dfpc5x5sosvs-64411dd1@ssh.runpod.io -i ~/.ssh/id_ed25519` |
 | Public URL | `https://christianaiapophatictestdomain.com` (named Cloudflare tunnel) |
 
-`bash /workspace/pastor-ai/deploy_update.sh` fetches and **hard-resets** this pod to GitHub `master` (local edits are discarded). The script used to `git checkout` with stderr swallowed, so a dirty tree stayed on an old SHA.
+`bash /workspace/pastor-ai/deploy_update.sh` fetches and **hard-resets** this pod to GitHub `master` (local edits are discarded). `onboot.sh` runs that same sync before `start.sh` on every Stop/Start or remigration, then writes `DEPLOYED_SHA` so the stamp cannot lag HEAD. Check `GET /api/health/` (`in_sync`, `dirty`, `git_sha`). The script used to `git checkout` with stderr swallowed, so a dirty tree stayed on an old SHA. File overlays + `kill -HUP` still drift until the next boot or `deploy_update.sh`.
 
 ## Development CPU pod
 
