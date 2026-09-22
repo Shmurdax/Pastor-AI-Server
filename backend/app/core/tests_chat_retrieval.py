@@ -790,9 +790,15 @@ class ChatRetrievalTests(unittest.TestCase):
             _doc("Second chunk", source="nkjv-bible.pdf", title="NKJV Bible"),
         ]
         notes = format_reference_notes(docs, lambda doc: doc.metadata["title"], max_chars=4000)
+        self.assertTrue(notes.startswith("These excerpts are Pastor Don Nordin's and Susan Nordin's"))
+        self.assertIn("Name Pastor Don and Susan in the teaching", notes)
         self.assertIn("[Note 1 | Walking in Love]", notes)
         self.assertIn("[Note 2 | NKJV Bible]", notes)
         self.assertIn("First chunk", notes)
+
+    def test_format_notes_empty_docs_have_no_attribution_preface(self):
+        notes = format_reference_notes([], lambda doc: "Unused", max_chars=4000)
+        self.assertEqual(notes, "")
 
     def test_format_notes_preserve_order_keeps_rerank_sequence(self):
         docs = [

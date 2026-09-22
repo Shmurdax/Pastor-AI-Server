@@ -77,6 +77,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertIn("Let the user's question and the notes decide", prompt)
         self.assertIn("Write the way Pastor Don and Susan preach", prompt)
         self.assertIn("Do not write like a generic modern assistant", prompt)
+        self.assertIn("Pastor Don and Susan Nordin's teaching from their", prompt)
+        self.assertIn("Name them once near the start", prompt)
         self.assertNotIn("the way a modern assistant would", prompt)
         self.assertIn("Match the user's requested layout", prompt)
         self.assertIn("labeled points", prompt)
