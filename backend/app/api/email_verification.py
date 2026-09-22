@@ -60,12 +60,16 @@ def _from_email() -> str:
     return formatted_from_header()
 
 
-def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVerificationCode:
-    """Create a fresh code and try to email it.
+def _django_mail_delivers() -> bool:
+    """True when Django mail will actually leave the process (SMTP or test locmem)."""
+    backend = str(getattr(settings, "EMAIL_BACKEND", "") or "")
+    if "locmem" in backend:
+        return True
+    return bool(str(getattr(settings, "EMAIL_HOST", "") or "").strip())
 
-    The hashed code is stored even if Gmail/SMTP fails so signup can continue
-    with the on-screen fallback code until Workspace sending is live.
-    """
+
+def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVerificationCode:
+    """Create a fresh code and email it through Gmail (or SMTP in tests)."""
     profile = getattr(user, "profile", None)
     if profile is None:
         profile, _ = Profile.objects.get_or_create(user=user)
@@ -110,11 +114,13 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVeri
         "This code expires in 10 minutes. After you verify, you can continue to payment.\n"
         "If you did not create an account, you can ignore this email.\n"
     )
-    emailed = False
+    send_error = (
+        "We could not send the verification email. Please try again in a moment."
+    )
     try:
         if gmail_is_configured():
             send_via_gmail_api(to_email=user.email, subject=subject, body=body)
-        else:
+        elif _django_mail_delivers():
             send_mail(
                 subject,
                 body,
@@ -122,24 +128,26 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVeri
                 [user.email],
                 fail_silently=False,
             )
-        emailed = True
+        else:
+            logger.error(
+                "Gmail is not configured; verification email not sent to %s",
+                user.email,
+            )
+            raise EmailVerificationError(send_error, status=503)
+    except EmailVerificationError:
+        raise
     except GmailSendError:
-        logger.exception(
-            "Gmail API failed to send verification email to %s; using on-screen code",
-            user.email,
-        )
+        logger.exception("Gmail API failed to send verification email to %s", user.email)
+        raise EmailVerificationError(send_error, status=503) from None
     except Exception:
-        logger.exception(
-            "Failed to send verification email to %s; using on-screen code",
-            user.email,
-        )
-    if emailed:
-        logger.info(
-            "Sent email verification code to %s via %s",
-            user.email,
-            email_delivery_mode(),
-        )
-    return IssuedVerificationCode(code, emailed=emailed)
+        logger.exception("Failed to send verification email to %s", user.email)
+        raise EmailVerificationError(send_error, status=503) from None
+    logger.info(
+        "Sent email verification code to %s via %s",
+        user.email,
+        email_delivery_mode(),
+    )
+    return IssuedVerificationCode(code, emailed=True)
 
 
 def verify_email_code(user, raw_code: str) -> Profile:

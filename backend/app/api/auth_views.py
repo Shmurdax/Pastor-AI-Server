@@ -338,10 +338,6 @@ class SendEmailCodeView(_AuthenticatedAuthView):
             "email": request.user.email,
             "emailed": issued.emailed,
         }
-        # Temporary: show the 6-digit code on the verification screen until
-        # Workspace Gmail sending is live. Keep it in DEBUG even when mail works.
-        if settings.DEBUG or not issued.emailed:
-            payload["debug_code"] = issued.code
         return Response(payload)
 
 

@@ -108,7 +108,7 @@ void main() {
     expect(find.text('Check your email'), findsOneWidget);
     expect(
       find.text(
-        'Enter this code to verify your email. We sent a 6-digit code so you can unlock Nordin\'s AI.',
+        'We sent a 6-digit code to your email so you can unlock Nordin\'s AI.',
       ),
       findsOneWidget,
     );

@@ -64,7 +64,7 @@ class PurchaseCompleteDialog extends StatelessWidget {
       ),
       content: Text(
         needsEmailVerification
-            ? 'Enter this code to verify your email. We sent a 6-digit code so you can unlock Nordin\'s AI.'
+            ? 'We sent a 6-digit code to your email so you can unlock Nordin\'s AI.'
             : 'Welcome to Premium. Unlimited chat history and member media are unlocked.',
         textAlign: TextAlign.center,
         style: GoogleFonts.figtree(
