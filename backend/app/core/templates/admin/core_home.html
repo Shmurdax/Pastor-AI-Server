@@ -215,11 +215,36 @@
     font-size: 12px;
   }
 
-  /* Keep Content tools / Pastoral / Advanced outer cards the same width. */
-  .pastor-section,
-  .pastor-advanced {
-    max-width: 100%;
+  .pastor-token-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 0 16px 16px;
   }
+
+  .pastor-token-stat {
+    border: 1px solid var(--hairline-color, var(--border-color, #ccc));
+    border-radius: 8px;
+    padding: 14px;
+    background: var(--darkened-bg, var(--body-bg, transparent));
+  }
+
+  .pastor-token-stat-label {
+    margin: 0 0 6px;
+    font-size: 12px;
+    color: var(--body-quiet-color, inherit);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .pastor-token-stat-value {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--body-fg, inherit);
+    font-variant-numeric: tabular-nums;
+  }
+
 
   @media (max-width: 767px) {
     .pastor-home {
@@ -288,6 +313,39 @@
         <a class="pastor-tool-link" href="{% url 'admin:core_embedded_videos' %}">Open →</a>
       </div>
     </div>
+  </div>
+
+  <div class="pastor-section">
+    <h2 class="pastor-section-header">Premium chat tokens</h2>
+    <p class="pastor-section-intro">
+      Shared monthly pool for Premium members only (superusers are not counted or limited).
+      Resets on the first day of each calendar month.
+    </p>
+    {% if premium_tokens %}
+    <div class="pastor-token-stats">
+      <div class="pastor-token-stat">
+        <p class="pastor-token-stat-label">This month</p>
+        <p class="pastor-token-stat-value">{{ premium_tokens.period_key }}</p>
+      </div>
+      <div class="pastor-token-stat">
+        <p class="pastor-token-stat-label">Tokens used</p>
+        <p class="pastor-token-stat-value">{{ premium_tokens.used }}</p>
+      </div>
+      <div class="pastor-token-stat">
+        <p class="pastor-token-stat-label">Tokens left</p>
+        <p class="pastor-token-stat-value">{{ premium_tokens.remaining }}</p>
+      </div>
+      <div class="pastor-token-stat">
+        <p class="pastor-token-stat-label">Monthly budget</p>
+        <p class="pastor-token-stat-value">{{ premium_tokens.budget }}</p>
+      </div>
+    </div>
+    <div class="pastor-link-row">
+      <a href="{% url 'admin:api_platformtokenmeter_changelist' %}">Open Premium chat token pools →</a>
+    </div>
+    {% else %}
+    <p class="pastor-section-intro">Token usage is unavailable right now.</p>
+    {% endif %}
   </div>
 
   <div class="pastor-section">

@@ -1026,6 +1026,7 @@ PASTORAL_OBJECT_NAMES = {
     "ResponseReport",
     "ChurchEvent",
     "MailchimpExportTool",
+    "PlatformTokenMeter",
 }
 CONTENT_TOOL_OBJECT_NAMES = {
     "CoreIngestionTool",
@@ -1178,6 +1179,19 @@ def _get_app_list(request, app_label=None):
 
 def _admin_index(request, extra_context=None):
     content_models, pastoral_models, advanced_apps = _split_admin_navigation(request)
+    premium_tokens = None
+    try:
+        from api.token_quota import calendar_period_key, platform_usage_snapshot
+
+        used, budget, remaining = platform_usage_snapshot()
+        premium_tokens = {
+            "used": used,
+            "budget": budget,
+            "remaining": remaining,
+            "period_key": calendar_period_key(),
+        }
+    except Exception:
+        premium_tokens = None
     context = {
         **admin.site.each_context(request),
         "title": admin.site.index_title,
@@ -1185,6 +1199,7 @@ def _admin_index(request, extra_context=None):
         "app_list": _get_app_list(request),
         "pastoral_models": pastoral_models,
         "advanced_app_list": advanced_apps,
+        "premium_tokens": premium_tokens,
         **(extra_context or {}),
     }
     request.current_app = admin.site.name
