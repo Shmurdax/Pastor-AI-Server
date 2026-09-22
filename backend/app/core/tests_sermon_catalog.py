@@ -481,6 +481,22 @@ class FaithClaimDistinctiveTests(unittest.TestCase):
         self.assertIn("if factor", blob)
         self.assertNotIn("sunday sermon", blob)
 
+    def test_outline_request_searches_the_topic_not_the_layout(self):
+        from core.teaching_claims import retrieval_search_text
+
+        self.assertEqual(
+            retrieval_search_text("Give me a 3 point sermon on faith"),
+            "faith",
+        )
+        self.assertEqual(
+            retrieval_search_text("3 point sermon on faith"),
+            "faith",
+        )
+        self.assertEqual(
+            retrieval_search_text("Can Christians drink?"),
+            "Can Christians drink?",
+        )
+
 
 class QueryPrefixEmbeddingTests(unittest.TestCase):
     def test_prefixes_queries_not_documents(self):
