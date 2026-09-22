@@ -46,6 +46,116 @@ class AppStrings {
   String get passwordsDoNotMatch => _t('passwordsDoNotMatch');
   String get languageSettingHint => _t('languageSettingHint');
 
+  // Premium / account sheet
+  String premiumActiveUntilCancel(String date) =>
+      _t('premiumActiveUntilCancel').replaceAll('{date}', date);
+  String premiumMemberSwitching(String period, String pending, String date) =>
+      _t('premiumMemberSwitching')
+          .replaceAll('{period}', period)
+          .replaceAll('{pending}', pending)
+          .replaceAll('{date}', date);
+  String premiumMember([String period = '']) => period.isEmpty
+      ? _t('premiumMember')
+      : _t('premiumMemberWithPeriod').replaceAll('{period}', period);
+  String get billingActive => _t('billingActive');
+  String get demoModeAuthMocked => _t('demoModeAuthMocked');
+
+  // Prayer inbox / response
+  String get prayerFilterAll => _t('prayerFilterAll');
+  String get prayerNeedsFollowUp => _t('prayerNeedsFollowUp');
+  String get prayerFollowedUp => _t('prayerFollowedUp');
+  String get prayerStatusOpen => _t('prayerStatusOpen');
+  String get prayerInboxEmpty => _t('prayerInboxEmpty');
+  String get prayerInboxLoadFailed => _t('prayerInboxLoadFailed');
+  String get prayerResponseTitle => _t('prayerResponseTitle');
+  String get submittedAnonymously => _t('submittedAnonymously');
+  String signedInAccount(String name) =>
+      _t('signedInAccount').replaceAll('{name}', name);
+  String get selectEmailPlatform => _t('selectEmailPlatform');
+  String get emailClientGmail => _t('emailClientGmail');
+  String get emailClientDefaultApp => _t('emailClientDefaultApp');
+  String get followUpSection => _t('followUpSection');
+  String get markAsFollowedUp => _t('markAsFollowedUp');
+  String get pastorNotes => _t('pastorNotes');
+  String get pastorNotesHint => _t('pastorNotesHint');
+  String lastMarkedContacted(String date) =>
+      _t('lastMarkedContacted').replaceAll('{date}', date);
+  String get saveFollowUp => _t('saveFollowUp');
+  String get followUpSaved => _t('followUpSaved');
+  String get couldNotSaveChanges => _t('couldNotSaveChanges');
+  String couldNotOpenLink(String scheme) =>
+      _t('couldNotOpenLink').replaceAll('{scheme}', scheme);
+  String emailWithClient(String client) =>
+      _t('emailWithClient').replaceAll('{client}', client);
+
+  // Events
+  String get churchEvents => _t('churchEvents');
+  String get closeEvents => _t('closeEvents');
+  String get couldNotLoadEvents => _t('couldNotLoadEvents');
+  String get addEvent => _t('addEvent');
+  String get noEventsScheduled => _t('noEventsScheduled');
+  String get noEventsScheduledStaffHint => _t('noEventsScheduledStaffHint');
+  String get upcoming => _t('upcoming');
+  String get past => _t('past');
+  String get draft => _t('draft');
+  String get editEvent => _t('editEvent');
+  String hostLabel(String name) => _t('hostLabel').replaceAll('{name}', name);
+  String get endTimeAfterStart => _t('endTimeAfterStart');
+  String get couldNotSaveEvent => _t('couldNotSaveEvent');
+  String get deleteEventTitle => _t('deleteEventTitle');
+  String get deleteEventBody => _t('deleteEventBody');
+  String get couldNotDeleteEvent => _t('couldNotDeleteEvent');
+  String get addChurchEvent => _t('addChurchEvent');
+  String get editChurchEvent => _t('editChurchEvent');
+  String get eventTitle => _t('eventTitle');
+  String get location => _t('location');
+  String get hostMinistry => _t('hostMinistry');
+  String get detailsOptional => _t('detailsOptional');
+  String get requiredField => _t('requiredField');
+  String get starts => _t('starts');
+  String get endsOptional => _t('endsOptional');
+  String get notSet => _t('notSet');
+  String get publishedVisible => _t('publishedVisible');
+  String get save => _t('save');
+
+  // Media
+  String get mediaCollectionLabel => _t('mediaCollectionLabel');
+  String get mediaCreatorTagline => _t('mediaCreatorTagline');
+  String get mediaSortNewest => _t('mediaSortNewest');
+  String get mediaSortOldest => _t('mediaSortOldest');
+  String get mediaSortTitleAZ => _t('mediaSortTitleAZ');
+  String get mediaNotFound => _t('mediaNotFound');
+  String get mediaPremiumUnlock => _t('mediaPremiumUnlock');
+  String get mediaPremiumUnlockSoon => _t('mediaPremiumUnlockSoon');
+  String get mediaComingSoonEpisode => _t('mediaComingSoonEpisode');
+  String get mediaFilters => _t('mediaFilters');
+  String get mediaAccess => _t('mediaAccess');
+  String get mediaFilterAll => _t('mediaFilterAll');
+  String get mediaFreePreview => _t('mediaFreePreview');
+  String get mediaPremium => _t('mediaPremium');
+  String get mediaYear => _t('mediaYear');
+  String get mediaAnyYear => _t('mediaAnyYear');
+  String get mediaClearAll => _t('mediaClearAll');
+  String get mediaApply => _t('mediaApply');
+  String get mediaClearFilters => _t('mediaClearFilters');
+  String get mediaCreatorName => _t('mediaCreatorName');
+  String get mediaSearchHint => _t('mediaSearchHint');
+  String mediaShownCount(int n) =>
+      _t('mediaShownCount').replaceAll('{n}', '$n');
+  String get mediaLoading => _t('mediaLoading');
+  String mediaCatalogCount(String sort, int n) =>
+      _t('mediaCatalogCount')
+          .replaceAll('{sort}', sort)
+          .replaceAll('{n}', '$n');
+  String get mediaFreePreviewUnlock => _t('mediaFreePreviewUnlock');
+  String get mediaNoPostsMatch => _t('mediaNoPostsMatch');
+  String get mediaTryClearingFilters => _t('mediaTryClearingFilters');
+  String get mediaResetSearch => _t('mediaResetSearch');
+  String get mediaComingSoon => _t('mediaComingSoon');
+  String get mediaNoPlayableVideo => _t('mediaNoPlayableVideo');
+  String get mediaUnableToLoad => _t('mediaUnableToLoad');
+  String get mediaNowPlaying => _t('mediaNowPlaying');
+
   String get sermons => _t('sermons');
   String get chats => _t('chats');
   String get sermonLibrary => _t('sermonLibrary');
@@ -175,6 +285,94 @@ const Map<String, Map<String, String>> _tables = {
     'passwordsDoNotMatch': 'Passwords do not match',
     'languageSettingHint':
         'Choose the language used across the app, including navigation and menus.',
+    'premiumActiveUntilCancel': 'Premium stays active until {date}. Auto-renewal is off.',
+    'premiumMemberSwitching': 'Premium member · {period}. Switching to {pending} on {date}.',
+    'premiumMember': 'Premium member.',
+    'premiumMemberWithPeriod': 'Premium member · {period}.',
+    'billingActive': 'active',
+    'demoModeAuthMocked': 'Demo mode: auth is mocked until Django endpoints are ready.',
+    'prayerFilterAll': 'All',
+    'prayerNeedsFollowUp': 'Needs follow-up',
+    'prayerFollowedUp': 'Followed up',
+    'prayerStatusOpen': 'Open',
+    'prayerInboxEmpty': 'No prayer requests in this view.',
+    'prayerInboxLoadFailed': 'Could not load prayer requests. Make sure you are signed in as staff.',
+    'prayerResponseTitle': 'Prayer Response',
+    'submittedAnonymously': 'Submitted anonymously',
+    'signedInAccount': 'Signed-in account: {name}',
+    'selectEmailPlatform': 'Select email platform:',
+    'emailClientGmail': 'Gmail',
+    'emailClientDefaultApp': 'Default app',
+    'followUpSection': 'Follow-up',
+    'markAsFollowedUp': 'Mark as followed up',
+    'pastorNotes': 'Pastor notes',
+    'pastorNotesHint': 'How you connected, prayer points, next steps…',
+    'lastMarkedContacted': 'Last marked contacted: {date}',
+    'saveFollowUp': 'Save follow-up',
+    'followUpSaved': 'Follow-up saved',
+    'couldNotSaveChanges': 'Could not save changes.',
+    'couldNotOpenLink': 'Could not open {scheme} link',
+    'emailWithClient': 'Email with {client}',
+    'churchEvents': 'Church Events',
+    'closeEvents': 'Close events',
+    'couldNotLoadEvents': 'Could not load events.',
+    'addEvent': 'Add event',
+    'noEventsScheduled': 'No events scheduled yet.',
+    'noEventsScheduledStaffHint': ' Tap Add event to create one.',
+    'upcoming': 'Upcoming',
+    'past': 'Past',
+    'draft': 'Draft',
+    'editEvent': 'Edit event',
+    'hostLabel': 'Host: {name}',
+    'endTimeAfterStart': 'End time must be after start time.',
+    'couldNotSaveEvent': 'Could not save event. Are you signed in as staff?',
+    'deleteEventTitle': 'Delete event?',
+    'deleteEventBody': 'This removes the event for everyone.',
+    'couldNotDeleteEvent': 'Could not delete event.',
+    'addChurchEvent': 'Add church event',
+    'editChurchEvent': 'Edit church event',
+    'eventTitle': 'Event title',
+    'location': 'Location',
+    'hostMinistry': 'Host / ministry',
+    'detailsOptional': 'Details (optional)',
+    'requiredField': 'Required',
+    'starts': 'Starts',
+    'endsOptional': 'Ends (optional)',
+    'notSet': 'Not set',
+    'publishedVisible': 'Published (visible to everyone)',
+    'save': 'Save',
+    'mediaCollectionLabel': 'Walk through the Word',
+    'mediaCreatorTagline': 'Walk through the Word from The Nordin\'s',
+    'mediaSortNewest': 'Newest first',
+    'mediaSortOldest': 'Oldest first',
+    'mediaSortTitleAZ': 'Title A–Z',
+    'mediaNotFound': 'That sermon was not found in the media library.',
+    'mediaPremiumUnlock': 'This episode is for Premium members. Subscribe to unlock.',
+    'mediaPremiumUnlockSoon': 'This episode is for Premium members. Subscribe to unlock when media goes live.',
+    'mediaComingSoonEpisode': 'This episode is coming soon.',
+    'mediaFilters': 'Filters',
+    'mediaAccess': 'Access',
+    'mediaFilterAll': 'All',
+    'mediaFreePreview': 'Free preview',
+    'mediaPremium': 'Premium',
+    'mediaYear': 'Year',
+    'mediaAnyYear': 'Any year',
+    'mediaClearAll': 'Clear all',
+    'mediaApply': 'Apply',
+    'mediaClearFilters': 'Clear filters',
+    'mediaCreatorName': 'The NORDINS',
+    'mediaSearchHint': 'Search posts by title, topic, or tag…',
+    'mediaShownCount': '{n} shown',
+    'mediaLoading': 'Loading Walk through the Word…',
+    'mediaCatalogCount': '{sort} · {n} videos in catalog',
+    'mediaFreePreviewUnlock': 'Free preview · Subscribe to unlock the full library',
+    'mediaNoPostsMatch': 'No posts match your filters',
+    'mediaTryClearingFilters': 'Try clearing filters or searching with different keywords.',
+    'mediaResetSearch': 'Reset search & filters',
+    'mediaComingSoon': 'Coming soon',
+    'mediaNoPlayableVideo': 'No playable video for this episode.',
+    'mediaUnableToLoad': 'Unable to load video.',
+    'mediaNowPlaying': 'Now playing',
     'sermons': 'Sermons',
     'chats': 'Chats',
     'sermonLibrary': 'Sermon Library',
@@ -299,6 +497,94 @@ const Map<String, Map<String, String>> _tables = {
     'passwordsDoNotMatch': 'Las contraseñas no coinciden',
     'languageSettingHint':
         'Elige el idioma de toda la app, incluida la navegación y los menús.',
+    'premiumActiveUntilCancel': 'Premium permanece activo hasta el {date}. La renovación automática está desactivada.',
+    'premiumMemberSwitching': 'Miembro Premium · {period}. Cambiará a {pending} el {date}.',
+    'premiumMember': 'Miembro Premium.',
+    'premiumMemberWithPeriod': 'Miembro Premium · {period}.',
+    'billingActive': 'activo',
+    'demoModeAuthMocked': 'Modo demo: la autenticación está simulada hasta que los endpoints de Django estén listos.',
+    'prayerFilterAll': 'Todas',
+    'prayerNeedsFollowUp': 'Pendientes de seguimiento',
+    'prayerFollowedUp': 'Seguidas',
+    'prayerStatusOpen': 'Abierta',
+    'prayerInboxEmpty': 'No hay peticiones de oración en esta vista.',
+    'prayerInboxLoadFailed': 'No se pudieron cargar las peticiones de oración. Asegúrate de haber iniciado sesión como personal.',
+    'prayerResponseTitle': 'Respuesta de oración',
+    'submittedAnonymously': 'Enviada de forma anónima',
+    'signedInAccount': 'Cuenta iniciada: {name}',
+    'selectEmailPlatform': 'Selecciona la plataforma de correo:',
+    'emailClientGmail': 'Gmail',
+    'emailClientDefaultApp': 'App predeterminada',
+    'followUpSection': 'Seguimiento',
+    'markAsFollowedUp': 'Marcar como seguida',
+    'pastorNotes': 'Notas del pastor',
+    'pastorNotesHint': 'Cómo te conectaste, puntos de oración, próximos pasos…',
+    'lastMarkedContacted': 'Último contacto marcado: {date}',
+    'saveFollowUp': 'Guardar seguimiento',
+    'followUpSaved': 'Seguimiento guardado',
+    'couldNotSaveChanges': 'No se pudieron guardar los cambios.',
+    'couldNotOpenLink': 'No se pudo abrir el enlace {scheme}',
+    'emailWithClient': 'Correo con {client}',
+    'churchEvents': 'Eventos de la iglesia',
+    'closeEvents': 'Cerrar eventos',
+    'couldNotLoadEvents': 'No se pudieron cargar los eventos.',
+    'addEvent': 'Agregar evento',
+    'noEventsScheduled': 'Aún no hay eventos programados.',
+    'noEventsScheduledStaffHint': ' Toca Agregar evento para crear uno.',
+    'upcoming': 'Próximos',
+    'past': 'Pasados',
+    'draft': 'Borrador',
+    'editEvent': 'Editar evento',
+    'hostLabel': 'Anfitrión: {name}',
+    'endTimeAfterStart': 'La hora de fin debe ser posterior a la de inicio.',
+    'couldNotSaveEvent': 'No se pudo guardar el evento. ¿Iniciaste sesión como personal?',
+    'deleteEventTitle': '¿Eliminar evento?',
+    'deleteEventBody': 'Esto elimina el evento para todos.',
+    'couldNotDeleteEvent': 'No se pudo eliminar el evento.',
+    'addChurchEvent': 'Agregar evento de la iglesia',
+    'editChurchEvent': 'Editar evento de la iglesia',
+    'eventTitle': 'Título del evento',
+    'location': 'Ubicación',
+    'hostMinistry': 'Anfitrión / ministerio',
+    'detailsOptional': 'Detalles (opcional)',
+    'requiredField': 'Obligatorio',
+    'starts': 'Comienza',
+    'endsOptional': 'Termina (opcional)',
+    'notSet': 'Sin definir',
+    'publishedVisible': 'Publicado (visible para todos)',
+    'save': 'Guardar',
+    'mediaCollectionLabel': 'Walk through the Word',
+    'mediaCreatorTagline': 'Walk through the Word de The Nordin\'s',
+    'mediaSortNewest': 'Más recientes',
+    'mediaSortOldest': 'Más antiguos',
+    'mediaSortTitleAZ': 'Título A–Z',
+    'mediaNotFound': 'Ese sermón no se encontró en la biblioteca de medios.',
+    'mediaPremiumUnlock': 'Este episodio es para miembros Premium. Suscríbete para desbloquearlo.',
+    'mediaPremiumUnlockSoon': 'Este episodio es para miembros Premium. Suscríbete para desbloquearlo cuando los medios estén disponibles.',
+    'mediaComingSoonEpisode': 'Este episodio estará disponible pronto.',
+    'mediaFilters': 'Filtros',
+    'mediaAccess': 'Acceso',
+    'mediaFilterAll': 'Todos',
+    'mediaFreePreview': 'Vista previa gratuita',
+    'mediaPremium': 'Premium',
+    'mediaYear': 'Año',
+    'mediaAnyYear': 'Cualquier año',
+    'mediaClearAll': 'Borrar todo',
+    'mediaApply': 'Aplicar',
+    'mediaClearFilters': 'Borrar filtros',
+    'mediaCreatorName': 'The NORDINS',
+    'mediaSearchHint': 'Busca publicaciones por título, tema o etiqueta…',
+    'mediaShownCount': '{n} mostrados',
+    'mediaLoading': 'Cargando Walk through the Word…',
+    'mediaCatalogCount': '{sort} · {n} videos en el catálogo',
+    'mediaFreePreviewUnlock': 'Vista previa gratuita · Suscríbete para desbloquear toda la biblioteca',
+    'mediaNoPostsMatch': 'Ninguna publicación coincide con tus filtros',
+    'mediaTryClearingFilters': 'Prueba borrar los filtros o buscar con otras palabras.',
+    'mediaResetSearch': 'Restablecer búsqueda y filtros',
+    'mediaComingSoon': 'Próximamente',
+    'mediaNoPlayableVideo': 'No hay video reproducible para este episodio.',
+    'mediaUnableToLoad': 'No se pudo cargar el video.',
+    'mediaNowPlaying': 'Reproduciendo',
     'sermons': 'Sermones',
     'chats': 'Chats',
     'sermonLibrary': 'Biblioteca de sermones',

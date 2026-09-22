@@ -1816,7 +1816,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             Padding(
               padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
               child: IconButton(
-                tooltip: 'Response reports',
+                tooltip: _s.responseReports,
                 onPressed: _openResponseReportsInbox,
                 icon: const Icon(Icons.flag_outlined, color: _navy),
               ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/church_events_panel.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 const _navy = Color(0xFF1B264F);
 const _surface = Color(0xFFF4F4F9);
@@ -23,6 +25,7 @@ class ChurchEventsNavOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final size = MediaQuery.of(context).size;
     final screenWidth = size.width;
     final targetWidth = screenWidth * 0.3;
@@ -49,7 +52,7 @@ class ChurchEventsNavOverlay extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Church Events',
+                        s.churchEvents,
                         style: GoogleFonts.figtree(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -58,7 +61,7 @@ class ChurchEventsNavOverlay extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Close events',
+                      tooltip: s.closeEvents,
                       onPressed: onClose,
                       icon: const Icon(Icons.close, color: _navy, size: 20),
                       visualDensity: VisualDensity.compact,

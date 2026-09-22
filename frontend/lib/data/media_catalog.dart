@@ -9,8 +9,6 @@ class MediaCatalog {
     startingPriceLabel: r'$15/month',
   );
 
-  static const creatorTagline = "Walk through the Word from The Nordin's";
-
   /// Free intro shown to everyone; remaining items require Premium.
   static final List<MediaItem> allItems = [
     MediaItem(

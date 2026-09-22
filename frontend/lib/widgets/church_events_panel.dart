@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
@@ -63,7 +65,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Could not load events.';
+        _error = context.read<LocaleController>().strings.couldNotLoadEvents;
         _loading = false;
       });
     }
@@ -94,6 +96,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final sidebar = widget.embeddedInSidebar;
 
     if (_loading) {
@@ -111,7 +114,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
             OutlinedButton(
               onPressed: _load,
               style: OutlinedButton.styleFrom(foregroundColor: _gold, side: const BorderSide(color: _gold)),
-              child: const Text('Retry'),
+              child: Text(s.retry),
             ),
           ],
         );
@@ -127,7 +130,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
               FilledButton(
                 onPressed: _load,
                 style: FilledButton.styleFrom(backgroundColor: _navy),
-                child: const Text('Retry'),
+                child: Text(s.retry),
               ),
             ],
           ),
@@ -148,7 +151,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
           child: FilledButton.icon(
             onPressed: () => _openEditor(),
             icon: const Icon(Icons.add, size: 18),
-            label: Text('Add event', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+            label: Text(s.addEvent, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
             style: FilledButton.styleFrom(
               backgroundColor: _gold,
               foregroundColor: _navy,
@@ -160,7 +163,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
         Padding(
           padding: EdgeInsets.only(top: sidebar ? 8 : 48),
           child: Text(
-            'No events scheduled yet.${widget.isStaff ? ' Tap Add event to create one.' : ''}',
+            '${s.noEventsScheduled}${widget.isStaff ? s.noEventsScheduledStaffHint : ''}',
             textAlign: sidebar ? TextAlign.start : TextAlign.center,
             style: GoogleFonts.figtree(
               color: sidebar ? Colors.white70 : Colors.black54,
@@ -170,7 +173,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
         )
       else ...[
         if (upcoming.isNotEmpty) ...[
-          _sectionLabel('Upcoming', sidebar: sidebar),
+          _sectionLabel(s.upcoming, sidebar: sidebar),
           ...upcoming.map((e) => ChurchEventTile(
                 event: e,
                 isStaff: widget.isStaff,
@@ -180,7 +183,7 @@ class _ChurchEventsPanelState extends State<ChurchEventsPanel> {
         ],
         if (past.isNotEmpty) ...[
           SizedBox(height: sidebar ? 16 : 20),
-          _sectionLabel('Past', sidebar: sidebar),
+          _sectionLabel(s.past, sidebar: sidebar),
           ...past.map((e) => Opacity(
                 opacity: sidebar ? 0.75 : 0.85,
                 child: ChurchEventTile(
@@ -256,6 +259,7 @@ class ChurchEventTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final fmt = DateFormat('EEE, MMM d · h:mm a');
     final range = event.endsAt != null
         ? '${fmt.format(event.startsAt)} – ${DateFormat('h:mm a').format(event.endsAt!)}'
@@ -295,7 +299,7 @@ class ChurchEventTile extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(right: 4),
                     child: Text(
-                      'Draft',
+                      s.draft,
                       style: GoogleFonts.figtree(
                         color: sidebarStyle ? Colors.orange.shade200 : Colors.orange.shade800,
                         fontSize: sidebarStyle ? 10 : 11,
@@ -312,7 +316,7 @@ class ChurchEventTile extends StatelessWidget {
                     minWidth: sidebarStyle ? 28 : 32,
                     minHeight: sidebarStyle ? 28 : 32,
                   ),
-                  tooltip: 'Edit event',
+                  tooltip: s.editEvent,
                 ),
               ],
             ],
@@ -322,7 +326,7 @@ class ChurchEventTile extends StatelessWidget {
           const SizedBox(height: 4),
           _metaRow(Icons.place_outlined, event.location, sidebarStyle),
           const SizedBox(height: 4),
-          _metaRow(Icons.person_outline, 'Host: ${event.hostName}', sidebarStyle),
+          _metaRow(Icons.person_outline, s.hostLabel(event.hostName), sidebarStyle),
           if (event.description.trim().isNotEmpty) ...[
             SizedBox(height: sidebarStyle ? 8 : 10),
             Text(
@@ -444,8 +448,9 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final s = context.read<LocaleController>().strings;
     if (_endsAt != null && _endsAt!.isBefore(_startsAt)) {
-      setState(() => _error = 'End time must be after start time.');
+      setState(() => _error = s.endTimeAfterStart);
       return;
     }
     setState(() {
@@ -467,7 +472,7 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = 'Could not save event. Are you signed in as staff?';
+          _error = context.read<LocaleController>().strings.couldNotSaveEvent;
         });
       }
     }
@@ -475,17 +480,18 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
 
   Future<void> _delete() async {
     if (widget.onDelete == null) return;
+    final s = context.read<LocaleController>().strings;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete event?'),
-        content: const Text('This removes the event for everyone.'),
+        title: Text(s.deleteEventTitle),
+        content: Text(s.deleteEventBody),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: _pink),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),
@@ -499,7 +505,7 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = 'Could not delete event.';
+          _error = context.read<LocaleController>().strings.couldNotDeleteEvent;
         });
       }
     }
@@ -507,10 +513,11 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final fmt = DateFormat('MMM d, yyyy · h:mm a');
     return AlertDialog(
       title: Text(
-        widget.existing == null ? 'Add church event' : 'Edit church event',
+        widget.existing == null ? s.addChurchEvent : s.editChurchEvent,
         style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
       ),
       content: SizedBox(
@@ -527,36 +534,36 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
                 ],
                 TextFormField(
                   controller: _title,
-                  decoration: const InputDecoration(labelText: 'Event title'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  decoration: InputDecoration(labelText: s.eventTitle),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? s.requiredField : null,
                 ),
                 TextFormField(
                   controller: _location,
-                  decoration: const InputDecoration(labelText: 'Location'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  decoration: InputDecoration(labelText: s.location),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? s.requiredField : null,
                 ),
                 TextFormField(
                   controller: _host,
-                  decoration: const InputDecoration(labelText: 'Host / ministry'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  decoration: InputDecoration(labelText: s.hostMinistry),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? s.requiredField : null,
                 ),
                 TextFormField(
                   controller: _description,
-                  decoration: const InputDecoration(labelText: 'Details (optional)'),
+                  decoration: InputDecoration(labelText: s.detailsOptional),
                   maxLines: 3,
                 ),
                 const SizedBox(height: 8),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Starts'),
+                  title: Text(s.starts),
                   subtitle: Text(fmt.format(_startsAt)),
                   trailing: const Icon(Icons.calendar_month),
                   onTap: _saving ? null : _pickStartDate,
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Ends (optional)'),
-                  subtitle: Text(_endsAt != null ? fmt.format(_endsAt!) : 'Not set'),
+                  title: Text(s.endsOptional),
+                  subtitle: Text(_endsAt != null ? fmt.format(_endsAt!) : s.notSet),
                   trailing: IconButton(
                     icon: const Icon(Icons.clear),
                     onPressed: _saving ? null : () => setState(() => _endsAt = null),
@@ -565,7 +572,7 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Published (visible to everyone)'),
+                  title: Text(s.publishedVisible),
                   value: _published,
                   onChanged: _saving ? null : (v) => setState(() => _published = v),
                 ),
@@ -578,15 +585,15 @@ class _ChurchEventEditorDialogState extends State<ChurchEventEditorDialog> {
         if (widget.onDelete != null)
           TextButton(
             onPressed: _saving ? null : _delete,
-            child: Text('Delete', style: TextStyle(color: Colors.red.shade700)),
+            child: Text(s.delete, style: TextStyle(color: Colors.red.shade700)),
           ),
-        TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: Text(s.cancel)),
         FilledButton(
           onPressed: _saving ? null : _submit,
           style: FilledButton.styleFrom(backgroundColor: _navy),
           child: _saving
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Save'),
+              : Text(s.save),
         ),
       ],
     );
