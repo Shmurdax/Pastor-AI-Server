@@ -146,6 +146,31 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
+class ChangeNameSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name cannot be empty.")
+        return value
+
+
+class ChangeEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    current_password = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        value = value.lower().strip()
+        user = self.context.get("user")
+        qs = User.objects.filter(username=value)
+        if user is not None:
+            qs = qs.exclude(pk=user.pk)
+        if qs.exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
+
 class GoogleAuthSerializer(serializers.Serializer):
     """Flutter AuthService.signInWithGoogle() posts { "id_token": "..." }."""
     id_token = serializers.CharField()

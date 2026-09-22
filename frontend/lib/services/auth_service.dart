@@ -349,28 +349,89 @@ class AuthService {
       }),
     );
     if (res.statusCode >= 200 && res.statusCode < 300) return;
+    throw AuthException(_authErrorMessage(res, fallback: 'Could not change password'));
+  }
 
+  Future<AuthUser> changeName({
+    required String token,
+    required String name,
+  }) async {
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      return AuthUser(
+        id: 'mock',
+        email: 'mock@example.com',
+        name: name.trim(),
+      );
+    }
+
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/change-name/')),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+      body: jsonEncode({'name': name}),
+    );
+    return _parseUserUpdateResponse(res, fallback: 'Could not update name');
+  }
+
+  Future<AuthUser> changeEmail({
+    required String token,
+    required String email,
+    required String currentPassword,
+  }) async {
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      return AuthUser(
+        id: 'mock',
+        email: email.trim().toLowerCase(),
+        name: 'Mock User',
+        emailVerified: false,
+      );
+    }
+
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/change-email/')),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+      body: jsonEncode({
+        'email': email,
+        'current_password': currentPassword,
+      }),
+    );
+    return _parseUserUpdateResponse(res, fallback: 'Could not update email');
+  }
+
+  AuthUser _parseUserUpdateResponse(http.Response res, {required String fallback}) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final userJson = body['user'] as Map<String, dynamic>?;
+      if (userJson == null) {
+        throw AuthException('Unexpected response from server.');
+      }
+      return AuthUser.fromJson(userJson);
+    }
+    throw AuthException(_authErrorMessage(res, fallback: fallback));
+  }
+
+  String _authErrorMessage(http.Response res, {required String fallback}) {
     final body = _tryDecode(res.body);
     final detail = body?['detail'];
-    if (detail is String && detail.isNotEmpty) {
-      throw AuthException(detail);
-    }
-    // DRF field errors: { "new_password": ["..."], ... }
+    if (detail is String && detail.isNotEmpty) return detail;
     if (body != null) {
       for (final entry in body.entries) {
         final value = entry.value;
-        if (value is List && value.isNotEmpty) {
-          throw AuthException('${value.first}');
-        }
-        if (value is String && value.isNotEmpty) {
-          throw AuthException(value);
-        }
+        if (value is List && value.isNotEmpty) return '${value.first}';
+        if (value is String && value.isNotEmpty) return value;
       }
     }
-    if (res.statusCode == 401) {
-      throw AuthException('Session expired. Please sign in again.');
-    }
-    throw AuthException('Could not change password (${res.statusCode}).');
+    if (res.statusCode == 401) return 'Session expired. Please sign in again.';
+    return '$fallback (${res.statusCode}).';
   }
 
   Future<void> logout(String token) async {

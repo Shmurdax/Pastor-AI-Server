@@ -193,6 +193,113 @@ class ChangePasswordViewTests(TestCase):
         self.assertTrue(res.data["user"]["has_usable_password"])
 
 
+class ChangeNameEmailViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+            first_name="Member",
+            last_name="User",
+        )
+        self.token = Token.objects.create(user=self.member)
+        User.objects.create_user(
+            username="taken@church.org",
+            email="taken@church.org",
+            password="TakenPass123!",
+            first_name="Taken",
+        )
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_change_name_success(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-name/",
+            {"name": "Jane Member"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["user"]["name"], "Jane Member")
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.first_name, "Jane")
+        self.assertEqual(self.member.last_name, "Member")
+
+    def test_change_name_requires_auth(self):
+        res = self.client.post(
+            "/api/auth/change-name/",
+            {"name": "Jane Member"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_change_email_success(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "jane.new@church.org",
+                "current_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["user"]["email"], "jane.new@church.org")
+        self.assertFalse(res.data["user"]["email_verified"])
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.username, "jane.new@church.org")
+        self.assertEqual(self.member.email, "jane.new@church.org")
+        self.assertFalse(self.member.profile.email_verified)
+
+    def test_change_email_requires_password(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "jane.new@church.org",
+                "current_password": "WrongPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Current password", res.data["detail"])
+
+    def test_change_email_rejects_taken_address(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "taken@church.org",
+                "current_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_google_only_cannot_change_email(self):
+        google_user = User.objects.create_user(
+            username="google.only@example.com",
+            email="google.only@example.com",
+            first_name="Google",
+        )
+        google_user.set_unusable_password()
+        google_user.save()
+        token = Token.objects.create(user=google_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "new.google@example.com",
+                "current_password": "anything",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Google", res.data["detail"])
+
+
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class GoogleAuthViewTests(TestCase):
     def setUp(self):

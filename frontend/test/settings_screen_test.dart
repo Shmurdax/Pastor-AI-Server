@@ -10,8 +10,11 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeAuthService extends AuthService {
-  String? lastCurrent;
-  String? lastNew;
+  String? lastPasswordCurrent;
+  String? lastPasswordNew;
+  String? lastName;
+  String? lastEmail;
+  String? lastEmailPassword;
   Object? throwOnChange;
 
   @override
@@ -21,17 +24,65 @@ class _FakeAuthService extends AuthService {
     required String newPassword,
   }) async {
     if (throwOnChange != null) throw throwOnChange!;
-    lastCurrent = currentPassword;
-    lastNew = newPassword;
+    lastPasswordCurrent = currentPassword;
+    lastPasswordNew = newPassword;
+  }
+
+  @override
+  Future<AuthUser> changeName({
+    required String token,
+    required String name,
+  }) async {
+    if (throwOnChange != null) throw throwOnChange!;
+    lastName = name;
+    return AuthUser(
+      id: '1',
+      email: 'member@test.com',
+      name: name,
+      isPremium: true,
+      subscriptionStatus: 'active',
+      hasUsablePassword: true,
+    );
+  }
+
+  @override
+  Future<AuthUser> changeEmail({
+    required String token,
+    required String email,
+    required String currentPassword,
+  }) async {
+    if (throwOnChange != null) throw throwOnChange!;
+    lastEmail = email;
+    lastEmailPassword = currentPassword;
+    return AuthUser(
+      id: '1',
+      email: email,
+      name: 'Jane Member',
+      isPremium: true,
+      subscriptionStatus: 'active',
+      hasUsablePassword: true,
+      emailVerified: false,
+    );
   }
 }
 
 AuthController _readyAuth(AuthUser user) {
-  final auth = AuthController(restoreSession: false);
+  final auth = _TestAuthController();
   auth.user = user;
   auth.token = 'tok';
   auth.sessionReady = true;
   return auth;
+}
+
+/// Avoid FlutterSecureStorage in widget tests when applying profile updates.
+class _TestAuthController extends AuthController {
+  _TestAuthController() : super(restoreSession: false);
+
+  @override
+  Future<void> applyUser(AuthUser next) async {
+    user = next;
+    notifyListeners();
+  }
 }
 
 void main() {
@@ -45,8 +96,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('settings shows password form for password accounts', (tester) async {
-    tester.view.physicalSize = const Size(800, 1400);
+  testWidgets('settings edits name without password and email with password', (tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -75,34 +126,61 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Edit'), findsOneWidget);
-    expect(find.text('Current password'), findsNothing);
+    expect(find.text('Jane Member'), findsOneWidget);
+    expect(find.text('member@test.com'), findsOneWidget);
+    expect(find.byKey(const Key('edit-name')), findsOneWidget);
+    expect(find.byKey(const Key('edit-email')), findsOneWidget);
+    expect(find.byKey(const Key('edit-password')), findsOneWidget);
+    expect(find.text('Update name'), findsNothing);
+    expect(find.text('Update email'), findsNothing);
     expect(find.text('Update password'), findsNothing);
-    expect(find.text('Update payment method'), findsOneWidget);
-    expect(find.text('Unsubscribe'), findsOneWidget);
 
-    await tester.tap(find.text('Edit'));
+    await tester.tap(find.byKey(const Key('edit-name')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Name'), 'Jane Updated');
+    await tester.tap(find.text('Update name'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Current password'), findsOneWidget);
-    expect(find.text('Update password'), findsOneWidget);
-    expect(find.text('Cancel'), findsOneWidget);
+    expect(fakeAuth.lastName, 'Jane Updated');
+    expect(find.text('Name updated.'), findsOneWidget);
+    expect(auth.user?.name, 'Jane Updated');
 
-    await tester.enterText(find.widgetWithText(TextFormField, 'Current password'), 'OldPass123!');
-    await tester.enterText(find.widgetWithText(TextFormField, 'New password'), 'NewPass123!');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Confirm new password'), 'NewPass123!');
+    await tester.tap(find.byKey(const Key('edit-email')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'New email'), 'jane.new@test.com');
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Current password'),
+      'MemberPass123!',
+    );
+    await tester.tap(find.text('Update email'));
+    await tester.pumpAndSettle();
+
+    expect(fakeAuth.lastEmail, 'jane.new@test.com');
+    expect(fakeAuth.lastEmailPassword, 'MemberPass123!');
+    expect(find.text('Email updated.'), findsOneWidget);
+    expect(auth.user?.email, 'jane.new@test.com');
+
+    await tester.tap(find.byKey(const Key('edit-password')));
+    await tester.pumpAndSettle();
+    final passwordFields = find.byType(TextFormField);
+    // Current, new, confirm — after email form closed, 3 password fields.
+    expect(passwordFields, findsNWidgets(3));
+    await tester.enterText(passwordFields.at(0), 'OldPass123!');
+    await tester.enterText(passwordFields.at(1), 'NewPass123!');
+    await tester.enterText(passwordFields.at(2), 'NewPass123!');
     await tester.tap(find.text('Update password'));
     await tester.pumpAndSettle();
 
-    expect(fakeAuth.lastCurrent, 'OldPass123!');
-    expect(fakeAuth.lastNew, 'NewPass123!');
+    expect(fakeAuth.lastPasswordCurrent, 'OldPass123!');
+    expect(fakeAuth.lastPasswordNew, 'NewPass123!');
     expect(find.text('Password updated.'), findsOneWidget);
-    expect(find.text('Edit'), findsOneWidget);
-    expect(find.text('Current password'), findsNothing);
   });
 
-  testWidgets('google-only accounts see password unavailable message', (tester) async {
+  testWidgets('google-only accounts can edit name but not email or password', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     final auth = _readyAuth(
       const AuthUser(
         id: '2',
@@ -122,10 +200,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('signed in with Google'), findsOneWidget);
-    expect(find.text('Update password'), findsNothing);
-    expect(find.text('Update payment method'), findsNothing);
-    expect(find.text('Unsubscribe'), findsNothing);
+    expect(find.byKey(const Key('edit-name')), findsOneWidget);
+    expect(find.byKey(const Key('edit-email')), findsNothing);
+    expect(find.byKey(const Key('edit-password')), findsNothing);
+    expect(find.textContaining('signed in with Google'), findsWidgets);
   });
 
   testWidgets('profile sheet Settings opens settings screen', (tester) async {
@@ -168,6 +246,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
   });
 }

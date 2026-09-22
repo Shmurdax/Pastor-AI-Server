@@ -12,7 +12,7 @@ const _navy = Color(0xFF1B264F);
 const _pink = Color(0xFFa1375a);
 const _surface = Color(0xFFF4F4F9);
 
-/// Account settings: password, payment method, and unsubscribe.
+/// Account settings: name, email, password, payment method, and unsubscribe.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
@@ -29,29 +29,89 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _nameFormKey = GlobalKey<FormState>();
+  final _emailFormKey = GlobalKey<FormState>();
+  final _passwordFormKey = GlobalKey<FormState>();
+
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _emailPasswordController = TextEditingController();
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  bool _editingName = false;
+  bool _editingEmail = false;
+  bool _editingPassword = false;
+
+  bool _obscureEmailPassword = true;
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
-  bool _editingPassword = false;
+
+  bool _savingName = false;
+  bool _savingEmail = false;
   bool _savingPassword = false;
   bool _unsubscribing = false;
+
+  String? _nameError;
+  String? _nameSuccess;
+  String? _emailError;
+  String? _emailSuccess;
   String? _passwordError;
   String? _passwordSuccess;
 
-  late final AuthService _authService =
-      widget.authService ?? AuthService();
+  late final AuthService _authService = widget.authService ?? AuthService();
 
   @override
   void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _emailPasswordController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _startEditingName(AuthUser user) {
+    _nameController.text = user.name;
+    setState(() {
+      _editingName = true;
+      _nameError = null;
+      _nameSuccess = null;
+    });
+  }
+
+  void _cancelEditingName() {
+    _nameController.clear();
+    setState(() {
+      _editingName = false;
+      _savingName = false;
+      _nameError = null;
+    });
+  }
+
+  void _startEditingEmail(AuthUser user) {
+    _emailController.text = user.email;
+    _emailPasswordController.clear();
+    setState(() {
+      _editingEmail = true;
+      _emailError = null;
+      _emailSuccess = null;
+      _obscureEmailPassword = true;
+    });
+  }
+
+  void _cancelEditingEmail() {
+    _emailController.clear();
+    _emailPasswordController.clear();
+    setState(() {
+      _editingEmail = false;
+      _savingEmail = false;
+      _emailError = null;
+      _obscureEmailPassword = true;
+    });
   }
 
   void _startEditingPassword() {
@@ -70,18 +130,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _editingPassword = false;
       _savingPassword = false;
       _passwordError = null;
-      _passwordSuccess = null;
       _obscureCurrent = true;
       _obscureNew = true;
       _obscureConfirm = true;
     });
   }
 
+  Future<void> _saveName() async {
+    final auth = context.read<AuthController>();
+    final token = auth.token;
+    if (token == null || token.isEmpty) return;
+    if (!(_nameFormKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _savingName = true;
+      _nameError = null;
+      _nameSuccess = null;
+    });
+
+    try {
+      final updated = await _authService.changeName(
+        token: token,
+        name: _nameController.text.trim(),
+      );
+      await auth.applyUser(updated);
+      if (!mounted) return;
+      _nameController.clear();
+      setState(() {
+        _savingName = false;
+        _editingName = false;
+        _nameSuccess = 'Name updated.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingName = false;
+        _nameError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      });
+    }
+  }
+
+  Future<void> _saveEmail() async {
+    final auth = context.read<AuthController>();
+    final token = auth.token;
+    if (token == null || token.isEmpty) return;
+    if (!(_emailFormKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _savingEmail = true;
+      _emailError = null;
+      _emailSuccess = null;
+    });
+
+    try {
+      final updated = await _authService.changeEmail(
+        token: token,
+        email: _emailController.text.trim(),
+        currentPassword: _emailPasswordController.text,
+      );
+      await auth.applyUser(updated);
+      if (!mounted) return;
+      _emailController.clear();
+      _emailPasswordController.clear();
+      setState(() {
+        _savingEmail = false;
+        _editingEmail = false;
+        _emailSuccess = 'Email updated.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingEmail = false;
+        _emailError = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      });
+    }
+  }
+
   Future<void> _changePassword() async {
     final auth = context.read<AuthController>();
     final token = auth.token;
     if (token == null || token.isEmpty) return;
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (!(_passwordFormKey.currentState?.validate() ?? false)) return;
 
     setState(() {
       _savingPassword = true;
@@ -200,25 +329,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
               children: [
-                Text(
-                  user.email,
-                  style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
+                _sectionHeading('Name'),
+                const SizedBox(height: 8),
+                _card(
+                  child: !_editingName
+                      ? _collapsedRow(
+                          value: user.name.isEmpty ? '—' : user.name,
+                          onEdit: () => _startEditingName(user),
+                          editKey: const Key('edit-name'),
+                        )
+                      : Form(
+                          key: _nameFormKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _editHeader(
+                                hint: 'Update the name shown on your account.',
+                                onCancel: _savingName ? null : _cancelEditingName,
+                              ),
+                              const SizedBox(height: 16),
+                              TextFormField(
+                                controller: _nameController,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Enter a name';
+                                  }
+                                  return null;
+                                },
+                                decoration: _fieldDecoration('Name'),
+                              ),
+                              if (_nameError != null) ...[
+                                const SizedBox(height: 12),
+                                _errorText(_nameError!),
+                              ],
+                              const SizedBox(height: 16),
+                              _primaryButton(
+                                label: 'Update name',
+                                loading: _savingName,
+                                onPressed: _saveName,
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'Password',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy, fontSize: 16),
-                ),
+                if (_nameSuccess != null && !_editingName) ...[
+                  const SizedBox(height: 8),
+                  _successText(_nameSuccess!),
+                ],
+                const SizedBox(height: 28),
+                _sectionHeading('Email'),
                 const SizedBox(height: 8),
                 if (!user.hasUsablePassword)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black12),
+                  _card(
+                    child: Text(
+                      'You signed in with Google. Email changes require a password '
+                      'and are not available for this account.',
+                      style: GoogleFonts.figtree(height: 1.45, color: Colors.black87),
                     ),
+                  )
+                else
+                  _card(
+                    child: !_editingEmail
+                        ? _collapsedRow(
+                            value: user.email,
+                            onEdit: () => _startEditingEmail(user),
+                            editKey: const Key('edit-email'),
+                          )
+                        : Form(
+                            key: _emailFormKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _editHeader(
+                                  hint: 'Enter your current password to change your email.',
+                                  onCancel: _savingEmail ? null : _cancelEditingEmail,
+                                ),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  validator: (v) {
+                                    final value = (v ?? '').trim();
+                                    if (value.isEmpty || !value.contains('@')) {
+                                      return 'Enter a valid email';
+                                    }
+                                    return null;
+                                  },
+                                  decoration: _fieldDecoration('New email'),
+                                ),
+                                const SizedBox(height: 12),
+                                _passwordField(
+                                  controller: _emailPasswordController,
+                                  label: 'Current password',
+                                  obscure: _obscureEmailPassword,
+                                  onToggle: () => setState(
+                                    () => _obscureEmailPassword = !_obscureEmailPassword,
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Enter your current password';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                if (_emailError != null) ...[
+                                  const SizedBox(height: 12),
+                                  _errorText(_emailError!),
+                                ],
+                                const SizedBox(height: 16),
+                                _primaryButton(
+                                  label: 'Update email',
+                                  loading: _savingEmail,
+                                  onPressed: _saveEmail,
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                if (_emailSuccess != null && !_editingEmail) ...[
+                  const SizedBox(height: 8),
+                  _successText(_emailSuccess!),
+                ],
+                const SizedBox(height: 28),
+                _sectionHeading('Password'),
+                const SizedBox(height: 8),
+                if (!user.hasUsablePassword)
+                  _card(
                     child: Text(
                       'You signed in with Google. Password changes are not available '
                       'for this account.',
@@ -226,65 +462,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   )
                 else
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black12),
-                    ),
+                  _card(
                     child: !_editingPassword
-                        ? Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '••••••••',
-                                  style: GoogleFonts.figtree(
-                                    fontSize: 16,
-                                    letterSpacing: 2,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: _startEditingPassword,
-                                child: Text(
-                                  'Edit',
-                                  style: GoogleFonts.figtree(
-                                    color: _navy,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
+                        ? _collapsedRow(
+                            value: '••••••••',
+                            valueStyle: GoogleFonts.figtree(
+                              fontSize: 16,
+                              letterSpacing: 2,
+                              color: Colors.black54,
+                            ),
+                            onEdit: _startEditingPassword,
+                            editKey: const Key('edit-password'),
                           )
                         : Form(
-                            key: _formKey,
+                            key: _passwordFormKey,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Enter your current password to set a new one.',
-                                        style: GoogleFonts.figtree(
-                                          fontSize: 13,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: _savingPassword ? null : _cancelEditingPassword,
-                                      child: Text(
-                                        'Cancel',
-                                        style: GoogleFonts.figtree(
-                                          color: Colors.black54,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                _editHeader(
+                                  hint: 'Enter your current password to set a new one.',
+                                  onCancel: _savingPassword ? null : _cancelEditingPassword,
                                 ),
                                 const SizedBox(height: 16),
                                 _passwordField(
@@ -329,37 +526,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                                 if (_passwordError != null) ...[
                                   const SizedBox(height: 12),
-                                  Text(
-                                    _passwordError!,
-                                    style: GoogleFonts.figtree(
-                                      color: Colors.red.shade700,
-                                      fontSize: 13,
-                                    ),
-                                  ),
+                                  _errorText(_passwordError!),
                                 ],
                                 const SizedBox(height: 16),
-                                FilledButton(
-                                  onPressed: _savingPassword ? null : _changePassword,
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: _pink,
-                                    padding: const EdgeInsets.symmetric(vertical: 14),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: _savingPassword
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : Text(
-                                          'Update password',
-                                          style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-                                        ),
+                                _primaryButton(
+                                  label: 'Update password',
+                                  loading: _savingPassword,
+                                  onPressed: _changePassword,
                                 ),
                               ],
                             ),
@@ -367,16 +540,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 if (_passwordSuccess != null && !_editingPassword) ...[
                   const SizedBox(height: 8),
-                  Text(
-                    _passwordSuccess!,
-                    style: GoogleFonts.figtree(color: Colors.green.shade700, fontSize: 13),
-                  ),
+                  _successText(_passwordSuccess!),
                 ],
                 const SizedBox(height: 28),
-                Text(
-                  'Subscription',
-                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy, fontSize: 16),
-                ),
+                _sectionHeading('Subscription'),
                 const SizedBox(height: 8),
                 if (user.isPaidPremium) ...[
                   Text(
@@ -445,6 +612,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _sectionHeading(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy, fontSize: 16),
+    );
+  }
+
+  Widget _card({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _collapsedRow({
+    required String value,
+    required VoidCallback onEdit,
+    required Key editKey,
+    TextStyle? valueStyle,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            value,
+            style: valueStyle ??
+                GoogleFonts.figtree(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w500),
+          ),
+        ),
+        TextButton(
+          key: editKey,
+          onPressed: onEdit,
+          child: Text(
+            'Edit',
+            style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _editHeader({required String hint, required VoidCallback? onCancel}) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            hint,
+            style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
+          ),
+        ),
+        TextButton(
+          onPressed: onCancel,
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.figtree(color: Colors.black54, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
+  InputDecoration _fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: _surface,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
   Widget _passwordField({
     required TextEditingController controller,
     required String label,
@@ -456,16 +699,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
       controller: controller,
       obscureText: obscure,
       validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: _surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      decoration: _fieldDecoration(label).copyWith(
         suffixIcon: IconButton(
           onPressed: onToggle,
           icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
         ),
       ),
+    );
+  }
+
+  Widget _primaryButton({
+    required String label,
+    required bool loading,
+    required VoidCallback onPressed,
+  }) {
+    return FilledButton(
+      onPressed: loading ? null : onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: _pink,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: loading
+          ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : Text(label, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _errorText(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.figtree(color: Colors.red.shade700, fontSize: 13),
+    );
+  }
+
+  Widget _successText(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.figtree(color: Colors.green.shade700, fontSize: 13),
     );
   }
 }
