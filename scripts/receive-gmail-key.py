@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """One-shot browser upload for the Gmail JSON key (avoids terminal paste).
 
-Run on the pod, then open the printed URL from your laptop and choose the
-downloaded nth-weft-....json file.
+Stop Django first so this can bind the public site port (8000), then open the
+printed URL on your laptop and choose the downloaded JSON file:
 
+  screen -S django -X quit
+  pkill -9 -f pastor_ai.wsgi || true
   python3 /workspace/pastor-ai/scripts/receive-gmail-key.py
 """
 
@@ -18,8 +20,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 DEST = Path(os.environ.get("GMAIL_SERVICE_ACCOUNT_FILE") or "/workspace/pastor-ai/secrets/gmail-sender.json")
-PORT = int(os.environ.get("GMAIL_UPLOAD_PORT") or "8765")
+PORT = int(os.environ.get("GMAIL_UPLOAD_PORT") or "8000")
 TOKEN = secrets.token_urlsafe(12)
+PUBLIC_URL_FILE = Path("/workspace/pastor-ai/public_url.txt")
 FORM = """<!doctype html>
 <title>Install Gmail key</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -123,18 +126,35 @@ class Handler(BaseHTTPRequestHandler):
         threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
+def _public_base() -> str:
+    try:
+        text = PUBLIC_URL_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        text = ""
+    return text.rstrip("/")
+
+
 def main() -> None:
-    pod = (os.environ.get("RUNPOD_POD_ID") or "").strip()
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Listening on port {PORT}", flush=True)
-    if pod:
+    ThreadingHTTPServer.allow_reuse_address = True
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    except OSError:
         print(
-            f"Open this on your laptop:\n  https://{pod}-{PORT}.proxy.runpod.net/?t={TOKEN}",
+            f"Port {PORT} is still in use (Django is running).\n"
+            "Stop it first, then run this script again:\n"
+            "  screen -S django -X quit\n"
+            "  pkill -9 -f pastor_ai.wsgi\n"
+            "  sleep 1",
             flush=True,
         )
+        raise SystemExit(1)
+    print(f"Listening on port {PORT}", flush=True)
+    base = _public_base()
+    if base:
+        print(f"Open this on your laptop:\n  {base}/?t={TOKEN}", flush=True)
     else:
         print(f"Open:\n  http://127.0.0.1:{PORT}/?t={TOKEN}", flush=True)
-    print("Choose the JSON file in the browser, then wait for 'ok ... bytes'.", flush=True)
+    print("Choose the JSON file in the browser. Leave this terminal open until it prints ok.", flush=True)
     server.serve_forever()
     print("Gmail key installed. Run: bash /workspace/pastor-ai/start.sh", flush=True)
 
