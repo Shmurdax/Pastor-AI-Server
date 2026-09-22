@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/screens/settings_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
@@ -114,8 +115,11 @@ void main() {
     final fakeAuth = _FakeAuthService();
 
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthController>.value(
-        value: auth,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
         child: MaterialApp(
           home: SettingsScreen(
             apiService: ApiService(),
@@ -191,8 +195,11 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthController>.value(
-        value: auth,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
         child: MaterialApp(
           home: SettingsScreen(apiService: ApiService()),
         ),
@@ -222,8 +229,11 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ChangeNotifierProvider<AuthController>.value(
-        value: auth,
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: Builder(
@@ -246,8 +256,53 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Subscription'), findsOneWidget);
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Email'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
+  });
+
+  testWidgets('settings language picker updates locale for the whole app', (tester) async {
+    tester.view.physicalSize = const Size(800, 1800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final auth = _readyAuth(
+      const AuthUser(
+        id: '1',
+        email: 'member@test.com',
+        name: 'Jane Member',
+        isPremium: true,
+        subscriptionStatus: 'active',
+        hasUsablePassword: true,
+      ),
+    );
+    final locale = LocaleController();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider<LocaleController>.value(value: locale),
+        ],
+        child: MaterialApp(
+          home: SettingsScreen(apiService: ApiService()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.byKey(const Key('language-es')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('language-es')));
+    await tester.pumpAndSettle();
+
+    expect(locale.languageCode, 'es');
+    expect(find.text('Cuenta'), findsOneWidget);
+    expect(find.text('Idioma'), findsOneWidget);
+    expect(find.text('Suscripción'), findsOneWidget);
   });
 }
