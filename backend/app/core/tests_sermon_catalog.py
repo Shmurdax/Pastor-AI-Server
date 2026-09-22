@@ -15,6 +15,9 @@ from core.teaching_claims import distinctive_query_tokens, extract_teaching_clai
 from core.chat_retrieval import (
     exclusive_title_lock_for_query,
     expand_search_queries,
+    pin_docs_to_strong_title_matches,
+    query_focus_tokens,
+    refine_major_source_keys,
     select_diverse_docs,
     select_major_source_keys,
     is_bible_source,
@@ -313,6 +316,141 @@ class DualLaneRetrievalTests(unittest.TestCase):
         )
         self.assertEqual(keys[0], "hope-hash")
         self.assertNotIn("com-hash", keys)
+
+    def test_abortion_promotes_teaching_file_without_title_words(self):
+        query = "Can I have an abortion as a Christian?"
+        focus = query_focus_tokens(query)
+        self.assertIn("abortion", focus)
+        self.assertNotIn("christian", focus)
+        self.assertNotIn("have", focus)
+
+        promise_windows = [
+            (
+                _doc(
+                    "A believer must refuse abortion because that baby is a life God promised.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                0.74,
+            ),
+            (
+                _doc(
+                    "Webster defines abortion as the expulsion of the fetus, and abortionists call abortion a choice.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                0.70,
+            ),
+            (
+                _doc(
+                    "The embryo is a person, so believers should never treat abortion as disposable.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                0.69,
+            ),
+        ]
+        titled = _doc(
+            "Abortion shows up once in a list of social issues the church should notice.",
+            source="society.pdf",
+            file_hash="society-hash",
+            title="Abortion and Society",
+        )
+        living = _doc(
+            "Christians must walk by faith and refuse the wages of sin in the church.",
+            source="hero.pdf",
+            file_hash="hero-hash",
+            title="Be a Hero",
+        )
+        keys = select_major_source_keys(
+            [(living, 0.96), (titled, 0.93), *promise_windows],
+            query,
+            source_key=lambda doc: doc.metadata["file_hash"],
+            is_bible=lambda doc: False,
+            limit=3,
+        )
+        self.assertEqual(keys[0], "promise-hash")
+        self.assertNotIn("hero-hash", keys)
+
+        selected = select_diverse_docs(
+            [(living, 0.96), (titled, 0.93), *promise_windows],
+            k=4,
+            bible_ratio=0.0,
+            max_per_source=4,
+            query=query,
+            pin_query=query,
+            is_bible=lambda doc: False,
+            source_key=lambda doc: doc.metadata["file_hash"],
+        )
+        sources = [doc.metadata["file_hash"] for doc in selected]
+        self.assertEqual(sources[0], "promise-hash")
+        self.assertGreater(sources.count("promise-hash"), sources.count("society-hash"))
+        self.assertNotIn("hero-hash", sources)
+        pinned = pin_docs_to_strong_title_matches(
+            selected,
+            query,
+            pin_query=query,
+            candidate_hits=[(living, 0.96), (titled, 0.93), *promise_windows],
+            is_bible=lambda doc: False,
+            source_key=lambda doc: doc.metadata["file_hash"],
+        )
+        self.assertEqual(pinned[0].metadata["file_hash"], "promise-hash")
+
+    def test_refine_uses_loaded_windows_when_title_shares_no_words(self):
+        query = "Can I have an abortion as a Christian?"
+        ann_promise = _doc(
+            "A believer must refuse abortion because that baby is a life God promised.",
+            source="promise.pdf",
+            file_hash="promise-hash",
+            title="Pregnant with a Promise",
+        )
+        titled = _doc(
+            "Abortion shows up once in a list of social issues the church should notice.",
+            source="society.pdf",
+            file_hash="society-hash",
+            title="Abortion and Society",
+        )
+        loaded = [
+            (
+                _doc(
+                    "Parents must refuse abortion even when the pregnancy was a surprise promise.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                1.0,
+            ),
+            (
+                _doc(
+                    "The church should protect the fetus, and abortion is never the answer of faith.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                1.0,
+            ),
+            (
+                _doc(
+                    "Webster defines abortion as the expulsion of the fetus, and abortionists defend abortion.",
+                    source="promise.pdf",
+                    file_hash="promise-hash",
+                    title="Pregnant with a Promise",
+                ),
+                1.0,
+            ),
+        ]
+        keys = refine_major_source_keys(
+            [(titled, 0.95), (ann_promise, 0.71)],
+            query,
+            source_key=lambda doc: doc.metadata["file_hash"],
+            is_bible=lambda doc: False,
+            file_windows=loaded,
+            limit=2,
+        )
+        self.assertEqual(keys[0], "promise-hash")
 
 
 class FaithClaimDistinctiveTests(unittest.TestCase):

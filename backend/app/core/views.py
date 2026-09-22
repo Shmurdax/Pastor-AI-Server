@@ -107,6 +107,7 @@ from .chat_retrieval import (
     resolve_followup_retrieval,
     restrict_docs_to_primary_source,
     retain_title_matches,
+    refine_major_source_keys,
     select_major_source_keys,
     topic_anchor_query,
     is_bible_source,
@@ -1055,24 +1056,38 @@ class ChatAPIView(APIView):
                     str((getattr(doc, "metadata", None) or {}).get("file_hash") or "")
                     or _doc_source_name(doc)
                 )
-                major_keys = select_major_source_keys(
+                probe_keys = select_major_source_keys(
                     scored_hits,
                     topic_query,
                     source_key=source_fn,
                     is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
                     catalog_keys=catalog_keys,
-                    limit=3,
+                    limit=6,
                 )
-                fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
+                probe_fetch = list(dict.fromkeys(list(catalog_keys) + list(probe_keys)))
                 catalog_docs = []
-                if fetch_keys:
-                    catalog_docs = lookup_chunks_by_file_hashes(
+                major_keys = list(probe_keys[:3])
+                if probe_fetch:
+                    probed_docs = lookup_chunks_by_file_hashes(
                         client,
                         collection_name,
-                        fetch_keys,
+                        probe_fetch,
                         query=topic_query,
                         limit_per_file=8,
                     )
+                    major_keys = refine_major_source_keys(
+                        scored_hits,
+                        topic_query,
+                        source_key=source_fn,
+                        is_bible=lambda doc: _is_bible_source(_doc_source_name(doc)),
+                        catalog_keys=catalog_keys,
+                        file_windows=[(doc, 1.0) for doc in probed_docs],
+                        limit=3,
+                    )
+                    keep_keys = set(dict.fromkeys(list(catalog_keys) + list(major_keys)))
+                    catalog_docs = [
+                        doc for doc in probed_docs if source_fn(doc) in keep_keys
+                    ]
                     if catalog_docs:
                         scored_hits = merge_scored_hits(
                             [scored_hits, [(doc, 1.0) for doc in catalog_docs]]
@@ -1081,8 +1096,9 @@ class ChatAPIView(APIView):
                             "Catalog sermons session=%s titles=%s majors=%s",
                             session_id[:18],
                             [hit.title for hit in catalog_hits],
-                            fetch_keys[:6],
+                            major_keys[:6],
                         )
+                fetch_keys = list(dict.fromkeys(list(catalog_keys) + list(major_keys)))
                 scored_hits = rerank_scored_hits(
                     topic_query,
                     scored_hits,

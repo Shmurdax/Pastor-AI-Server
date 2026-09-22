@@ -121,6 +121,9 @@ _QUESTION_STOPWORDS = frozenset(
         "for",
         "from",
         "further",
+        "had",
+        "has",
+        "have",
         "how",
         "i",
         "if",
@@ -241,12 +244,15 @@ _TOKEN_RE = re.compile(r"[a-z0-9']{3,}")
 
 # Generic ask-phrasing that should not be embedded or count as topical overlap.
 # Keep social-issue and theology terms (homosexuality, abortion, predestination,
-# salvation, etc.) — only drop instruction/template language.
+# salvation, etc.) — only drop instruction/template language and identity words
+# that appear in almost every sermon (Christian, believer).
 _GENERIC_FOCUS_STOPWORDS = frozenset(
     {
         "about",
         "answer",
         "based",
+        "believer",
+        "believers",
         "chapter",
         "compose",
         "create",
@@ -259,6 +265,8 @@ _GENERIC_FOCUS_STOPWORDS = frozenset(
         "elaboration",
         "clarify",
         "clarification",
+        "christian",
+        "christians",
         "generate",
         "give",
         "help",
@@ -1165,6 +1173,32 @@ def _token_surface_forms(token: str) -> tuple[str, ...]:
     return tuple(forms)
 
 
+def _focus_mention_count(text: str, tokens: Iterable[str]) -> int:
+    """How often the topic words themselves show up in a window.
+
+    A sermon that keeps saying the topic is more useful than a window that
+    name-drops it once. Identity words are already removed from ``tokens``.
+    """
+    hay = (text or "").lower()
+    if not hay:
+        return 0
+    total = 0
+    for token in tokens:
+        cleaned = str(token or "").strip().lower()
+        if len(cleaned) < 3:
+            continue
+        best = 0
+        for form in _token_surface_forms(cleaned):
+            if len(form) < 3:
+                continue
+            if len(form) <= 4:
+                best = max(best, len(re.findall(rf"\b{re.escape(form)}\b", hay)))
+            else:
+                best = max(best, hay.count(form))
+        total += best
+    return total
+
+
 def _blob_has_token(hay: str, token: str) -> bool:
     cleaned = (token or "").strip().lower()
     if not cleaned or not hay:
@@ -1476,6 +1510,31 @@ def pin_docs_to_strong_title_matches(
             break
     if not pinned:
         return selected
+    if not exclusive:
+        focus = query_focus_tokens(topic)
+        teaching_counts: dict[str, int] = {}
+        seen_windows: set[str] = set()
+        for doc in list(selected) + list(pool):
+            if bible_fn(doc):
+                continue
+            fp = chunk_fingerprint(chunk_text(doc)) or f"id:{id(doc)}"
+            if fp in seen_windows:
+                continue
+            seen_windows.add(fp)
+            if focus and topic_overlap_score(doc, focus) <= 0:
+                continue
+            body = chunk_text(doc)
+            if chunk_thesis_score(body) >= 1.5 or _focus_mention_count(body, focus) >= 2:
+                key = source_fn(doc)
+                teaching_counts[key] = teaching_counts.get(key, 0) + 1
+        title_best = max((teaching_counts.get(key, 0) for key in match_keys), default=0)
+        richer = any(
+            count >= 2 and count > title_best
+            for key, count in teaching_counts.items()
+            if key not in match_keys
+        )
+        if richer:
+            return selected
     if not exclusive:
         pinned_fps = {chunk_fingerprint(chunk_text(doc)) for doc in pinned}
         rest: list[Any] = []
@@ -1979,14 +2038,16 @@ def select_major_source_keys(
     catalog_keys: Optional[Iterable[str]] = None,
     limit: int = 3,
 ) -> list[str]:
-    """Pick the sermons that actually teach the prompt, even without a title hit.
+    """Pick the sermons with the most on-topic teaching, title or not.
 
-    Groups ANN windows by file. Title/catalog matches rank first; otherwise the
-    sources with the most on-topic teaching sentences win. Community intros that
-    only mention the word once lose to notes with real theses.
+    Groups windows by file. A metaphorical title with several teaching windows
+    outranks a filename that only shares a word. A title or catalog hit can
+    still open a PDF, but it cannot outrank a file that already teaches the
+    topic in more windows. One passing mention is not a teaching window.
     """
     bible_fn = is_bible or (lambda doc: is_bible_source(metadata_source_hint(doc)))
     tokens = query_focus_tokens(query)
+    token_list = list(tokens)
     pinned = {str(item).strip() for item in (catalog_keys or []) if str(item).strip()}
     stats: dict[str, dict[str, float]] = {}
     for doc, raw_score in scored_hits or []:
@@ -2003,6 +2064,7 @@ def select_major_source_keys(
         thesis = chunk_thesis_score(body)
         title_ov = title_overlap_score(doc, tokens) if tokens else 0.0
         topic_ov = topic_overlap_score(doc, tokens) if tokens else 0.0
+        mentions = _focus_mention_count(body, token_list) if tokens else 0
         rec = stats.setdefault(
             key,
             {
@@ -2010,6 +2072,7 @@ def select_major_source_keys(
                 "best": 0.0,
                 "thesis": -1.0,
                 "thesis_hits": 0.0,
+                "dense_hits": 0.0,
                 "title_ov": 0.0,
                 "topic_sum": 0.0,
                 "catalog": 1.0 if key in pinned else 0.0,
@@ -2020,21 +2083,28 @@ def select_major_source_keys(
         rec["thesis"] = max(rec["thesis"], thesis)
         rec["title_ov"] = max(rec["title_ov"], title_ov)
         rec["topic_sum"] += topic_ov
-        if thesis >= 1.5 and topic_ov > 0:
+        if topic_ov > 0 and thesis >= 1.5:
             rec["thesis_hits"] += 1.0
+        # Repeated topic language is useful even when the sentence is a
+        # definition rather than a "must / should" thesis.
+        if topic_ov > 0 and mentions >= 2 and thesis > 0:
+            rec["dense_hits"] += 1.0
         if key in pinned:
             rec["catalog"] = 1.0
     ranked: list[tuple[float, str]] = []
     for key, rec in stats.items():
-        if rec["catalog"] <= 0 and rec["title_ov"] <= 0 and rec["thesis_hits"] <= 0:
+        teaches = rec["thesis_hits"] > 0 or rec["dense_hits"] > 0
+        if rec["catalog"] <= 0 and rec["title_ov"] <= 0 and not teaches:
             continue
+        # Teaching windows decide the file. Title and catalog are tie-breaks
+        # and cannot outweigh one extra on-topic teaching window.
         value = (
-            (6.0 * rec["catalog"])
-            + (5.0 * rec["title_ov"])
-            + (1.6 * rec["thesis_hits"])
-            + (0.5 * max(rec["thesis"], 0.0))
-            + (0.25 * rec["topic_sum"])
-            + (0.2 * rec["best"])
+            (4.0 * rec["thesis_hits"])
+            + (2.0 * rec["dense_hits"])
+            + (0.45 * max(rec["thesis"], 0.0))
+            + (0.1 * rec["best"])
+            + (0.3 * rec["title_ov"])
+            + (0.3 * rec["catalog"])
         )
         ranked.append((value, key))
     ranked.sort(key=lambda item: (-item[0], item[1]))
@@ -2045,6 +2115,43 @@ def select_major_source_keys(
         if len(keys) >= max(1, limit):
             break
     return keys[: max(1, limit)]
+
+
+def refine_major_source_keys(
+    scored_hits: Iterable[tuple[Any, float]],
+    query: str,
+    *,
+    source_key: Callable[[Any], str],
+    is_bible: Optional[Callable[[Any], bool]] = None,
+    catalog_keys: Optional[Iterable[str]] = None,
+    file_windows: Optional[Iterable[tuple[Any, float]]] = None,
+    limit: int = 3,
+) -> list[str]:
+    """Re-rank after whole-file windows are loaded.
+
+    The first pass only sees whatever ANN returned. Loading the rest of each
+    candidate PDF lets the file with the most on-topic teaching windows win
+    even when its title shares no words with the question.
+    """
+    extra = list(file_windows or [])
+    if not extra:
+        return select_major_source_keys(
+            scored_hits,
+            query,
+            source_key=source_key,
+            is_bible=is_bible,
+            catalog_keys=catalog_keys,
+            limit=limit,
+        )
+    combined = merge_scored_hits([list(scored_hits or []), extra])
+    return select_major_source_keys(
+        combined,
+        query,
+        source_key=source_key,
+        is_bible=is_bible,
+        catalog_keys=catalog_keys,
+        limit=limit,
+    )
 
 
 def select_diverse_docs(
@@ -2127,11 +2234,34 @@ def select_diverse_docs(
     }
     if exclusive_title_lock is None:
         exclusive_title_lock = exclusive_title_lock_for_query(pin_topic or query)
+    teaching_windows: dict[str, int] = {}
+    for chunk in chunks:
+        if chunk.is_bible or chunk.topic_overlap <= 0:
+            continue
+        body = chunk_text(chunk.doc)
+        mentions = _focus_mention_count(body, focus_tokens)
+        if chunk_thesis_score(body) >= 1.5 or mentions >= 2:
+            teaching_windows[chunk.source_key] = teaching_windows.get(chunk.source_key, 0) + 1
+    title_teaching = 0
+    if pin_topic:
+        for chunk in chunks:
+            if chunk.is_bible or not query_title_match(chunk.doc, pin_topic):
+                continue
+            title_teaching = max(title_teaching, teaching_windows.get(chunk.source_key, 0))
+    # A file that teaches the topic in more windows than any filename hit is a
+    # primary source even when its title shares no words.
+    content_keys = {
+        key
+        for key, count in teaching_windows.items()
+        if count >= 2 and count > title_teaching
+    }
 
     def is_major_chunk(chunk: ScoredChunk) -> bool:
         if chunk.is_bible:
             return False
         if catalog_keys and chunk.source_key in catalog_keys:
+            return True
+        if chunk.source_key in content_keys:
             return True
         return bool(pin_topic) and query_title_match(chunk.doc, pin_topic)
 
@@ -2244,8 +2374,11 @@ def select_diverse_docs(
                 continue
             overlap = max((_jaccard(chunk.tokens, tokens) for tokens in selected_tokens), default=0.0)
             source_pen = 0.14 * per_source.get(chunk.source_key, 0)
-            topic_boost = 0.40 * chunk.topic_overlap
-            title_boost = 0.90 * chunk.title_overlap
+            topic_boost = 0.70 * chunk.topic_overlap
+            # Filename overlap is a tie-break. The file with more on-topic
+            # teaching windows is the one the answer should use.
+            title_boost = 0.25 * chunk.title_overlap
+            teaching_boost = 0.55 * teaching_windows.get(chunk.source_key, 0)
             thesis_boost = 0.0
             chunk_body = chunk_text(chunk.doc)
             if any_major and not chunk.is_bible:
@@ -2262,7 +2395,7 @@ def select_diverse_docs(
                     if chunk_thesis_score(chunk_body) >= 1.5:
                         thesis_boost += 0.25
             if any_major and not chunk.is_bible and not is_major_chunk(chunk):
-                # Prefer titled/catalog sermons; still allow high-thesis related notes.
+                # Related notes must still be real teaching, not a filename bonus.
                 title_boost -= 0.55 if exclusive_title_lock else 0.20
             value = (
                 (relevance * chunk.score)
@@ -2271,6 +2404,7 @@ def select_diverse_docs(
                 - source_pen
                 + topic_boost
                 + title_boost
+                + teaching_boost
                 + thesis_boost
             )
             if value > best_value:
