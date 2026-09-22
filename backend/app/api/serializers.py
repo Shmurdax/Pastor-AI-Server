@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.urls import reverse
 from rest_framework import serializers
 
 from core.models import PrayerRequest, ChurchEvent, ResponseReport
@@ -343,6 +344,10 @@ class MediaVideoSerializer(serializers.ModelSerializer):
     """Shaped for Flutter MediaItem.fromJson()."""
 
     duration_label = serializers.CharField(read_only=True)
+    notes_document_id = serializers.IntegerField(read_only=True, allow_null=True)
+    notes_title = serializers.SerializerMethodField()
+    notes_view_only = serializers.SerializerMethodField()
+    notes_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MediaVideo
@@ -358,6 +363,29 @@ class MediaVideoSerializer(serializers.ModelSerializer):
             "thumbnail_url",
             "access_tier",
             "is_published",
+            "notes_document_id",
+            "notes_title",
+            "notes_view_only",
+            "notes_file_url",
         ]
         read_only_fields = fields
+
+    def get_notes_title(self, obj) -> str:
+        document = getattr(obj, "notes_document", None)
+        if document is None:
+            return ""
+        return (document.title or document.source_name or "").strip()
+
+    def get_notes_view_only(self, obj) -> bool:
+        document = getattr(obj, "notes_document", None)
+        return bool(document and document.view_only)
+
+    def get_notes_file_url(self, obj) -> str:
+        if not obj.notes_document_id or not (obj.vimeo_id or "").strip():
+            return ""
+        relative = reverse("media_notes_file_api", args=[obj.vimeo_id])
+        request = self.context.get("request")
+        if request is not None:
+            return request.build_absolute_uri(relative)
+        return relative
 

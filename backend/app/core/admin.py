@@ -686,6 +686,46 @@ def _admin_website_crawl_view(request):
     return TemplateResponse(request, "admin/core/website_crawl.html", context)
 
 
+def _admin_dropbox_notes_view(request):
+    if not request.user.is_staff:
+        messages.error(request, "You must be an admin user to access this page.")
+        return HttpResponseRedirect("../")
+
+    from api.dropbox_notes import (
+        DropboxNotesError,
+        dropbox_notes_configured,
+        enqueue_dropbox_notes_ingest,
+    )
+
+    if request.method == "POST":
+        replace_existing_sources = request.POST.get("replace_existing_sources") == "on"
+        try:
+            job = enqueue_dropbox_notes_ingest(
+                started_by=f"dropbox-notes ({request.user.get_username() or 'admin'})",
+                replace_existing_sources=replace_existing_sources,
+            )
+            messages.success(
+                request,
+                f"Dropbox notes download started (job #{job.id}). "
+                "Files ingest in the background, then attach to matching Walk through the Word videos.",
+            )
+        except DropboxNotesError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:
+            messages.error(request, f"Dropbox notes sync failed to start: {exc}")
+        return HttpResponseRedirect(request.path)
+
+    context = {
+        **admin.site.each_context(request),
+        "title": "Dropbox notes",
+        "configured": dropbox_notes_configured(),
+        "folder": (getattr(settings, "DROPBOX_NOTES_FOLDER", "") or "").strip(),
+        "shared_url": (getattr(settings, "DROPBOX_SHARED_URL", "") or "").strip(),
+        "latest_jobs": IngestionJob.objects.filter(started_by__icontains="dropbox-notes")[:15],
+    }
+    return TemplateResponse(request, "admin/core/dropbox_notes.html", context)
+
+
 def _admin_ingested_documents_view(request):
     if not request.user.is_staff:
         messages.error(request, "You must be an admin user to access this page.")
@@ -967,6 +1007,11 @@ def _get_urls():
             name="core_website_crawl",
         ),
         path(
+            "core/dropbox-notes/",
+            admin.site.admin_view(_admin_dropbox_notes_view),
+            name="core_dropbox_notes",
+        ),
+        path(
             "core/mailchimp-export/",
             admin.site.admin_view(mailchimp_export_view),
             name="core_mailchimp_export",
@@ -1031,6 +1076,7 @@ CONTENT_TOOL_OBJECT_NAMES = {
     "CoreIngestionTool",
     "CoreVideoIngestionTool",
     "CoreWebsiteCrawlTool",
+    "CoreDropboxNotesTool",
     "CoreIngestedDocumentsTool",
     "CoreIngestedVideosTool",
     "CoreEmbeddedVideosTool",
@@ -1080,6 +1126,14 @@ def _content_tool_entries():
             "name": "Website Scraping",
             "object_name": "CoreWebsiteCrawlTool",
             "admin_url": reverse("admin:core_website_crawl"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Dropbox notes",
+            "object_name": "CoreDropboxNotesTool",
+            "admin_url": reverse("admin:core_dropbox_notes"),
             "add_url": None,
             "view_only": True,
             "perms": {"add": False, "change": True, "delete": False, "view": True},

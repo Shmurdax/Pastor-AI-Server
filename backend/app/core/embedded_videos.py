@@ -115,6 +115,9 @@ class EmbeddedVideo:
     whisper_model: Optional[str] = None
     transcript_source: Optional[str] = None
     segments: list[TranscriptSegmentView] = field(default_factory=list)
+    notes_title: Optional[str] = None
+    notes_source_name: Optional[str] = None
+    has_notes: bool = False
 
     @property
     def embed_src(self) -> str:
@@ -442,6 +445,26 @@ def match_source_to_catalog(
     return _pick_catalog_video(candidates)
 
 
+def _notes_by_vimeo_id() -> dict[str, IngestedDocument]:
+    """Study notes attached to MediaVideo rows (PDF documents, not transcripts)."""
+    try:
+        from api.models import MediaVideo
+    except ImportError:
+        return {}
+    found: dict[str, IngestedDocument] = {}
+    rows = (
+        MediaVideo.objects.filter(notes_document_id__isnull=False)
+        .select_related("notes_document")
+    )
+    for row in rows:
+        document = row.notes_document
+        vimeo_id = str(row.vimeo_id or "").strip()
+        if document is None or not vimeo_id:
+            continue
+        found[vimeo_id] = document
+    return found
+
+
 def _documents_by_vimeo_id() -> dict[str, IngestedDocument]:
     found: dict[str, IngestedDocument] = {}
     catalog, date_index = _load_catalog()
@@ -530,6 +553,7 @@ def _build_embedded_video(
     media_path: Optional[Path] = None,
     sidecar_path: Optional[Path] = None,
     catalog_entry: Optional[CatalogEntry] = None,
+    notes_document: Optional[IngestedDocument] = None,
 ) -> EmbeddedVideo:
     entry = catalog_entry
     if media_path is None:
@@ -619,6 +643,9 @@ def _build_embedded_video(
         whisper_model=str(payload.get("whisper_model") or "") or None if payload else None,
         transcript_source=sidecar_path.name if sidecar_path and has_transcript else None,
         segments=segments,
+        notes_title=((notes_document.title or notes_document.source_name) if notes_document else None),
+        notes_source_name=(notes_document.source_name if notes_document else None),
+        has_notes=notes_document is not None,
     )
     return video
 
@@ -629,6 +656,7 @@ def list_embedded_videos(upload_dir: Optional[Path] = None) -> list[EmbeddedVide
     documents = {vimeo_id: state.document for vimeo_id, state in matches.items() if state.document}
     # Keep numeric-stem lookups used by featured mapped transcripts.
     documents.update(_documents_by_vimeo_id())
+    notes = _notes_by_vimeo_id()
     videos = [
         _build_embedded_video(
             state.entry.vimeo_id,
@@ -638,6 +666,7 @@ def list_embedded_videos(upload_dir: Optional[Path] = None) -> list[EmbeddedVide
             media_path=state.media_path,
             sidecar_path=state.sidecar_path,
             catalog_entry=state.entry,
+            notes_document=notes.get(state.entry.vimeo_id),
         )
         for state in matches.values()
         if state.entry.featured or state.document or state.media_path or state.sidecar_path
@@ -663,6 +692,7 @@ def get_embedded_video(vimeo_id: str, upload_dir: Optional[Path] = None) -> Opti
     featured_ids = {item["vimeo_id"] for item in FEATURED_VIMEO_VIDEOS if item.get("vimeo_id")}
     documents = {key: value.document for key, value in matches.items() if value.document}
     documents.update(_documents_by_vimeo_id())
+    notes = _notes_by_vimeo_id()
     if state is None:
         media_path = find_media_for_vimeo_id(parsed, root)
         sidecar_path = find_sidecar_for_vimeo_id(parsed, root, media_path)
@@ -676,6 +706,7 @@ def get_embedded_video(vimeo_id: str, upload_dir: Optional[Path] = None) -> Opti
             include_segments=True,
             media_path=media_path,
             sidecar_path=sidecar_path,
+            notes_document=notes.get(parsed),
         )
     if (
         not state.entry.featured
@@ -693,4 +724,5 @@ def get_embedded_video(vimeo_id: str, upload_dir: Optional[Path] = None) -> Opti
         media_path=state.media_path,
         sidecar_path=state.sidecar_path,
         catalog_entry=state.entry,
+        notes_document=notes.get(parsed),
     )

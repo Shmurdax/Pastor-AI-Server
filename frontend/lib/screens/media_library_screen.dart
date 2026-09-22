@@ -160,6 +160,29 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     });
   }
 
+  Future<void> _openNotes(MediaItem item) async {
+    final vimeoId = (item.vimeoId ?? '').trim();
+    if (!item.hasNotes) return;
+    final tab = openNewTab();
+    try {
+      final bytes = vimeoId.isNotEmpty
+          ? await _apiService.getMediaNotesFile(vimeoId)
+          : await _apiService.getDocumentFile(item.notesDocumentId!);
+      tab.openPdfBytes(bytes);
+    } catch (_) {
+      tab.close();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not open the study notes for this episode.',
+            style: GoogleFonts.figtree(),
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _launchUrl(String urlString) async {
     final url = Uri.parse(urlString);
     if (await canLaunchUrl(url)) {
@@ -244,6 +267,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           builder: (_) => _WatchEpisodeScreen(
             item: item,
             startSeconds: seekSeconds,
+            onOpenNotes: item.hasNotes ? () => _openNotes(item) : null,
           ),
         ),
       );
@@ -621,6 +645,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           child: _MediaPostCard(
                             item: items.first,
                             onTap: () => _openItem(items.first),
+                            onNotesTap: items.first.hasNotes
+                                ? () => _openNotes(items.first)
+                                : null,
                           ),
                         ),
                       ),
@@ -645,6 +672,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           item: items[index],
                           compact: true,
                           onTap: () => _openItem(items[index]),
+                          onNotesTap: items[index].hasNotes
+                              ? () => _openNotes(items[index])
+                              : null,
                         ),
                         childCount: items.length,
                       ),
@@ -660,6 +690,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           child: _MediaPostCard(
                             item: items[index],
                             onTap: () => _openItem(items[index]),
+                            onNotesTap: items[index].hasNotes
+                                ? () => _openNotes(items[index])
+                                : null,
                           ),
                         ),
                         childCount: items.length,
@@ -874,11 +907,13 @@ class _MediaPostCard extends StatelessWidget {
   const _MediaPostCard({
     required this.item,
     required this.onTap,
+    this.onNotesTap,
     this.compact = false,
   });
 
   final MediaItem item;
   final VoidCallback onTap;
+  final VoidCallback? onNotesTap;
   final bool compact;
 
   @override
@@ -981,13 +1016,21 @@ class _MediaPostCard extends StatelessWidget {
                 Flexible(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                    child: _MediaPostCardBody(item: item, compact: true),
+                    child: _MediaPostCardBody(
+                      item: item,
+                      compact: true,
+                      onNotesTap: onNotesTap,
+                    ),
                   ),
                 )
               else
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                  child: _MediaPostCardBody(item: item, compact: false),
+                  child: _MediaPostCardBody(
+                    item: item,
+                    compact: false,
+                    onNotesTap: onNotesTap,
+                  ),
                 ),
             ],
           ),
@@ -998,10 +1041,15 @@ class _MediaPostCard extends StatelessWidget {
 }
 
 class _MediaPostCardBody extends StatelessWidget {
-  const _MediaPostCardBody({required this.item, required this.compact});
+  const _MediaPostCardBody({
+    required this.item,
+    required this.compact,
+    this.onNotesTap,
+  });
 
   final MediaItem item;
   final bool compact;
+  final VoidCallback? onNotesTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1049,7 +1097,19 @@ class _MediaPostCardBody extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            if (onNotesTap != null)
+              IconButton(
+                tooltip: 'View notes',
+                onPressed: onNotesTap,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                icon: Icon(
+                  Icons.description_outlined,
+                  size: compact ? 18 : 20,
+                  color: _navy,
+                ),
+              ),
             Text(
               dateLabel,
               style: GoogleFonts.figtree(fontSize: 11, color: Colors.black45),
@@ -1102,10 +1162,12 @@ class _WatchEpisodeScreen extends StatefulWidget {
   const _WatchEpisodeScreen({
     required this.item,
     this.startSeconds,
+    this.onOpenNotes,
   });
 
   final MediaItem item;
   final int? startSeconds;
+  final VoidCallback? onOpenNotes;
 
   @override
   State<_WatchEpisodeScreen> createState() => _WatchEpisodeScreenState();
@@ -1305,6 +1367,22 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
                     widget.item.description,
                     style: GoogleFonts.figtree(fontSize: 15, height: 1.45, color: Colors.black54),
                   ),
+                  if (widget.onOpenNotes != null) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: widget.onOpenNotes,
+                      icon: const Icon(Icons.description_outlined),
+                      label: Text(
+                        'View study notes',
+                        style: GoogleFonts.figtree(fontWeight: FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _navy,
+                        side: BorderSide(color: _gold.withValues(alpha: 0.7)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

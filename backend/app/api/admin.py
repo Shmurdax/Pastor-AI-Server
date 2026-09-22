@@ -289,19 +289,29 @@ class MediaVideoAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "vimeo_id",
+        "notes_document",
+        "notes_document_manual",
         "access_tier",
         "access_tier_manual",
         "is_published",
         "published_at",
         "synced_at",
     )
-    list_filter = ("access_tier", "is_published", "access_tier_manual")
+    list_filter = (
+        "access_tier",
+        "is_published",
+        "access_tier_manual",
+        "notes_document_manual",
+    )
     search_fields = ("title", "vimeo_id", "description")
+    autocomplete_fields = ("notes_document",)
     readonly_fields = ("synced_at", "created_at", "updated_at")
     ordering = ("-published_at",)
 
     def save_model(self, request, obj, form, change):
         if change and "access_tier" in form.changed_data:
             obj.access_tier_manual = True
+        if change and "notes_document" in form.changed_data:
+            obj.notes_document_manual = True
         super().save_model(request, obj, form, change)
         dump_persistent_postgres()

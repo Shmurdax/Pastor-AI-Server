@@ -39,6 +39,7 @@ from api.views import (
     ChurchEventDetailAPI,
     ChurchEventListCreateAPI,
     MediaVideoListAPI,
+    MediaVideoNotesFileAPI,
     PrayerRequestDetailAPI,
     ResponseReportDetailAPI,
 )
@@ -117,6 +118,7 @@ urlpatterns = [
     path('api/church-events/', ChurchEventListCreateAPI.as_view(), name='church_events_api'),
     path('api/church-events/<int:pk>/', ChurchEventDetailAPI.as_view(), name='church_event_detail_api'),
     path('api/media/', MediaVideoListAPI.as_view(), name='media_list_api'),
+    path('api/media/<str:vimeo_id>/notes/', MediaVideoNotesFileAPI.as_view(), name='media_notes_file_api'),
     path('api/ingested-documents/', IngestedDocumentsAPIView.as_view(), name='ingested_documents_api'),
     path('api/ingested-documents/<int:document_id>/file/', IngestedDocumentFileAPIView.as_view(), name='ingested_document_file_api'),
     # Media page Flutter player iframes this relay. Dedicated route so a stale

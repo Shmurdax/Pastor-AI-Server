@@ -1,0 +1,70 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width: 760px;">
+  <h1>Dropbox notes</h1>
+  <p>
+    Walk through the Word study notes stay in Dropbox until they are downloaded here.
+    Each PDF/DOCX is ingested, then attached to the matching video by sermon date
+    (for example <code>January 4.pdf</code> with Vimeo title “January 4”) or by a
+    Vimeo id in the filename.
+  </p>
+  <p>
+    Configure <code>DROPBOX_ACCESS_TOKEN</code> and either
+    <code>DROPBOX_NOTES_FOLDER</code> or <code>DROPBOX_SHARED_URL</code> in
+    <code>tokens.env</code>, then run <code>bash apply-tokens.sh</code>.
+    Progress appears in <a href="{% url 'admin:core_ingestionjob_changelist' %}">Ingestion Jobs</a>.
+    After ingest, Premium members can open the notes from the Media page.
+  </p>
+
+  <dl style="margin: 16px 0;">
+    <dt>Folder path</dt>
+    <dd>{% if folder %}<code>{{ folder }}</code>{% else %}<em>Not set</em>{% endif %}</dd>
+    <dt>Shared URL</dt>
+    <dd>{% if shared_url %}<code>{{ shared_url }}</code>{% else %}<em>Not set</em>{% endif %}</dd>
+    <dt>Token</dt>
+    <dd>{% if configured %}Configured{% else %}<em>Missing — sync will not run</em>{% endif %}</dd>
+  </dl>
+
+  <form method="post" style="margin-top: 16px;">
+    {% csrf_token %}
+    <div style="margin-bottom: 12px;">
+      <label>
+        <input type="checkbox" name="replace_existing_sources" />
+        Replace previously ingested notes with the same filename
+      </label>
+    </div>
+    <button type="submit" class="default"{% if not configured %} disabled{% endif %}>
+      Download notes from Dropbox
+    </button>
+  </form>
+
+  <h2 style="margin-top: 24px;">Recent Dropbox note jobs</h2>
+  <table style="width: 100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Job</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Started by</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Status</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Files</th>
+        <th style="text-align: left; border-bottom: 1px solid #ddd;">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in latest_jobs %}
+      <tr>
+        <td style="padding: 6px 0;"><a href="{% url 'admin:core_ingestionjob_change' job.id %}">#{{ job.id }}</a></td>
+        <td style="padding: 6px 0;">{{ job.started_by }}</td>
+        <td style="padding: 6px 0;">{{ job.status }}</td>
+        <td style="padding: 6px 0;">{{ job.files_processed }}/{{ job.files_received }}</td>
+        <td style="padding: 6px 0;">{{ job.created_at }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="5" style="padding: 6px 0;">No Dropbox note jobs yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

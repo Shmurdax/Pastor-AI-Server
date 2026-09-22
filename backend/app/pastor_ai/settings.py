@@ -288,6 +288,16 @@ VIMEO_FREE_PREVIEW_ID = (
     os.environ.get("VIMEO_FREE_PREVIEW_ID", "") or _load_dotenv_value("VIMEO_FREE_PREVIEW_ID")
 )
 
+# Dropbox folder of Walk through the Word study notes (PDF/DOCX).
+# App token needs files.content.read + files.metadata.read.
+DROPBOX_ACCESS_TOKEN = (
+    os.environ.get("DROPBOX_ACCESS_TOKEN", "") or _load_dotenv_value("DROPBOX_ACCESS_TOKEN")
+)
+DROPBOX_NOTES_FOLDER = (
+    os.environ.get("DROPBOX_NOTES_FOLDER", "") or _load_dotenv_value("DROPBOX_NOTES_FOLDER")
+)
+DROPBOX_SHARED_URL = os.environ.get("DROPBOX_SHARED_URL", "") or _load_dotenv_value("DROPBOX_SHARED_URL")
+
 # Mailchimp Marketing API — export AI login emails into an existing audience.
 # API key is Account → Extras → API keys. Audience ID is Audience → Settings.
 MAILCHIMP_API_KEY = os.environ.get("MAILCHIMP_API_KEY", "") or _load_dotenv_value("MAILCHIMP_API_KEY")

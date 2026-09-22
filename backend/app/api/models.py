@@ -263,6 +263,18 @@ class MediaVideo(models.Model):
         help_text="If set, Vimeo sync will not overwrite access_tier.",
     )
     is_published = models.BooleanField(default=True, db_index=True)
+    notes_document = models.ForeignKey(
+        "core.IngestedDocument",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="media_videos",
+        help_text="Study notes shown with this Walk through the Word video.",
+    )
+    notes_document_manual = models.BooleanField(
+        default=False,
+        help_text="If set, automatic note matching will not overwrite notes_document.",
+    )
     synced_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

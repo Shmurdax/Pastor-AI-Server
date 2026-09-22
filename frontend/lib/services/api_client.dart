@@ -594,6 +594,16 @@ class ApiClient {
     return results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
+  Future<Uint8List> getMediaNotesFile(String vimeoId) async {
+    final id = Uri.encodeComponent(vimeoId.trim());
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/media/$id/notes/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return res.bodyBytes;
+  }
+
   /// Durable sidebar history for the signed-in account (server backup).
   Future<Map<String, dynamic>> getChatHistory() async {
     final uri = Uri.parse(_resolveUrl('/api/chat/history/')).replace(

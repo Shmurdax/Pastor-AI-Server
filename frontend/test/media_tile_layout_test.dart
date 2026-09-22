@@ -25,6 +25,13 @@ ApiService _mediaApi({
         if (capturedAuthHeaders != null) {
           capturedAuthHeaders.add(request.headers['Authorization'] ?? '');
         }
+        if (request.url.path.endsWith('/notes/')) {
+          return http.Response(
+            '%PDF-1.4 notes',
+            200,
+            headers: {'content-type': 'application/pdf'},
+          );
+        }
         if (request.url.path.contains('media')) {
           return http.Response(
             jsonEncode({'results': results}),
@@ -43,6 +50,9 @@ Map<String, dynamic> _videoJson({
   required String vimeoId,
   required String title,
   String accessTier = 'premium',
+  int? notesDocumentId,
+  String? notesTitle,
+  String? notesFileUrl,
 }) {
   return {
     'id': id,
@@ -56,6 +66,9 @@ Map<String, dynamic> _videoJson({
     'thumbnail_url': '',
     'access_tier': accessTier,
     'is_published': true,
+    if (notesDocumentId != null) 'notes_document_id': notesDocumentId,
+    if (notesTitle != null) 'notes_title': notesTitle,
+    if (notesFileUrl != null) 'notes_file_url': notesFileUrl,
   };
 }
 
@@ -209,5 +222,61 @@ void main() {
     expect(capturedAuth.first, 'Token subscriber-token');
     expect(find.text('Copy of January 4'), findsOneWidget);
     expect(find.text('Welcome to Media'), findsNothing);
+  });
+
+  testWidgets('media tiles show a notes action when notes are attached', (tester) async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    GoogleFonts.config.allowRuntimeFetching = false;
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final auth = AuthController();
+    auth.token = 'test-token';
+    auth.user = const AuthUser(
+      id: '1',
+      email: 'premium@test.com',
+      name: 'Premium',
+      isPremium: true,
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(create: (_) => LocaleController()),
+        ],
+        child: MaterialApp(
+          home: MediaLibraryScreen(
+            apiService: _mediaApi(
+              token: 'test-token',
+              results: [
+                _videoJson(
+                  id: 1,
+                  vimeoId: '1217796650',
+                  title: 'Copy of January 4',
+                  notesDocumentId: 44,
+                  notesTitle: 'January 4',
+                  notesFileUrl: '/api/media/1217796650/notes/',
+                ),
+                _videoJson(
+                  id: 2,
+                  vimeoId: '898217873',
+                  title: 'January 4',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('View notes'), findsOneWidget);
+    expect(find.text('Copy of January 4'), findsOneWidget);
   });
 }

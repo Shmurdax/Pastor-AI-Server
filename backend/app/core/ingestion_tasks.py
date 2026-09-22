@@ -82,6 +82,19 @@ def _run_ingestion_job(job_id: int, staged_uploads: List[StagedUpload], replace_
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "finished_at"])
         log_job("Ingestion job finished.")
+        if job.job_kind == "document":
+            try:
+                from api.media_notes import attach_notes_to_media_videos
+
+                stats = attach_notes_to_media_videos()
+                log_job(
+                    "Matched study notes onto Walk through the Word videos: "
+                    f"attached={stats['attached']} updated={stats['updated']} "
+                    f"matched={stats['matched_videos']}."
+                )
+            except Exception as exc:
+                logger.exception("Attaching media notes after ingest failed")
+                log_job(f"Note matching after ingest skipped: {exc}")
     except Exception as exc:
         logger.exception("Ingestion job %s failed", job_id)
         job.status = "failed"
