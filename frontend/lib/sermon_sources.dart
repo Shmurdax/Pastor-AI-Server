@@ -198,7 +198,7 @@ LibrarySermonLists advanceLibrarySermons({
 }
 
 /// Rebuild the sidebar from saved AI `sources` so a refresh matches the chat.
-LibrarySermonLists libraryStateFromMessages(List<dynamic> messages) {
+LibrarySermonLists libraryStateFromMessages(Iterable<dynamic> messages) {
   var state = const LibrarySermonLists(library: [], previous: []);
   for (final item in messages) {
     if (item is! Map) continue;
