@@ -521,7 +521,8 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         return ""
     lines = [
         "<required_teaching_points>",
-        "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
+        "Speak in Pastor Don's and Susan's pastoral voice. Use their speaking style from the notes. "
+        "Do not use a generic Christian pastoral tone.",
         "The numbered points are the only ideas you may teach. Paraphrase them in your own words. "
         "Do not add theology, caveats, verses, or advice that is not in these points. "
         "REFERENCE NOTES are the source of these points, not a license to invent a new outline. "
@@ -664,7 +665,7 @@ def claim_repair_steer(missing: Iterable[str]) -> str:
         "Do not say Certainly, Let's continue, or Teaching Points.",
         "Add only missed theses. You may use a short paragraph or a bullet. "
         "Do not invent extra outline points. Stop on a complete sentence.",
-        "Keep a generic Christian pastoral tone. Do not imitate Pastor Don's speaking style.",
+        "Keep Pastor Don's pastoral voice. Do not flatten it into a generic Christian pastoral tone.",
         "Only add a missed point if it actually answers the user's question. Skip autobiography, jokes, and unrelated notes.",
         "If none of the points below answer the user's question, reply with nothing.",
         "Keep the same thesis, including the contrast. Do not keep the illustration and change what it teaches.",

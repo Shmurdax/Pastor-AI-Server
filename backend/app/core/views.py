@@ -67,7 +67,12 @@ from .chat_sse import (
     wants_chat_stream,
 )
 from .bible_refs import scripture_refs_from_metadata
-from .grounding import strip_retrieval_meta
+from .teaching_claims import (
+    extract_teaching_claims,
+    format_generation_user_prompt,
+    format_teaching_claims_block,
+    resolve_teaching_claims,
+)
 from .chat_retrieval import (
     format_reference_notes,
     is_bible_source,
@@ -83,7 +88,6 @@ from .chat_system_prompt import (
     answer_looks_incomplete,
     should_run_expansion,
     build_chat_system_prompt,
-    compact_teaching_answer,
     continuation_token_budget,
     find_biblical_character_names,
     join_continuation,
@@ -390,12 +394,6 @@ def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
     """Do not start a second LLM pass after generation."""
     _ = (prepared, answer)
     return None, 0
-
-
-def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Return the generated reply without a retrieval or grounding replacement."""
-    _ = prepared
-    return compact_teaching_answer(strip_retrieval_meta(answer))
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:
@@ -840,7 +838,11 @@ class ChatAPIView(APIView):
                 max_chars=MAX_CONTEXT_CHARS,
                 preserve_order=True,
             )
-            teaching_claims = []
+            teaching_claims = resolve_teaching_claims(
+                docs,
+                query=topic_query,
+                claims=extract_teaching_claims(docs, query=topic_query),
+            )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -881,6 +883,7 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
+                + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -902,7 +905,8 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
-            human_content = f"{user_query_llm.strip()}{language_generation_reminder()}"
+            human_content = format_generation_user_prompt(user_query_llm, teaching_claims)
+            human_content = f"{human_content}{language_generation_reminder()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -1201,9 +1205,7 @@ class ChatAPIView(APIView):
                         prefix = "" if answer.endswith((" ", "\n")) else " "
                         yield _sse({"type": "delta", "text": prefix + finish_extra})
                     answer = _join_continuation(answer, finish_extra)
-                final_answer = sanitize_chat_answer(
-                    _finalize_teaching_answer(prepared, answer)
-                )
+                final_answer = sanitize_chat_answer(answer)
                 if emit_live:
                     prefix = (answer or "").rstrip()
                     if final_answer.startswith(prefix):
@@ -1405,7 +1407,7 @@ class ChatAPIView(APIView):
             finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
             if finish_extra:
                 answer = _join_continuation(answer, finish_extra)
-            answer = sanitize_chat_answer(_finalize_teaching_answer(prepared, answer))
+            answer = sanitize_chat_answer(answer)
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,
