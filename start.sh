@@ -9,6 +9,9 @@ LOG_DIR="$WS/logs"
 APP_DIR="$WS/backend/app"
 VENV_DIR="$WS/venv"
 FRONTEND_DIR="$WS/frontend"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/load_env.sh"
 
 resolve_frontend_build_dir() {
   local root="${1:-$FRONTEND_DIR}"
@@ -22,12 +25,9 @@ resolve_frontend_build_dir() {
 }
 
 [[ -f "$CONFIG_ENV" ]] || { echo "Missing $CONFIG_ENV — run install.sh first"; exit 1; }
-# shellcheck disable=SC1090
-source "$CONFIG_ENV"
+pastor_load_env_file "$CONFIG_ENV"
 
 mkdir -p "$LOG_DIR" "${QDRANT_STORAGE:-$WS/qdrant_storage}" "${HF_HOME:-$WS/hf_cache}"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
@@ -56,20 +56,14 @@ if declare -F pastor_record_running_git >/dev/null 2>&1; then
   pastor_warn_if_git_drift "$WS" || true
 fi
 ensure_django_admin_url "$CONFIG_ENV"
-# shellcheck disable=SC1090
-set -a
-source "$CONFIG_ENV"
-set +a
+pastor_load_env_file "$CONFIG_ENV"
 ensure_qdrant_binary || warn "Qdrant binary missing — collections will not load until it is restored"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/gpu_runtime.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/vllm_runtime.sh"
 chat_apply_config "$CONFIG_ENV"
-# shellcheck disable=SC1090
-set -a
-source "$CONFIG_ENV"
-set +a
+pastor_load_env_file "$CONFIG_ENV"
 gpu_detect
 VLLM_URL="$(vllm_resolved_url)"
 VLLM_API_KEY="$(vllm_resolved_api_key)"
@@ -274,9 +268,8 @@ sleep 1
 fuser -k "${DJANGO_PORT}/tcp" 2>/dev/null || true
 sleep 1
 screen -dmS django bash -c "
-  set -a &&
-  source '${CONFIG_ENV}' &&
-  set +a &&
+  source '${SCRIPT_DIR}/scripts/load_env.sh' &&
+  pastor_load_env_file '${CONFIG_ENV}' &&
   source '${VENV_DIR}/bin/activate' &&
   cd '${APP_DIR}' &&
   export FRONTEND_BUILD_DIR='$(resolve_frontend_build_dir "$FRONTEND_DIR")' &&
@@ -324,7 +317,7 @@ screen -dmS django bash -c "
   export EMAIL_HOST_USER='${EMAIL_HOST_USER:-}' &&
   export EMAIL_HOST_PASSWORD='${EMAIL_HOST_PASSWORD:-}' &&
   export EMAIL_USE_TLS='${EMAIL_USE_TLS:-true}' &&
-  export DEFAULT_FROM_EMAIL='${DEFAULT_FROM_EMAIL:-}' &&
+  export DEFAULT_FROM_EMAIL='$(pastor_escape_sq "${DEFAULT_FROM_EMAIL:-}")' &&
   export SESSION_SCOPE_SALT='${SESSION_SCOPE_SALT:-}' &&
   export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
   export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
@@ -396,9 +389,8 @@ else
   fi
 fi
 screen -dmS video-ingest bash -c "
-  set -a
-  source '${CONFIG_ENV}'
-  set +a
+  source '${SCRIPT_DIR}/scripts/load_env.sh'
+  pastor_load_env_file '${CONFIG_ENV}'
   source '${VENV_DIR}/bin/activate'
   cd '${APP_DIR}'
   ${VIDEO_ALLOW_GPU}

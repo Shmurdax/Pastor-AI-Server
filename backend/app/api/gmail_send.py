@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+DEFAULT_GMAIL_SENDER = "info@thenordins.org"
+GMAIL_FROM_NAME = "Nordin's AI"
 
 
 class GmailSendError(Exception):
@@ -39,10 +41,54 @@ def _setting(name: str, default: str = "") -> str:
 
 
 def gmail_sender() -> str:
-    raw = _setting("GMAIL_SENDER") or _setting("DEFAULT_FROM_EMAIL")
+    raw = _setting("GMAIL_SENDER") or _setting("DEFAULT_FROM_EMAIL") or DEFAULT_GMAIL_SENDER
     if "<" in raw and ">" in raw:
         return raw[raw.rfind("<") + 1 : raw.rfind(">")].strip()
     return raw
+
+
+def formatted_from_header(sender: str | None = None) -> str:
+    """From: line for verification mail. Display name lives in code, not bash env."""
+    address = (sender or gmail_sender()).strip()
+    if not address:
+        return ""
+    if "<" in address and ">" in address:
+        return address
+    return f"{GMAIL_FROM_NAME} <{address}>"
+
+
+def _workspace_root() -> Path:
+    hint = _setting("WORKSPACE_ROOT") or os.environ.get("WORKSPACE_ROOT", "")
+    if hint:
+        return Path(hint)
+    try:
+        return Path(__file__).resolve().parents[3]
+    except IndexError:
+        return Path("/workspace/pastor-ai")
+
+
+def _service_account_files() -> list[Path]:
+    paths: list[Path] = []
+    configured = _setting("GMAIL_SERVICE_ACCOUNT_FILE") or _setting("GOOGLE_APPLICATION_CREDENTIALS")
+    if configured:
+        paths.append(Path(configured))
+    ws = _workspace_root()
+    persist = Path(os.environ.get("PERSIST_ROOT") or "/workspace/persistent")
+    paths.extend(
+        [
+            ws / "secrets" / "gmail-sender.json",
+            persist / "secrets" / "gmail-sender.json",
+        ]
+    )
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path if path.is_absolute() else (ws / path)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
 
 
 def _service_account_info() -> dict | None:
@@ -59,17 +105,23 @@ def _service_account_info() -> dict | None:
             raise GmailSendError("GMAIL_SERVICE_ACCOUNT_JSON is not valid JSON.") from exc
         if isinstance(info, dict):
             return info
-    path = _setting("GMAIL_SERVICE_ACCOUNT_FILE") or _setting("GOOGLE_APPLICATION_CREDENTIALS")
-    if path:
-        file_path = Path(path)
+    last_error: GmailSendError | None = None
+    for file_path in _service_account_files():
+        if not file_path.is_file():
+            continue
         try:
             info = json.loads(file_path.read_text(encoding="utf-8"))
         except OSError as exc:
-            raise GmailSendError(f"Could not read Gmail service account file: {file_path}") from exc
+            last_error = GmailSendError(f"Could not read Gmail service account file: {file_path}")
+            last_error.__cause__ = exc
+            continue
         except json.JSONDecodeError as exc:
             raise GmailSendError("Gmail service account file is not valid JSON.") from exc
         if isinstance(info, dict):
             return info
+    configured = _setting("GMAIL_SERVICE_ACCOUNT_FILE") or _setting("GOOGLE_APPLICATION_CREDENTIALS")
+    if configured and last_error is not None:
+        raise last_error
     return None
 
 
@@ -139,8 +191,8 @@ def build_raw_message(*, sender: str, to_email: str, subject: str, body: str) ->
 
 def send_via_gmail_api(*, to_email: str, subject: str, body: str) -> str:
     """Send one message through Gmail. Returns the Gmail message id."""
-    sender = gmail_sender()
-    if not sender:
+    sender = formatted_from_header()
+    if not gmail_sender():
         raise GmailSendError("Set GMAIL_SENDER or DEFAULT_FROM_EMAIL for the Gmail API.")
     creds = _credentials()
     token = _access_token(creds)

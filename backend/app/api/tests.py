@@ -1,6 +1,9 @@
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 import json
+import os
+import tempfile
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -1579,7 +1582,7 @@ class GmailApiTests(TestCase):
         self.assertIn("member@example.com", decoded)
 
         with override_settings(
-            GMAIL_SENDER="noreply@thenordins.org",
+            GMAIL_SENDER="info@thenordins.org",
             GMAIL_SERVICE_ACCOUNT_JSON=json.dumps(_rsa_service_account_info()),
         ):
             with patch("api.gmail_send._credentials", return_value=_Creds()):
@@ -1600,6 +1603,40 @@ class GmailApiTests(TestCase):
         self.assertTrue(args[0].startswith("https://gmail.googleapis.com/"))
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer ya29.live-gmail-access-token")
         self.assertIn("raw", kwargs["json"])
+        sent = base64.urlsafe_b64decode(kwargs["json"]["raw"].encode("utf-8")).decode("utf-8")
+        self.assertIn("From: Nordin's AI <info@thenordins.org>", sent)
+
+    def test_from_header_and_default_sender(self):
+        from api.gmail_send import formatted_from_header, gmail_sender
+
+        self.assertEqual(formatted_from_header("info@thenordins.org"), "Nordin's AI <info@thenordins.org>")
+        self.assertEqual(
+            formatted_from_header("Nordin's AI <info@thenordins.org>"),
+            "Nordin's AI <info@thenordins.org>",
+        )
+        with override_settings(GMAIL_SENDER="", DEFAULT_FROM_EMAIL=""):
+            self.assertEqual(gmail_sender(), "info@thenordins.org")
+
+    def test_discovers_json_key_under_workspace_secrets(self):
+        from api.gmail_send import email_delivery_mode, gmail_is_configured
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            secrets = root / "secrets"
+            secrets.mkdir()
+            (secrets / "gmail-sender.json").write_text(
+                json.dumps(_rsa_service_account_info()),
+                encoding="utf-8",
+            )
+            with override_settings(
+                GMAIL_SENDER="",
+                GMAIL_SERVICE_ACCOUNT_JSON="",
+                GMAIL_SERVICE_ACCOUNT_FILE="",
+                WORKSPACE_ROOT=str(root),
+            ):
+                with patch.dict(os.environ, {"WORKSPACE_ROOT": str(root)}, clear=False):
+                    self.assertTrue(gmail_is_configured())
+                    self.assertEqual(email_delivery_mode(), "gmail_api")
 
     def test_verification_email_uses_gmail_api_when_configured(self):
         from django.core import mail

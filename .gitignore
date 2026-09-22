@@ -2,6 +2,7 @@
 .env
 config.env
 tokens.env
+secrets/*.json
 .git_channel
 *.log
 venv/

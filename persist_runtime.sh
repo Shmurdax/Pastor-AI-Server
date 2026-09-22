@@ -26,6 +26,7 @@ PERSIST_TUNNEL_TOKEN="${PERSIST_TUNNEL_TOKEN:-$PERSIST_ROOT/.cloudflared/tunnel.
 PERSIST_BOOT="${PERSIST_BOOT:-$PERSIST_ROOT/boot}"
 PERSIST_CONFIG="${PERSIST_CONFIG:-$PERSIST_ROOT/config.env}"
 PERSIST_TOKENS="${PERSIST_TOKENS:-$PERSIST_ROOT/tokens.env}"
+PERSIST_GMAIL_JSON="${PERSIST_GMAIL_JSON:-$PERSIST_ROOT/secrets/gmail-sender.json}"
 PERSIST_QDRANT_BIN="${PERSIST_QDRANT_BIN:-$PERSIST_ROOT/bin/qdrant}"
 WS_QDRANT_BIN="${WS_QDRANT_BIN:-${QDRANT_BIN:-/workspace/bin/qdrant}}"
 QDRANT_RELEASE_URL="${QDRANT_RELEASE_URL:-https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz}"
@@ -458,6 +459,14 @@ mirror_runtime_secrets() {
   if [[ -s "$ws_root/tokens.env" ]]; then
     _copy_secret_file "$ws_root/tokens.env" "$PERSIST_TOKENS" || true
   fi
+  if [[ -s "$ws_root/secrets/gmail-sender.json" ]]; then
+    _copy_secret_file "$ws_root/secrets/gmail-sender.json" "$PERSIST_GMAIL_JSON" || true
+  fi
+  if [[ -f "$ws_root/scripts/load_env.sh" ]]; then
+    mkdir -p "$PERSIST_BOOT/scripts"
+    cp -a "$ws_root/scripts/load_env.sh" "$PERSIST_BOOT/scripts/load_env.sh"
+    chmod +x "$PERSIST_BOOT/scripts/load_env.sh" 2>/dev/null || true
+  fi
 }
 
 ensure_persistent_boot_bundle() {
@@ -509,6 +518,17 @@ restore_workspace_from_persist() {
   if [[ ! -s "$ws_root/tokens.env" && -s "$PERSIST_TOKENS" ]]; then
     _copy_secret_file "$PERSIST_TOKENS" "$ws_root/tokens.env" || true
     log "Restored tokens.env from persistent volume"
+  fi
+  if [[ ! -s "$ws_root/secrets/gmail-sender.json" && -s "$PERSIST_GMAIL_JSON" ]]; then
+    mkdir -p "$ws_root/secrets"
+    _copy_secret_file "$PERSIST_GMAIL_JSON" "$ws_root/secrets/gmail-sender.json" || true
+    log "Restored Gmail sender JSON from persistent volume"
+  fi
+  if [[ ! -f "$ws_root/scripts/load_env.sh" && -f "$PERSIST_BOOT/scripts/load_env.sh" ]]; then
+    mkdir -p "$ws_root/scripts"
+    cp -a "$PERSIST_BOOT/scripts/load_env.sh" "$ws_root/scripts/load_env.sh"
+    chmod +x "$ws_root/scripts/load_env.sh" 2>/dev/null || true
+    log "Restored scripts/load_env.sh from $PERSIST_BOOT"
   fi
   if [[ ! -s "$ws_root/seed/ingested_catalog.dump" && -s "$PERSIST_PG_ROOT/ingested_catalog.dump" ]]; then
     mkdir -p "$ws_root/seed"

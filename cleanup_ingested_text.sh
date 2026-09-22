@@ -24,10 +24,9 @@ if [[ ! -f "${APP_DIR}/manage.py" ]]; then
 fi
 
 if [[ -f "$CONFIG_ENV" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$CONFIG_ENV"
-  set +a
+  # shellcheck source=/dev/null
+  source "$WS/scripts/load_env.sh"
+  pastor_load_env_file "$CONFIG_ENV"
 fi
 
 if [[ -f "$WS/venv/bin/activate" ]]; then

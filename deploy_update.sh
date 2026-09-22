@@ -16,16 +16,15 @@ warn() { echo -e "\033[1;33m[deploy]\033[0m $*"; }
 die()  { echo -e "\033[0;31m[deploy]\033[0m $*" >&2; exit 1; }
 
 [[ -f "$CONFIG_ENV" ]] || die "Missing $CONFIG_ENV — run install.sh first"
+# shellcheck source=/dev/null
+source "$WS/scripts/load_env.sh"
 
 if [[ -f "$WS/tokens.env" ]]; then
   log "Applying tokens.env → config.env"
   bash "$WS/apply-tokens.sh" || warn "apply-tokens.sh reported an issue"
 fi
 
-# shellcheck disable=SC1090
-set -a
-source "$CONFIG_ENV"
-set +a
+pastor_load_env_file "$CONFIG_ENV"
 
 # Git channel: PASTOR_GIT_BRANCH / REPO_BRANCH override, else master.
 # christian-ai-dev: PASTOR_GIT_BRANCH=development bash deploy_update.sh

@@ -55,6 +55,18 @@ class LoadWorkspaceEnvTests(unittest.TestCase):
                 )
                 self.assertEqual(overlay["CHAT_MAX_TOKENS"], "512")
 
+    def test_keeps_apostrophe_in_from_email(self):
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "config.env").write_text(
+                'DEFAULT_FROM_EMAIL="Nordin\'s AI <info@thenordins.org>"\n'
+                "GMAIL_SENDER=info@thenordins.org\n"
+            )
+            with patch.object(workspace_env, "_candidate_files", return_value=[root / "config.env"]):
+                values = workspace_env.workspace_env_values()
+        self.assertEqual(values["GMAIL_SENDER"], "info@thenordins.org")
+        self.assertEqual(values["DEFAULT_FROM_EMAIL"], "Nordin's AI <info@thenordins.org>")
+
     def tearDown(self):
         for key in (
             "RUNPOD_API_KEY",

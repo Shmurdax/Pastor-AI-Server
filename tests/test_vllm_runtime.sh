@@ -92,7 +92,7 @@ whisper_is_remote || fail "whisper_is_remote should be true with endpoint id"
 grep -q 'vllm_use_local_server' "$ROOT/start.sh" || fail "start.sh must skip local vLLM when remote"
 grep -q 'RUNPOD_WHISPER_ENDPOINT_ID' "$ROOT/start.sh" || fail "start.sh must export whisper endpoint"
 grep -A8 'dmS django' "$ROOT/start.sh" | grep -q 'CONFIG_ENV' \
-  || fail "django screen must source config.env so RUNPOD_API_KEY reaches gunicorn"
+  || fail "django screen must load config.env so RUNPOD_API_KEY reaches gunicorn"
 grep -A40 'dmS django' "$ROOT/start.sh" | grep -Fq 'RUNPOD_API_KEY=\"\${RUNPOD_API_KEY' \
   || fail "django screen must keep sourced RUNPOD_API_KEY (not wipe it with an empty outer expansion)"
 grep -A80 'dmS django' "$ROOT/start.sh" | grep -q 'RUNPOD_WHISPER_ENDPOINT_ID' \
