@@ -43,7 +43,12 @@ def _git(ws: Path, *args: str) -> str:
 
 def _tracked_dirty(ws: Path) -> bool:
     porcelain = _git(ws, "status", "--porcelain", "--untracked-files=no")
-    return bool(porcelain)
+    for line in porcelain.splitlines():
+        if "frontend/build/" in line:
+            continue
+        if line.strip():
+            return True
+    return False
 
 
 def read_deploy_status(ws: Path | None = None) -> dict[str, object]:

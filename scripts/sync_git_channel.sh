@@ -43,7 +43,11 @@ pastor_git_stamp_paths() {
 pastor_git_tracked_dirty() {
   local ws="${1:-}"
   [[ -d "$ws/.git" ]] || return 1
-  git -C "$ws" status --porcelain --untracked-files=no 2>/dev/null | grep -q .
+  # Flutter web rebuild during deploy_update always touches tracked
+  # frontend/build/web files. That is not version drift.
+  git -C "$ws" status --porcelain --untracked-files=no 2>/dev/null \
+    | grep -v 'frontend/build/' \
+    | grep -q .
 }
 
 pastor_resolve_git_channel() {

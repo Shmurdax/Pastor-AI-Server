@@ -53,3 +53,25 @@ class ReadDeployStatusTests(unittest.TestCase):
             self.assertTrue(status["dirty"])
             self.assertFalse(status["in_sync"])
             self.assertEqual(status["git_sha"], sha)
+
+    def test_flutter_web_rebuild_is_not_drift(self):
+        with TemporaryDirectory() as raw:
+            ws = Path(raw)
+            _git(ws, "init", "-b", "master")
+            _git(ws, "config", "user.email", "test@example.com")
+            _git(ws, "config", "user.name", "test")
+            web = ws / "frontend" / "build" / "web"
+            web.mkdir(parents=True)
+            (web / "index.html").write_text("old\n", encoding="utf-8")
+            _git(ws, "add", "frontend/build/web/index.html")
+            _git(ws, "commit", "-m", "one")
+            sha = subprocess.check_output(
+                ["git", "-C", str(ws), "rev-parse", "HEAD"], text=True
+            ).strip()
+            _git(ws, "update-ref", "refs/remotes/origin/master", sha)
+            (ws / ".git_channel").write_text("master\n", encoding="utf-8")
+            (web / "index.html").write_text("rebuilt\n", encoding="utf-8")
+            status = read_deploy_status(ws)
+            self.assertFalse(status["dirty"])
+            self.assertTrue(status["in_sync"])
+            self.assertEqual(status["git_sha"], sha)

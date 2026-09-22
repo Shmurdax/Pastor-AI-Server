@@ -81,6 +81,14 @@ pastor_sync_git_channel "$CLONE" master
 [[ -s "$CLONE/DEPLOYED_SHA" ]] || fail "sync should write DEPLOYED_SHA"
 [[ "$(tr -d '[:space:]' < "$CLONE/DEPLOYED_SHA")" == "$(git -C "$CLONE" rev-parse HEAD)" ]] \
   || fail "DEPLOYED_SHA must match HEAD"
+mkdir -p "$CLONE/frontend/build/web"
+printf 'old\n' > "$CLONE/frontend/build/web/index.html"
+git -C "$CLONE" add frontend/build/web/index.html
+git -C "$CLONE" commit -qm flutter
+printf 'rebuilt\n' > "$CLONE/frontend/build/web/index.html"
+pastor_git_tracked_dirty "$CLONE" && fail "flutter web rebuild should not count as dirty"
+printf 'overlay\n' > "$CLONE/file"
+pastor_git_tracked_dirty "$CLONE" || fail "tracked overlay should still count as dirty"
 rm -rf "$UPSTREAM" "$CLONE"
 grep -q 'git_channel.sh' "$ROOT/install.sh" || fail "install.sh must copy git_channel.sh"
 grep -q 'git_safe_directory.sh' "$ROOT/install.sh" || fail "install.sh must copy git_safe_directory.sh"
