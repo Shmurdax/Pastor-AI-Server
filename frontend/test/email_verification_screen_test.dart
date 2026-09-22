@@ -9,11 +9,14 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _SentEmailApi extends ApiService {
+  int sends = 0;
+
   @override
   void setAccessToken(String? token) {}
 
   @override
   Future<Map<String, dynamic>> sendEmailCode() async {
+    sends += 1;
     return {
       'ok': true,
       'already_verified': false,
@@ -33,6 +36,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    EmailVerificationScreen.debugResetAutoSendGuard();
   });
 
   testWidgets('asks the member to insert the 6-digit email code', (tester) async {
@@ -112,5 +116,36 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('opening the screen twice does not request a second code', (tester) async {
+    final auth = AuthController(restoreSession: false);
+    auth.sessionReady = true;
+    auth.token = 'tok';
+    auth.user = const AuthUser(
+      id: '3',
+      email: 'newpaid@test.com',
+      name: 'New Paid',
+      emailVerified: false,
+    );
+    final api = _SentEmailApi();
+
+    Future<void> openScreen() async {
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthController>.value(
+          value: auth,
+          child: MaterialApp(
+            home: EmailVerificationScreen(api: api),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await openScreen();
+    await openScreen();
+
+    expect(api.sends, 1);
   });
 }

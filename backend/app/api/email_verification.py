@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
+import threading
 from datetime import timedelta
 from typing import NamedTuple
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from django.db import connection, transaction
 from django.utils import timezone
 
 from .gmail_send import (
@@ -27,6 +30,8 @@ CODE_TTL = timedelta(minutes=10)
 RESEND_COOLDOWN = timedelta(seconds=45)
 MAX_ATTEMPTS = 5
 MAX_SENDS_PER_HOUR = 8
+_send_locks: dict[int, threading.Lock] = {}
+_send_locks_guard = threading.Lock()
 
 
 class IssuedVerificationCode(NamedTuple):
@@ -68,6 +73,54 @@ def _django_mail_delivers() -> bool:
     return bool(str(getattr(settings, "EMAIL_HOST", "") or "").strip())
 
 
+def _user_send_lock(user_id: int) -> threading.Lock:
+    with _send_locks_guard:
+        lock = _send_locks.get(user_id)
+        if lock is None:
+            lock = threading.Lock()
+            _send_locks[user_id] = lock
+        return lock
+
+
+def _reserve_verification_code(user, *, force: bool) -> str:
+    """Create one active code. Overlapping requests wait, then hit the cooldown."""
+    user_model = get_user_model()
+    with transaction.atomic():
+        locked = user_model.objects.filter(pk=user.pk)
+        if getattr(connection.features, "has_select_for_update", False):
+            locked = locked.select_for_update()
+        locked.get()
+        now = timezone.now()
+        latest = _active_code(user)
+        if latest is not None and not force and now - latest.created_at < RESEND_COOLDOWN:
+            wait = int((RESEND_COOLDOWN - (now - latest.created_at)).total_seconds()) + 1
+            raise EmailVerificationError(
+                f"Please wait {wait} seconds before requesting another code.",
+                status=429,
+            )
+
+        hour_ago = now - timedelta(hours=1)
+        recent_sends = EmailVerificationCode.objects.filter(
+            user=user, created_at__gte=hour_ago
+        ).count()
+        if recent_sends >= MAX_SENDS_PER_HOUR:
+            raise EmailVerificationError(
+                "Too many verification emails. Try again in an hour.",
+                status=429,
+            )
+
+        EmailVerificationCode.objects.filter(user=user, consumed_at__isnull=True).update(
+            consumed_at=now
+        )
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        EmailVerificationCode.objects.create(
+            user=user,
+            code_hash=_hash_code(user.id, code),
+            expires_at=now + CODE_TTL,
+        )
+        return code
+
+
 def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVerificationCode:
     """Create a fresh code and email it through Gmail (or SMTP in tests)."""
     profile = getattr(user, "profile", None)
@@ -76,34 +129,8 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVeri
     if profile.email_verified:
         return IssuedVerificationCode("", emailed=True)
 
-    now = timezone.now()
-    latest = _active_code(user)
-    if latest is not None and not force:
-        if now - latest.created_at < RESEND_COOLDOWN:
-            wait = int((RESEND_COOLDOWN - (now - latest.created_at)).total_seconds()) + 1
-            raise EmailVerificationError(
-                f"Please wait {wait} seconds before requesting another code.",
-                status=429,
-            )
-
-    hour_ago = now - timedelta(hours=1)
-    recent_sends = EmailVerificationCode.objects.filter(user=user, created_at__gte=hour_ago).count()
-    if recent_sends >= MAX_SENDS_PER_HOUR:
-        raise EmailVerificationError(
-            "Too many verification emails. Try again in an hour.",
-            status=429,
-        )
-
-    EmailVerificationCode.objects.filter(user=user, consumed_at__isnull=True).update(
-        consumed_at=now
-    )
-
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    EmailVerificationCode.objects.create(
-        user=user,
-        code_hash=_hash_code(user.id, code),
-        expires_at=now + CODE_TTL,
-    )
+    with _user_send_lock(user.pk):
+        code = _reserve_verification_code(user, force=force)
 
     name = user.get_full_name() or user.email
     subject = "Your Nordin's AI verification code"

@@ -1473,10 +1473,13 @@ class EmailVerificationTests(TestCase):
         self.assertTrue(self.user.profile.email_verified)
 
     def test_resend_is_rate_limited(self):
+        from django.core import mail
+
         first = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(first.status_code, 200, first.data)
         second = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(second.status_code, 429)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_already_verified_send_is_noop(self):
         self.user.profile.email_verified = True
