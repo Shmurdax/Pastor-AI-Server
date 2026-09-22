@@ -245,7 +245,12 @@ Premium members share one **platform monthly pool of 34,000,000 tokens** (calend
 
 The Django admin home page has a **Premium chat tokens** section showing tokens used, tokens left, and the monthly budget. Staff can also open **Premium chat token pools** under Pastoral.
 
-Admins may still restrict an individual user via **Chat restricted until** / days+hours helpers (moderation only).
+Admins may still restrict an individual user for moderation (does not change the shared pool):
+
+- In **Pastoral → Users** (or Profiles), see **Chat restriction** (active end time) and **Tokens spent**
+- **Clear chat restriction** checkbox, or the list action **Clear chat restrictions**
+- **Restrict chat for (days/hours)** to impose a restriction for any duration
+- Or edit **Chat restricted until** (`token_cooldown_until`) directly
 
 Chat copy when blocked: *You have used up your allotted responses currently. Please wait …*
 
