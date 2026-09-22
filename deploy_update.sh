@@ -33,6 +33,8 @@ set +a
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
 # shellcheck source=/dev/null
 source "$WS/scripts/git_safe_directory.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_safe_directory.sh"
+# shellcheck source=/dev/null
+source "$WS/scripts/sync_git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/sync_git_channel.sh"
 pastor_allow_git_on_runpod_volume "$WS"
 if [[ -n "${PASTOR_GIT_BRANCH:-}${REPO_BRANCH:-}" ]]; then
   CHANNEL="$(pastor_git_channel "$WS")"
@@ -41,17 +43,10 @@ else
 fi
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
-  log "Fetching origin/$CHANNEL"
-  git -C "$WS" fetch origin "$CHANNEL" \
-    || die "git fetch origin $CHANNEL failed"
-  log "Resetting to origin/$CHANNEL ($(git -C "$WS" rev-parse --short FETCH_HEAD))"
-  # -f discards a dirty working tree. Without it, checkout -B is a no-op on
-  # pods that have local edits and deploy_update silently stays behind.
-  git -C "$WS" checkout -f -B "$CHANNEL" FETCH_HEAD \
-    || die "git checkout $CHANNEL failed"
-  git -C "$WS" reset --hard FETCH_HEAD \
-    || die "git reset --hard $CHANNEL failed"
-  log "Now at $(git -C "$WS" log -1 --oneline)"
+  pastor_sync_git_channel "$WS" "$CHANNEL" \
+    || die "git sync origin/$CHANNEL failed"
+else
+  die "No .git checkout at $WS — clone Pastor-AI before deploy_update"
 fi
 
 [[ -x "$VENV_DIR/bin/python" ]] || die "Python venv missing at $VENV_DIR"
@@ -103,6 +98,9 @@ fi
 
 log "Restarting services"
 bash "$WS/start.sh"
+if declare -F pastor_record_running_git >/dev/null 2>&1; then
+  pastor_record_running_git "$WS" || true
+fi
 
 log "Health checks (localhost)"
 curl -sf -o /dev/null -w "  GET /api/auth/config/ → %{http_code}\n" \

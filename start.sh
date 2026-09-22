@@ -45,6 +45,16 @@ die()  { echo -e "\033[0;31m[✘]\033[0m $*" >&2; exit 1; }
 source "$SCRIPT_DIR/persist_runtime.sh"
 restore_workspace_from_persist || true
 ensure_persistent_boot_bundle || true
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/git_channel.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/git_safe_directory.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/sync_git_channel.sh" 2>/dev/null || true
+if declare -F pastor_record_running_git >/dev/null 2>&1; then
+  pastor_record_running_git "$WS" || true
+  pastor_warn_if_git_drift "$WS" || true
+fi
 ensure_django_admin_url "$CONFIG_ENV"
 # shellcheck disable=SC1090
 set -a

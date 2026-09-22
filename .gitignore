@@ -17,6 +17,7 @@ postgres_data/
 uploads/
 storage/
 public_url.txt
+DEPLOYED_*
 .docker/
 .history/
 .vscode/

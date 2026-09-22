@@ -27,7 +27,7 @@ git checkout master
 bash scripts/promote_to_master.sh
 ```
 
-On a RunPod host, `deploy_update.sh` fetches and hard-resets to **`master`** (local pod edits are discarded). Override with `PASTOR_GIT_BRANCH=development` on `christian-ai-dev`.
+On a RunPod host, `deploy_update.sh` fetches and hard-resets to **`master`** (local pod edits are discarded). `onboot.sh` does the same fetch+reset on every pod start/recreate so the volume cannot keep an old SHA or a dirty overlay. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Override with `PASTOR_GIT_BRANCH=development` on `christian-ai-dev`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch.
 
 ## One-command install (RunPod / Ubuntu GPU host)
 

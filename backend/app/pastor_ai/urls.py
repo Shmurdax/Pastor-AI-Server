@@ -49,6 +49,7 @@ from core.views import (
     ResponseReportAPIView,
 )
 from .frontend import serve_frontend, serve_vimeo_embed
+from .health import DeployHealthView
 from .robots import robots_txt_view
 
 
@@ -61,6 +62,7 @@ _admin_slug = settings.ADMIN_URL_PATH.strip("/")
 
 urlpatterns = [
     path("robots.txt", robots_txt_view, name="robots_txt"),
+    path("api/health/", DeployHealthView.as_view(), name="deploy_health"),
     path("admin/", _public_admin_decoy),
     re_path(r"^admin/(?P<rest>.*)$", _public_admin_decoy),
     # Private staff panel. Slashless URL must redirect — otherwise the Flutter
