@@ -93,6 +93,7 @@ from .teaching_claims import (
 )
 from .chat_retrieval import (
     INTENT_NEW_TOPIC,
+    _CONTINUING_INTENTS,
     apply_retrieval_threshold,
     classify_followup_intent,
     expand_search_queries,
@@ -103,6 +104,7 @@ from .chat_retrieval import (
     looks_like_library_pull,
     merge_scored_hits,
     pin_docs_to_strong_title_matches,
+    resolve_followup_retrieval,
     restrict_docs_to_primary_source,
     retain_title_matches,
     select_major_source_keys,
@@ -127,6 +129,7 @@ from .chat_system_prompt import (
     LIBRARY_PULL_STEER,
     FOLLOWUP_STEER,
     OPENING_RECALL_STEER,
+    format_followup_topic_steer,
     format_opening_recall_steer,
     MAX_EXPANSION_PASSES,
     answer_char_count,
@@ -953,12 +956,32 @@ class ChatAPIView(APIView):
                 prior_user_queries,
                 prior_ai_texts,
             )
-            if followup_intent == INTENT_NEW_TOPIC:
+            followup_retrieval = None
+            if followup_intent in _CONTINUING_INTENTS:
+                followup_retrieval = resolve_followup_retrieval(
+                    user_query_llm,
+                    prior_user_queries,
+                    prior_ai_texts,
+                )
+            if followup_retrieval is not None:
+                topic_query = followup_retrieval.query
+                catalog_query = followup_retrieval.query
+                search_current = followup_retrieval.query
+                logger.warning(
+                    "Follow-up topic session=%s intent=%s query=%r point=%r",
+                    session_id[:18],
+                    followup_intent,
+                    topic_query[:180],
+                    (followup_retrieval.point_title or "")[:120],
+                )
+            elif followup_intent == INTENT_NEW_TOPIC:
                 topic_query = user_query_llm
                 catalog_query = user_query_llm
+                search_current = user_query_llm
             else:
                 topic_query = topic_anchor_query(user_query_llm, prior_user_queries)
                 catalog_query = topic_query
+                search_current = user_query_llm
             catalog_hits = match_library_catalog(catalog_query, limit=3)
             catalog_keys = [hit.file_hash for hit in catalog_hits if hit.file_hash]
 
@@ -993,7 +1016,7 @@ class ChatAPIView(APIView):
                 )
             else:
                 search_queries = expand_search_queries(
-                    user_query_llm,
+                    search_current,
                     prior_user_queries,
                     prior_ai_texts=prior_ai_texts,
                     limit=9,
@@ -1179,8 +1202,21 @@ class ChatAPIView(APIView):
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
             opening_text = (first_row.user_query or "").strip() if first_row else ""
+            followup_focus = ""
             if looks_like_opening_recall(user_query_llm) and opening_text:
                 followup_block = format_opening_recall_steer(opening_text)
+            elif followup_retrieval is not None:
+                focus_bits = [followup_retrieval.topic]
+                if followup_retrieval.point_title:
+                    focus_bits.append(followup_retrieval.point_title)
+                if followup_retrieval.point_body:
+                    focus_bits.append(followup_retrieval.point_body)
+                followup_focus = " — ".join(bit for bit in focus_bits if bit)
+                followup_block = format_followup_topic_steer(
+                    followup_retrieval.topic,
+                    followup_retrieval.point_title,
+                    followup_retrieval.point_body,
+                )
             elif prior_user_queries:
                 followup_block = FOLLOWUP_STEER
             else:
@@ -1224,6 +1260,7 @@ class ChatAPIView(APIView):
                 human_content = format_generation_user_prompt(
                     user_query_llm,
                     teaching_claims,
+                    followup_focus=followup_focus,
                 )
             human_content = f"{human_content}{language_generation_reminder()}"
             messages = (

@@ -737,6 +737,160 @@ def _last_prior_user(current_q: str, prior_user_queries: Optional[Iterable[str]]
     return ""
 
 
+_NUMBERED_POINT_RE = re.compile(
+    r"^(?:#{1,3}\s*)?(?:\*\*)?(?P<num>\d{1,2})[.)]\s+(?P<rest>.+?)\s*$",
+    re.MULTILINE,
+)
+_POINT_REF_RE = re.compile(
+    r"\b(?:point|item|heading)\s+(?P<a>first|second|third|fourth|fifth|last|one|two|three|four|five|\d{1,2})\b"
+    r"|\b(?P<b>first|second|third|fourth|fifth|last)\s+points?\b",
+    re.IGNORECASE,
+)
+_POINT_ORDINALS = {
+    "first": 1,
+    "1": 1,
+    "one": 1,
+    "second": 2,
+    "2": 2,
+    "two": 2,
+    "third": 3,
+    "3": 3,
+    "three": 3,
+    "fourth": 4,
+    "4": 4,
+    "four": 4,
+    "fifth": 5,
+    "5": 5,
+    "five": 5,
+    "last": -1,
+}
+_ORDINAL_ONLY_WORDS = frozenset(_POINT_ORDINALS) | {"point", "points", "item", "items"}
+
+
+@dataclass
+class FollowupRetrieval:
+    """Resolved follow-up search text. `query` is what retrieval should embed."""
+
+    query: str
+    topic: str
+    point_title: str = ""
+    point_body: str = ""
+
+
+def extract_numbered_answer_points(text: str) -> list[dict[str, Any]]:
+    """Pull '1. **Title:** body' points out of a previous chat answer."""
+    raw = text or ""
+    matches = list(_NUMBERED_POINT_RE.finditer(raw))
+    points: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+        rest = match.group("rest").replace("**", "").strip()
+        if ":" in rest:
+            title, _, inline = rest.partition(":")
+            inline = inline.strip()
+        else:
+            title, inline = rest, ""
+        title = " ".join(title.replace("*", " ").split()).strip(" -")
+        line_end = raw.find("\n", match.end())
+        trailing = ""
+        if line_end != -1 and line_end < end:
+            trailing = " ".join(raw[line_end:end].split())
+        body = " ".join(part for part in (inline, trailing) if part).strip()
+        if len(title) < 3:
+            continue
+        points.append(
+            {
+                "index": int(match.group("num")),
+                "title": title[:160],
+                "body": body[:500],
+            }
+        )
+    return points
+
+
+def _referenced_point_index(query: str, point_count: int) -> int:
+    match = _POINT_REF_RE.search(query or "")
+    if not match or point_count <= 0:
+        return 0
+    token = (match.group("a") or match.group("b") or "").lower()
+    ordinal = _POINT_ORDINALS.get(token)
+    if ordinal is None and token.isdigit():
+        ordinal = int(token)
+    if ordinal is None:
+        return 0
+    if ordinal == -1:
+        return point_count
+    if ordinal < 1 or ordinal > point_count:
+        return 0
+    return ordinal
+
+
+def _substantive_followup_terms(query: str) -> list[str]:
+    return [
+        token
+        for token in keyword_search_query(query).split()
+        if token.lower() not in _ORDINAL_ONLY_WORDS
+    ]
+
+
+def _clip_retrieval_query(text: str, limit: int = 360) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rsplit(" ", 1)[0]
+
+
+def _last_prior_answer(prior_ai_texts: Optional[Iterable[str]]) -> str:
+    for item in reversed(list(prior_ai_texts or [])):
+        text = str(item or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def resolve_followup_retrieval(
+    current: str,
+    prior_user_queries: Optional[Iterable[str]] = None,
+    prior_ai_texts: Optional[Iterable[str]] = None,
+) -> Optional[FollowupRetrieval]:
+    """Search the established topic, not the follow-up verb.
+
+    "Expand on the first point" becomes the parent topic plus that point's
+    heading. The word "expand" is left out so it cannot retrieve a different
+    sermon about expansion.
+    """
+    last_prior = _last_prior_user(current, prior_user_queries)
+    if not last_prior:
+        return None
+    parent = keyword_search_query(last_prior) or " ".join(last_prior.split())[:160]
+    points = extract_numbered_answer_points(_last_prior_answer(prior_ai_texts))
+    ordinal = _referenced_point_index(current, len(points))
+    if ordinal and points:
+        point = next((item for item in points if item["index"] == ordinal), points[ordinal - 1])
+        sentence = ""
+        body = str(point.get("body") or "").strip()
+        if body:
+            sentence = re.split(r"(?<=[.!?])\s+", body, maxsplit=1)[0]
+        query = _clip_retrieval_query(f"{parent} {point['title']} {sentence}")
+        return FollowupRetrieval(
+            query=query,
+            topic=parent,
+            point_title=str(point["title"]),
+            point_body=sentence or body[:320],
+        )
+    terms = _substantive_followup_terms(current)
+    if terms:
+        return FollowupRetrieval(
+            query=_clip_retrieval_query(f"{parent} {' '.join(terms)}"),
+            topic=parent,
+        )
+    titles = " ".join(str(item["title"]) for item in points[:5])
+    return FollowupRetrieval(
+        query=_clip_retrieval_query(f"{parent} {titles}"),
+        topic=parent,
+    )
+
+
 def classify_followup_intent(
     current: str,
     prior_user_queries: Optional[Iterable[str]] = None,
