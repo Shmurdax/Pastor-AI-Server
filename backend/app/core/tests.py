@@ -93,6 +93,8 @@ class ChatSystemPromptTests(unittest.TestCase):
         self.assertNotIn("Use Markdown sparingly", prompt)
         self.assertNotIn("natural paragraphs, direct and", prompt)
         self.assertIn("Skipping quotations and Scripture citations is correct", prompt)
+        self.assertIn("[NKJV SCRIPTURE]", prompt)
+        self.assertIn("cite one or two of those", prompt)
         self.assertIn("Never attribute Scripture", prompt)
         self.assertIn("communion excerpts", prompt.lower())
         self.assertIn("happiness headings", prompt.lower())

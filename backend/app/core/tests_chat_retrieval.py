@@ -817,6 +817,27 @@ class ChatRetrievalTests(unittest.TestCase):
         )
         self.assertLess(notes.index("Faith Lift"), notes.index("The If Factor"))
 
+    def test_format_notes_puts_nkjv_scripture_after_preface(self):
+        docs = [_doc("Faith refuses the if factor.", source="faith.pdf", title="Faith Lift")]
+        nkjv = SimpleNamespace(
+            page_content="Now faith is the substance of things hoped for.",
+            metadata={
+                "source": "nkjv-bible.pdf",
+                "chunk_kind": "bible_verse",
+                "verse_ref": "Hebrews 11:1",
+                "quote_text": "Now faith is the substance of things hoped for.",
+            },
+        )
+        notes = format_reference_notes(
+            docs,
+            lambda doc: doc.metadata["title"],
+            max_chars=4000,
+            preserve_order=True,
+            scripture_docs=[nkjv],
+        )
+        self.assertLess(notes.index("[NKJV SCRIPTURE]"), notes.index("[Note 1 | Faith Lift]"))
+        self.assertIn("Hebrews 11:1 (NKJV):", notes)
+
     def test_uniqueness_instruction_lists_prior_material(self):
         text = uniqueness_instruction(
             ['I am not sure how the term Gay became part of the lexicon'],

@@ -75,6 +75,7 @@ from .chat_retrieval import (
     is_video_chunk,
     search_queries_on_store,
 )
+from .scripture_support import attach_supporting_scripture, is_bible_chunk
 from .rerank import rerank_scored_hits
 from .chat_system_prompt import (
     CONTINUE_STEER,
@@ -833,17 +834,28 @@ class ChatAPIView(APIView):
                 scored_hits,
                 limit=RETRIEVAL_K,
             )
+            scripture_docs, scripture_lane = attach_supporting_scripture(
+                search_text,
+                docs,
+                notes_coverage,
+                client,
+                collection_name,
+                embeddings,
+            )
             context = format_reference_notes(
                 docs,
                 _doc_source_label,
                 max_chars=MAX_CONTEXT_CHARS,
                 preserve_order=True,
+                scripture_docs=scripture_docs,
             )
             teaching_claims = []
             logger.warning(
-                "Note coverage=%s docs=%s query=%s",
+                "Note coverage=%s docs=%s scripture=%s lane=%s query=%s",
                 notes_coverage,
                 len(docs),
+                len(scripture_docs),
+                scripture_lane or "none",
                 search_text[:80],
             )
 
@@ -948,6 +960,8 @@ class ChatAPIView(APIView):
             labels = []
             seen = set()
             for doc in visible_chat_source_docs(docs):
+                if is_bible_chunk(doc):
+                    continue
                 label = (_doc_source_label(doc) or "").strip()
                 key = label.lower()
                 if not label or key in seen:

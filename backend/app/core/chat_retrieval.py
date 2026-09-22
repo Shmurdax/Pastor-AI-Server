@@ -2750,11 +2750,13 @@ def format_reference_notes(
     max_chars: int,
     query: str = "",
     preserve_order: bool = False,
+    scripture_docs: Optional[Iterable[Any]] = None,
 ) -> str:
     """Join chunks with source labels.
 
     Chat passes preserve_order so the reranker order is what the model reads.
-    Other callers still put teaching sentences first.
+    Other callers still put teaching sentences first. Supporting NKJV lines sit
+    after the attribution preface so token clipping keeps them.
     """
     indexed = list(enumerate(docs or []))
     if preserve_order:
@@ -2771,6 +2773,22 @@ def format_reference_notes(
     preface = NOTES_ATTRIBUTION_PREFACE
     used = len(preface) + 2
     budget = max(len(preface), int(max_chars))
+    scripture_block = ""
+    if scripture_docs:
+        from .scripture_support import format_nkjv_scripture_block
+
+        scripture_block = format_nkjv_scripture_block(scripture_docs)
+        if scripture_block:
+            extra = 2 + len(scripture_block)
+            if used + extra > budget:
+                remain = budget - used - 2
+                if remain > 80:
+                    scripture_block = scripture_block[:remain].rstrip()
+                    used += 2 + len(scripture_block)
+                else:
+                    scripture_block = ""
+            else:
+                used += extra
     for display_index, (_orig, doc) in enumerate(ranked, start=1):
         label = source_label(doc) or "Unknown"
         text = chunk_text(doc)
@@ -2787,7 +2805,11 @@ def format_reference_notes(
         used += extra
     if not blocks:
         return ""
-    return preface + "\n\n" + "\n\n".join(blocks)
+    parts = [preface]
+    if scripture_block:
+        parts.append(scripture_block)
+    parts.append("\n\n".join(blocks))
+    return "\n\n".join(parts)
 
 
 def uniqueness_instruction(
