@@ -76,10 +76,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Current password'), findsOneWidget);
-    expect(find.text('Update password'), findsOneWidget);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Current password'), findsNothing);
+    expect(find.text('Update password'), findsNothing);
     expect(find.text('Update payment method'), findsOneWidget);
     expect(find.text('Unsubscribe'), findsOneWidget);
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Current password'), findsOneWidget);
+    expect(find.text('Update password'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Current password'), 'OldPass123!');
     await tester.enterText(find.widgetWithText(TextFormField, 'New password'), 'NewPass123!');
@@ -90,6 +98,8 @@ void main() {
     expect(fakeAuth.lastCurrent, 'OldPass123!');
     expect(fakeAuth.lastNew, 'NewPass123!');
     expect(find.text('Password updated.'), findsOneWidget);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Current password'), findsNothing);
   });
 
   testWidgets('google-only accounts see password unavailable message', (tester) async {

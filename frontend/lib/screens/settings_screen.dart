@@ -37,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _editingPassword = false;
   bool _savingPassword = false;
   bool _unsubscribing = false;
   String? _passwordError;
@@ -51,6 +52,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  void _startEditingPassword() {
+    setState(() {
+      _editingPassword = true;
+      _passwordError = null;
+      _passwordSuccess = null;
+    });
+  }
+
+  void _cancelEditingPassword() {
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+    setState(() {
+      _editingPassword = false;
+      _savingPassword = false;
+      _passwordError = null;
+      _passwordSuccess = null;
+      _obscureCurrent = true;
+      _obscureNew = true;
+      _obscureConfirm = true;
+    });
   }
 
   Future<void> _changePassword() async {
@@ -77,6 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _confirmPasswordController.clear();
       setState(() {
         _savingPassword = false;
+        _editingPassword = false;
         _passwordSuccess = 'Password updated.';
       });
     } catch (e) {
@@ -208,94 +233,145 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.black12),
                     ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Enter your current password to set a new one.',
-                            style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
-                          ),
-                          const SizedBox(height: 16),
-                          _passwordField(
-                            controller: _currentPasswordController,
-                            label: 'Current password',
-                            obscure: _obscureCurrent,
-                            onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
-                            validator: (v) {
-                              if (v == null || v.isEmpty) return 'Enter your current password';
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _passwordField(
-                            controller: _newPasswordController,
-                            label: 'New password',
-                            obscure: _obscureNew,
-                            onToggle: () => setState(() => _obscureNew = !_obscureNew),
-                            validator: (v) {
-                              if (v == null || v.length < 8) {
-                                return 'Use at least 8 characters';
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          _passwordField(
-                            controller: _confirmPasswordController,
-                            label: 'Confirm new password',
-                            obscure: _obscureConfirm,
-                            onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                            validator: (v) {
-                              if (v != _newPasswordController.text) {
-                                return 'Passwords do not match';
-                              }
-                              return null;
-                            },
-                          ),
-                          if (_passwordError != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              _passwordError!,
-                              style: GoogleFonts.figtree(color: Colors.red.shade700, fontSize: 13),
-                            ),
-                          ],
-                          if (_passwordSuccess != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              _passwordSuccess!,
-                              style: GoogleFonts.figtree(color: Colors.green.shade700, fontSize: 13),
-                            ),
-                          ],
-                          const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed: _savingPassword ? null : _changePassword,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: _pink,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: _savingPassword
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    'Update password',
-                                    style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+                    child: !_editingPassword
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '••••••••',
+                                  style: GoogleFonts.figtree(
+                                    fontSize: 16,
+                                    letterSpacing: 2,
+                                    color: Colors.black54,
                                   ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _startEditingPassword,
+                                child: Text(
+                                  'Edit',
+                                  style: GoogleFonts.figtree(
+                                    color: _navy,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Enter your current password to set a new one.',
+                                        style: GoogleFonts.figtree(
+                                          fontSize: 13,
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: _savingPassword ? null : _cancelEditingPassword,
+                                      child: Text(
+                                        'Cancel',
+                                        style: GoogleFonts.figtree(
+                                          color: Colors.black54,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                _passwordField(
+                                  controller: _currentPasswordController,
+                                  label: 'Current password',
+                                  obscure: _obscureCurrent,
+                                  onToggle: () =>
+                                      setState(() => _obscureCurrent = !_obscureCurrent),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return 'Enter your current password';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _passwordField(
+                                  controller: _newPasswordController,
+                                  label: 'New password',
+                                  obscure: _obscureNew,
+                                  onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                                  validator: (v) {
+                                    if (v == null || v.length < 8) {
+                                      return 'Use at least 8 characters';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                _passwordField(
+                                  controller: _confirmPasswordController,
+                                  label: 'Confirm new password',
+                                  obscure: _obscureConfirm,
+                                  onToggle: () =>
+                                      setState(() => _obscureConfirm = !_obscureConfirm),
+                                  validator: (v) {
+                                    if (v != _newPasswordController.text) {
+                                      return 'Passwords do not match';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                if (_passwordError != null) ...[
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _passwordError!,
+                                    style: GoogleFonts.figtree(
+                                      color: Colors.red.shade700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                FilledButton(
+                                  onPressed: _savingPassword ? null : _changePassword,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _pink,
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: _savingPassword
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : Text(
+                                          'Update password',
+                                          style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+                                        ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
                   ),
+                if (_passwordSuccess != null && !_editingPassword) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _passwordSuccess!,
+                    style: GoogleFonts.figtree(color: Colors.green.shade700, fontSize: 13),
+                  ),
+                ],
                 const SizedBox(height: 28),
                 Text(
                   'Subscription',
