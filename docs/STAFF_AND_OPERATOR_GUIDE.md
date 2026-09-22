@@ -248,9 +248,17 @@ To keep heavy users from emptying a month in one sitting:
 - Up to **1/10 of the monthly allotment** (~10,000 tokens) can be spent in a single day
 - Hitting that daily ceiling starts a **2-day cooldown** before chat works again
 - If the full bank is empty, the app shows how long until the **next anniversary allotment**
-- Daily cooldown / empty-bank copy: *You've run out of responses for now. Please wait…*
+- Chat copy: *You have used up your allotted responses currently. Please wait …*
 
-In **Pastoral → Users** (or Profiles) you can see **Tokens left**, **Tokens spent**, and the **token cycle anchor** (first-subscribe day). Use **Adjust tokens** on the profile (positive to add, negative to remove) for support comps. Do not tell members their exact bank balance or that unused tokens roll over.
+In **Pastoral → Users** (or Profiles):
+
+- See **Tokens left**, **Tokens spent**, and **Chat restriction** (active cooldown end time)
+- **Clear chat restriction** checkbox, or use the list action **Clear chat restrictions**
+- **Restrict chat for (days/hours)** to impose a restriction for any duration
+- Or edit **Chat restricted until** (`token_cooldown_until`) directly
+- **Adjust tokens** to add or remove balance
+
+Do not tell members their exact bank balance or that unused tokens roll over.
 
 Env knobs (operators): `MONTHLY_TOKEN_LIMIT_PER_USER`, `DAILY_TOKEN_BUDGET`, `TOKEN_COOLDOWN_DAYS`, `TOKEN_LIMIT_ENFORCE`.
 
