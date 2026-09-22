@@ -439,7 +439,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         ),
         title: Padding(
           padding: EdgeInsets.only(
-            top: isMobileOrTablet ? 10.0 : 20.0,
             left: isMobileOrTablet ? 0.0 : 12.0,
           ),
           child: GestureDetector(
@@ -456,26 +455,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         ),
         actions: [
           if (!isMobileOrTablet)
-            Padding(
-              padding: const EdgeInsets.only(top: 45.0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
-                  _NavButton(label: s.chat, onTap: _goToAiHome),
-                  _NavButton(
-                    label: s.events,
-                    onTap: () => _toggleEvents(open: true),
-                    active: _eventsOpen,
-                  ),
-                  _NavButton(
-                    label: s.media,
-                    onTap: () => _toggleEvents(open: false),
-                    active: true,
-                  ),
-                  const SizedBox(width: 40),
-                ],
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
+                _NavButton(label: s.chat, onTap: _goToAiHome),
+                _NavButton(
+                  label: s.events,
+                  onTap: () => _toggleEvents(open: true),
+                  active: _eventsOpen,
+                ),
+                _NavButton(
+                  label: s.media,
+                  onTap: () => _toggleEvents(open: false),
+                  active: true,
+                ),
+                const SizedBox(width: 40),
+              ],
             ),
         ],
       ),

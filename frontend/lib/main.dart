@@ -1787,7 +1787,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         toolbarHeight: isMobileOrTablet ? 100 : 120,
         title: Padding(
           padding: EdgeInsets.only(
-            top: isMobileOrTablet ? 10.0 : 20.0,
             left: isMobileOrTablet ? 10.0 : 60.0,
           ),
           child: GestureDetector(
@@ -1805,7 +1804,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
         actions: [
           if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
-              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              padding: const EdgeInsets.only(right: 4),
               child: IconButton(
                 tooltip: _s.prayerInbox,
                 onPressed: _openPrayerInbox,
@@ -1814,7 +1813,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
             ),
           if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
-              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              padding: const EdgeInsets.only(right: 4),
               child: IconButton(
                 tooltip: 'Response reports',
                 onPressed: _openResponseReportsInbox,
@@ -1850,18 +1849,15 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 : null,
           ),
           if (!isMobileOrTablet)
-            Padding(
-              padding: const EdgeInsets.only(top: 45.0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
-                  _buildNavButton(_s.chat, _focusChatNav),
-                  _buildNavButton(_s.events, _openChurchEvents),
-                  _buildNavButton(_s.media, _openMedia),
-                  const SizedBox(width: 40),
-                ],
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
+                _buildNavButton(_s.chat, _focusChatNav),
+                _buildNavButton(_s.events, _openChurchEvents),
+                _buildNavButton(_s.media, _openMedia),
+                const SizedBox(width: 40),
+              ],
             ),
         ],
       ),

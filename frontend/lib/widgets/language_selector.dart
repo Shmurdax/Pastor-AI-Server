@@ -79,10 +79,7 @@ class LanguageSelector extends StatelessWidget {
     return Padding(
       padding: dense
           ? const EdgeInsets.only(top: 4)
-          : EdgeInsets.only(
-              top: isMobile ? 20 : 45,
-              right: isMobile ? 4 : 8,
-            ),
+          : EdgeInsets.only(right: isMobile ? 4 : 8),
       child: Tooltip(
         message: s.language,
         child: Material(
