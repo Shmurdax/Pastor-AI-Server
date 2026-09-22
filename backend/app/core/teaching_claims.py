@@ -335,6 +335,27 @@ def looks_like_sermon_outline_request(query: str) -> bool:
     return bool(_SERMON_OUTLINE_REQUEST_RE.search(query or ""))
 
 
+def retrieval_search_text(query: str) -> str:
+    """Text embedded and reranked for an outline request.
+
+    "3 point sermon on faith" embeds the layout words sermon and point, so any
+    sermon window outranks a note whose subject is faith. Search the topic.
+    """
+    text = " ".join((query or "").split()).strip()
+    if not text or not looks_like_sermon_outline_request(text):
+        return text
+    distinctive = distinctive_query_tokens(query_topic_tokens(text))
+    if not distinctive:
+        return text
+    kept: list[str] = []
+    seen: set[str] = set()
+    for word in normalize_grounding_text(text).split():
+        if word in distinctive and word not in seen:
+            kept.append(word)
+            seen.add(word)
+    return " ".join(kept) if kept else text
+
+
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
     """Query words that identify the topic.
 

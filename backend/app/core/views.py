@@ -67,12 +67,7 @@ from .chat_sse import (
     wants_chat_stream,
 )
 from .bible_refs import scripture_refs_from_metadata
-from .teaching_claims import (
-    extract_teaching_claims,
-    format_generation_user_prompt,
-    format_teaching_claims_block,
-    resolve_teaching_claims,
-)
+from .teaching_claims import retrieval_search_text
 from .chat_retrieval import (
     format_reference_notes,
     is_bible_source,
@@ -813,7 +808,8 @@ class ChatAPIView(APIView):
                 metadata_payload_key="metadata",
             )
 
-            search_queries = [user_query_llm]
+            search_text = retrieval_search_text(user_query_llm)
+            search_queries = [search_text]
             candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
             logger.debug(
                 "Searching Qdrant with %s queries (k=%s each, session=%s): %s",
@@ -828,7 +824,7 @@ class ChatAPIView(APIView):
                 k_per_query=candidate_k,
             )
             scored_hits = rerank_scored_hits(
-                user_query_llm,
+                search_text,
                 scored_hits,
             )
             docs = [doc for doc, _score in scored_hits[:RETRIEVAL_K]]
@@ -838,11 +834,7 @@ class ChatAPIView(APIView):
                 max_chars=MAX_CONTEXT_CHARS,
                 preserve_order=True,
             )
-            teaching_claims = resolve_teaching_claims(
-                docs,
-                query=topic_query,
-                claims=extract_teaching_claims(docs, query=topic_query),
-            )
+            teaching_claims = []
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -883,7 +875,6 @@ class ChatAPIView(APIView):
                 logger.debug("Biblical character names detected: %s", biblical_names)
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
-                + format_teaching_claims_block(teaching_claims)
                 + language_reply_instruction("en")
                 + "\nREFERENCE NOTES:\n{context}"
             )
@@ -905,8 +896,7 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
-            human_content = format_generation_user_prompt(user_query_llm, teaching_claims)
-            human_content = f"{human_content}{language_generation_reminder()}"
+            human_content = f"{user_query_llm.strip()}{language_generation_reminder()}"
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
