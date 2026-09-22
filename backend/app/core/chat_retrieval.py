@@ -2735,6 +2735,14 @@ def _reference_note_rank(doc: Any, query: str, orig_index: int) -> tuple[float, 
     return (-score, orig_index)
 
 
+NOTES_ATTRIBUTION_PREFACE = (
+    "These excerpts are Pastor Don Nordin's and Susan Nordin's sermon notes and teaching. "
+    "Teach from them as their ministry, not as generic Christianity. "
+    "Name Pastor Don and Susan in the teaching so it is clear the answer is from their notes. "
+    "Do not invent a quotation to name them. Do not present Scripture as something they said."
+)
+
+
 def format_reference_notes(
     docs: Iterable[Any],
     source_label: Callable[[Any], str],
@@ -2760,7 +2768,9 @@ def format_reference_notes(
             key=lambda item: _reference_note_rank(item[1], query, item[0]),
         )
     blocks: list[str] = []
-    used = 0
+    preface = NOTES_ATTRIBUTION_PREFACE
+    used = len(preface) + 2
+    budget = max(len(preface), int(max_chars))
     for display_index, (_orig, doc) in enumerate(ranked, start=1):
         label = source_label(doc) or "Unknown"
         text = chunk_text(doc)
@@ -2768,14 +2778,16 @@ def format_reference_notes(
             continue
         block = f"[Note {display_index} | {label}]\n{text}"
         extra = (2 if blocks else 0) + len(block)
-        if used + extra > max_chars:
-            remain = max_chars - used - (2 if blocks else 0)
+        if used + extra > budget:
+            remain = budget - used - (2 if blocks else 0)
             if remain > 80:
                 blocks.append(block[:remain].rstrip())
             break
         blocks.append(block)
         used += extra
-    return "\n\n".join(blocks)
+    if not blocks:
+        return ""
+    return preface + "\n\n" + "\n\n".join(blocks)
 
 
 def uniqueness_instruction(
