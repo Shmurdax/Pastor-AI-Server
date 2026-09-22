@@ -15,6 +15,7 @@ class AuthUser {
     this.isStaff = false,
     this.isPremium = false,
     this.emailVerified = true,
+    this.hasUsablePassword = true,
     this.subscriptionStatus = 'free',
     this.billingPeriod = '',
     this.pendingBillingPeriod = '',
@@ -29,6 +30,8 @@ class AuthUser {
   final bool isStaff;
   final bool isPremium;
   final bool emailVerified;
+  /// False for Google-only accounts that never set a password.
+  final bool hasUsablePassword;
   final String subscriptionStatus;
   final String billingPeriod;
   final String pendingBillingPeriod;
@@ -53,6 +56,7 @@ class AuthUser {
         isStaff: json['is_staff'] as bool? ?? false,
         isPremium: json['is_premium'] as bool? ?? false,
         emailVerified: json['email_verified'] as bool? ?? true,
+        hasUsablePassword: json['has_usable_password'] as bool? ?? true,
         subscriptionStatus: json['subscription_status'] as String? ?? 'free',
         billingPeriod: json['billing_period'] as String? ?? '',
         pendingBillingPeriod: json['pending_billing_period'] as String? ?? '',
@@ -68,6 +72,7 @@ class AuthUser {
         'is_staff': isStaff,
         'is_premium': isPremium,
         'email_verified': emailVerified,
+        'has_usable_password': hasUsablePassword,
         'subscription_status': subscriptionStatus,
         'billing_period': billingPeriod,
         'pending_billing_period': pendingBillingPeriod,
@@ -83,6 +88,7 @@ class AuthUser {
     bool? isStaff,
     bool? isPremium,
     bool? emailVerified,
+    bool? hasUsablePassword,
     String? subscriptionStatus,
     String? billingPeriod,
     String? pendingBillingPeriod,
@@ -97,6 +103,7 @@ class AuthUser {
       isStaff: isStaff ?? this.isStaff,
       isPremium: isPremium ?? this.isPremium,
       emailVerified: emailVerified ?? this.emailVerified,
+      hasUsablePassword: hasUsablePassword ?? this.hasUsablePassword,
       subscriptionStatus: subscriptionStatus ?? this.subscriptionStatus,
       billingPeriod: billingPeriod ?? this.billingPeriod,
       pendingBillingPeriod: pendingBillingPeriod ?? this.pendingBillingPeriod,
@@ -317,6 +324,53 @@ class AuthService {
     }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return AuthUser.fromJson(body['user'] as Map<String, dynamic>? ?? body);
+  }
+
+  Future<void> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return;
+    }
+
+    final res = await _client.post(
+      Uri.parse(_resolveUrl('/api/auth/change-password/')),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+      body: jsonEncode({
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      }),
+    );
+    if (res.statusCode >= 200 && res.statusCode < 300) return;
+
+    final body = _tryDecode(res.body);
+    final detail = body?['detail'];
+    if (detail is String && detail.isNotEmpty) {
+      throw AuthException(detail);
+    }
+    // DRF field errors: { "new_password": ["..."], ... }
+    if (body != null) {
+      for (final entry in body.entries) {
+        final value = entry.value;
+        if (value is List && value.isNotEmpty) {
+          throw AuthException('${value.first}');
+        }
+        if (value is String && value.isNotEmpty) {
+          throw AuthException(value);
+        }
+      }
+    }
+    if (res.statusCode == 401) {
+      throw AuthException('Session expired. Please sign in again.');
+    }
+    throw AuthException('Could not change password (${res.statusCode}).');
   }
 
   Future<void> logout(String token) async {

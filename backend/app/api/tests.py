@@ -96,6 +96,103 @@ class AuthCsrfSessionTests(TestCase):
         self.assertIn("token", res.data)
 
 
+class ChangePasswordViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/auth/change-password/"
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+            first_name="Member",
+        )
+        self.token = Token.objects.create(user=self.member)
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_change_password_requires_auth(self):
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_change_password_success(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["ok"])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password("BrandNewPass123!"))
+        self.assertFalse(self.member.check_password("MemberPass123!"))
+
+    def test_change_password_rejects_wrong_current(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "WrongPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Current password", res.data["detail"])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password("MemberPass123!"))
+
+    def test_change_password_rejects_same_password(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_google_only_account_cannot_change_password(self):
+        google_user = User.objects.create_user(
+            username="google.only@example.com",
+            email="google.only@example.com",
+            first_name="Google",
+        )
+        google_user.set_unusable_password()
+        google_user.save()
+        token = Token.objects.create(user=google_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "anything",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Google", res.data["detail"])
+
+    def test_me_includes_has_usable_password(self):
+        self._auth()
+        res = self.client.get("/api/auth/me/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["user"]["has_usable_password"])
+
+
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class GoogleAuthViewTests(TestCase):
     def setUp(self):
@@ -119,6 +216,7 @@ class GoogleAuthViewTests(TestCase):
         self.assertEqual(res.data["user"]["name"], "Google User")
         self.assertEqual(res.data["user"]["avatar_url"], "https://example.com/avatar.png")
         self.assertTrue(res.data["user"]["email_verified"])
+        self.assertFalse(res.data["user"]["has_usable_password"])
 
         user = User.objects.get(username="google.user@example.com")
         self.assertFalse(user.has_usable_password())

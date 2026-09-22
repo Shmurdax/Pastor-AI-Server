@@ -18,6 +18,7 @@ from .email_verification import (
 )
 from .gmail_send import email_delivery_mode
 from .serializers import (
+    ChangePasswordSerializer,
     GoogleAuthSerializer,
     LoginSerializer,
     RegisterSerializer,
@@ -98,6 +99,49 @@ class LogoutView(APIView):
         # Deletes the token so it can no longer authenticate requests.
         Token.objects.filter(user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChangePasswordView(APIView):
+    """Authenticated password change; requires the current password."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.has_usable_password():
+            return Response(
+                {
+                    "detail": (
+                        "This account signed in with Google and has no password "
+                        "to change."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"user": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        current_password = serializer.validated_data["current_password"]
+        new_password = serializer.validated_data["new_password"]
+
+        if not request.user.check_password(current_password):
+            return Response(
+                {"detail": "Current password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if current_password == new_password:
+            return Response(
+                {"detail": "New password must be different from the current password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=["password"])
+        dump_persistent_postgres()
+        return Response({"ok": True, "detail": "Password updated."})
 
 
 class GoogleAuthView(APIView):

@@ -54,7 +54,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Media library'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
     expect(find.text('View plans'), findsNothing);
+    expect(find.text('Update payment method'), findsNothing);
+    expect(find.text('Unsubscribe'), findsNothing);
   });
 
   testWidgets('account chip is visible for a signed-in user', (tester) async {

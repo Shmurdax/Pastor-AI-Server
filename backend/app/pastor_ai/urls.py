@@ -10,6 +10,7 @@ from django.views.generic import RedirectView
 from .admin_url import frontend_catch_all_pattern
 from api.auth_views import (
     AuthConfigView,
+    ChangePasswordView,
     GoogleAuthView,
     LoginView,
     LogoutView,
@@ -78,6 +79,7 @@ urlpatterns = [
     path('api/auth/google/', GoogleAuthView.as_view()),
     path('api/auth/me/', MeView.as_view()),
     path('api/auth/logout/', LogoutView.as_view()),
+    path('api/auth/change-password/', ChangePasswordView.as_view()),
     path('api/auth/send-email-code/', SendEmailCodeView.as_view()),
     path('api/auth/verify-email-code/', VerifyEmailCodeView.as_view()),
 

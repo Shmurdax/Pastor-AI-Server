@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
-import 'package:flutter_application_1/screens/update_payment_method_screen.dart';
+import 'package:flutter_application_1/screens/settings_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/brand_gradient.dart';
@@ -163,52 +163,30 @@ Future<void> showAccountProfileSheet(
                     ),
                   ),
                 ),
-                if (user.canManagePaymentMethod) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const UpdatePaymentMethodScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.credit_card, color: _navy),
-                      label: Text(
-                        'Update payment method',
-                        style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: _navy, width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(apiService: apiService),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.settings_outlined, color: _navy),
+                    label: Text(
+                      'Settings',
+                      style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _navy, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
-                ],
-                if (user.isPaidPremium && !user.cancelAtPeriodEnd) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _unsubscribeFromPremium(
-                        hostContext: context,
-                        sheetContext: ctx,
-                        apiService: apiService,
-                      ),
-                      icon: const Icon(Icons.cancel_outlined, color: _pink),
-                      label: Text('Unsubscribe', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: _pink),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
                 const SizedBox(height: 12),
                 if (user.isStaff) ...[
                   SizedBox(
@@ -285,65 +263,4 @@ Future<void> showAccountProfileSheet(
       );
     },
   );
-}
-
-Future<void> _unsubscribeFromPremium({
-  required BuildContext hostContext,
-  required BuildContext sheetContext,
-  required ApiService apiService,
-}) async {
-  final auth = hostContext.read<AuthController>();
-  final user = auth.user;
-  if (user == null || !user.isPaidPremium) return;
-
-  final confirmed = await showDialog<bool>(
-    context: sheetContext,
-    builder: (dialogCtx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text('Unsubscribe from Premium?', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
-      content: Text(
-        'You will keep Premium benefits until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. '
-        'After that, access to Nordin\'s AI ends and auto-renewal stops.',
-        style: GoogleFonts.figtree(height: 1.45),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogCtx).pop(false),
-          child: Text('Keep Premium', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.w600)),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogCtx).pop(true),
-          style: FilledButton.styleFrom(backgroundColor: _pink),
-          child: Text('Unsubscribe', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
-        ),
-      ],
-    ),
-  );
-  if (confirmed != true) return;
-
-  try {
-    apiService.setAccessToken(auth.token);
-    final result = await apiService.cancelSubscription();
-    final userJson = result['user'];
-    if (userJson is Map<String, dynamic>) {
-      await auth.applyUser(AuthUser.fromJson(userJson));
-    } else {
-      await auth.refreshMe();
-    }
-    if (!hostContext.mounted) return;
-    ScaffoldMessenger.of(hostContext).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Auto-renewal is off. Premium stays until ${formatPremiumAccessUntil(auth.user?.currentPeriodEnd)}.',
-        ),
-      ),
-    );
-  } catch (e) {
-    if (!hostContext.mounted) return;
-    ScaffoldMessenger.of(hostContext).showSnackBar(
-      SnackBar(
-        content: Text(e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '')),
-      ),
-    );
-  }
 }

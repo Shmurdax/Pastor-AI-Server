@@ -10,13 +10,14 @@ from .models import MediaVideo
 class UserSerializer(serializers.ModelSerializer):
     """Shaped to match the Flutter AuthUser.fromJson() parser:
     { id, email, name, avatar_url, is_staff, is_premium, email_verified,
-      subscription_status, billing_period, pending_billing_period,
-      cancel_at_period_end, current_period_end }
+      has_usable_password, subscription_status, billing_period,
+      pending_billing_period, cancel_at_period_end, current_period_end }
     """
     name = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
     is_premium = serializers.SerializerMethodField()
     email_verified = serializers.SerializerMethodField()
+    has_usable_password = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     pending_billing_period = serializers.SerializerMethodField()
@@ -33,6 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_staff",
             "is_premium",
             "email_verified",
+            "has_usable_password",
             "subscription_status",
             "billing_period",
             "pending_billing_period",
@@ -67,6 +69,9 @@ class UserSerializer(serializers.ModelSerializer):
             return True
         profile = self._profile(obj)
         return bool(profile and profile.email_verified)
+
+    def get_has_usable_password(self, obj):
+        return obj.has_usable_password()
 
     def get_subscription_status(self, obj):
         profile = self._profile(obj)
@@ -130,6 +135,15 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_new_password(self, value):
+        validate_password(value, user=self.context.get("user"))
+        return value
 
 
 class GoogleAuthSerializer(serializers.Serializer):
