@@ -121,11 +121,14 @@ def _parse_service_account_info(raw: str, *, source: str) -> dict | None:
             return None
     try:
         info = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         logger.warning(
-            "Gmail credentials from %s are not valid JSON (%s bytes).",
+            "Gmail credentials from %s are not valid JSON (%s bytes, %s). "
+            "A complete Google key is usually 2300+ bytes; re-download it and "
+            "copy the file (do not paste into nano).",
             source,
             len(text.encode("utf-8")),
+            exc,
         )
         return None
     if not isinstance(info, dict):

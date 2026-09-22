@@ -271,7 +271,7 @@ print(data.get("client_email", ""))
     GMAIL_SERVICE_ACCOUNT_JSON=""
     log "Gmail key ${_gmail_json} (${_gmail_bytes} bytes) as $(tr -d '\n' < /tmp/pastor-gmail-email) → ${GMAIL_SENDER:-info@thenordins.org}"
   else
-    warn "Gmail key ${_gmail_json} is not a complete service-account JSON (${_gmail_bytes} bytes; a real key is usually ~2300+). Re-download it from Google Cloud."
+    warn "Gmail key ${_gmail_json} is not a complete service-account JSON (${_gmail_bytes} bytes; a real key is usually ~2300+). Re-download it and run: bash $WS/scripts/install-gmail-key.sh /path/to/key.json"
   fi
 else
   warn "Gmail key missing at $WS/secrets/gmail-sender.json — signup codes will not email"
