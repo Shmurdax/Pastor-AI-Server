@@ -25,7 +25,7 @@ const _pink = Color(0xFFa1375a);
 
 const premiumPerks = [
   'Customized, biblical AI chat experience',
-  'Access to daily 15-minute devotional videos',
+  'Access to Walk through the Word videos',
   'Over 40 years of study notes and preached on material',
 ];
 
@@ -600,8 +600,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Replace a card that is expired or about to expire. '
-                          'Future renewals use the new card.',
+                          'Add a card or replace one that is expired. '
+                          'Saving a new card removes the previous one from your account.',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
                         ),

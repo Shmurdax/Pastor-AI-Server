@@ -1751,14 +1751,30 @@ class PaymentMethodUpdateTests(TestCase):
         res = self.client.post(self.url, {}, format="json")
         self.assertEqual(res.status_code, 400)
 
-    def test_mock_premium_without_stripe_customer_is_rejected(self):
+    def test_premium_without_stripe_customer_creates_customer_and_session(self):
         profile = self.premium.profile
         profile.stripe_customer_id = ""
         profile.save(update_fields=["stripe_customer_id"])
-        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
-        res = self.client.post(self.url, {}, format="json")
-        self.assertEqual(res.status_code, 400)
-        self.assertIn("no Stripe card on file", res.data["detail"])
+        session = {"id": "cs_setup_new_cus", "client_secret": "seti_secret_new"}
+        with patch(
+            "api.billing_views.stripe.Customer.create",
+            return_value={"id": "cus_created_for_pm"},
+        ) as create_customer, patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create_session:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+            res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["session_id"], "cs_setup_new_cus")
+        create_customer.assert_called_once()
+        self.assertEqual(
+            create_customer.call_args.kwargs["email"],
+            "premium@church.org",
+        )
+        self.assertEqual(create_session.call_args.kwargs["customer"], "cus_created_for_pm")
+        profile.refresh_from_db()
+        self.assertEqual(profile.stripe_customer_id, "cus_created_for_pm")
 
     def test_creates_setup_checkout_session(self):
         session = {"id": "cs_setup_1", "client_secret": "seti_secret"}
@@ -1801,7 +1817,7 @@ class PaymentMethodUpdateTests(TestCase):
             res = self.client.post(self.url, {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
 
-    def test_session_status_sets_default_payment_method(self):
+    def test_session_status_sets_default_payment_method_and_detaches_old(self):
         setup_session = {
             "id": "cs_setup_done",
             "mode": "setup",
@@ -1820,6 +1836,12 @@ class PaymentMethodUpdateTests(TestCase):
             "items": {"data": []},
             "schedule": None,
         }
+        listed_methods = {
+            "data": [
+                {"id": "pm_old_card"},
+                {"id": "pm_new_card"},
+            ]
+        }
         with patch(
             "api.billing_views.stripe.checkout.Session.retrieve",
             return_value=setup_session,
@@ -1831,6 +1853,11 @@ class PaymentMethodUpdateTests(TestCase):
         ) as modify_customer, patch(
             "api.billing_views.stripe.Subscription.modify"
         ) as modify_sub, patch(
+            "api.billing_views.stripe.PaymentMethod.list",
+            return_value=listed_methods,
+        ) as list_methods, patch(
+            "api.billing_views.stripe.PaymentMethod.detach"
+        ) as detach_method, patch(
             "api.billing_views.stripe.Invoice.list",
             return_value=invoices,
         ), patch(
@@ -1856,6 +1883,12 @@ class PaymentMethodUpdateTests(TestCase):
             "sub_pm_test",
             default_payment_method="pm_new_card",
         )
+        list_methods.assert_called_once_with(
+            customer="cus_pm_test",
+            type="card",
+            limit=100,
+        )
+        detach_method.assert_called_once_with("pm_old_card")
         pay_invoice.assert_called_once_with("in_open_1")
 
     def test_setup_webhook_does_not_treat_session_as_new_subscription(self):
@@ -1887,6 +1920,11 @@ class PaymentMethodUpdateTests(TestCase):
         ) as modify_customer, patch(
             "api.billing_views.stripe.Subscription.modify"
         ), patch(
+            "api.billing_views.stripe.PaymentMethod.list",
+            return_value={"data": [{"id": "pm_hook"}]},
+        ), patch(
+            "api.billing_views.stripe.PaymentMethod.detach"
+        ) as detach_method, patch(
             "api.billing_views.stripe.Invoice.list",
             return_value=invoices,
         ), patch(
@@ -1895,6 +1933,7 @@ class PaymentMethodUpdateTests(TestCase):
         ):
             view._on_setup_completed(session)
         modify_customer.assert_called_once()
+        detach_method.assert_not_called()
         self.premium.profile.refresh_from_db()
         self.assertEqual(self.premium.profile.billing_period, "monthly")
         self.assertEqual(self.premium.profile.subscription_status, "active")
