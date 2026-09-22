@@ -548,12 +548,24 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> str:
+def format_generation_user_prompt(
+    query: str,
+    claims: Iterable[str] | None,
+    followup_focus: str = "",
+) -> str:
     """Last-turn lock so the first generate paraphrases retrieved theses."""
     question = " ".join((query or "").split()).strip()
     points = [item.strip() for item in (claims or []) if item and str(item).strip()]
     sense = query_topic_sense(question)
     lines: list[str] = []
+    focus = " ".join((followup_focus or "").split())
+    if focus:
+        lines.append(
+            "This is a follow-up. Stay on this topic from the previous answer: "
+            f"{focus}. Deepen that topic from the numbered sermon points below. "
+            "Do not answer a different sermon subject."
+        )
+        lines.append("")
     if points:
         lines.append(
             "Paraphrase every numbered sermon point below. "

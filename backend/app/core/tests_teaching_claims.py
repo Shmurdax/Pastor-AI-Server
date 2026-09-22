@@ -197,6 +197,15 @@ class TeachingClaimTests(unittest.TestCase):
 
         empty = format_generation_user_prompt("Can Christians drink?", [])
         self.assertIn("did not yield teaching points", empty)
+        self.assertNotIn("This is a follow-up", outline)
+        followup = format_generation_user_prompt(
+            "Expand on the first point",
+            ["Faith is the conviction of things hoped for and not yet seen."],
+            followup_focus="faith — Faith as Evidence of Things Unseen",
+        )
+        self.assertIn("Faith as Evidence of Things Unseen", followup)
+        self.assertIn("Do not answer a different sermon subject", followup)
+        self.assertIn("Expand on the first point", followup)
         self.assertIn("Do not answer from general Christian knowledge", empty)
 
     def test_skips_memoir_and_off_topic_repair_for_faith_query(self):

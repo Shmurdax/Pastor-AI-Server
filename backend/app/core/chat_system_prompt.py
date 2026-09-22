@@ -379,6 +379,38 @@ def format_opening_recall_steer(opening: str) -> str:
     return OPENING_RECALL_STEER.replace("{opening}", text)
 
 
+def format_followup_topic_steer(
+    topic: str,
+    point_title: str = "",
+    point_body: str = "",
+) -> str:
+    """Keep a follow-up on the topic and point already taught."""
+    lines = [
+        "<follow_up>",
+        "This is a follow-up in the same chat. Stay on this topic:",
+        (topic or "").strip() or "(the previous topic)",
+    ]
+    title = " ".join((point_title or "").split())
+    body = " ".join((point_body or "").split())
+    if title:
+        lines.append("The user asked to go deeper on this part of the previous answer:")
+        lines.append(title)
+        if body:
+            lines.append(body[:400])
+        lines.append(
+            "Deepen that part from REFERENCE NOTES and REQUIRED TEACHING POINTS "
+            "that belong to this topic. You may bring in other retrieved notes on "
+            "the same topic. Do not switch to a different sermon subject."
+        )
+    else:
+        lines.append(
+            "Answer from REFERENCE NOTES about this topic, including other retrieved "
+            "notes that belong to the same topic. Do not switch to a different sermon subject."
+        )
+    lines.append("</follow_up>")
+    return "\n".join(lines) + "\n"
+
+
 CONVERSATIONAL_STEER = (
     "This is a casual greeting or social check-in—not a teaching request. "
     "Reply in one short warm conversational paragraph (about 2–4 sentences). "

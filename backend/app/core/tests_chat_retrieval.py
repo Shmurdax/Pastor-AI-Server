@@ -14,6 +14,7 @@ from core.chat_retrieval import (
     classify_followup_intent,
     ensure_source_media_mix,
     expand_search_queries,
+    extract_numbered_answer_points,
     extract_used_headings,
     extract_used_quotes,
     extract_used_verse_refs,
@@ -28,6 +29,7 @@ from core.chat_retrieval import (
     looks_like_format_followup,
     looks_like_library_pull,
     pin_docs_to_strong_title_matches,
+    resolve_followup_retrieval,
     restrict_docs_to_primary_source,
     retain_title_matches,
     merge_scored_hits,
@@ -126,6 +128,63 @@ class ChatRetrievalTests(unittest.TestCase):
         anchor = topic_anchor_query(current, [prior])
         self.assertIn("marriage", anchor.lower())
         self.assertIn("week one", anchor.lower())
+
+    def test_expand_first_point_searches_that_point_not_the_verb(self):
+        prior = "Give me a 3 point sermon outline on faith"
+        answer = (
+            "1. **Faith as Evidence of Things Unseen:** Faith is the conviction "
+            "that what we hope for will come to pass.\n"
+            "2. **Contaminated Seed of Faith:** The fall of humanity introduced sin.\n"
+            "3. **Faith in the Face of Adversity:** True faith is tested through adversity.\n"
+        )
+        current = "Expand on the first point"
+        self.assertEqual(
+            classify_followup_intent(current, [prior], [answer]),
+            INTENT_CLARIFY,
+        )
+        points = extract_numbered_answer_points(answer)
+        self.assertEqual(points[0]["title"], "Faith as Evidence of Things Unseen")
+        self.assertEqual(points[1]["title"], "Contaminated Seed of Faith")
+        resolved = resolve_followup_retrieval(current, [prior], [answer])
+        self.assertIsNotNone(resolved)
+        lowered = resolved.query.lower()
+        self.assertIn("faith", lowered)
+        self.assertIn("evidence", lowered)
+        self.assertNotIn("expand", lowered)
+        self.assertEqual(resolved.point_title, "Faith as Evidence of Things Unseen")
+        queries = expand_search_queries(
+            resolved.query,
+            [prior],
+            prior_ai_texts=[answer],
+        )
+        joined = " | ".join(queries).lower()
+        self.assertIn("faith", joined)
+        self.assertIn("evidence", joined)
+        self.assertFalse(any(item.lower().split()[:1] == ["expand"] for item in queries), queries)
+
+    def test_expand_second_point_does_not_reuse_the_first_heading(self):
+        prior = "Give me a 3 point sermon outline on faith"
+        answer = (
+            "1. **Faith as Evidence of Things Unseen:** Faith is the conviction "
+            "that what we hope for will come to pass.\n"
+            "2. **Contaminated Seed of Faith:** The fall of humanity introduced sin.\n"
+        )
+        resolved = resolve_followup_retrieval(
+            "Expand on the second point",
+            [prior],
+            [answer],
+        )
+        self.assertEqual(resolved.point_title, "Contaminated Seed of Faith")
+        self.assertIn("contaminated", resolved.query.lower())
+        self.assertNotIn("evidence of things unseen", resolved.query.lower())
+
+    def test_first_turn_faith_outline_is_not_rewritten_as_a_followup(self):
+        queries = expand_search_queries("Give me a 3 point sermon outline on faith")
+        joined = " | ".join(queries).lower()
+        self.assertIn("faith", joined)
+        self.assertIsNone(
+            resolve_followup_retrieval("Give me a 3 point sermon outline on faith", [], [])
+        )
 
     def test_topic_anchor_keeps_opening_question_after_later_turns(self):
         anchor = topic_anchor_query(
