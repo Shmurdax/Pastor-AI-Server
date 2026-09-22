@@ -101,7 +101,7 @@ void main() {
     expect(find.text('Unsubscribe from Premium'), findsOneWidget);
   });
 
-  testWidgets('profile sheet includes update payment method for premium', (
+  testWidgets('profile sheet includes Settings and omits payment/unsubscribe', (
     tester,
   ) async {
     final auth = _readyAuth(
@@ -136,11 +136,12 @@ void main() {
     await tester.tap(find.text('Open profile'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Update payment method'), findsOneWidget);
-    expect(find.text('Unsubscribe'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Update payment method'), findsNothing);
+    expect(find.text('Unsubscribe'), findsNothing);
   });
 
-  testWidgets('free members do not see update payment method in the profile sheet', (
+  testWidgets('free members still see Settings in the profile sheet', (
     tester,
   ) async {
     final auth = _readyAuth(
@@ -173,6 +174,7 @@ void main() {
     await tester.tap(find.text('Open profile'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Update payment method'), findsNothing);
   });
 

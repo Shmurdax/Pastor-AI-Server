@@ -140,13 +140,13 @@ cd frontend && flutter build web --release --dart-define=API_BASE_URL=
 `start.sh` / `install.sh` automatically prefer `frontend/build/web` when present.
 Same-origin API calls (`API_BASE_URL` empty) talk to Django on the ngrok/public URL.
 
-## Vimeo Daily Devotionals
+## Vimeo Walk through the Word
 
 Media gallery videos sync from a **Vimeo Folder** (unlisted videos supported).
 
 Example folder: `https://vimeo.com/user/21759939/folder/24205069`
 
-1. Keep devotionals in that folder; allow embedding on each video (add your site domain if required).
+1. Keep Walk through the Word videos in that folder; allow embedding on each video (add your site domain if required).
 2. Create an API token with `public` + `private` scopes (token user must be able to read the folder).
 3. Set in `tokens.env` then `bash apply-tokens.sh`:
 

@@ -15,6 +15,36 @@ class AppStrings {
   String get subscribe => _t('subscribe');
   String get prayerInbox => _t('prayerInbox');
   String get language => _t('language');
+  String get settings => _t('settings');
+  String get account => _t('account');
+  String get subscription => _t('subscription');
+  String get yourAccount => _t('yourAccount');
+  String get mediaLibrary => _t('mediaLibrary');
+  String get signOut => _t('signOut');
+  String get password => _t('password');
+  String get edit => _t('edit');
+  String get updateName => _t('updateName');
+  String get updateEmail => _t('updateEmail');
+  String get updatePassword => _t('updatePassword');
+  String get nameUpdated => _t('nameUpdated');
+  String get emailUpdated => _t('emailUpdated');
+  String get passwordUpdated => _t('passwordUpdated');
+  String get currentPassword => _t('currentPassword');
+  String get newPassword => _t('newPassword');
+  String get confirmNewPassword => _t('confirmNewPassword');
+  String get newEmail => _t('newEmail');
+  String get responseReports => _t('responseReports');
+  String get signInToManageSettings => _t('signInToManageSettings');
+  String get googleEmailUnavailable => _t('googleEmailUnavailable');
+  String get googlePasswordUnavailable => _t('googlePasswordUnavailable');
+  String get updateNameHint => _t('updateNameHint');
+  String get updateEmailHint => _t('updateEmailHint');
+  String get updatePasswordHint => _t('updatePasswordHint');
+  String get enterAName => _t('enterAName');
+  String get enterCurrentPassword => _t('enterCurrentPassword');
+  String get passwordTooShort => _t('passwordTooShort');
+  String get passwordsDoNotMatch => _t('passwordsDoNotMatch');
+  String get languageSettingHint => _t('languageSettingHint');
 
   String get sermons => _t('sermons');
   String get chats => _t('chats');
@@ -110,6 +140,41 @@ const Map<String, Map<String, String>> _tables = {
     'subscribe': 'Subscribe',
     'prayerInbox': 'Prayer inbox',
     'language': 'Language',
+    'settings': 'Settings',
+    'account': 'Account',
+    'subscription': 'Subscription',
+    'yourAccount': 'Your account',
+    'mediaLibrary': 'Media library',
+    'signOut': 'Sign out',
+    'password': 'Password',
+    'edit': 'Edit',
+    'updateName': 'Update name',
+    'updateEmail': 'Update email',
+    'updatePassword': 'Update password',
+    'nameUpdated': 'Name updated.',
+    'emailUpdated': 'Email updated.',
+    'passwordUpdated': 'Password updated.',
+    'currentPassword': 'Current password',
+    'newPassword': 'New password',
+    'confirmNewPassword': 'Confirm new password',
+    'newEmail': 'New email',
+    'responseReports': 'Response reports',
+    'signInToManageSettings': 'Sign in to manage settings.',
+    'googleEmailUnavailable':
+        'You signed in with Google. Email changes require a password '
+        'and are not available for this account.',
+    'googlePasswordUnavailable':
+        'You signed in with Google. Password changes are not available '
+        'for this account.',
+    'updateNameHint': 'Update the name shown on your account.',
+    'updateEmailHint': 'Enter your current password to change your email.',
+    'updatePasswordHint': 'Enter your current password to set a new one.',
+    'enterAName': 'Enter a name',
+    'enterCurrentPassword': 'Enter your current password',
+    'passwordTooShort': 'Use at least 8 characters',
+    'passwordsDoNotMatch': 'Passwords do not match',
+    'languageSettingHint':
+        'Choose the language used across the app, including navigation and menus.',
     'sermons': 'Sermons',
     'chats': 'Chats',
     'sermonLibrary': 'Sermon Library',
@@ -199,6 +264,41 @@ const Map<String, Map<String, String>> _tables = {
     'subscribe': 'Suscribirse',
     'prayerInbox': 'Bandeja de oración',
     'language': 'Idioma',
+    'settings': 'Configuración',
+    'account': 'Cuenta',
+    'subscription': 'Suscripción',
+    'yourAccount': 'Tu cuenta',
+    'mediaLibrary': 'Biblioteca de medios',
+    'signOut': 'Cerrar sesión',
+    'password': 'Contraseña',
+    'edit': 'Editar',
+    'updateName': 'Actualizar nombre',
+    'updateEmail': 'Actualizar correo',
+    'updatePassword': 'Actualizar contraseña',
+    'nameUpdated': 'Nombre actualizado.',
+    'emailUpdated': 'Correo actualizado.',
+    'passwordUpdated': 'Contraseña actualizada.',
+    'currentPassword': 'Contraseña actual',
+    'newPassword': 'Nueva contraseña',
+    'confirmNewPassword': 'Confirmar nueva contraseña',
+    'newEmail': 'Nuevo correo',
+    'responseReports': 'Informes de respuestas',
+    'signInToManageSettings': 'Inicia sesión para administrar la configuración.',
+    'googleEmailUnavailable':
+        'Iniciaste sesión con Google. Los cambios de correo requieren una '
+        'contraseña y no están disponibles para esta cuenta.',
+    'googlePasswordUnavailable':
+        'Iniciaste sesión con Google. Los cambios de contraseña no están '
+        'disponibles para esta cuenta.',
+    'updateNameHint': 'Actualiza el nombre que se muestra en tu cuenta.',
+    'updateEmailHint': 'Ingresa tu contraseña actual para cambiar tu correo.',
+    'updatePasswordHint': 'Ingresa tu contraseña actual para establecer una nueva.',
+    'enterAName': 'Ingresa un nombre',
+    'enterCurrentPassword': 'Ingresa tu contraseña actual',
+    'passwordTooShort': 'Usa al menos 8 caracteres',
+    'passwordsDoNotMatch': 'Las contraseñas no coinciden',
+    'languageSettingHint':
+        'Elige el idioma de toda la app, incluida la navegación y los menús.',
     'sermons': 'Sermones',
     'chats': 'Chats',
     'sermonLibrary': 'Biblioteca de sermones',

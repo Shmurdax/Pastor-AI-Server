@@ -1,6 +1,6 @@
 import 'package:flutter_application_1/models/media_item.dart';
 
-/// Placeholder catalog for the Daily Devotionals collection (video only).
+/// Placeholder catalog for the Walk through the Word collection (video only).
 /// Real video URLs/assets will replace entries when media is ingested.
 class MediaCatalog {
   static const stats = MediaCatalogStats(
@@ -9,7 +9,7 @@ class MediaCatalog {
     startingPriceLabel: r'$15/month',
   );
 
-  static const creatorTagline = "Daily Devotionals from The Nordin's";
+  static const creatorTagline = "Walk through the Word from The Nordin's";
 
   /// Free intro shown to everyone; remaining items require Premium.
   static final List<MediaItem> allItems = [
@@ -17,7 +17,7 @@ class MediaCatalog {
       id: 'preview-welcome',
       title: 'Welcome to Media',
       description:
-          'A short preview of the Daily Devotionals library. '
+          'A short preview of the Walk through the Word library. '
           'Full episodes unlock with Premium.',
       publishedAt: DateTime(2026, 8, 1),
       contentType: MediaContentType.video,

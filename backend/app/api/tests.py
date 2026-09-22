@@ -96,6 +96,210 @@ class AuthCsrfSessionTests(TestCase):
         self.assertIn("token", res.data)
 
 
+class ChangePasswordViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/auth/change-password/"
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+            first_name="Member",
+        )
+        self.token = Token.objects.create(user=self.member)
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_change_password_requires_auth(self):
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_change_password_success(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertTrue(res.data["ok"])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password("BrandNewPass123!"))
+        self.assertFalse(self.member.check_password("MemberPass123!"))
+
+    def test_change_password_rejects_wrong_current(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "WrongPass123!",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Current password", res.data["detail"])
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.check_password("MemberPass123!"))
+
+    def test_change_password_rejects_same_password(self):
+        self._auth()
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "MemberPass123!",
+                "new_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_google_only_account_cannot_change_password(self):
+        google_user = User.objects.create_user(
+            username="google.only@example.com",
+            email="google.only@example.com",
+            first_name="Google",
+        )
+        google_user.set_unusable_password()
+        google_user.save()
+        token = Token.objects.create(user=google_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        res = self.client.post(
+            self.url,
+            {
+                "current_password": "anything",
+                "new_password": "BrandNewPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Google", res.data["detail"])
+
+    def test_me_includes_has_usable_password(self):
+        self._auth()
+        res = self.client.get("/api/auth/me/")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.data["user"]["has_usable_password"])
+
+
+class ChangeNameEmailViewTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.member = User.objects.create_user(
+            username="member@church.org",
+            email="member@church.org",
+            password="MemberPass123!",
+            first_name="Member",
+            last_name="User",
+        )
+        self.token = Token.objects.create(user=self.member)
+        User.objects.create_user(
+            username="taken@church.org",
+            email="taken@church.org",
+            password="TakenPass123!",
+            first_name="Taken",
+        )
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
+
+    def test_change_name_success(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-name/",
+            {"name": "Jane Member"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["user"]["name"], "Jane Member")
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.first_name, "Jane")
+        self.assertEqual(self.member.last_name, "Member")
+
+    def test_change_name_requires_auth(self):
+        res = self.client.post(
+            "/api/auth/change-name/",
+            {"name": "Jane Member"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_change_email_success(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "jane.new@church.org",
+                "current_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["user"]["email"], "jane.new@church.org")
+        self.assertFalse(res.data["user"]["email_verified"])
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.username, "jane.new@church.org")
+        self.assertEqual(self.member.email, "jane.new@church.org")
+        self.assertFalse(self.member.profile.email_verified)
+
+    def test_change_email_requires_password(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "jane.new@church.org",
+                "current_password": "WrongPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Current password", res.data["detail"])
+
+    def test_change_email_rejects_taken_address(self):
+        self._auth()
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "taken@church.org",
+                "current_password": "MemberPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_google_only_cannot_change_email(self):
+        google_user = User.objects.create_user(
+            username="google.only@example.com",
+            email="google.only@example.com",
+            first_name="Google",
+        )
+        google_user.set_unusable_password()
+        google_user.save()
+        token = Token.objects.create(user=google_user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        res = self.client.post(
+            "/api/auth/change-email/",
+            {
+                "email": "new.google@example.com",
+                "current_password": "anything",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Google", res.data["detail"])
+
+
 @override_settings(GOOGLE_CLIENT_ID="test-google-client.apps.googleusercontent.com")
 class GoogleAuthViewTests(TestCase):
     def setUp(self):
@@ -119,6 +323,7 @@ class GoogleAuthViewTests(TestCase):
         self.assertEqual(res.data["user"]["name"], "Google User")
         self.assertEqual(res.data["user"]["avatar_url"], "https://example.com/avatar.png")
         self.assertTrue(res.data["user"]["email_verified"])
+        self.assertFalse(res.data["user"]["has_usable_password"])
 
         user = User.objects.get(username="google.user@example.com")
         self.assertFalse(user.has_usable_password())
@@ -1546,14 +1751,30 @@ class PaymentMethodUpdateTests(TestCase):
         res = self.client.post(self.url, {}, format="json")
         self.assertEqual(res.status_code, 400)
 
-    def test_mock_premium_without_stripe_customer_is_rejected(self):
+    def test_premium_without_stripe_customer_creates_customer_and_session(self):
         profile = self.premium.profile
         profile.stripe_customer_id = ""
         profile.save(update_fields=["stripe_customer_id"])
-        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
-        res = self.client.post(self.url, {}, format="json")
-        self.assertEqual(res.status_code, 400)
-        self.assertIn("no Stripe card on file", res.data["detail"])
+        session = {"id": "cs_setup_new_cus", "client_secret": "seti_secret_new"}
+        with patch(
+            "api.billing_views.stripe.Customer.create",
+            return_value={"id": "cus_created_for_pm"},
+        ) as create_customer, patch(
+            "api.billing_views.stripe.checkout.Session.create",
+            return_value=session,
+        ) as create_session:
+            self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+            res = self.client.post(self.url, {}, format="json")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["session_id"], "cs_setup_new_cus")
+        create_customer.assert_called_once()
+        self.assertEqual(
+            create_customer.call_args.kwargs["email"],
+            "premium@church.org",
+        )
+        self.assertEqual(create_session.call_args.kwargs["customer"], "cus_created_for_pm")
+        profile.refresh_from_db()
+        self.assertEqual(profile.stripe_customer_id, "cus_created_for_pm")
 
     def test_creates_setup_checkout_session(self):
         session = {"id": "cs_setup_1", "client_secret": "seti_secret"}
@@ -1596,7 +1817,7 @@ class PaymentMethodUpdateTests(TestCase):
             res = self.client.post(self.url, {}, format="json")
         self.assertEqual(res.status_code, 200, res.data)
 
-    def test_session_status_sets_default_payment_method(self):
+    def test_session_status_sets_default_payment_method_and_detaches_old(self):
         setup_session = {
             "id": "cs_setup_done",
             "mode": "setup",
@@ -1615,6 +1836,12 @@ class PaymentMethodUpdateTests(TestCase):
             "items": {"data": []},
             "schedule": None,
         }
+        listed_methods = {
+            "data": [
+                {"id": "pm_old_card"},
+                {"id": "pm_new_card"},
+            ]
+        }
         with patch(
             "api.billing_views.stripe.checkout.Session.retrieve",
             return_value=setup_session,
@@ -1626,6 +1853,11 @@ class PaymentMethodUpdateTests(TestCase):
         ) as modify_customer, patch(
             "api.billing_views.stripe.Subscription.modify"
         ) as modify_sub, patch(
+            "api.billing_views.stripe.PaymentMethod.list",
+            return_value=listed_methods,
+        ) as list_methods, patch(
+            "api.billing_views.stripe.PaymentMethod.detach"
+        ) as detach_method, patch(
             "api.billing_views.stripe.Invoice.list",
             return_value=invoices,
         ), patch(
@@ -1651,6 +1883,12 @@ class PaymentMethodUpdateTests(TestCase):
             "sub_pm_test",
             default_payment_method="pm_new_card",
         )
+        list_methods.assert_called_once_with(
+            customer="cus_pm_test",
+            type="card",
+            limit=100,
+        )
+        detach_method.assert_called_once_with("pm_old_card")
         pay_invoice.assert_called_once_with("in_open_1")
 
     def test_setup_webhook_does_not_treat_session_as_new_subscription(self):
@@ -1682,6 +1920,11 @@ class PaymentMethodUpdateTests(TestCase):
         ) as modify_customer, patch(
             "api.billing_views.stripe.Subscription.modify"
         ), patch(
+            "api.billing_views.stripe.PaymentMethod.list",
+            return_value={"data": [{"id": "pm_hook"}]},
+        ), patch(
+            "api.billing_views.stripe.PaymentMethod.detach"
+        ) as detach_method, patch(
             "api.billing_views.stripe.Invoice.list",
             return_value=invoices,
         ), patch(
@@ -1690,6 +1933,7 @@ class PaymentMethodUpdateTests(TestCase):
         ):
             view._on_setup_completed(session)
         modify_customer.assert_called_once()
+        detach_method.assert_not_called()
         self.premium.profile.refresh_from_db()
         self.assertEqual(self.premium.profile.billing_period, "monthly")
         self.assertEqual(self.premium.profile.subscription_status, "active")

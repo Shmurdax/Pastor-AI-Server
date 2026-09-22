@@ -18,6 +18,9 @@ from .email_verification import (
 )
 from .gmail_send import email_delivery_mode
 from .serializers import (
+    ChangeEmailSerializer,
+    ChangeNameSerializer,
+    ChangePasswordSerializer,
     GoogleAuthSerializer,
     LoginSerializer,
     RegisterSerializer,
@@ -98,6 +101,130 @@ class LogoutView(APIView):
         # Deletes the token so it can no longer authenticate requests.
         Token.objects.filter(user=request.user).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChangePasswordView(APIView):
+    """Authenticated password change; requires the current password."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.has_usable_password():
+            return Response(
+                {
+                    "detail": (
+                        "This account signed in with Google and has no password "
+                        "to change."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"user": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        current_password = serializer.validated_data["current_password"]
+        new_password = serializer.validated_data["new_password"]
+
+        if not request.user.check_password(current_password):
+            return Response(
+                {"detail": "Current password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if current_password == new_password:
+            return Response(
+                {"detail": "New password must be different from the current password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=["password"])
+        dump_persistent_postgres()
+        return Response({"ok": True, "detail": "Password updated."})
+
+
+class ChangeNameView(APIView):
+    """Authenticated display-name change; no password required."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangeNameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        name = serializer.validated_data["name"]
+        first_name, _, last_name = name.partition(" ")
+        request.user.first_name = first_name
+        request.user.last_name = last_name
+        request.user.save(update_fields=["first_name", "last_name"])
+        dump_persistent_postgres()
+        return Response(
+            {
+                "ok": True,
+                "detail": "Name updated.",
+                "user": UserSerializer(request.user).data,
+            }
+        )
+
+
+class ChangeEmailView(APIView):
+    """Authenticated email change; requires the current password."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.has_usable_password():
+            return Response(
+                {
+                    "detail": (
+                        "This account signed in with Google and has no password "
+                        "to confirm an email change."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ChangeEmailSerializer(
+            data=request.data,
+            context={"user": request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        new_email = serializer.validated_data["email"]
+        current_password = serializer.validated_data["current_password"]
+
+        if not request.user.check_password(current_password):
+            return Response(
+                {"detail": "Current password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if new_email == (request.user.email or "").lower().strip():
+            return Response(
+                {"detail": "New email must be different from the current email."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.username = new_email
+        request.user.email = new_email
+        request.user.save(update_fields=["username", "email"])
+
+        profile = getattr(request.user, "profile", None)
+        if profile is not None:
+            profile.email_verified = False
+            profile.save(update_fields=["email_verified"])
+
+        dump_persistent_postgres()
+        return Response(
+            {
+                "ok": True,
+                "detail": "Email updated.",
+                "user": UserSerializer(request.user).data,
+            }
+        )
 
 
 class GoogleAuthView(APIView):

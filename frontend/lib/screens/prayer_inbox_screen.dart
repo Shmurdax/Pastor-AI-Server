@@ -392,11 +392,11 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     await _launch(prayerEmailComposeUri(to, client));
   }
 
-  Widget _emailClientChip(PrayerEmailClient client, String to, {required bool selected}) {
+  Widget _emailClientChip(PrayerEmailClient client, {required bool selected}) {
     return FilterChip(
       label: Text(prayerEmailClientLabel(client), style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
       selected: selected,
-      onSelected: (_) => _openEmail(to, client),
+      onSelected: (_) => _setEmailPreference(client),
       selectedColor: _gold.withValues(alpha: 0.35),
       checkmarkColor: _navy,
     );
@@ -411,13 +411,18 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     return Scaffold(
       backgroundColor: _surface,
       appBar: brandGradientAppBar(
-        title: Text(item.displayName, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+        title: Text('Prayer Response', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              item.displayName,
+              style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 16, color: _navy),
+            ),
+            const SizedBox(height: 4),
             Text(
               dateFmt.format(item.createdAt.toLocal()),
               style: GoogleFonts.figtree(color: Colors.black54, fontSize: 13),
@@ -438,63 +443,32 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                   style: GoogleFonts.figtree(fontSize: 12, color: Colors.black54),
                 ),
               ),
-            const SizedBox(height: 16),
             if (email != null) ...[
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  FilledButton.icon(
-                    onPressed: () => _openEmail(email, _preferredEmailClient),
-                    icon: const Icon(Icons.email_outlined, size: 18),
-                    label: Text(
-                      'Email in ${prayerEmailClientLabel(_preferredEmailClient)}',
-                      style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _navy,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    ),
-                  ),
-                  if (item.phone.trim().isNotEmpty)
-                    OutlinedButton.icon(
-                      onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
-                      icon: const Icon(Icons.phone_outlined, size: 18),
-                      label: const Text('Call'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
               Text(
-                'Or open compose in:',
-                style: GoogleFonts.figtree(fontSize: 12, color: Colors.black54),
+                'Select email platform:',
+                style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _emailClientChip(PrayerEmailClient.gmail, email, selected: _preferredEmailClient == PrayerEmailClient.gmail),
-                  _emailClientChip(PrayerEmailClient.outlook, email, selected: _preferredEmailClient == PrayerEmailClient.outlook),
+                  _emailClientChip(
+                    PrayerEmailClient.gmail,
+                    selected: _preferredEmailClient == PrayerEmailClient.gmail,
+                  ),
+                  _emailClientChip(
+                    PrayerEmailClient.outlook,
+                    selected: _preferredEmailClient == PrayerEmailClient.outlook,
+                  ),
                   _emailClientChip(
                     PrayerEmailClient.systemMailto,
-                    email,
                     selected: _preferredEmailClient == PrayerEmailClient.systemMailto,
                   ),
                 ],
               ),
-            ] else if (item.phone.trim().isNotEmpty)
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => _launch(Uri(scheme: 'tel', path: item.phone.trim())),
-                    icon: const Icon(Icons.phone_outlined, size: 18),
-                    label: const Text('Call'),
-                  ),
-                ],
-              ),
+            ],
             const SizedBox(height: 20),
             Text('Prayer request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
             const SizedBox(height: 8),
@@ -546,7 +520,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
             FilledButton(
               onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
-                backgroundColor: _navy,
+                backgroundColor: _pink,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -558,6 +532,22 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                     )
                   : Text('Save follow-up', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
             ),
+            if (email != null) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () => _openEmail(email, _preferredEmailClient),
+                icon: const Icon(Icons.email_outlined, size: 18),
+                label: Text(
+                  'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
+                  style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _navy,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
           ],
         ),
       ),

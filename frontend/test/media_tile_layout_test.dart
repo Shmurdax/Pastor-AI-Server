@@ -49,7 +49,7 @@ Map<String, dynamic> _videoJson({
     'vimeo_id': vimeoId,
     'privacy_hash': 'abc123',
     'title': title,
-    'description': 'Daily devotional',
+    'description': 'Walk through the Word',
     'published_at': '2026-08-12T22:34:00Z',
     'duration_seconds': 600,
     'duration_label': '10:00',
@@ -146,7 +146,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('The NORDINS'), findsOneWidget);
-    expect(find.text("Daily Devotionals from The Nordin's"), findsOneWidget);
+    expect(find.text("Walk through the Word from The Nordin's"), findsOneWidget);
     expect(find.text("Nordin's"), findsNothing);
     expect(find.textContaining('This library hosts Daily Devotionals'), findsNothing);
     expect(find.text('Unlock with Premium'), findsNothing);

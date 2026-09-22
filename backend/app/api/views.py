@@ -134,7 +134,7 @@ class ResponseReportDetailAPI(APIView):
 
 
 class MediaVideoListAPI(APIView):
-    """GET /api/media/ — Premium list of published Daily Devotionals."""
+    """GET /api/media/ — Premium list of published Walk through the Word videos."""
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
