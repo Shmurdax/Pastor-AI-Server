@@ -117,7 +117,9 @@ class TeachingClaimTests(unittest.TestCase):
         claims = ["Marriage is a covenant, not a contract."]
         block = format_teaching_claims_block(claims)
         self.assertIn("<required_teaching_points>", block)
-        self.assertIn("generic Christian pastoral tone", block)
+        self.assertIn("Speak in Pastor Don's and Susan's pastoral voice", block)
+        self.assertIn("Do not use a generic Christian pastoral tone", block)
+        self.assertNotIn("Do not imitate Pastor Don", block)
         self.assertIn("only ideas you may teach", block)
         self.assertIn("not a license to invent a new outline", block)
         self.assertIn("covenant", block)
