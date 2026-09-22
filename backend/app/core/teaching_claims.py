@@ -320,6 +320,19 @@ _OUTLINE_DISTINCTIVE_STOP = frozenset(
         "note",
     }
 )
+_SERMON_OUTLINE_REQUEST_RE = re.compile(
+    r"(?i)\b(?:"
+    r"(?:\d+|one|two|three|four|five)\s*[- ]?\s*points?"
+    r"|sermon\s+outline"
+    r"|outline\s+(?:of|on|for)"
+    r"|bullet\s+points?"
+    r")\b"
+)
+
+
+def looks_like_sermon_outline_request(query: str) -> bool:
+    """True when the user asked for an outline or N-point sermon layout."""
+    return bool(_SERMON_OUTLINE_REQUEST_RE.search(query or ""))
 
 
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
@@ -510,15 +523,17 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "<required_teaching_points>",
         "Use a clear, generic Christian pastoral tone. Do not imitate Pastor Don's or Susan's speaking style.",
         "The numbered points are the only ideas you may teach. Paraphrase them in your own words. "
-        "Do not add theology, caveats, verses, headings, or advice that is not in these points. "
-        "REFERENCE NOTES are the source of these points, not a license to invent a new outline.",
+        "Do not add theology, caveats, verses, or advice that is not in these points. "
+        "REFERENCE NOTES are the source of these points, not a license to invent a new outline. "
+        "You may use paragraphs, bullets, or headings for layout. Do not invent extra points.",
         "In your own words means the same thesis with different wording. Keep the contrast "
         "(the not / only if / same power / rather than). Do not keep a story or illustration "
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Teach these numbered points in order. The first sentence must paraphrase point 1, "
-        "then continue through the remaining points. Cover every numbered point. "
+        "Cover every numbered point. If the user asked for an outline or N sermon points, "
+        "present that many of these theses as labeled Markdown points, then continue with "
+        "any remaining theses. Otherwise mix paragraphs and bullets as the question needs. "
         "Do not invent a yes/no that is not in the points. "
         "Do not substitute an LGBTQ inclusion frame, sexual-orientation "
         "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
@@ -541,8 +556,9 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
     lines: list[str] = []
     if points:
         lines.append(
-            "Paraphrase every numbered sermon point below, in order. "
-            "They are the doctrine. Do not add theology or a yes/no that is not in them."
+            "Paraphrase every numbered sermon point below. "
+            "They are the doctrine. Do not add theology or a yes/no that is not in them. "
+            "Do not invent extra outline points."
         )
         for index, claim in enumerate(points, start=1):
             lines.append(f"{index}. {claim}")
@@ -560,11 +576,20 @@ def format_generation_user_prompt(query: str, claims: Iterable[str] | None) -> s
         lines.append("")
         lines.append("User question:")
         lines.append(question or "(empty)")
-        lines.append(
-            "Write the answer now. Start with a paraphrase of point 1, then paraphrase "
-            "the remaining numbered points in order. Cover every numbered point. "
-            "Do not stop after the first sentence."
-        )
+        if looks_like_sermon_outline_request(question):
+            lines.append(
+                "Write the answer now. The user asked for an outline. Present the retrieved "
+                "theses as a Markdown outline (numbered or bulleted points, with a short "
+                "paragraph under a point when it helps). If they asked for N points, use N "
+                "of these theses as the labeled points, then cover any remaining theses. "
+                "Do not invent extra points. Cover every numbered point."
+            )
+        else:
+            lines.append(
+                "Write the answer now. Mix short paragraphs and bullets as the question needs. "
+                "Cover every numbered point. Do not invent extra outline points. "
+                "Do not stop after the first sentence."
+            )
     elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
         lines.append("User question:")
         lines.append(question or "(empty)")
@@ -625,7 +650,8 @@ def claim_repair_steer(missing: Iterable[str]) -> str:
     lines = [
         "The draft on screen already answers the user. Do not restart it.",
         "Do not say Certainly, Let's continue, or Teaching Points.",
-        "Do not paste a numbered list. Write 1-2 ordinary paragraphs, then stop on a complete sentence.",
+        "Add only missed theses. You may use a short paragraph or a bullet. "
+        "Do not invent extra outline points. Stop on a complete sentence.",
         "Keep a generic Christian pastoral tone. Do not imitate Pastor Don's speaking style.",
         "Only add a missed point if it actually answers the user's question. Skip autobiography, jokes, and unrelated notes.",
         "If none of the points below answer the user's question, reply with nothing.",

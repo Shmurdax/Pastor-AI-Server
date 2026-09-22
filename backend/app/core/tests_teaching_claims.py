@@ -8,6 +8,7 @@ from core.teaching_claims import (
     extract_teaching_claims,
     format_teaching_claims_block,
     keep_note_paraphrase_sentences,
+    looks_like_sermon_outline_request,
     query_topic_tokens,
     uncovered_claims,
 )
@@ -122,8 +123,11 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("covenant", block)
         self.assertIn("Do not replace them with generic Christian topics", block)
         self.assertIn("same thesis", block)
-        self.assertIn("Teach these numbered points in order", block)
-        self.assertIn("first sentence must paraphrase point 1", block)
+        self.assertIn("You may use paragraphs, bullets, or headings for layout", block)
+        self.assertIn("Do not invent extra points", block)
+        self.assertIn("Cover every numbered point", block)
+        self.assertNotIn("Teach these numbered points in order", block)
+        self.assertNotIn("first sentence must paraphrase point 1", block)
         self.assertIn("Do not invent a yes/no", block)
         self.assertIn("Romans 14 liberty", block)
         steer = claim_repair_steer(claims)
@@ -132,6 +136,14 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("covenant", steer)
         self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
+
+    def test_outline_request_detects_n_point_sermon(self):
+        self.assertTrue(
+            looks_like_sermon_outline_request("Give a 3 point sermon outline on marriage")
+        )
+        self.assertTrue(looks_like_sermon_outline_request("Give me a 3 point sermon on faith"))
+        self.assertFalse(looks_like_sermon_outline_request("Can Christians drink?"))
+        self.assertFalse(looks_like_sermon_outline_request("What does Pastor Don teach about hope?"))
 
     def test_generation_user_prompt_locks_drink_and_gay_theses(self):
         from core.teaching_claims import format_generation_user_prompt
@@ -149,10 +161,26 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Alcoholism is a sin", drink)
         self.assertIn("Romans 14 liberty", drink)
         self.assertIn("Do not say drinking is a personal decision", drink)
-        self.assertIn("Start with a paraphrase of point 1", drink)
         self.assertIn("Cover every numbered point", drink)
         self.assertIn("Paraphrase every numbered sermon point", drink)
+        self.assertIn("Mix short paragraphs and bullets", drink)
+        self.assertNotIn("Start with a paraphrase of point 1", drink)
         self.assertIn("User question:", drink)
+
+        outline = format_generation_user_prompt(
+            "Give a 3 point sermon outline on marriage",
+            [
+                "Marriage is a covenant, not a contract.",
+                "A wife who does not meet her husband's needs sins against God.",
+                "Flexibility is key in disagreements.",
+            ],
+        )
+        self.assertIn("Give a 3 point sermon outline on marriage", outline)
+        self.assertIn("The user asked for an outline", outline)
+        self.assertIn("Markdown outline", outline)
+        self.assertIn("If they asked for N points, use N", outline)
+        self.assertIn("Do not invent extra points", outline)
+        self.assertIn("covenant", outline)
 
         gay = format_generation_user_prompt(
             "Can gay people be Christians?",
