@@ -63,7 +63,11 @@ void main() {
     final language = tester.getRect(find.byType(LanguageSelector));
     expect(language.top, greaterThan(account.bottom - 2));
     expect((language.right - account.right).abs(), lessThan(16));
-    expect(account.top - appBar.top, closeTo(20, 6));
+    final topGap = account.top - appBar.top;
+    final bottomGap = appBar.bottom - language.bottom;
+    expect(topGap, greaterThan(6));
+    expect(bottomGap, greaterThan(6));
+    expect((topGap - bottomGap).abs(), lessThan(12));
   });
 
   testWidgets('desktop keeps language beside the account chip', (tester) async {
@@ -74,5 +78,37 @@ void main() {
     final language = tester.getRect(find.byType(LanguageSelector));
     expect(language.right, lessThan(account.left + 8));
     expect((language.center.dy - account.center.dy).abs(), lessThan(24));
+  });
+
+  testWidgets('desktop logo sits with equal space above and below in the header', (tester) async {
+    await pumpChat(tester, const Size(1200, 900));
+
+    final appBar = tester.getRect(find.byType(AppBar));
+    final logo = tester.getRect(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    expect(appBar.height, 120);
+    expect(logo.height, 95);
+    final topGap = logo.top - appBar.top;
+    final bottomGap = appBar.bottom - logo.bottom;
+    expect(topGap, greaterThan(8));
+    expect(bottomGap, greaterThan(8));
+    expect((topGap - bottomGap).abs(), lessThan(4));
+  });
+
+  testWidgets('compact logo sits with equal space above and below in the header', (tester) async {
+    await pumpChat(tester, const Size(390, 844));
+
+    final appBar = tester.getRect(find.byType(AppBar));
+    final logo = tester.getRect(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    expect(appBar.height, 100);
+    expect(logo.height, 80);
+    final topGap = logo.top - appBar.top;
+    final bottomGap = appBar.bottom - logo.bottom;
+    expect(topGap, greaterThan(6));
+    expect(bottomGap, greaterThan(6));
+    expect((topGap - bottomGap).abs(), lessThan(4));
   });
 }

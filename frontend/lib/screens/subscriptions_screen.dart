@@ -422,7 +422,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         automaticallyImplyLeading: true,
         title: Padding(
           padding: EdgeInsets.only(
-            top: isMobileOrTablet ? 10.0 : 20.0,
             left: isMobileOrTablet ? 0.0 : 12.0,
           ),
           child: GestureDetector(
@@ -440,7 +439,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         actions: [
           if (auth.isAuthenticated && auth.user!.isStaff && screenWidth > 600)
             Padding(
-              padding: EdgeInsets.only(top: isMobile ? 20 : 45, right: 4),
+              padding: const EdgeInsets.only(right: 4),
               child: IconButton(
                 tooltip: s.prayerInbox,
                 onPressed: _openPrayerInbox,
@@ -463,7 +462,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 : null,
             menu: isMobileOrTablet
                 ? AppHamburgerNav(
-                    isMobile: isMobile,
                     dense: isMobile,
                     onHome: () => _launchUrl('https://thenordins.org/'),
                     onChat: _goToAiHome,
@@ -473,31 +471,28 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 : null,
           ),
           if (!isMobileOrTablet)
-            Padding(
-              padding: const EdgeInsets.only(top: 45.0),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _NavButton(
-                    label: s.home,
-                    onTap: () => _launchUrl('https://thenordins.org/'),
-                  ),
-                  _NavButton(
-                    label: s.chat,
-                    onTap: _goToAiHome,
-                  ),
-                  _NavButton(
-                    label: s.events,
-                    onTap: () => _toggleEvents(open: true),
-                    active: _eventsOpen,
-                  ),
-                  _NavButton(
-                    label: s.media,
-                    onTap: _openMedia,
-                  ),
-                  const SizedBox(width: 40),
-                ],
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _NavButton(
+                  label: s.home,
+                  onTap: () => _launchUrl('https://thenordins.org/'),
+                ),
+                _NavButton(
+                  label: s.chat,
+                  onTap: _goToAiHome,
+                ),
+                _NavButton(
+                  label: s.events,
+                  onTap: () => _toggleEvents(open: true),
+                  active: _eventsOpen,
+                ),
+                _NavButton(
+                  label: s.media,
+                  onTap: _openMedia,
+                ),
+                const SizedBox(width: 40),
+              ],
             ),
         ],
       ),

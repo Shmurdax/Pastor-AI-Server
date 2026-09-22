@@ -14,7 +14,6 @@ class AppHamburgerNav extends StatelessWidget {
     required this.onChat,
     required this.onEvents,
     required this.onMedia,
-    this.isMobile = false,
     this.dense = false,
   });
 
@@ -22,7 +21,6 @@ class AppHamburgerNav extends StatelessWidget {
   final VoidCallback onChat;
   final VoidCallback onEvents;
   final VoidCallback onMedia;
-  final bool isMobile;
   final bool dense;
 
   @override
@@ -32,7 +30,7 @@ class AppHamburgerNav extends StatelessWidget {
     return Padding(
       padding: dense
           ? const EdgeInsets.only(right: 4)
-          : EdgeInsets.only(top: isMobile ? 20 : 45, right: 8),
+          : const EdgeInsets.only(right: 8),
       child: MenuAnchor(
         alignmentOffset: const Offset(0, 8),
         style: MenuStyle(

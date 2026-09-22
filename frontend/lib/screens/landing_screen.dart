@@ -72,7 +72,7 @@ class LandingScreen extends StatelessWidget {
         ),
         actions: [
           Padding(
-            padding: EdgeInsets.only(right: isMobile ? 12 : 28, top: isMobile ? 8 : 16),
+            padding: EdgeInsets.only(right: isMobile ? 12 : 28),
             child: TextButton(
               onPressed: () => _openSignIn(context),
               child: Text(

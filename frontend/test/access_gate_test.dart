@@ -92,6 +92,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('landing header logo has equal space above and below', (tester) async {
+    _useWideSurface(tester);
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    final appBar = tester.getRect(find.byType(AppBar));
+    final logo = tester.getRect(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    expect(appBar.height, 104);
+    expect(logo.height, 80);
+    final topGap = logo.top - appBar.top;
+    final bottomGap = appBar.bottom - logo.bottom;
+    expect(topGap, greaterThan(8));
+    expect(bottomGap, greaterThan(8));
+    expect((topGap - bottomGap).abs(), lessThan(4));
+  });
+
+  testWidgets('compact landing header logo has equal space above and below', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    final appBar = tester.getRect(find.byType(AppBar));
+    final logo = tester.getRect(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    expect(appBar.height, 88);
+    expect(logo.height, 64);
+    final topGap = logo.top - appBar.top;
+    final bottomGap = appBar.bottom - logo.bottom;
+    expect(topGap, greaterThan(8));
+    expect(bottomGap, greaterThan(8));
+    expect((topGap - bottomGap).abs(), lessThan(4));
+  });
+
   testWidgets('landing premium card uses the site pink-to-navy gradient', (tester) async {
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();

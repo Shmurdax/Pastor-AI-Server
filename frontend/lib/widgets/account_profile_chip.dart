@@ -48,7 +48,7 @@ class AccountProfileChip extends StatelessWidget {
     return Padding(
       padding: dense
           ? EdgeInsets.zero
-          : EdgeInsets.only(top: isMobile ? 20 : 45, right: isMobile ? 8 : 24),
+          : EdgeInsets.only(right: isMobile ? 8 : 24),
       child: Material(
         color: const Color(0xFFF8F4E8),
         shape: const StadiumBorder(),
