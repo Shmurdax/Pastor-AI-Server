@@ -17,6 +17,7 @@ from pathlib import Path
 
 import requests
 from django.conf import settings
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import credentials as oauth_credentials
 from google.oauth2 import service_account
@@ -172,8 +173,14 @@ def _credentials():
 
 
 def _access_token(creds) -> str:
-    if not getattr(creds, "valid", False) or not getattr(creds, "token", None):
-        creds.refresh(GoogleAuthRequest())
+    try:
+        if not getattr(creds, "valid", False) or not getattr(creds, "token", None):
+            creds.refresh(GoogleAuthRequest())
+    except RefreshError as exc:
+        raise GmailSendError(
+            "Google rejected sending as info@thenordins.org. That address must be a real "
+            "Workspace user (not a Group), and domain-wide delegation must allow gmail.send."
+        ) from exc
     token = getattr(creds, "token", None)
     if not token:
         raise GmailSendError("Google OAuth did not return an access token.")
@@ -210,6 +217,12 @@ def send_via_gmail_api(*, to_email: str, subject: str, body: str) -> str:
     )
     if response.status_code < 200 or response.status_code >= 300:
         logger.error("Gmail API send failed: HTTP %s %s", response.status_code, response.text[:500])
+        body = (response.text or "").lower()
+        if "failedprecondition" in body or "delegation" in body or "unauthorized_client" in body:
+            raise GmailSendError(
+                "Google rejected sending as info@thenordins.org. That address must be a real "
+                "Workspace user (not a Group), and domain-wide delegation must allow gmail.send."
+            )
         raise GmailSendError("Google could not send the verification email.")
     payload = response.json() if response.content else {}
     message_id = str(payload.get("id") or "")

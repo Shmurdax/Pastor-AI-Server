@@ -114,8 +114,13 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVeri
         "This code expires in 10 minutes. After you verify, you can continue to payment.\n"
         "If you did not create an account, you can ignore this email.\n"
     )
-    send_error = (
-        "We could not send the verification email. Please try again in a moment."
+    not_configured = (
+        "Gmail is not set up on the server yet. Add the JSON key for "
+        "info@thenordins.org, then restart."
+    )
+    google_rejected = (
+        "Google could not send mail as info@thenordins.org. That address must be a real "
+        "Workspace user (not a Group), with domain-wide delegation for gmail.send."
     )
     try:
         if gmail_is_configured():
@@ -130,18 +135,20 @@ def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVeri
             )
         else:
             logger.error(
-                "Gmail is not configured; verification email not sent to %s",
+                "Gmail is not configured; verification email not sent to %s (delivery=%s)",
                 user.email,
+                email_delivery_mode(),
             )
-            raise EmailVerificationError(send_error, status=503)
+            raise EmailVerificationError(not_configured, status=503)
     except EmailVerificationError:
         raise
-    except GmailSendError:
+    except GmailSendError as exc:
         logger.exception("Gmail API failed to send verification email to %s", user.email)
-        raise EmailVerificationError(send_error, status=503) from None
+        message = str(exc).strip() or google_rejected
+        raise EmailVerificationError(message, status=503) from None
     except Exception:
         logger.exception("Failed to send verification email to %s", user.email)
-        raise EmailVerificationError(send_error, status=503) from None
+        raise EmailVerificationError(google_rejected, status=503) from None
     logger.info(
         "Sent email verification code to %s via %s",
         user.email,

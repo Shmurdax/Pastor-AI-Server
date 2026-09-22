@@ -1396,6 +1396,7 @@ class EmailVerificationTests(TestCase):
                 res = self.client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 503, res.data)
         self.assertNotIn("debug_code", res.data)
+        self.assertIn("json key", str(res.data.get("detail", "")).lower())
 
     def test_register_sends_no_code_until_verify_endpoint(self):
         from django.core import mail
@@ -1728,7 +1729,7 @@ class GmailApiTests(TestCase):
                 res = client.post("/api/auth/send-email-code/", {}, format="json")
         self.assertEqual(res.status_code, 503, res.data)
         self.assertNotIn("debug_code", res.data)
-        self.assertIn("could not send", str(res.data.get("detail", "")).lower())
+        self.assertIn("google could not send", str(res.data.get("detail", "")).lower())
 
     def test_debug_code_is_omitted_in_production_when_gmail_sends(self):
         user = User.objects.create_user(
