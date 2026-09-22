@@ -861,10 +861,71 @@ def keep_note_paraphrase_sentences(
     return " ".join(kept).strip()
 
 
+_OTHER_BIBLE_VERSION_RE = re.compile(
+    r"\b(?:CEV|NIV|ESV|NLT|NASB|NRSV|AMP|MSG)\b",
+    re.IGNORECASE,
+)
+_REQUESTED_POINT_COUNT_RE = re.compile(
+    r"(?i)\b(?P<num>\d+|one|two|three|four|five)\s*[- ]?\s*points?\b"
+)
+_POINT_COUNT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+
+
 def notes_only_from_claims(claims: Iterable[str] | None) -> str:
     """Fallback reply built only from retrieved teaching sentences."""
     points = [item.strip() for item in (claims or []) if item and str(item).strip()]
     return " ".join(points[:4]).strip()
+
+
+def requested_outline_count(query: str) -> int | None:
+    """How many sermon points the user asked for, when they asked for a count."""
+    match = _REQUESTED_POINT_COUNT_RE.search(query or "")
+    if not match:
+        return None
+    raw = match.group("num").lower()
+    if raw.isdigit():
+        count = int(raw)
+    else:
+        count = _POINT_COUNT_WORDS.get(raw, 0)
+    if count <= 0:
+        return None
+    return count
+
+
+def format_claims_as_outline(claims: Iterable[str] | None, query: str = "") -> str:
+    """Present retrieved theses as the outline. No outside quotes or versions."""
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    if not points:
+        return ""
+    wanted = requested_outline_count(query)
+    if wanted is None:
+        wanted = min(3, len(points)) if looks_like_sermon_outline_request(query) else len(points)
+    count = max(1, min(wanted, len(points)))
+    lines = [f"{index}. {claim}" for index, claim in enumerate(points[:count], start=1)]
+    return "\n\n".join(lines)
+
+
+def restore_note_backed_answer(
+    answer: str,
+    claims: Iterable[str] | None,
+    query: str = "",
+) -> str:
+    """Use the retrieved theses when the reply is not actually those notes.
+
+    A freewritten faith outline can quote Warren Wiersbe and the Contemporary
+    English Version even though the numbered points were Don and Susan's notes.
+    That reply is replaced with the retrieved theses.
+    """
+    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
+    text = (answer or "").strip()
+    if not points:
+        return text
+    outside_version = bool(_OTHER_BIBLE_VERSION_RE.search(text))
+    if not outside_version and not paraphrase_too_thin(text, points):
+        return text
+    if looks_like_sermon_outline_request(query):
+        return format_claims_as_outline(points, query) or text
+    return notes_only_from_claims(points) or text
 
 
 def paraphrase_too_thin(answer: str, claims: Iterable[str] | None) -> bool:

@@ -76,6 +76,7 @@ from .grounding import (
     select_query_grounded_quotes,
     split_docs_for_grounding,
     strip_retrieval_meta,
+    strip_ungrounded_spans,
     repair_nkjv_citations,
     verify_answer_grounding,
     verse_refs_for_lookup,
@@ -89,6 +90,7 @@ from .teaching_claims import (
     notes_only_from_claims,
     paraphrase_too_thin,
     repairable_claims,
+    restore_note_backed_answer,
     resolve_teaching_claims,
 )
 from .chat_retrieval import (
@@ -507,14 +509,20 @@ def _missing_required_quotes(prepared, answer: str) -> bool:
 
 
 def _finalize_teaching_answer(prepared, answer: str) -> str:
-    """Keep the generated teaching. Do not rewrite it against note theses."""
+    """Drop invented quotations, then use the notes when the reply left them."""
     answer = compact_teaching_answer(strip_retrieval_meta(answer))
     docs = prepared.get("docs") or []
     if not docs:
         return answer
     _quotes, nkjv = _grounding_snippets(prepared)
-    _ = _rag_check_report(prepared, answer)
-    return compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
+    report, _sermon, _bible = _rag_check_report(prepared, answer)
+    answer = strip_ungrounded_spans(answer, report)
+    answer = compact_teaching_answer(repair_nkjv_citations(answer, nkjv))
+    return restore_note_backed_answer(
+        answer,
+        prepared.get("teaching_claims") or [],
+        str(prepared.get("topic_query") or ""),
+    )
 
 
 def _finish_incomplete_extra(prepared, answer: str) -> str:

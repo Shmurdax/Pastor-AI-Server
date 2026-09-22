@@ -785,5 +785,51 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("every identity", kept_seminar.lower())
 
 
+class NoteBackedOutlineTests(unittest.TestCase):
+    def test_wiersbe_cev_outline_is_replaced_by_retrieved_theses(self):
+        from core.teaching_claims import restore_note_backed_answer
+
+        claims = [
+            "Faith must refuse the if factor of doubt and see the unseen promise.",
+            "When the disciples could not cast out the demon, Jesus pointed them back to prayer and fasting.",
+            "Believe God for the breakthrough He already promised.",
+        ]
+        answer = (
+            '1. Testing Faith: Warren Wiersbe wisely noted, "A faith that can\'t be tested '
+            'can\'t be trusted." This means that true faith stands up to scrutiny.\n'
+            "2. Faith Defined: Faith, as described in Hebrews 11:1 (CEV), makes us sure of "
+            "what we hope for and gives us proof of what we cannot see.\n"
+            "3. Personal Experience: Personal experiences, such as intense prayer times, "
+            "can significantly strengthen one's faith."
+        )
+        restored = restore_note_backed_answer(
+            answer, claims, "3 point sermon on faith"
+        )
+        lowered = restored.lower()
+        self.assertNotIn("wiersbe", lowered)
+        self.assertNotIn("cev", lowered)
+        self.assertNotIn("personal experience", lowered)
+        self.assertIn("if factor", lowered)
+        self.assertIn("prayer and fasting", lowered)
+        self.assertTrue(restored.startswith("1. Faith must refuse"))
+
+    def test_paraphrase_that_covers_the_notes_is_kept(self):
+        from core.teaching_claims import restore_note_backed_answer
+
+        claims = [
+            "Faith must refuse the if factor of doubt and see the unseen promise.",
+            "When the disciples could not cast out the demon, Jesus pointed them back to prayer and fasting.",
+        ]
+        answer = (
+            "Faith must refuse the if factor of doubt and see the unseen promise. "
+            "When the disciples could not cast out the demon, Jesus pointed them back "
+            "to prayer and fasting. That is the teaching."
+        )
+        restored = restore_note_backed_answer(
+            answer, claims, "3 point sermon on faith"
+        )
+        self.assertEqual(restored, answer)
+
+
 if __name__ == "__main__":
     unittest.main()
