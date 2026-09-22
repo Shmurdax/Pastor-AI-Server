@@ -2741,16 +2741,24 @@ def format_reference_notes(
     *,
     max_chars: int,
     query: str = "",
+    preserve_order: bool = False,
 ) -> str:
-    """Join chunks with source labels, teaching sentences first."""
+    """Join chunks with source labels.
+
+    Chat passes preserve_order so the reranker order is what the model reads.
+    Other callers still put teaching sentences first.
+    """
     indexed = list(enumerate(docs or []))
-    kept = [item for item in indexed if _keep_reference_note(item[1], query)]
-    if not kept:
-        kept = indexed
-    ranked = sorted(
-        kept,
-        key=lambda item: _reference_note_rank(item[1], query, item[0]),
-    )
+    if preserve_order:
+        ranked = indexed
+    else:
+        kept = [item for item in indexed if _keep_reference_note(item[1], query)]
+        if not kept:
+            kept = indexed
+        ranked = sorted(
+            kept,
+            key=lambda item: _reference_note_rank(item[1], query, item[0]),
+        )
     blocks: list[str] = []
     used = 0
     for display_index, (_orig, doc) in enumerate(ranked, start=1):

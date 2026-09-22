@@ -794,6 +794,23 @@ class ChatRetrievalTests(unittest.TestCase):
         self.assertIn("[Note 2 | NKJV Bible]", notes)
         self.assertIn("First chunk", notes)
 
+    def test_format_notes_preserve_order_keeps_rerank_sequence(self):
+        docs = [
+            _doc("A short line about faith.", source="a.pdf", title="Faith Lift"),
+            _doc(
+                "Faith must refuse the if factor of doubt because a tested faith holds when circumstances say otherwise.",
+                source="b.pdf",
+                title="The If Factor",
+            ),
+        ]
+        notes = format_reference_notes(
+            docs,
+            lambda doc: doc.metadata["title"],
+            max_chars=4000,
+            preserve_order=True,
+        )
+        self.assertLess(notes.index("Faith Lift"), notes.index("The If Factor"))
+
     def test_uniqueness_instruction_lists_prior_material(self):
         text = uniqueness_instruction(
             ['I am not sure how the term Gay became part of the lexicon'],
