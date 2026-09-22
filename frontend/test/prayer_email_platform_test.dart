@@ -112,7 +112,7 @@ void main() {
     expect(nameY, lessThan(dateY));
 
     final selectHeading = tester.widget<Text>(find.text('Select email platform:'));
-    final prayerHeading = tester.widget<Text>(find.text('Prayer request'));
+    final prayerHeading = tester.widget<Text>(find.text('Prayer Request'));
     expect(selectHeading.style?.fontWeight, prayerHeading.style?.fontWeight);
     expect(selectHeading.style?.color, prayerHeading.style?.color);
 
