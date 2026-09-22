@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
-import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/stripe_embedded_checkout.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -203,7 +202,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _startStatusPolling();
       return;
     }
-    await _showPurchaseCompleteAndReturn();
+    await _returnToChatbot();
   }
 
   Future<void> _loadConfigAndStart() async {
@@ -271,16 +270,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _returnToChatbot() async {
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
-  }
-
-  Future<void> _showPurchaseCompleteAndReturn() async {
-    if (!mounted) return;
-    final needsVerify = context.read<AuthController>().needsEmailVerification;
-    await showPurchaseCompleteDialog(
-      context,
-      needsEmailVerification: needsVerify,
-    );
-    await _returnToChatbot();
   }
 
   Future<bool> _confirmSessionIfNeeded() async {
@@ -358,7 +347,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _onMockCheckoutSuccess(AuthUser user) async {
     await context.read<AuthController>().applyUser(user);
     if (!mounted) return;
-    await _showPurchaseCompleteAndReturn();
+    await _returnToChatbot();
   }
 
   @override

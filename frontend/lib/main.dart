@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/billing_return_url.dart';
 import 'package:flutter_application_1/chat_history_merge.dart';
 import 'package:flutter_application_1/chat_input_limits.dart';
 import 'package:flutter_application_1/chat_sanitize.dart';
@@ -33,7 +34,6 @@ import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
 import 'package:flutter_application_1/widgets/sermon_source_link.dart';
 import 'package:flutter_application_1/widgets/new_tab.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
-import 'package:flutter_application_1/widgets/purchase_complete_dialog.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -566,6 +566,7 @@ final bibleRefRegex = RegExp(
       if (billing == 'payment_updated' &&
           (status?['status'] == 'complete' ||
               status?['payment_method_updated'] == true)) {
+        clearBillingReturnQuery();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Your payment method was updated.'),
@@ -578,10 +579,9 @@ final bibleRefRegex = RegExp(
           auth.needsEmailVerification ||
           auth.isPremium;
       if (complete) {
-        await showPurchaseCompleteDialog(
-          context,
-          needsEmailVerification: auth.needsEmailVerification,
-        );
+        // Land on chat (or the email-verification gate) with no thank-you dialog.
+        // Clear the Stripe return params so a refresh does not replay this path.
+        clearBillingReturnQuery();
       }
     } catch (_) {
       await auth.refreshMe();
