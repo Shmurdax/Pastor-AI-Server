@@ -239,6 +239,20 @@ Also on the profile:
 
 Stripe, when live, updates these fields from checkout and webhooks. Manual edits are the right tool for comps, pastors, and support cases. If Stripe later sends a cancel event, it can overwrite a manual Active status — flag that to engineering if it happens.
 
+### Chat token budgets (Premium)
+
+Paid Premium members receive **100,000 tokens per calendar month**. Unused tokens roll into the next month automatically (members are not told about rollover). Superusers are never limited.
+
+To keep heavy users from emptying a month in one sitting:
+
+- About **1/30 of the monthly grant** can be spent in a single day
+- Hitting that daily ceiling starts a **2-day cooldown** before chat works again
+- The app shows: *You've run out of responses for now. Please wait…*
+
+In **Pastoral → Users** (or Profiles) you can see **Tokens left** and **Tokens spent**. Use **Adjust tokens** on the profile (positive to add, negative to remove) for support comps. Do not tell members their exact bank balance or that unused tokens roll over.
+
+Env knobs (operators): `MONTHLY_TOKEN_LIMIT_PER_USER`, `DAILY_TOKEN_BUDGET`, `TOKEN_COOLDOWN_DAYS`, `TOKEN_LIMIT_ENFORCE`.
+
 ---
 
 ## Managing ingested documents

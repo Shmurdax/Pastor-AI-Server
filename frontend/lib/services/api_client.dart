@@ -23,15 +23,8 @@ String describeHttpError(http.Response res) {
       body.contains('Waiting for server to respond');
 
   if (!looksLikeHtml) {
-    try {
-      final decoded = jsonDecode(body);
-      if (decoded is Map) {
-        final detail = decoded['detail'];
-        if (detail is String && detail.trim().isNotEmpty) {
-          return detail.trim();
-        }
-      }
-    } catch (_) {}
+    final fromJson = chatApiErrorMessage(body);
+    if (fromJson != null) return fromJson;
   }
 
   if (res.statusCode == 502 ||
@@ -43,6 +36,37 @@ String describeHttpError(http.Response res) {
   if (body.isEmpty || body.length > 160) {
     return 'Request failed (${res.statusCode}). Please try again.';
   }
+  return body;
+}
+
+/// Prefer the product `error` / `detail` field from a chat (or other) JSON body.
+String? chatApiErrorMessage(String body) {
+  final trimmed = body.trim();
+  if (trimmed.isEmpty) return null;
+  try {
+    final decoded = jsonDecode(trimmed);
+    if (decoded is Map) {
+      for (final key in ['error', 'detail', 'message']) {
+        final value = decoded[key];
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/// Strip `HTTP 429: {...}` wrappers from [chatStream] failures.
+String? chatFailureMessageFromException(Object error) {
+  final raw = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+  if (raw.isEmpty) return null;
+  final httpMatch = RegExp(r'^HTTP\s+\d+:\s*(.*)$', dotAll: true).firstMatch(raw);
+  final body = (httpMatch?.group(1) ?? raw).trim();
+  final fromJson = chatApiErrorMessage(body);
+  if (fromJson != null) return fromJson;
+  if (body.startsWith('{') || body.startsWith('<')) return null;
+  if (body.length > 280) return null;
   return body;
 }
 
@@ -130,7 +154,8 @@ class ApiClient {
     }
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       final body = await streamed.stream.bytesToString();
-      throw Exception('HTTP ${streamed.statusCode}: $body');
+      final fake = http.Response(body, streamed.statusCode, headers: streamed.headers);
+      throw Exception(describeHttpError(fake));
     }
 
     final contentType = streamed.headers['content-type'] ?? '';

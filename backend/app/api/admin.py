@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import User
@@ -8,6 +9,7 @@ from core.persist_db import dump_persistent_postgres
 from .mailchimp import MailchimpError, collect_exportable_members
 from .mailchimp_admin import export_members_to_mailchimp
 from .models import MediaVideo, Profile
+from .token_quota import admin_adjust_tokens
 
 
 class ProfileInlineFormSet(BaseInlineFormSet):
@@ -18,18 +20,46 @@ class ProfileInlineFormSet(BaseInlineFormSet):
         if existing is None:
             return super().save_new(form, commit=commit)
         for name, value in form.cleaned_data.items():
-            if name in {"id", "user", "DELETE"}:
+            if name in {"id", "user", "DELETE", "adjust_tokens"}:
                 continue
             if hasattr(existing, name):
                 setattr(existing, name, value)
         if commit:
             existing.save()
+            delta = form.cleaned_data.get("adjust_tokens") or 0
+            if delta:
+                admin_adjust_tokens(existing, int(delta))
         form.instance = existing
         return existing
+
+    def save_existing(self, form, instance, commit=True):
+        obj = super().save_existing(form, instance, commit=commit)
+        if commit:
+            delta = form.cleaned_data.get("adjust_tokens") or 0
+            if delta:
+                admin_adjust_tokens(obj, int(delta))
+        return obj
+
+
+class ProfileAdminForm(forms.ModelForm):
+    adjust_tokens = forms.IntegerField(
+        required=False,
+        initial=0,
+        help_text=(
+            "Add tokens (positive) or remove tokens (negative) from Remaining. "
+            "Leave 0 to leave the balance unchanged."
+        ),
+        label="Adjust tokens",
+    )
+
+    class Meta:
+        model = Profile
+        fields = "__all__"
 
 
 class ProfileInline(admin.StackedInline):
     model = Profile
+    form = ProfileAdminForm
     formset = ProfileInlineFormSet
     can_delete = False
     extra = 0
@@ -42,11 +72,27 @@ class ProfileInline(admin.StackedInline):
         "cancel_at_period_end",
         "current_period_end",
         "email_verified",
+        "token_balance",
+        "tokens_spent",
+        "tokens_used_today",
+        "token_usage_day",
+        "token_cooldown_until",
+        "token_period_key",
+        "adjust_tokens",
         "stripe_customer_id",
         "stripe_subscription_id",
         "avatar_url",
     )
-    readonly_fields = ("stripe_customer_id", "stripe_subscription_id")
+    readonly_fields = (
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "token_balance",
+        "tokens_spent",
+        "tokens_used_today",
+        "token_usage_day",
+        "token_cooldown_until",
+        "token_period_key",
+    )
 
 
 class PastorUserAdmin(DjangoUserAdmin):
@@ -62,6 +108,8 @@ class PastorUserAdmin(DjangoUserAdmin):
         "plan_tier",
         "subscription_status_display",
         "is_premium_display",
+        "token_remaining_display",
+        "token_spent_display",
         "is_active",
     )
     list_filter = (
@@ -116,6 +164,20 @@ class PastorUserAdmin(DjangoUserAdmin):
         profile = getattr(obj, "profile", None)
         return bool(profile and profile.is_premium)
 
+    @admin.display(description="Tokens left", ordering="profile__token_balance")
+    def token_remaining_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return "—"
+        return profile.token_balance
+
+    @admin.display(description="Tokens spent", ordering="profile__tokens_spent")
+    def token_spent_display(self, obj):
+        profile = getattr(obj, "profile", None)
+        if profile is None:
+            return "—"
+        return profile.tokens_spent
+
     def get_inline_instances(self, request, obj=None):
         # The add view saves the User first; api.signals then creates Profile.
         # Showing the OneToOne inline on add POSTs a second INSERT for the same
@@ -137,6 +199,7 @@ class PastorUserAdmin(DjangoUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
+    form = ProfileAdminForm
     list_display = (
         "id",
         "user",
@@ -145,6 +208,8 @@ class ProfileAdmin(admin.ModelAdmin):
         "pending_billing_period",
         "is_premium_display",
         "has_premium_access_display",
+        "token_balance",
+        "tokens_spent",
         "email_verified",
         "cancel_at_period_end",
         "current_period_end",
@@ -163,7 +228,35 @@ class ProfileAdmin(admin.ModelAdmin):
         "stripe_customer_id",
         "stripe_subscription_id",
     )
-    readonly_fields = ("stripe_customer_id", "stripe_subscription_id")
+    readonly_fields = (
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "token_balance",
+        "tokens_spent",
+        "tokens_used_today",
+        "token_usage_day",
+        "token_cooldown_until",
+        "token_period_key",
+    )
+    fields = (
+        "user",
+        "subscription_status",
+        "billing_period",
+        "pending_billing_period",
+        "cancel_at_period_end",
+        "current_period_end",
+        "email_verified",
+        "token_balance",
+        "tokens_spent",
+        "tokens_used_today",
+        "token_usage_day",
+        "token_cooldown_until",
+        "token_period_key",
+        "adjust_tokens",
+        "stripe_customer_id",
+        "stripe_subscription_id",
+        "avatar_url",
+    )
     list_select_related = ("user",)
 
     @admin.display(boolean=True, description="Premium")
@@ -176,6 +269,14 @@ class ProfileAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
+        delta = form.cleaned_data.get("adjust_tokens") or 0
+        if delta:
+            admin_adjust_tokens(obj, int(delta))
+            self.message_user(
+                request,
+                f"Token balance is now {obj.token_balance}.",
+                level=messages.SUCCESS,
+            )
         dump_persistent_postgres()
 
 
@@ -199,7 +300,4 @@ class MediaVideoAdmin(admin.ModelAdmin):
         if change and "access_tier" in form.changed_data:
             obj.access_tier_manual = True
         super().save_model(request, obj, form, change)
-
-
-admin.site.unregister(User)
-admin.site.register(User, PastorUserAdmin)
+        dump_persistent_postgres()
