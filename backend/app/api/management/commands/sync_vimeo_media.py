@@ -1,5 +1,5 @@
 """
-Sync Daily Devotionals from the configured Vimeo Folder.
+Sync Walk through the Word videos from the configured Vimeo Folder.
 
 Usage:
   cd backend/app
@@ -12,7 +12,7 @@ from api.vimeo_sync import VimeoSyncError, sync_vimeo_media
 
 
 class Command(BaseCommand):
-    help = "Sync unlisted Daily Devotionals from the configured Vimeo Folder into MediaVideo."
+    help = "Sync unlisted Walk through the Word videos from the configured Vimeo Folder into MediaVideo."
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE("Syncing Vimeo Folder media…"))
