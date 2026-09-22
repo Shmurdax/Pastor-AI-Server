@@ -9,8 +9,9 @@ VENV_DIR="${VENV_DIR:-$WS/venv}"
 LOG_DIR="${LOG_DIR:-$WS/logs}"
 CONFIG_ENV="${CONFIG_ENV:-$WS/config.env}"
 
-[[ -f "$CONFIG_ENV" ]] && { set -a; # shellcheck disable=SC1090
-  source "$CONFIG_ENV"; set +a; }
+# shellcheck source=/dev/null
+source "$WS/scripts/load_env.sh"
+[[ -f "$CONFIG_ENV" ]] && pastor_load_env_file "$CONFIG_ENV"
 
 [[ -x "$VENV_DIR/bin/python" ]] || { echo "Missing venv at $VENV_DIR"; exit 1; }
 [[ -f "$APP_DIR/ingest_qdrant.py" ]] || { echo "Missing $APP_DIR/ingest_qdrant.py"; exit 1; }

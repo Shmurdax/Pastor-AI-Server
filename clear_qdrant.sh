@@ -10,8 +10,9 @@ VENV_DIR="${VENV_DIR:-$WS/venv}"
 CONFIG_ENV="${CONFIG_ENV:-$WS/config.env}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
 
-[[ -f "$CONFIG_ENV" ]] && { set -a; # shellcheck disable=SC1090
-  source "$CONFIG_ENV"; set +a; }
+# shellcheck source=/dev/null
+source "$WS/scripts/load_env.sh"
+[[ -f "$CONFIG_ENV" ]] && pastor_load_env_file "$CONFIG_ENV"
 
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:${QDRANT_PORT}}"
 QDRANT_COLLECTION="${QDRANT_COLLECTION:-sermon_brain}"

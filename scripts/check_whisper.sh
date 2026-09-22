@@ -6,11 +6,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WORKSPACE_ROOT:-$ROOT}"
+# shellcheck source=/dev/null
+source "$ROOT/scripts/load_env.sh"
 if [[ -f "$WS/config.env" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "$WS/config.env"
-  set +a
+  pastor_load_env_file "$WS/config.env"
 fi
 if [[ -f "$ROOT/vllm_runtime.sh" ]]; then
   # shellcheck disable=SC1091

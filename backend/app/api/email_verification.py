@@ -12,7 +12,13 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
-from .gmail_send import GmailSendError, email_delivery_mode, gmail_is_configured, send_via_gmail_api
+from .gmail_send import (
+    GmailSendError,
+    email_delivery_mode,
+    formatted_from_header,
+    gmail_is_configured,
+    send_via_gmail_api,
+)
 from .models import EmailVerificationCode, Profile
 
 logger = logging.getLogger(__name__)
@@ -48,7 +54,10 @@ def _active_code(user) -> EmailVerificationCode | None:
 
 
 def _from_email() -> str:
-    return getattr(settings, "DEFAULT_FROM_EMAIL", "") or "Nordin's AI <noreply@thenordins.org>"
+    configured = getattr(settings, "DEFAULT_FROM_EMAIL", "") or ""
+    if configured:
+        return formatted_from_header(configured)
+    return formatted_from_header()
 
 
 def issue_and_send_verification_code(user, *, force: bool = False) -> IssuedVerificationCode:

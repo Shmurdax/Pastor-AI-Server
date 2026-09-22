@@ -8,6 +8,8 @@ set -euo pipefail
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOKENS="${TOKENS_FILE:-$WS/tokens.env}"
 CONFIG="${CONFIG_ENV:-$WS/config.env}"
+# shellcheck source=/dev/null
+source "$WS/scripts/load_env.sh"
 
 if [[ ! -f "$TOKENS" ]]; then
   if [[ -f "$WS/tokens.env.example" ]]; then
@@ -19,30 +21,51 @@ if [[ ! -f "$TOKENS" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a
-source "$TOKENS"
-set +a
+# Do not `source` tokens.env — apostrophes in DEFAULT_FROM_EMAIL / JSON break bash.
+pastor_load_env_file "$TOKENS"
 
 if [[ ! -f "$CONFIG" ]]; then
   echo "Missing $CONFIG — run install.sh first (or create config.env)." >&2
   exit 1
 fi
 
+# Existing pods shipped with noreply@; codes now go out from the ministry inbox.
+if [[ -z "${GMAIL_SENDER:-}" || "${GMAIL_SENDER}" == "noreply@thenordins.org" ]]; then
+  GMAIL_SENDER="info@thenordins.org"
+fi
+if [[ -z "${DEFAULT_FROM_EMAIL:-}" || "${DEFAULT_FROM_EMAIL}" == "Nordin's AI <noreply@thenordins.org>" ]]; then
+  DEFAULT_FROM_EMAIL="Nordin's AI <info@thenordins.org>"
+fi
+if [[ -z "${GMAIL_SERVICE_ACCOUNT_FILE:-}" && -f "$WS/secrets/gmail-sender.json" ]]; then
+  GMAIL_SERVICE_ACCOUNT_FILE="$WS/secrets/gmail-sender.json"
+fi
+# One-line JSON in tokens.env is safer as base64 so config.env can still be sourced.
+if [[ -n "${GMAIL_SERVICE_ACCOUNT_JSON:-}" && "${GMAIL_SERVICE_ACCOUNT_JSON}" == \{* ]]; then
+  if command -v base64 >/dev/null 2>&1; then
+    GMAIL_SERVICE_ACCOUNT_JSON="$(
+      printf '%s' "$GMAIL_SERVICE_ACCOUNT_JSON" | base64 -w0 2>/dev/null \
+        || printf '%s' "$GMAIL_SERVICE_ACCOUNT_JSON" | base64 | tr -d '\n'
+    )"
+  fi
+fi
+
 upsert() {
   local key="$1" val="${2:-}"
+  local assign tmp
   [[ -z "$val" ]] && return 0
   # Skip unedited placeholders
   case "$val" in
     *paste_here*|hf_paste_here|ghp_paste_here) return 0 ;;
   esac
+  assign="$(pastor_env_quoted_assignment "$key" "$val")"
   if grep -q "^${key}=" "$CONFIG" 2>/dev/null; then
-    # Escape sed specials in value
-    local esc
-    esc="$(printf '%s' "$val" | sed -e 's/[\\/&]/\\&/g')"
-    sed -i "s|^${key}=.*|${key}=${esc}|" "$CONFIG"
+    tmp="$(mktemp)"
+    awk -v k="$key" -v a="$assign" '
+      index($0, k "=") == 1 { print a; next }
+      { print }
+    ' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
   else
-    echo "${key}=${val}" >> "$CONFIG"
+    printf '%s\n' "$assign" >> "$CONFIG"
   fi
   echo "  updated ${key}"
 }

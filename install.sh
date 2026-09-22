@@ -113,25 +113,18 @@ echo "Workspace: $WS"
 echo "Repo root: $REPO_ROOT"
 echo "Started:   $(date -Iseconds)"
 
-# Load tokens.env / config if present
+# Load tokens.env / config if present (parser, not `source` — apostrophes in From: names)
+# shellcheck source=/dev/null
+source "$REPO_ROOT/scripts/load_env.sh"
 if [[ -f "$TOKENS_ENV" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$TOKENS_ENV"
-  set +a
+  pastor_load_env_file "$TOKENS_ENV"
   log "Loaded $TOKENS_ENV"
 elif [[ -f "$REPO_ROOT/tokens.env" ]]; then
   cp "$REPO_ROOT/tokens.env" "$TOKENS_ENV"
-  set -a
-  # shellcheck disable=SC1090
-  source "$TOKENS_ENV"
-  set +a
+  pastor_load_env_file "$TOKENS_ENV"
 fi
 if [[ -f "$CONFIG_ENV" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$CONFIG_ENV"
-  set +a
+  pastor_load_env_file "$CONFIG_ENV"
   log "Loaded $CONFIG_ENV"
 fi
 # shellcheck disable=SC1091
@@ -273,6 +266,7 @@ fi
 [[ -f "$REPO_ROOT/crawl_websites.sh" ]] && cp -a "$REPO_ROOT/crawl_websites.sh" "$WS/crawl_websites.sh"
 [[ -f "$REPO_ROOT/deploy_update.sh" ]] && cp -a "$REPO_ROOT/deploy_update.sh" "$WS/deploy_update.sh"
 mkdir -p "$WS/scripts" "$WS/serverless"
+[[ -f "$REPO_ROOT/scripts/load_env.sh" ]] && cp -a "$REPO_ROOT/scripts/load_env.sh" "$WS/scripts/load_env.sh"
 [[ -f "$REPO_ROOT/scripts/check_vllm.sh" ]] && cp -a "$REPO_ROOT/scripts/check_vllm.sh" "$WS/scripts/check_vllm.sh"
 [[ -f "$REPO_ROOT/scripts/check_whisper.sh" ]] && cp -a "$REPO_ROOT/scripts/check_whisper.sh" "$WS/scripts/check_whisper.sh"
 [[ -f "$REPO_ROOT/scripts/git_channel.sh" ]] && cp -a "$REPO_ROOT/scripts/git_channel.sh" "$WS/scripts/git_channel.sh"
@@ -291,10 +285,7 @@ log "Code synced (backend + frontend + scripts)"
 # ---------------------------------------------------------------------------
 section "PostgreSQL"
 if [[ -f "$CONFIG_ENV" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$CONFIG_ENV"
-  set +a
+  pastor_load_env_file "$CONFIG_ENV"
 fi
 # shellcheck disable=SC1091
 source "$REPO_ROOT/persist_runtime.sh"
@@ -388,10 +379,7 @@ fi
 ensure_django_admin_url "$CONFIG_ENV"
 
 # Ensure DB role exists
-set -a
-# shellcheck disable=SC1090
-source "$CONFIG_ENV"
-set +a
+pastor_load_env_file "$CONFIG_ENV"
 su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='${POSTGRES_USER}'\"" | grep -q 1 \
   || su -s /bin/bash postgres -c "psql -c \"CREATE USER ${POSTGRES_USER} WITH PASSWORD '${POSTGRES_PASSWORD}' CREATEDB;\""
 su -s /bin/bash postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='${POSTGRES_DB}'\"" | grep -q 1 \
@@ -402,10 +390,7 @@ if [[ -f "$TOKENS_ENV" ]]; then
   bash "$WS/apply-tokens.sh" || true
 fi
 vllm_apply_config "$CONFIG_ENV"
-set -a
-# shellcheck disable=SC1090
-source "$CONFIG_ENV"
-set +a
+pastor_load_env_file "$CONFIG_ENV"
 
 # ---------------------------------------------------------------------------
 # Python venv + deps
