@@ -106,8 +106,10 @@ class SermonBrainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = context.watch<LocaleController>();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: Locale(locale.languageCode),
       scrollBehavior: const _NoOverscrollScrollBehavior(),
       theme: ThemeData(
         useMaterial3: true,

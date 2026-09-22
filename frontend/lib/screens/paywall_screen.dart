@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/screens/update_payment_method_screen.dart';
@@ -77,6 +78,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    final s = context.watch<LocaleController>().strings;
     final isMobile = MediaQuery.of(context).size.width < 700;
     final email = auth.user?.email ?? 'your account';
     final pastDue = auth.user?.subscriptionStatus == 'past_due';
@@ -99,7 +101,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
             child: TextButton(
               onPressed: auth.isLoading ? null : () => auth.logout(),
               child: Text(
-                'Sign out',
+                s.signOut,
                 style: GoogleFonts.figtree(
                   color: _navy,
                   fontWeight: FontWeight.w700,

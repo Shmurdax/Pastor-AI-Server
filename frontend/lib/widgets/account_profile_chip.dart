@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart';
 import 'package:flutter_application_1/screens/settings_screen.dart';
@@ -41,6 +42,8 @@ class AccountProfileChip extends StatelessWidget {
     final auth = context.watch<AuthController>();
     final user = auth.user;
     if (!auth.isAuthenticated || user == null) return const SizedBox.shrink();
+    // Rebuild when language changes so the sheet/chip stay in sync.
+    context.watch<LocaleController>();
 
     return Padding(
       padding: dense
@@ -107,15 +110,16 @@ Future<void> showAccountProfileSheet(
     builder: (ctx) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-        child: Consumer<AuthController>(
-          builder: (context, auth, _) {
+        child: Consumer2<AuthController, LocaleController>(
+          builder: (context, auth, locale, _) {
             final user = auth.user;
             if (user == null) return const SizedBox.shrink();
+            final s = locale.strings;
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Your account', style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: _navy)),
+                Text(s.yourAccount, style: GoogleFonts.figtree(fontSize: 20, fontWeight: FontWeight.bold, color: _navy)),
                 const SizedBox(height: 20),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -155,7 +159,7 @@ Future<void> showAccountProfileSheet(
                       }
                     },
                     icon: const Icon(Icons.video_library_outlined, color: _navy),
-                    label: Text('Media library', style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
+                    label: Text(s.mediaLibrary, style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold)),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: _navy, width: 1.5),
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -177,7 +181,7 @@ Future<void> showAccountProfileSheet(
                     },
                     icon: const Icon(Icons.settings_outlined, color: _navy),
                     label: Text(
-                      'Settings',
+                      s.settings,
                       style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -205,7 +209,7 @@ Future<void> showAccountProfileSheet(
                         }
                       },
                       icon: const Icon(Icons.volunteer_activism_outlined),
-                      label: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      label: Text(s.prayerInbox, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -225,7 +229,7 @@ Future<void> showAccountProfileSheet(
                         }
                       },
                       icon: const Icon(Icons.flag_outlined),
-                      label: Text('Response reports', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                      label: Text(s.responseReports, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -248,7 +252,7 @@ Future<void> showAccountProfileSheet(
                       onSignedOut?.call();
                     },
                     icon: const Icon(Icons.logout, color: _pink),
-                    label: Text('Sign out', style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
+                    label: Text(s.signOut, style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.bold)),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: _pink),
                       padding: const EdgeInsets.symmetric(vertical: 14),
