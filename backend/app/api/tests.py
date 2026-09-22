@@ -1654,6 +1654,62 @@ class GmailApiTests(TestCase):
                     self.assertTrue(gmail_is_configured())
                     self.assertEqual(email_delivery_mode(), "gmail_api")
 
+    def test_invalid_env_json_still_uses_secrets_file(self):
+        from api.gmail_send import _service_account_info, gmail_is_configured
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            secrets = root / "secrets"
+            secrets.mkdir()
+            info = _rsa_service_account_info()
+            (secrets / "gmail-sender.json").write_text(
+                json.dumps(info),
+                encoding="utf-8",
+            )
+            with override_settings(
+                GMAIL_SENDER="info@thenordins.org",
+                GMAIL_SERVICE_ACCOUNT_JSON="{not-valid-json",
+                GMAIL_SERVICE_ACCOUNT_FILE="",
+                WORKSPACE_ROOT=str(root),
+            ):
+                with patch.dict(os.environ, {"WORKSPACE_ROOT": str(root)}, clear=False):
+                    self.assertTrue(gmail_is_configured())
+                    loaded = _service_account_info()
+                    self.assertEqual(loaded["client_email"], info["client_email"])
+
+    def test_truncated_json_file_is_not_configured(self):
+        from api.gmail_send import gmail_is_configured
+
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            secrets = root / "secrets"
+            secrets.mkdir()
+            (secrets / "gmail-sender.json").write_text(
+                '{"type": "service_account", "private_key": "-----BEGIN',
+                encoding="utf-8",
+            )
+            with override_settings(
+                GMAIL_SENDER="info@thenordins.org",
+                GMAIL_SERVICE_ACCOUNT_JSON="",
+                GMAIL_SERVICE_ACCOUNT_FILE="",
+                WORKSPACE_ROOT=str(root),
+                EMAIL_HOST="",
+                GOOGLE_CLIENT_ID="",
+                GOOGLE_CLIENT_SECRET="",
+                GOOGLE_REFRESH_TOKEN="",
+            ):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "WORKSPACE_ROOT": str(root),
+                        "GOOGLE_CLIENT_ID": "",
+                        "GOOGLE_CLIENT_SECRET": "",
+                        "GOOGLE_REFRESH_TOKEN": "",
+                    },
+                    clear=False,
+                ):
+                    self.assertFalse(gmail_is_configured())
+
     def test_verification_email_uses_gmail_api_when_configured(self):
         from django.core import mail
 

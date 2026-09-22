@@ -58,6 +58,12 @@ def formatted_from_header(sender: str | None = None) -> str:
     return formataddr((name or GMAIL_FROM_NAME, addr or address))
 
 
+HARDCODED_GMAIL_FILES = (
+    Path("/workspace/pastor-ai/secrets/gmail-sender.json"),
+    Path("/workspace/persistent/secrets/gmail-sender.json"),
+)
+
+
 def _workspace_root() -> Path:
     hint = _setting("WORKSPACE_ROOT") or os.environ.get("WORKSPACE_ROOT", "")
     if hint:
@@ -79,6 +85,7 @@ def _service_account_files() -> list[Path]:
         [
             ws / "secrets" / "gmail-sender.json",
             persist / "secrets" / "gmail-sender.json",
+            *HARDCODED_GMAIL_FILES,
         ]
     )
     seen: set[Path] = set()
@@ -92,37 +99,76 @@ def _service_account_files() -> list[Path]:
     return unique
 
 
-def _service_account_info() -> dict | None:
-    raw = _setting("GMAIL_SERVICE_ACCOUNT_JSON")
-    if raw:
-        if not raw.startswith("{"):
-            try:
-                raw = base64.b64decode(raw).decode("utf-8")
-            except Exception as exc:
-                raise GmailSendError("GMAIL_SERVICE_ACCOUNT_JSON is not valid JSON or base64.") from exc
+def _looks_like_service_account(info: dict) -> bool:
+    private_key = str(info.get("private_key") or "")
+    client_email = str(info.get("client_email") or "")
+    return (
+        info.get("type") == "service_account"
+        and "BEGIN" in private_key
+        and "@" in client_email
+    )
+
+
+def _parse_service_account_info(raw: str, *, source: str) -> dict | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if not text.startswith("{"):
         try:
-            info = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise GmailSendError("GMAIL_SERVICE_ACCOUNT_JSON is not valid JSON.") from exc
-        if isinstance(info, dict):
-            return info
-    last_error: GmailSendError | None = None
+            text = base64.b64decode(text).decode("utf-8")
+        except Exception:
+            logger.warning("Gmail credentials from %s are not JSON or base64.", source)
+            return None
+    try:
+        info = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(
+            "Gmail credentials from %s are not valid JSON (%s bytes).",
+            source,
+            len(text.encode("utf-8")),
+        )
+        return None
+    if not isinstance(info, dict):
+        logger.warning("Gmail credentials from %s are not a JSON object.", source)
+        return None
+    if not _looks_like_service_account(info):
+        logger.warning(
+            "Gmail credentials from %s are not a service-account key "
+            "(type=%s client_email=%s private_key=%s).",
+            source,
+            info.get("type"),
+            bool(info.get("client_email")),
+            bool(info.get("private_key")),
+        )
+        return None
+    return info
+
+
+def _service_account_info() -> dict | None:
+    """Load the Workspace service-account key. On-disk JSON wins over env paste."""
+    seen_files: list[Path] = []
     for file_path in _service_account_files():
         if not file_path.is_file():
             continue
+        seen_files.append(file_path)
         try:
-            info = json.loads(file_path.read_text(encoding="utf-8"))
+            raw = file_path.read_text(encoding="utf-8")
         except OSError as exc:
-            last_error = GmailSendError(f"Could not read Gmail service account file: {file_path}")
-            last_error.__cause__ = exc
+            logger.warning("Could not read Gmail service account file %s: %s", file_path, exc)
             continue
-        except json.JSONDecodeError as exc:
-            raise GmailSendError("Gmail service account file is not valid JSON.") from exc
-        if isinstance(info, dict):
+        info = _parse_service_account_info(raw, source=str(file_path))
+        if info:
             return info
-    configured = _setting("GMAIL_SERVICE_ACCOUNT_FILE") or _setting("GOOGLE_APPLICATION_CREDENTIALS")
-    if configured and last_error is not None:
-        raise last_error
+    raw = _setting("GMAIL_SERVICE_ACCOUNT_JSON")
+    if raw:
+        info = _parse_service_account_info(raw, source="GMAIL_SERVICE_ACCOUNT_JSON")
+        if info:
+            return info
+    if seen_files:
+        logger.error(
+            "Gmail JSON key was found but is not a usable service-account key: %s",
+            ", ".join(str(path) for path in seen_files),
+        )
     return None
 
 
@@ -130,7 +176,8 @@ def gmail_is_configured() -> bool:
     try:
         if _service_account_info() and gmail_sender():
             return True
-    except GmailSendError:
+    except Exception:
+        logger.exception("Gmail configuration check failed")
         return False
     client_id = _setting("GOOGLE_CLIENT_ID")
     client_secret = _setting("GOOGLE_CLIENT_SECRET")

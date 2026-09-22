@@ -249,6 +249,34 @@ else
   log "vLLM already running on :${VLLM_PORT}"
 fi
 
+# Prefer the JSON key on disk. A leftover GMAIL_SERVICE_ACCOUNT_JSON paste in
+# config.env must not hide secrets/gmail-sender.json.
+if [[ -z "${GMAIL_SERVICE_ACCOUNT_FILE:-}" && -f "$WS/secrets/gmail-sender.json" ]]; then
+  GMAIL_SERVICE_ACCOUNT_FILE="$WS/secrets/gmail-sender.json"
+fi
+_gmail_json="${GMAIL_SERVICE_ACCOUNT_FILE:-$WS/secrets/gmail-sender.json}"
+if [[ -f "$_gmail_json" ]]; then
+  GMAIL_SERVICE_ACCOUNT_FILE="$_gmail_json"
+  _gmail_bytes="$(wc -c < "$_gmail_json" | tr -d ' ')"
+  if python3 -c '
+import json, sys
+path = sys.argv[1]
+data = json.load(open(path, encoding="utf-8"))
+assert isinstance(data, dict)
+assert data.get("type") == "service_account"
+assert "BEGIN" in (data.get("private_key") or "")
+assert "@" in (data.get("client_email") or "")
+print(data.get("client_email", ""))
+' "$_gmail_json" >/tmp/pastor-gmail-email 2>/tmp/pastor-gmail-json-err; then
+    GMAIL_SERVICE_ACCOUNT_JSON=""
+    log "Gmail key ${_gmail_json} (${_gmail_bytes} bytes) as $(tr -d '\n' < /tmp/pastor-gmail-email) → ${GMAIL_SENDER:-info@thenordins.org}"
+  else
+    warn "Gmail key ${_gmail_json} is not a complete service-account JSON (${_gmail_bytes} bytes; a real key is usually ~2300+). Re-download it from Google Cloud."
+  fi
+else
+  warn "Gmail key missing at $WS/secrets/gmail-sender.json — signup codes will not email"
+fi
+
 # Django
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
 ensure_persistent_uploads
@@ -300,9 +328,10 @@ screen -dmS django bash -c "
   export GOOGLE_CLIENT_ID='${GOOGLE_CLIENT_ID:-}' &&
   export GOOGLE_CLIENT_SECRET='${GOOGLE_CLIENT_SECRET:-}' &&
   export GOOGLE_REFRESH_TOKEN='${GOOGLE_REFRESH_TOKEN:-}' &&
-  export GMAIL_SENDER='${GMAIL_SENDER:-}' &&
-  export GMAIL_SERVICE_ACCOUNT_JSON='${GMAIL_SERVICE_ACCOUNT_JSON:-}' &&
-  export GMAIL_SERVICE_ACCOUNT_FILE='${GMAIL_SERVICE_ACCOUNT_FILE:-}' &&
+  export WORKSPACE_ROOT='$(pastor_escape_sq "$WS")' &&
+  export GMAIL_SENDER='$(pastor_escape_sq "${GMAIL_SENDER:-info@thenordins.org}")' &&
+  export GMAIL_SERVICE_ACCOUNT_JSON='$(pastor_escape_sq "${GMAIL_SERVICE_ACCOUNT_JSON:-}")' &&
+  export GMAIL_SERVICE_ACCOUNT_FILE='$(pastor_escape_sq "${GMAIL_SERVICE_ACCOUNT_FILE:-}")' &&
   export STRIPE_SECRET_KEY='${STRIPE_SECRET_KEY:-}' &&
   export STRIPE_PUBLISHABLE_KEY='${STRIPE_PUBLISHABLE_KEY:-}' &&
   export STRIPE_WEBHOOK_SECRET='${STRIPE_WEBHOOK_SECRET:-}' &&
