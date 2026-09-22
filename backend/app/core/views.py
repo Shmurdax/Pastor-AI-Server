@@ -73,6 +73,7 @@ from .chat_sse import (
 )
 from .bible_refs import scripture_refs_from_metadata
 from .teaching_claims import retrieval_search_text
+from .notes_coverage import COVERAGE_PARTIAL, select_reference_notes
 from .chat_retrieval import (
     format_reference_notes,
     is_bible_source,
@@ -853,7 +854,11 @@ class ChatAPIView(APIView):
                 search_text,
                 scored_hits,
             )
-            docs = [doc for doc, _score in scored_hits[:RETRIEVAL_K]]
+            docs, notes_coverage = select_reference_notes(
+                search_text,
+                scored_hits,
+                limit=RETRIEVAL_K,
+            )
             context = format_reference_notes(
                 docs,
                 _doc_source_label,
@@ -861,6 +866,12 @@ class ChatAPIView(APIView):
                 preserve_order=True,
             )
             teaching_claims = []
+            logger.warning(
+                "Note coverage=%s docs=%s query=%s",
+                notes_coverage,
+                len(docs),
+                search_text[:80],
+            )
 
             bible_count = sum(1 for doc in docs if _is_bible_source(_doc_source_name(doc)))
             video_count = sum(1 for doc in docs if is_video_chunk(doc))
@@ -899,9 +910,17 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
+            coverage_line = ""
+            if notes_coverage == COVERAGE_PARTIAL:
+                coverage_line = (
+                    "\nThe attached notes are the nearest sermons, not a confirmed match. "
+                    "If they do not teach this question, say the notes do not cover it, "
+                    "then teach only what they do say. Do not invent historians or book citations.\n"
+                )
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + language_reply_instruction("en")
+                + coverage_line
                 + "\nREFERENCE NOTES:\n{context}"
             )
             system_filled = system_content.replace(

@@ -148,7 +148,8 @@ REFUSAL_NOTES_SENTINEL = "No relevant sermon notes found."
 EMPTY_REFERENCE_NOTES = (
     "No sermon excerpts were attached for this turn. "
     "Do not invent Pastor Don or Susan quotations. "
-    "Say you do not have retrieved notes for this question."
+    "Do not answer from general Christian knowledge or memory. "
+    "Say you do not have sermon notes for this question."
 )
 
 # ~2000-character replies need ~500–800 tokens, not a long-essay budget.
