@@ -561,6 +561,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                       : 'Free preview · Subscribe to unlock the full library',
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),
+                            const SizedBox(height: 28),
                           ],
                         ),
                       ),
