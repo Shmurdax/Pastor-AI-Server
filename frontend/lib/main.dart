@@ -1516,10 +1516,12 @@ final bibleRefRegex = RegExp(
     String? errorText,
   }) {
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
+    final literal = errorText != null && errorText.trim().isNotEmpty;
     setState(() {
       applyChatStreamFailure(
         runtime.messages,
-        errorText: errorText ?? _s.serverError,
+        errorText: literal ? errorText.trim() : _s.serverError,
+        literalText: literal,
       );
     });
     unawaited(_persistChatHistory(runtime));

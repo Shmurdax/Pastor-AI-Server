@@ -241,18 +241,15 @@ Stripe, when live, updates these fields from checkout and webhooks. Manual edits
 
 ### Chat token budgets (Premium)
 
-Paid Premium members receive **100,000 tokens per month**. Grants land on the **same calendar day they first subscribed**, every month — whether they pay monthly or yearly. Unused tokens roll into the next month automatically (members are not told about rollover). Superusers are never limited.
+Premium members share one **platform monthly pool of 34,000,000 tokens** (calendar month). There is no per-user monthly allotment. When the pool is empty, Premium chat waits until the next month. **Superusers are never limited and do not consume the pool.**
 
-To keep heavy users from emptying a month in one sitting:
+The Django admin home page has a **Premium chat tokens** section showing tokens used, tokens left, and the monthly budget. Staff can also open **Premium chat token pools** under Pastoral.
 
-- Up to **1/10 of the monthly allotment** (~10,000 tokens) can be spent in a single day
-- Hitting that daily ceiling starts a **2-day cooldown** before chat works again
-- If the full bank is empty, the app shows how long until the **next anniversary allotment**
-- Daily cooldown / empty-bank copy: *You've run out of responses for now. Please wait…*
+Admins may still restrict an individual user via **Chat restricted until** / days+hours helpers (moderation only).
 
-In **Pastoral → Users** (or Profiles) you can see **Tokens left**, **Tokens spent**, and the **token cycle anchor** (first-subscribe day). Use **Adjust tokens** on the profile (positive to add, negative to remove) for support comps. Do not tell members their exact bank balance or that unused tokens roll over.
+Chat copy when blocked: *You have used up your allotted responses currently. Please wait …*
 
-Env knobs (operators): `MONTHLY_TOKEN_LIMIT_PER_USER`, `DAILY_TOKEN_BUDGET`, `TOKEN_COOLDOWN_DAYS`, `TOKEN_LIMIT_ENFORCE`.
+Env knobs: `PLATFORM_MONTHLY_TOKEN_BUDGET` (default 34000000), `TOKEN_LIMIT_ENFORCE`.
 
 ---
 

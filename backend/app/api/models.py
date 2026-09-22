@@ -54,31 +54,30 @@ class Profile(models.Model):
         default=True,
         help_text="Email/password signups start unverified and must enter a code before checkout.",
     )
-    # Chat token wallet (Premium only; superusers are never limited).
-    # Unused monthly grants roll into token_balance silently — clients must not
-    # be shown the bank or told about rollover.
+    # Legacy per-user wallet fields retained for admin diagnostics.
+    # Gating uses PlatformTokenMeter (Premium-only shared monthly pool).
     token_balance = models.PositiveIntegerField(
         default=0,
-        help_text="Remaining chat tokens (includes secret monthly rollover).",
+        help_text="Deprecated per-user remaining balance (unused; platform pool gates Premium chat).",
     )
     tokens_spent = models.PositiveIntegerField(
         default=0,
-        help_text="Lifetime tokens consumed by chat generations.",
+        help_text="Lifetime tokens this Premium account contributed to the platform pool.",
     )
     token_period_key = models.CharField(
         max_length=10,
         blank=True,
         default="",
-        help_text="YYYY-MM-DD start of the last anniversary token grant period.",
+        help_text="Deprecated anniversary grant key.",
     )
     token_cycle_anchor = models.DateField(
         blank=True,
         null=True,
-        help_text="First Premium subscribe day; monthly token grants land on this day each month.",
+        help_text="Deprecated first-subscribe anniversary for token grants.",
     )
     tokens_used_today = models.PositiveIntegerField(
         default=0,
-        help_text="Tokens consumed on token_usage_day (daily pacing).",
+        help_text="Tokens consumed on token_usage_day (diagnostics).",
     )
     token_usage_day = models.DateField(
         blank=True,
@@ -88,7 +87,7 @@ class Profile(models.Model):
     token_cooldown_until = models.DateTimeField(
         blank=True,
         null=True,
-        help_text="When set, chat is blocked until this time (daily binge cooldown).",
+        help_text="Admin chat restriction: when set, this user cannot chat until this time.",
     )
 
     def save(self, *args, **kwargs):
@@ -231,6 +230,28 @@ class PasswordResetCode(models.Model):
 
     def __str__(self):
         return f"PasswordResetCode({self.user_id})"
+
+
+class PlatformTokenMeter(models.Model):
+    """Shared monthly chat token pool for Premium members only."""
+
+    period_key = models.CharField(
+        max_length=7,
+        unique=True,
+        db_index=True,
+        help_text="Calendar month YYYY-MM.",
+    )
+    tokens_used = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_key"]
+        verbose_name = "Premium chat token pool"
+        verbose_name_plural = "Premium chat token pools"
+
+    def __str__(self):
+        return f"PlatformTokenMeter({self.period_key}={self.tokens_used})"
 
 
 class MediaVideo(models.Model):
