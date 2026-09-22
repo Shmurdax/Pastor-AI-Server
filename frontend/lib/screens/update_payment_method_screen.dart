@@ -224,6 +224,7 @@ class _UpdatePaymentMethodScreenState extends State<UpdatePaymentMethodScreen> {
         ),
         content: Text(
           'Future Premium renewals will use the card you just saved. '
+          'Any previous card on this account has been removed. '
           'If a recent charge failed, Stripe will retry it automatically.',
           style: GoogleFonts.figtree(height: 1.45),
         ),

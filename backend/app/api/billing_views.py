@@ -530,7 +530,7 @@ def _pending_from_stripe_subscription(subscription, current_period: str) -> str 
 
 
 def _can_update_payment_method(profile: Profile) -> bool:
-    """Active and past-due Stripe subscribers can replace the card on file."""
+    """Active and past-due subscribers can add or replace a card on file."""
     return profile.subscription_status in {
         Profile.SubscriptionStatus.ACTIVE,
         Profile.SubscriptionStatus.PAST_DUE,
@@ -605,11 +605,41 @@ def _refresh_profile_subscription_from_stripe(profile: Profile) -> None:
     _apply_subscription_to_profile(profile, **apply_kwargs)
 
 
+def _detach_other_payment_methods(customer_id: str, keep_payment_method_id: str) -> None:
+    """Remove every card on the customer except the newly saved default."""
+    if not customer_id or not keep_payment_method_id:
+        return
+    try:
+        payment_methods = stripe.PaymentMethod.list(
+            customer=customer_id,
+            type="card",
+            limit=100,
+        )
+    except stripe.error.StripeError:
+        logger.exception(
+            "Failed to list payment methods for customer %s after card update",
+            customer_id,
+        )
+        return
+    for payment_method in _stripe_get(payment_methods, "data") or []:
+        pm_id = _id_or_value(payment_method)
+        if not pm_id or pm_id == keep_payment_method_id:
+            continue
+        try:
+            stripe.PaymentMethod.detach(pm_id)
+        except stripe.error.StripeError:
+            logger.exception(
+                "Failed to detach old payment method %s for customer %s",
+                pm_id,
+                customer_id,
+            )
+
+
 def _apply_default_payment_method_from_setup_session(
     session,
     profile: Profile | None = None,
 ) -> str:
-    """Attach the collected card as the default for the customer and subscription."""
+    """Attach the collected card as the default and detach any previous cards."""
     setup_intent = _stripe_get(session, "setup_intent")
     setup_id = _id_or_value(setup_intent)
     payment_method_id = _id_or_value(_stripe_get(setup_intent, "payment_method"))
@@ -645,6 +675,7 @@ def _apply_default_payment_method_from_setup_session(
                 "Failed to set default payment method on subscription %s",
                 subscription_id,
             )
+    _detach_other_payment_methods(customer_id, payment_method_id)
     _retry_open_invoices(customer_id)
     if profile is not None:
         if customer_id and not profile.stripe_customer_id:
@@ -1062,7 +1093,7 @@ class ChangePlanView(_AuthenticatedBillingView):
 
 
 class CreatePaymentMethodUpdateSessionView(_AuthenticatedBillingView):
-    """Embedded Checkout in setup mode so a member can replace the card on file."""
+    """Embedded Checkout in setup mode so a member can add or replace a card."""
 
     def post(self, request):
         if not _stripe_configured():
@@ -1089,24 +1120,23 @@ class CreatePaymentMethodUpdateSessionView(_AuthenticatedBillingView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        customer_id = (profile.stripe_customer_id or "").strip()
-        if not customer_id:
-            return Response(
-                {
-                    "detail": (
-                        "This Premium account has no Stripe card on file. "
-                        "Payment method updates are available for Stripe subscriptions."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         _ensure_stripe()
-        app_url = _public_app_url(request)
-        return_url = (
-            f"{app_url}/?billing=payment_updated&session_id={{CHECKOUT_SESSION_ID}}"
-        )
+        customer_id = (profile.stripe_customer_id or "").strip()
         try:
+            if not customer_id:
+                customer = stripe.Customer.create(
+                    email=request.user.email,
+                    name=request.user.get_full_name() or request.user.username,
+                    metadata={"user_id": str(request.user.id)},
+                )
+                customer_id = customer["id"]
+                profile.stripe_customer_id = customer_id
+                profile.save(update_fields=["stripe_customer_id"])
+
+            app_url = _public_app_url(request)
+            return_url = (
+                f"{app_url}/?billing=payment_updated&session_id={{CHECKOUT_SESSION_ID}}"
+            )
             session = stripe.checkout.Session.create(
                 ui_mode="embedded_page",
                 mode="setup",

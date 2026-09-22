@@ -600,8 +600,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Replace a card that is expired or about to expire. '
-                          'Future renewals use the new card.',
+                          'Add a card or replace one that is expired. '
+                          'Saving a new card removes the previous one from your account.',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
                         ),
