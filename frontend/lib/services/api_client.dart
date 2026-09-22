@@ -57,19 +57,6 @@ String? chatApiErrorMessage(String body) {
   return null;
 }
 
-/// Strip `HTTP 429: {...}` wrappers from [chatStream] failures.
-String? chatFailureMessageFromException(Object error) {
-  final raw = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
-  if (raw.isEmpty) return null;
-  final httpMatch = RegExp(r'^HTTP\s+\d+:\s*(.*)$', dotAll: true).firstMatch(raw);
-  final body = (httpMatch?.group(1) ?? raw).trim();
-  final fromJson = chatApiErrorMessage(body);
-  if (fromJson != null) return fromJson;
-  if (body.startsWith('{') || body.startsWith('<')) return null;
-  if (body.length > 280) return null;
-  return body;
-}
-
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;

@@ -152,35 +152,20 @@ bool completeChatStreamAnswer(
   return true;
 }
 
-/// Paints a visible failure when the stream drops before any tokens.
+/// Paints a visible server error when the stream drops before any tokens.
 /// Partial answers stay in place; late failures after stop are ignored.
-///
-/// When [literalText] is true, [errorText] is shown as-is (token quota wait
-/// copy). Otherwise [localKey] `serverError` is used so language changes
-/// refresh the generic connectivity message.
 void applyChatStreamFailure(
   List<Map<String, dynamic>> messages, {
   required String errorText,
-  bool literalText = false,
 }) {
-  void paint(Map<String, dynamic> msg) {
-    msg['streaming'] = false;
-    msg['text'] = errorText;
-    if (literalText) {
-      msg.remove('localKey');
-    } else {
-      msg['localKey'] = 'serverError';
-    }
-  }
-
   final index = indexOfStreamingAi(messages);
   if (index != null) {
     final msg = messages[index];
+    msg['streaming'] = false;
     final existing = (msg['text'] as String?)?.trim() ?? '';
     if (existing.isEmpty) {
-      paint(msg);
-    } else {
-      msg['streaming'] = false;
+      msg['localKey'] = 'serverError';
+      msg['text'] = errorText;
     }
     return;
   }
@@ -188,12 +173,9 @@ void applyChatStreamFailure(
     messages.last['streaming'] = false;
     return;
   }
-  final msg = <String, dynamic>{
+  messages.add({
     'role': 'ai',
+    'localKey': 'serverError',
     'text': errorText,
-  };
-  if (!literalText) {
-    msg['localKey'] = 'serverError';
-  }
-  messages.add(msg);
+  });
 }

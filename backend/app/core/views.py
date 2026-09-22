@@ -21,11 +21,6 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from api.permissions import HasPremiumAccess
-from api.token_quota import (
-    check_chat_allowed,
-    estimate_chat_charge,
-    record_token_usage,
-)
 
 # RAG & Memory Imports
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -539,18 +534,6 @@ def _chat_payload(answer: str, sources=None, message_id=None) -> dict:
     return payload
 
 
-def _charge_chat_tokens(chat_user, prepared: dict, answer: str) -> None:
-    """Meter a completed Premium chat turn against the user's token wallet."""
-    if chat_user is None:
-        return
-    prompt = int(prepared.get("used_tokens") or 0)
-    tokens = estimate_chat_charge(prompt_tokens=prompt, answer=answer or "")
-    try:
-        record_token_usage(chat_user, tokens)
-    except Exception:
-        logger.exception("Failed to record chat token usage for user_id=%s", getattr(chat_user, "id", None))
-
-
 def _immediate_sse(payload: dict):
     if payload.get("answer"):
         yield _sse({"type": "delta", "text": payload["answer"]})
@@ -759,15 +742,6 @@ class ChatAPIView(APIView):
 
         if not raw_query:
             return Response({"error": "No query provided"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Premium monthly/daily token pacing (superusers are exempt).
-        if chat_user is not None:
-            gate = check_chat_allowed(chat_user)
-            if not gate.allowed:
-                return Response(
-                    gate.as_response_dict(),
-                    status=status.HTTP_429_TOO_MANY_REQUESTS,
-                )
 
         user_query_stored = str(raw_query).strip()
         # Search and generate in English; translate the displayed answer after.
@@ -1274,7 +1248,6 @@ class ChatAPIView(APIView):
                     user_query_stored=user_query_stored,
                     answer=answer,
                 )
-                _charge_chat_tokens(chat_user, prepared, answer)
                 display = display_reply(answer, chat_language)
                 if not emit_live:
                     yield _sse({"type": "delta", "text": display})
@@ -1467,7 +1440,6 @@ class ChatAPIView(APIView):
                 user_query_stored=user_query_stored,
                 answer=answer,
             )
-            _charge_chat_tokens(chat_user, prepared, answer)
             logger.debug("Chat response generated successfully.")
             return Response(
                 _chat_payload(

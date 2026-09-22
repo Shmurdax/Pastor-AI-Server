@@ -25,8 +25,6 @@ import 'package:flutter_application_1/screens/response_reports_inbox_screen.dart
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/ingested_documents_panel.dart';
 import 'package:flutter_application_1/models/ingested_document.dart';
-import 'package:flutter_application_1/services/api_client.dart'
-    show chatFailureMessageFromException;
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
@@ -1510,18 +1508,12 @@ final bibleRefRegex = RegExp(
     return runtime.isCurrentStream(epoch);
   }
 
-  void _paintChatStreamFailure(
-    ChatSessionRuntime runtime,
-    int epoch, {
-    String? errorText,
-  }) {
+  void _paintChatStreamFailure(ChatSessionRuntime runtime, int epoch) {
     if (!mounted || !_isCurrentStream(runtime, epoch)) return;
-    final literal = errorText != null && errorText.trim().isNotEmpty;
     setState(() {
       applyChatStreamFailure(
         runtime.messages,
-        errorText: literal ? errorText.trim() : _s.serverError,
-        literalText: literal,
+        errorText: _s.serverError,
       );
     });
     unawaited(_persistChatHistory(runtime));
@@ -1717,9 +1709,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     await _persistChatHistory(runtime);
   } on http.ClientException {
     _paintChatStreamFailure(runtime, epoch);
-  } catch (e) {
-    final quotaMessage = chatFailureMessageFromException(e);
-    _paintChatStreamFailure(runtime, epoch, errorText: quotaMessage);
+  } catch (_) {
+    _paintChatStreamFailure(runtime, epoch);
   } finally {
     if (epoch == runtime.streamEpoch) {
       if (mounted) {
