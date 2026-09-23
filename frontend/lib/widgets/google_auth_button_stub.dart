@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 const _navy = Color(0xFF1B264F);
 
-/// Mobile / non-web Google button — uses the plugin `signIn()` flow.
+/// Mobile / non-web Google button — uses `GoogleSignIn.authenticate()`.
 class GoogleAuthButton extends StatelessWidget {
   const GoogleAuthButton({
     super.key,

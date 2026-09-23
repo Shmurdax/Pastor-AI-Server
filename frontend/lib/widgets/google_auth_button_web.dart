@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in_web/web_only.dart' as gsi_web;
 
-/// Web Google button — uses GIS `renderButton`, which returns a real idToken.
+/// Web Google button — Google Identity Services `renderButton`.
 ///
-/// Do not call `GoogleSignIn.signIn()` on web for authentication; that flow only
-/// yields an accessToken and breaks backend ID-token verification.
+/// That button returns an ID token. Do not start an OAuth 2.0 token popup
+/// from a custom button; Google rejects that flow for current Web clients.
 class GoogleAuthButton extends StatelessWidget {
   const GoogleAuthButton({
     super.key,
@@ -42,7 +42,7 @@ class GoogleAuthButton extends StatelessWidget {
                   : gsi_web.GSIButtonText.signinWith,
               shape: gsi_web.GSIButtonShape.rectangular,
               logoAlignment: gsi_web.GSIButtonLogoAlignment.left,
-              minimumWidth: 240,
+              minimumWidth: 240.0,
             ),
           ),
         ),

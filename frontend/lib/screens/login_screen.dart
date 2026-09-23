@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
-  StreamSubscription<GoogleSignInAccount?>? _googleSub;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _googleSub;
   bool _handlingGoogle = false;
   bool _googleReady = false;
 
@@ -51,12 +51,36 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _initGoogle() async {
-    await AuthService.ensureGoogleSignInReady();
+    try {
+      await AuthService.ensureGoogleSignInReady();
+    } catch (e) {
+      if (!mounted) return;
+      final message = AuthService.googleErrorMessage(e);
+      if (message != null) {
+        context.read<AuthController>().presentError(message);
+      }
+    }
     if (!mounted) return;
     if (kIsWeb && AuthService.isGoogleConfigured) {
-      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
+      _googleSub = GoogleSignIn.instance.authenticationEvents.listen(
+        _onGoogleAuthEvent,
+        onError: _onGoogleAuthError,
+      );
     }
     setState(() => _googleReady = true);
+  }
+
+  void _onGoogleAuthEvent(GoogleSignInAuthenticationEvent event) {
+    if (event is GoogleSignInAuthenticationEventSignIn) {
+      _onGoogleUser(event.user);
+    }
+  }
+
+  void _onGoogleAuthError(Object error) {
+    if (!mounted || _handlingGoogle) return;
+    final message = AuthService.googleErrorMessage(error);
+    if (message == null) return;
+    context.read<AuthController>().presentError(message);
   }
 
   @override
@@ -305,7 +329,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
-  StreamSubscription<GoogleSignInAccount?>? _googleSub;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _googleSub;
   bool _handlingGoogle = false;
   bool _googleReady = false;
 
@@ -316,12 +340,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _initGoogle() async {
-    await AuthService.ensureGoogleSignInReady();
+    try {
+      await AuthService.ensureGoogleSignInReady();
+    } catch (e) {
+      if (!mounted) return;
+      final message = AuthService.googleErrorMessage(e);
+      if (message != null) {
+        context.read<AuthController>().presentError(message);
+      }
+    }
     if (!mounted) return;
     if (kIsWeb && AuthService.isGoogleConfigured) {
-      _googleSub = AuthService.googleSignIn.onCurrentUserChanged.listen(_onGoogleUser);
+      _googleSub = GoogleSignIn.instance.authenticationEvents.listen(
+        _onGoogleAuthEvent,
+        onError: _onGoogleAuthError,
+      );
     }
     setState(() => _googleReady = true);
+  }
+
+  void _onGoogleAuthEvent(GoogleSignInAuthenticationEvent event) {
+    if (event is GoogleSignInAuthenticationEventSignIn) {
+      _onGoogleUser(event.user);
+    }
+  }
+
+  void _onGoogleAuthError(Object error) {
+    if (!mounted || _handlingGoogle) return;
+    final message = AuthService.googleErrorMessage(error);
+    if (message == null) return;
+    context.read<AuthController>().presentError(message);
   }
 
   @override

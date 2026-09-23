@@ -114,6 +114,7 @@ Then rebuild:
 bash /workspace/pastor-ai/deploy_update.sh
 ```
 3. **Google popup / origin errors.** In Google Cloud Console → Credentials → your OAuth **Web** client, add the public site origin (Cloudflare tunnel or custom domain) under **Authorized JavaScript origins** (scheme + host only, no path). COOP is already `same-origin-allow-popups` for GIS.
+4. **“OAuth 2.0” / “use the new Google auth” on the sign-in button.** Sign-in must use the Google Identity Services button (an ID token), not an OAuth access-token popup. `GOOGLE_CLIENT_ID` has to be a **Web application** OAuth client. Rebuild the web app after pulling this fix (`bash deploy_update.sh`).
 
 ### Private LoRA 404
 `HF_TOKEN` must belong to an account that can open

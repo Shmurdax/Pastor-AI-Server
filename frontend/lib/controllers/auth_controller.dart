@@ -222,4 +222,9 @@ class AuthController extends ChangeNotifier {
     error = null;
     notifyListeners();
   }
+
+  void presentError(String message) {
+    error = message;
+    notifyListeners();
+  }
 }

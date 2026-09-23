@@ -141,7 +141,7 @@ class AuthService {
       String.fromEnvironment('GOOGLE_CLIENT_ID');
 
   static String? _resolvedGoogleClientId;
-  static GoogleSignIn? _googleSignIn;
+  static bool _googleInitialized = false;
   static Future<void>? _googleInitFuture;
 
   static String? get resolvedGoogleClientId {
@@ -157,19 +157,22 @@ class AuthService {
   static bool get isGoogleConfigured =>
       kUseMockAuth || (resolvedGoogleClientId?.isNotEmpty ?? false);
 
-  /// Shared plugin instance so the web GIS `renderButton` and token exchange
-  /// use the same client configuration.
-  static GoogleSignIn get googleSignIn {
-    final gsi = _googleSignIn;
-    if (gsi == null) {
-      throw AuthException('Google Sign-In is not configured. Set GOOGLE_CLIENT_ID.');
-    }
-    return gsi;
-  }
-
   /// Loads GOOGLE_CLIENT_ID from compile-time defines or GET /api/auth/config/.
   static Future<void> ensureGoogleSignInReady() {
     return _googleInitFuture ??= _initializeGoogleSignIn();
+  }
+
+  /// User-facing text for a Google sign-in failure. Cancelled attempts return
+  /// null so the form can stay quiet.
+  static String? googleErrorMessage(Object error) {
+    if (error is GoogleSignInException) {
+      if (error.code == GoogleSignInExceptionCode.canceled) return null;
+      final description = error.description?.trim();
+      if (description != null && description.isNotEmpty) return description;
+    }
+    final text = error.toString().replaceFirst(RegExp(r'^Exception:\s*'), '').trim();
+    if (text.isEmpty) return 'Google sign-in failed. Please try again.';
+    return text;
   }
 
   static Future<void> _initializeGoogleSignIn() async {
@@ -203,10 +206,30 @@ class AuthService {
     if (clientId.isEmpty) return;
 
     _resolvedGoogleClientId = clientId;
-    _googleSignIn ??= GoogleSignIn(
-      clientId: clientId,
-      scopes: const <String>['email', 'profile', 'openid'],
-    );
+    // Sign-in only needs an ID token. Do not pass email/profile/openid as
+    // OAuth scopes: that opens Google's authorization client, and new Web
+    // clients are rejected with an OAuth 2.0 error. The ID token already
+    // includes email and profile.
+    //
+    // Web uses clientId. Android has no google-services.json, so the same Web
+    // client is serverClientId (the ID token audience Django checks). Passing
+    // serverClientId on web throws.
+    try {
+      await GoogleSignIn.instance.initialize(
+        clientId: kIsWeb ||
+                defaultTargetPlatform == TargetPlatform.iOS ||
+                defaultTargetPlatform == TargetPlatform.macOS
+            ? clientId
+            : null,
+        serverClientId: kIsWeb ? null : clientId,
+      );
+      _googleInitialized = true;
+    } catch (e) {
+      _resolvedGoogleClientId = null;
+      _googleInitialized = false;
+      _googleInitFuture = null;
+      rethrow;
+    }
   }
 
   static String _baseUrlForConfig() =>
@@ -251,31 +274,37 @@ class AuthService {
     return _parseAuthResponse(res);
   }
 
-  /// Mobile / desktop: interactive `signIn()`.
-  /// Web: prefer [signInWithGoogleAccount] after GIS `renderButton` / One Tap.
+  /// Mobile / desktop: interactive `authenticate()`.
+  /// Web: use the Google Identity Services button, then
+  /// [signInWithGoogleAccount]. `authenticate()` is not supported on web.
   Future<AuthResult> signInWithGoogle() async {
     await ensureGoogleSignInReady();
     if (!isGoogleConfigured) {
       throw AuthException('Google Sign-In is not configured. Set GOOGLE_CLIENT_ID.');
     }
 
-    if (kIsWeb) {
-      final current = googleSignIn.currentUser;
-      if (current != null) {
-        return signInWithGoogleAccount(current);
-      }
+    if (kUseMockAuth) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      return _mockResult(email: 'google.user@example.com', name: 'Google User');
+    }
+
+    if (!GoogleSignIn.instance.supportsAuthenticate()) {
       throw AuthException(
         'On web, use the Google button to sign in '
         '(it provides a verified ID token).',
       );
     }
 
-    final account = await googleSignIn.signIn();
-    if (account == null) throw AuthException('Google sign-in was cancelled.');
-    return signInWithGoogleAccount(account);
+    try {
+      final account = await GoogleSignIn.instance.authenticate();
+      return await signInWithGoogleAccount(account);
+    } on GoogleSignInException catch (e) {
+      final message = googleErrorMessage(e);
+      throw AuthException(message ?? 'Google sign-in was cancelled.');
+    }
   }
 
-  /// Exchange a Google account (from `renderButton` / One Tap / mobile signIn)
+  /// Exchange a Google account (from the web button or mobile authenticate)
   /// for a Django DRF Token.
   Future<AuthResult> signInWithGoogleAccount(GoogleSignInAccount account) async {
     if (kUseMockAuth) {
@@ -287,8 +316,7 @@ class AuthService {
       );
     }
 
-    final googleAuth = await account.authentication;
-    final idToken = googleAuth.idToken;
+    final idToken = account.authentication.idToken;
     if (idToken == null || idToken.isEmpty) {
       throw AuthException(
         'Could not obtain a Google ID token. '
@@ -504,8 +532,8 @@ class AuthService {
     }
 
     try {
-      if (_googleSignIn != null) {
-        await googleSignIn.signOut();
+      if (_googleInitialized) {
+        await GoogleSignIn.instance.signOut();
       }
     } catch (_) {
       // Ignore Google sign-out failures.
