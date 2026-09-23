@@ -1,7 +1,8 @@
-"""CPU BGE cross-encoder rerank for retrieved sermon windows.
+"""BGE cross-encoder rerank for retrieved sermon windows.
 
-Runs after embedding search. Does not search Qdrant, does not rewrite the
-generated answer, and does not touch embeddings.
+Runs after embedding search, in-process on CPU or through the GPU sidecar.
+Does not search Qdrant, does not rewrite the generated answer, and does not
+touch embeddings.
 """
 
 from __future__ import annotations
@@ -115,8 +116,16 @@ def _select_candidates(
 
 
 def get_reranker(*, force_new: bool = False):
-    """Load the BGE cross-encoder once per process, CPU by default."""
+    """Load the BGE cross-encoder once per process, CPU by default.
+
+    A SEARCH_SIDECAR_URL sends scoring to the shared GPU process instead.
+    """
     global _RERANKER, _RERANKER_FAILED
+    from .search_sidecar import SidecarReranker, sidecar_url
+
+    remote = sidecar_url()
+    if remote:
+        return SidecarReranker(remote)
     if force_new:
         with _RERANKER_LOCK:
             _RERANKER = None
