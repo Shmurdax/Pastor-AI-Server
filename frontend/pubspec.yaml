@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -38,8 +38,10 @@ dependencies:
   flutter_markdown: ^0.6.18+1
   uuid: ^4.3.3
   provider: ^6.1.2
-  google_sign_in: ^6.2.2
-  google_sign_in_web: ^0.12.4+4
+  # 7.x uses Google Identity Services for sign-in. 6.x opened an OAuth 2.0
+  # token client during setup, which Google rejects for new Web clients.
+  google_sign_in: ^7.1.1
+  google_sign_in_web: ^1.0.0
   shared_preferences: ^2.3.3
   flutter_secure_storage: ^9.2.4
   video_player: ^2.9.2
