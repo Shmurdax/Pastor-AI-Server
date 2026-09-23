@@ -74,9 +74,26 @@ def _resolve_device() -> str:
 
 def get_embeddings(*, force_new: bool = False):
     """
-    Return a process-wide embedding client pinned to CPU by default.
+    Return a process-wide embedding client.
+
+    When SEARCH_SIDECAR_URL is set, chat uses the shared GPU process and this
+    worker does not load a model or touch CUDA. Otherwise the model stays on CPU.
     """
     global _EMBEDDINGS
+    from .search_sidecar import SidecarEmbeddings, sidecar_url
+
+    remote = sidecar_url()
+    if remote:
+        inner = getattr(_EMBEDDINGS, "_inner", None)
+        if (
+            _EMBEDDINGS is None
+            or force_new
+            or not isinstance(inner, SidecarEmbeddings)
+        ):
+            logger.info("Using GPU sermon search sidecar at %s", remote)
+            _EMBEDDINGS = QueryPrefixedEmbeddings(SidecarEmbeddings(remote))
+        return _EMBEDDINGS
+
     if _EMBEDDINGS is not None and not force_new:
         return _EMBEDDINGS
 

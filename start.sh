@@ -33,6 +33,7 @@ QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_PORT="${QDRANT_PORT:-6333}"
 # Avoid 8001 — RunPod's host nginx often binds it and fools health checks.
 VLLM_PORT="${VLLM_PORT:-8010}"
+SEARCH_SIDECAR_PORT="${SEARCH_SIDECAR_PORT:-8012}"
 DJANGO_PORT="${DJANGO_PORT:-8000}"
 VLLM_MODEL="${VLLM_MODEL:-RedHatAI/Meta-Llama-3.1-8B-Instruct-quantized.w4a16}"
 TUNNEL="${TUNNEL:-cloudflared}"
@@ -89,6 +90,40 @@ vllm_healthy() {
   local body
   body="$(curl -sf --max-time 3 "http://127.0.0.1:${VLLM_PORT}/v1/models" 2>/dev/null || true)"
   [[ "$body" == *'"object"'* ]] || [[ "$body" == *'"data"'* ]]
+}
+
+vllm_running_util() {
+  local pid args
+  for pid in $(ps -eo pid,args | awk '/vllm.entrypoints.openai.api_server/ && $0 !~ /awk/ {print $1}'); do
+    args="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+    if [[ "$args" == *"--gpu-memory-utilization"* ]]; then
+      printf '%s\n' "$args" | sed -n 's/.*--gpu-memory-utilization[ =]\([0-9.][0-9.]*\).*/\1/p' | head -1
+      return 0
+    fi
+  done
+}
+
+stop_vllm_process() {
+  local pid
+  stop_screen vllm
+  for pid in $(ps -eo pid,args | awk '/vllm.entrypoints.openai.api_server/ && $0 !~ /awk/ {print $1}'); do
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 2
+  for pid in $(ps -eo pid,args | awk '/vllm.entrypoints.openai.api_server/ && $0 !~ /awk/ {print $1}'); do
+    kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
+wait_vllm_ready() {
+  local i
+  for i in $(seq 1 120); do
+    if vllm_healthy; then
+      return 0
+    fi
+    sleep 5
+  done
+  return 1
 }
 
 echo ""
@@ -157,6 +192,17 @@ else
 fi
 
 # vLLM — local GPU process, or skip when Django calls RunPod Serverless.
+# Full GPUs also run one sermon-search process, so vLLM keeps about 8GB free.
+GPU_SEARCH_LOCAL=0
+if vllm_use_local_server; then
+  GPU_SEARCH_LOCAL=1
+fi
+GPU_SEARCH_SIDECAR=0
+if gpu_search_sidecar_wanted; then
+  GPU_SEARCH_SIDECAR=1
+fi
+SEARCH_SIDECAR_URL=""
+
 if ! vllm_use_local_server; then
   stop_screen vllm
   log "Skipping local vLLM — using ${VLLM_URL}"
@@ -166,15 +212,48 @@ if ! vllm_use_local_server; then
   if vllm_url_is_local "$VLLM_URL"; then
     warn "Serverless/CPU mode but VLLM_URL is still local (${VLLM_URL}). Set RUNPOD_VLLM_ENDPOINT_ID or VLLM_URL in tokens.env"
   fi
-elif ! vllm_healthy; then
+else
+  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
+  DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
+  if [[ -z "$GPU_UTIL" ]]; then
+    GPU_UTIL="$DEFAULT_UTIL"
+  elif [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]] && awk "BEGIN{exit !($GPU_UTIL > $DEFAULT_UTIL)}"; then
+    log "Capping vLLM gpu-memory-utilization at ${DEFAULT_UTIL} for 24GB MIG (Whisper headroom)"
+    GPU_UTIL="$DEFAULT_UTIL"
+  fi
+  if [[ "$GPU_SEARCH_SIDECAR" == "1" ]] && awk "BEGIN{exit !(${GPU_UTIL} > 0.80)}"; then
+    log "Capping vLLM gpu-memory-utilization at 0.80 (was ${GPU_UTIL}) so sermon search can use the GPU"
+    GPU_UTIL="0.80"
+  fi
+  RUNNING_UTIL="$(vllm_running_util || true)"
+  NEED_VLLM_START=0
+  if ! vllm_healthy; then
+    NEED_VLLM_START=1
+  elif [[ -z "$RUNNING_UTIL" ]] || ! awk -v a="$RUNNING_UTIL" -v b="$GPU_UTIL" 'BEGIN{exit !(a+0 == b+0)}'; then
+    log "Restarting vLLM so gpu-memory-utilization=${GPU_UTIL} (running ${RUNNING_UTIL:-unknown})"
+    NEED_VLLM_START=1
+  else
+    log "vLLM already running on :${VLLM_PORT} at util ${RUNNING_UTIL}"
+  fi
+fi
+if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
   [[ -x "$VENV_DIR/bin/python" ]] || die "venv missing — run install.sh"
   gpu_ensure_vllm_stack
-  FREE_MIB="$(gpu_free_mib || true)"
+  # Stop the old engine before measuring free memory. A running 0.90 util
+  # looks like a full card even when this restart is what frees the headroom.
+  stop_vllm_process
+  FREE_MIB=""
+  for _free_try in 1 2 3 4 5 6 7 8 9 10; do
+    FREE_MIB="$(gpu_free_mib || true)"
+    if [[ -z "${FREE_MIB}" || "${FREE_MIB}" -ge 8000 ]]; then
+      break
+    fi
+    sleep 2
+  done
   if [[ -n "${FREE_MIB}" && "${FREE_MIB}" -lt 8000 ]]; then
     warn "GPU has only ${FREE_MIB:-?} MiB free (need ~8GB+). Ghost VRAM from dead host processes?"
     warn "In RunPod: Stop this pod fully → wait 30s → Start again, then re-run start.sh"
   fi
-  stop_screen vllm
   : > "${LOG_DIR}/vllm.log"
   HF_TOK="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
   if [[ -z "$HF_TOK" || "$HF_TOK" == *paste* ]]; then
@@ -185,14 +264,6 @@ elif ! vllm_healthy; then
   BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
   MAX_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
-  GPU_UTIL="${VLLM_GPU_MEM_UTIL:-}"
-  DEFAULT_UTIL="$(gpu_default_vllm_mem_util)"
-  if [[ -z "$GPU_UTIL" ]]; then
-    GPU_UTIL="$DEFAULT_UTIL"
-  elif [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]] && awk "BEGIN{exit !($GPU_UTIL > $DEFAULT_UTIL)}"; then
-    log "Capping vLLM gpu-memory-utilization at ${DEFAULT_UTIL} for 24GB MIG (Whisper headroom)"
-    GPU_UTIL="$DEFAULT_UTIL"
-  fi
   CUDA_DEV_EXPORT=""
   if [[ -n "${GPU_CUDA_VISIBLE:-}" ]]; then
     CUDA_DEV_EXPORT="export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}' &&"
@@ -245,8 +316,62 @@ elif ! vllm_healthy; then
       >> '${LOG_DIR}/vllm.log' 2>&1
   "
   log "vLLM starting on :${VLLM_PORT} (first load downloads model — check ${LOG_DIR}/vllm.log)"
+  if [[ "$GPU_SEARCH_SIDECAR" == "1" ]]; then
+    if ! wait_vllm_ready; then
+      warn "vLLM did not become ready — sermon search stays on CPU"
+      GPU_SEARCH_SIDECAR=0
+    fi
+  fi
+fi
+
+# One GPU process for the same BGE embedder and reranker. Gunicorn stays on CPU.
+if [[ "$GPU_SEARCH_SIDECAR" == "1" ]]; then
+  if ! vllm_healthy; then
+    warn "vLLM is not healthy — sermon search stays on CPU"
+  else
+    gpu_export_cuda_libs
+    stop_screen search-sidecar
+    for pid in $(ps -eo pid,args | awk '/run_search_sidecar/ && $0 !~ /awk/ {print $1}'); do
+      kill "$pid" 2>/dev/null || true
+    done
+    sleep 1
+    screen -dmS search-sidecar bash -c "
+      source '${VENV_DIR}/bin/activate' &&
+      cd '${APP_DIR}' &&
+      export PASTOR_AI_ALLOW_GPU=1 &&
+      export CUDA_VISIBLE_DEVICES='${GPU_CUDA_VISIBLE}' &&
+      export LD_LIBRARY_PATH='${LD_LIBRARY_PATH:-}' &&
+      export EMBEDDING_DEVICE=cuda &&
+      export RERANK_DEVICE=cuda &&
+      export SEARCH_TORCH_DTYPE='${SEARCH_TORCH_DTYPE:-float16}' &&
+      export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}' &&
+      export RERANK_MODEL='${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}' &&
+      export HF_HOME='${HF_HOME:-$WS/hf_cache}' &&
+      export HUGGING_FACE_HUB_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
+      export HF_TOKEN='${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}' &&
+      export PYTHONUNBUFFERED=1 &&
+      exec python -u manage.py run_search_sidecar --host 127.0.0.1 --port ${SEARCH_SIDECAR_PORT} \
+        >> '${LOG_DIR}/search_sidecar.log' 2>&1
+    "
+    log "Sermon search sidecar starting on :${SEARCH_SIDECAR_PORT}"
+    search_ready=0
+    for _search_try in $(seq 1 60); do
+      if curl -sf --max-time 2 "http://127.0.0.1:${SEARCH_SIDECAR_PORT}/health" | grep -q '"ok"'; then
+        search_ready=1
+        break
+      fi
+      sleep 5
+    done
+    if [[ "$search_ready" == "1" ]]; then
+      SEARCH_SIDECAR_URL="http://127.0.0.1:${SEARCH_SIDECAR_PORT}"
+      log "Sermon search on GPU at ${SEARCH_SIDECAR_URL}"
+    else
+      warn "GPU sermon search did not become healthy — chat will search on CPU. See ${LOG_DIR}/search_sidecar.log"
+      stop_screen search-sidecar
+    fi
+  fi
 else
-  log "vLLM already running on :${VLLM_PORT}"
+  stop_screen search-sidecar
 fi
 
 # Django
@@ -325,9 +450,11 @@ screen -dmS django bash -c "
   export DJANGO_SUPERUSER_PASSWORD='${DJANGO_SUPERUSER_PASSWORD:-admin123}' &&
   export DJANGO_SUPERUSER_EMAIL='${DJANGO_SUPERUSER_EMAIL:-admin@localhost}' &&
   export DJANGO_ADMIN_URL='${DJANGO_ADMIN_URL:-rB4zKwO2wTBCD3pAxRIdTWsvw0w8}' &&
-  # BGE embeddings stay on CPU. Whisper runs in the video-ingest worker on CUDA.
+  # Gunicorn stays off the GPU. Sermon embed + rerank go through SEARCH_SIDECAR_URL.
   export CUDA_VISIBLE_DEVICES='' &&
   export EMBEDDING_DEVICE='${EMBEDDING_DEVICE:-cpu}' &&
+  export SEARCH_SIDECAR_URL='${SEARCH_SIDECAR_URL:-}' &&
+  export RERANK_MODEL='${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}' &&
   export EMBEDDING_MODEL_NAME='${EMBEDDING_MODEL_NAME:-BAAI/bge-base-en-v1.5}' &&
   export QDRANT_VECTOR_SIZE='${QDRANT_VECTOR_SIZE:-768}' &&
   export INGESTION_UPLOAD_DIR='${INGESTION_UPLOAD_DIR:-$PERSIST_UPLOADS}' &&

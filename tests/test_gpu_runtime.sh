@@ -32,5 +32,20 @@ GPU_IS_24GB_MIG=1
 [[ "$(gpu_default_vllm_mem_util)" == "0.82" ]] || fail "24gb util"
 GPU_IS_24GB_MIG=0
 [[ "$(gpu_default_vllm_mem_util)" == "0.90" ]] || fail "full-gpu util"
+GPU_SEARCH_SIDECAR=1
+[[ "$(gpu_default_vllm_mem_util)" == "0.80" ]] || fail "search sidecar util"
+GPU_SEARCH_SIDECAR=0
+
+GPU_SEARCH_LOCAL=1
+GPU_CUDA_VISIBLE=0
+GPU_IS_24GB_MIG=0
+SEARCH_GPU=auto
+gpu_search_sidecar_wanted || fail "full gpu local vLLM should use the search sidecar"
+GPU_IS_24GB_MIG=1
+gpu_search_sidecar_wanted && fail "24gb MIG should keep CPU search" || true
+GPU_IS_24GB_MIG=0
+SEARCH_GPU=0
+gpu_search_sidecar_wanted && fail "SEARCH_GPU=0 should force CPU search" || true
+unset GPU_SEARCH_LOCAL GPU_CUDA_VISIBLE SEARCH_GPU
 
 echo "OK gpu_runtime blackwell/MIG helpers"

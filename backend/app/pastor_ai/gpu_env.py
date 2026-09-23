@@ -1,8 +1,8 @@
 """GPU process flags shared by manage.py and Whisper.
 
 vLLM owns most of the GPU. Django/gunicorn stay on CPU so chat embeddings
-cannot CUDA-OOM against the chat model. The video-ingest worker is the
-exception: Whisper should use leftover VRAM on the same MIG device.
+cannot CUDA-OOM against the chat model. Two processes may see CUDA: the
+video-ingest worker (local Whisper) and the sermon search sidecar.
 """
 
 from __future__ import annotations
@@ -28,7 +28,10 @@ def should_hide_gpu(
     if env_flag("PASTOR_AI_ALLOW_GPU", env):
         return False
     argv = list(argv or [])
-    if any("run_video_ingestion_worker" in arg for arg in argv):
+    if any(
+        "run_video_ingestion_worker" in arg or "run_search_sidecar" in arg
+        for arg in argv
+    ):
         return False
     return True
 

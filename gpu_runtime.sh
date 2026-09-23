@@ -68,10 +68,23 @@ gpu_detect() {
   fi
 }
 
+gpu_search_sidecar_wanted() {
+  # Same embedder and reranker, one GPU process, on a full card with local vLLM.
+  # 24GB MIG keeps its leftover for Whisper. SEARCH_GPU=0 forces CPU search.
+  [[ "${SEARCH_GPU:-auto}" == "0" ]] && return 1
+  [[ "${GPU_SEARCH_LOCAL:-0}" == "1" ]] || return 1
+  [[ -n "${GPU_CUDA_VISIBLE:-}" ]] || return 1
+  [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]] && return 1
+  return 0
+}
+
 gpu_default_vllm_mem_util() {
-  # 24GB MIG must leave a few GB for Whisper; 48GB+ can keep 0.90.
+  # 24GB MIG must leave a few GB for Whisper.
+  # A full GPU that also hosts sermon search leaves ~8GB (util 0.80).
   if [[ "${GPU_IS_24GB_MIG:-0}" == "1" ]]; then
     echo "0.82"
+  elif [[ "${GPU_SEARCH_SIDECAR:-0}" == "1" ]]; then
+    echo "0.80"
   else
     echo "0.90"
   fi

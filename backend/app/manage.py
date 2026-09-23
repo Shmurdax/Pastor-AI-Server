@@ -10,7 +10,7 @@ def main():
     from pastor_ai.workspace_env import load_workspace_env
 
     load_workspace_env()
-    # Gunicorn/migrate stay off the GPU. Video ingest worker keeps CUDA for Whisper.
+    # Gunicorn/migrate stay off the GPU. Video ingest and the search sidecar keep CUDA.
     apply_hide_gpu(argv=sys.argv)
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pastor_ai.settings")
     try:

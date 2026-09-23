@@ -23,6 +23,9 @@ class GpuEnvTests(SimpleTestCase):
     def test_allow_flag_keeps_gpu(self):
         self.assertFalse(should_hide_gpu(argv=["manage.py", "migrate"], env={"PASTOR_AI_ALLOW_GPU": "1"}))
 
+    def test_search_sidecar_keeps_gpu(self):
+        self.assertFalse(should_hide_gpu(argv=["manage.py", "run_search_sidecar"], env={}))
+
 
 class WhisperDeviceTests(SimpleTestCase):
     def test_explicit_cpu(self):
