@@ -374,6 +374,22 @@ else
   stop_screen search-sidecar
 fi
 
+# Gunicorn re-execs with an empty environment and reloads config.env.
+# The shell export above is not enough for the chat workers to see the sidecar.
+if [[ -n "${SEARCH_SIDECAR_URL}" ]]; then
+  vllm_upsert_config "$CONFIG_ENV" SEARCH_SIDECAR_URL "$SEARCH_SIDECAR_URL"
+  if [[ -n "${PERSIST_CONFIG:-}" && -f "${PERSIST_CONFIG}" ]]; then
+    vllm_upsert_config "$PERSIST_CONFIG" SEARCH_SIDECAR_URL "$SEARCH_SIDECAR_URL"
+  fi
+elif [[ -f "$CONFIG_ENV" ]]; then
+  grep -v '^SEARCH_SIDECAR_URL=' "$CONFIG_ENV" > "${CONFIG_ENV}.searchtmp" || true
+  mv "${CONFIG_ENV}.searchtmp" "$CONFIG_ENV"
+  if [[ -n "${PERSIST_CONFIG:-}" && -f "${PERSIST_CONFIG}" ]]; then
+    grep -v '^SEARCH_SIDECAR_URL=' "$PERSIST_CONFIG" > "${PERSIST_CONFIG}.searchtmp" || true
+    mv "${PERSIST_CONFIG}.searchtmp" "$PERSIST_CONFIG"
+  fi
+fi
+
 # Django
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
 ensure_persistent_uploads
