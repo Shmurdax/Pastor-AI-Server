@@ -140,11 +140,18 @@ Future<void> showAccountProfileSheet(
                   const SizedBox(height: 4),
                   Text(
                     user.cancelAtPeriodEnd
-                        ? 'Premium stays active until ${formatPremiumAccessUntil(user.currentPeriodEnd)}. Auto-renewal is off.'
+                        ? s.premiumActiveUntilCancel(
+                            formatPremiumAccessUntil(user.currentPeriodEnd),
+                          )
                         : user.pendingBillingPeriod.isNotEmpty
-                            ? 'Premium member · ${user.billingPeriod.isNotEmpty ? user.billingPeriod : 'active'}. '
-                                'Switching to ${user.pendingBillingPeriod} on ${formatPremiumAccessUntil(user.currentPeriodEnd)}.'
-                            : 'Premium member${user.billingPeriod.isNotEmpty ? ' · ${user.billingPeriod}' : ''}.',
+                            ? s.premiumMemberSwitching(
+                                user.billingPeriod.isNotEmpty
+                                    ? user.billingPeriod
+                                    : s.billingActive,
+                                user.pendingBillingPeriod,
+                                formatPremiumAccessUntil(user.currentPeriodEnd),
+                              )
+                            : s.premiumMember(user.billingPeriod),
                     style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54, height: 1.35),
                   ),
                 ],
@@ -238,7 +245,7 @@ Future<void> showAccountProfileSheet(
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
-                      'Demo mode: auth is mocked until Django endpoints are ready.',
+                      s.demoModeAuthMocked,
                       style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
                     ),
                   ),

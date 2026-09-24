@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
-import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
@@ -125,11 +124,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      final s = context.read<LocaleController>().strings;
       if (inCatalog == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'That sermon was not found in the media library.',
+              s.mediaNotFound,
               style: GoogleFonts.figtree(),
             ),
           ),
@@ -144,11 +144,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'This episode is for Premium members. Subscribe to unlock.',
+              s.mediaPremiumUnlock,
               style: GoogleFonts.figtree(),
             ),
             action: SnackBarAction(
-              label: 'Subscribe',
+              label: s.subscribe,
               onPressed: _openSubscriptions,
             ),
             duration: const Duration(seconds: 5),
@@ -198,11 +198,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       if (_tierFilter != null && item.accessTier != _tierFilter) return false;
       if (_yearFilter != null && item.publishedAt.year != _yearFilter) return false;
       if (query.isEmpty) return true;
+      final collectionLabel =
+          context.read<LocaleController>().strings.mediaCollectionLabel;
       final haystack = [
         item.title,
         item.description,
         ...item.tags,
-        kMediaCollectionLabel,
+        collectionLabel,
       ].join(' ').toLowerCase();
       return haystack.contains(query);
     }).toList();
@@ -249,15 +251,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       );
       return;
     }
+    final s = context.read<LocaleController>().strings;
     if (item.accessTier == MediaAccessTier.premium) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'This episode is for Premium members. Subscribe to unlock when media goes live.',
+            s.mediaPremiumUnlockSoon,
             style: GoogleFonts.figtree(),
           ),
           action: SnackBarAction(
-            label: 'Subscribe',
+            label: s.subscribe,
             onPressed: _openSubscriptions,
           ),
           duration: const Duration(seconds: 5),
@@ -268,7 +271,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'This episode is coming soon.',
+          s.mediaComingSoonEpisode,
           style: GoogleFonts.figtree(),
         ),
       ),
@@ -287,6 +290,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        final s = ctx.read<LocaleController>().strings;
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
@@ -312,7 +316,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Filters',
+                    s.mediaFilters,
                     style: GoogleFonts.figtree(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -320,38 +324,38 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text('Access', style: _sheetLabelStyle()),
+                  Text(s.mediaAccess, style: _sheetLabelStyle()),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: [
                       _FilterChip(
-                        label: 'All',
+                        label: s.mediaFilterAll,
                         selected: tier == null,
                         onTap: () => setSheetState(() => tier = null),
                       ),
                       _FilterChip(
-                        label: 'Free preview',
+                        label: s.mediaFreePreview,
                         selected: tier == MediaAccessTier.freePreview,
                         onTap: () => setSheetState(() => tier = MediaAccessTier.freePreview),
                       ),
                       _FilterChip(
-                        label: 'Premium',
+                        label: s.mediaPremium,
                         selected: tier == MediaAccessTier.premium,
                         onTap: () => setSheetState(() => tier = MediaAccessTier.premium),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
-                  Text('Year', style: _sheetLabelStyle()),
+                  Text(s.mediaYear, style: _sheetLabelStyle()),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int?>(
                     value: year,
                     decoration: _dropdownDecoration(),
                     items: [
-                      const DropdownMenuItem<int?>(
+                      DropdownMenuItem<int?>(
                         value: null,
-                        child: Text('Any year'),
+                        child: Text(s.mediaAnyYear),
                       ),
                       ..._filterYears.map(
                         (y) => DropdownMenuItem<int?>(
@@ -372,7 +376,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             year = null;
                           });
                         },
-                        child: Text('Clear all', style: GoogleFonts.figtree(color: _navy)),
+                        child: Text(s.mediaClearAll, style: GoogleFonts.figtree(color: _navy)),
                       ),
                       const Spacer(),
                       FilledButton(
@@ -387,7 +391,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           backgroundColor: _navy,
                           padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                         ),
-                        child: Text('Apply', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                        child: Text(s.mediaApply, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -517,8 +521,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                   if (_tierFilter != null)
                                     _ActiveFilterPill(
                                       label: _tierFilter == MediaAccessTier.premium
-                                          ? 'Premium'
-                                          : 'Free preview',
+                                          ? s.mediaPremium
+                                          : s.mediaFreePreview,
                                       onRemove: () => setState(() => _tierFilter = null),
                                     ),
                                   if (_yearFilter != null)
@@ -529,7 +533,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                   TextButton(
                                     onPressed: _clearFilters,
                                     child: Text(
-                                      'Clear filters',
+                                      s.mediaClearFilters,
                                       style: GoogleFonts.figtree(
                                         color: _navy,
                                         fontWeight: FontWeight.w600,
@@ -541,7 +545,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             ],
                             const SizedBox(height: 24),
                             Text(
-                              kMediaCollectionLabel,
+                              s.mediaCollectionLabel,
                               style: GoogleFonts.figtree(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -551,10 +555,13 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             const SizedBox(height: 4),
                             Text(
                               _catalogLoading
-                                  ? 'Loading Walk through the Word…'
+                                  ? s.mediaLoading
                                   : _hasPremiumAccess
-                                      ? '${_sort.label} · ${_catalogItems.length} videos in catalog'
-                                      : 'Free preview · Subscribe to unlock the full library',
+                                      ? s.mediaCatalogCount(
+                                          _sort.labelFor(s),
+                                          _catalogItems.length,
+                                        )
+                                      : s.mediaFreePreviewUnlock,
                               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
                             ),
                             const SizedBox(height: 28),
@@ -576,7 +583,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             Icon(Icons.search_off, size: 48, color: _navy.withValues(alpha: 0.35)),
                             const SizedBox(height: 16),
                             Text(
-                              'No posts match your filters',
+                              s.mediaNoPostsMatch,
                               style: GoogleFonts.figtree(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
@@ -585,7 +592,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Try clearing filters or searching with different keywords.',
+                              s.mediaTryClearingFilters,
                               textAlign: TextAlign.center,
                               style: GoogleFonts.figtree(color: Colors.black54),
                             ),
@@ -600,7 +607,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                 foregroundColor: _navy,
                                 side: BorderSide(color: _gold.withValues(alpha: 0.6)),
                               ),
-                              child: const Text('Reset search & filters'),
+                              child: Text(s.mediaResetSearch),
                             ),
                           ],
                         ),
@@ -686,6 +693,7 @@ class _CreatorHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -707,7 +715,7 @@ class _CreatorHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'The NORDINS',
+                  s.mediaCreatorName,
                   style: GoogleFonts.figtree(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
@@ -716,7 +724,7 @@ class _CreatorHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  MediaCatalog.creatorTagline,
+                  s.mediaCreatorTagline,
                   style: GoogleFonts.figtree(fontSize: 14, color: Colors.black54),
                 ),
               ],
@@ -736,11 +744,12 @@ class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     return TextField(
       controller: controller,
       onChanged: onChanged,
       decoration: InputDecoration(
-        hintText: 'Search posts by title, topic, or tag…',
+        hintText: s.mediaSearchHint,
         hintStyle: GoogleFonts.figtree(color: Colors.black38),
         prefixIcon: const Icon(Icons.search, color: _navy),
         filled: true,
@@ -772,6 +781,7 @@ class _ToolbarRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     return Row(
       children: [
         Expanded(
@@ -785,7 +795,7 @@ class _ToolbarRow extends StatelessWidget {
                   .map(
                     (o) => DropdownMenuItem(
                       value: o,
-                      child: Text(o.label),
+                      child: Text(o.labelFor(s)),
                     ),
                   )
                   .toList(),
@@ -803,7 +813,7 @@ class _ToolbarRow extends StatelessWidget {
             label: Text('$filterCount'),
             child: const Icon(Icons.tune, size: 18),
           ),
-          label: Text('Filters', style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+          label: Text(s.mediaFilters, style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
           style: OutlinedButton.styleFrom(
             foregroundColor: _navy,
             side: BorderSide(color: _navy.withValues(alpha: 0.2)),
@@ -812,7 +822,7 @@ class _ToolbarRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          '$resultCount shown',
+          s.mediaShownCount(resultCount),
           style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45),
         ),
       ],
@@ -879,6 +889,7 @@ class _MediaPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final locked = !item.isPlayable && item.accessTier == MediaAccessTier.premium;
 
     return Material(
@@ -945,7 +956,7 @@ class _MediaPostCard extends StatelessWidget {
                           right: 10,
                           top: 10,
                           child: _Badge(
-                            label: 'Premium',
+                            label: s.mediaPremium,
                             highlight: !item.isPlayable,
                           ),
                         ),
@@ -1001,6 +1012,7 @@ class _MediaPostCardBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final dateLabel = DateFormat.yMMMd().format(item.publishedAt);
 
     return Column(
@@ -1035,7 +1047,7 @@ class _MediaPostCardBody extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                kMediaCollectionLabel,
+                s.mediaCollectionLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.figtree(
@@ -1055,7 +1067,7 @@ class _MediaPostCardBody extends StatelessWidget {
         if (!compact && !item.isPlayable) ...[
           const SizedBox(height: 6),
           Text(
-            'Coming soon',
+            s.mediaComingSoon,
             style: GoogleFonts.figtree(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -1145,6 +1157,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
   }
 
   Widget _buildPlayer() {
+    final s = context.watch<LocaleController>().strings;
     if (_useVimeo) {
       return VimeoPlayerEmbed(
         vimeoId: widget.item.vimeoId!.trim(),
@@ -1158,7 +1171,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
     if (future == null || controller == null) {
       return Center(
         child: Text(
-          'No playable video for this episode.',
+          s.mediaNoPlayableVideo,
           style: GoogleFonts.figtree(color: Colors.white70),
         ),
       );
@@ -1175,7 +1188,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
         if (snapshot.hasError) {
           return Center(
             child: Text(
-              'Unable to load video.',
+              s.mediaUnableToLoad,
               style: GoogleFonts.figtree(color: Colors.white70),
             ),
           );
@@ -1253,6 +1266,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
+    final s = context.watch<LocaleController>().strings;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1264,7 +1278,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Now playing',
+          s.mediaNowPlaying,
           style: GoogleFonts.figtree(color: _navy, fontWeight: FontWeight.bold),
         ),
       ),

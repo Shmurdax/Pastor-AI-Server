@@ -1,14 +1,24 @@
+import 'package:flutter_application_1/l10n/app_strings.dart';
+
 enum MediaContentType { video, audio }
 
 enum MediaAccessTier { freePreview, premium }
 
 enum MediaSortOption {
-  newestFirst('Newest first'),
-  oldestFirst('Oldest first'),
-  titleAZ('Title A–Z');
+  newestFirst,
+  oldestFirst,
+  titleAZ;
 
-  const MediaSortOption(this.label);
-  final String label;
+  String labelFor(AppStrings s) {
+    switch (this) {
+      case MediaSortOption.newestFirst:
+        return s.mediaSortNewest;
+      case MediaSortOption.oldestFirst:
+        return s.mediaSortOldest;
+      case MediaSortOption.titleAZ:
+        return s.mediaSortTitleAZ;
+    }
+  }
 }
 
 class MediaItem {
@@ -90,6 +100,3 @@ class MediaCatalogStats {
   final int memberCount;
   final String startingPriceLabel;
 }
-
-/// Single collection label for all media library content.
-const kMediaCollectionLabel = 'Walk through the Word';

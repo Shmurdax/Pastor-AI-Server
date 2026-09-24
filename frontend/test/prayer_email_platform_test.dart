@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
+import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/screens/prayer_inbox_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 
@@ -81,10 +84,13 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: PrayerRequestDetailScreen(
-          apiService: _FakeApiService(),
-          initial: sampleItem(),
+      ChangeNotifierProvider(
+        create: (_) => LocaleController(),
+        child: MaterialApp(
+          home: PrayerRequestDetailScreen(
+            apiService: _FakeApiService(),
+            initial: sampleItem(),
+          ),
         ),
       ),
     );
@@ -106,7 +112,7 @@ void main() {
     expect(nameY, lessThan(dateY));
 
     final selectHeading = tester.widget<Text>(find.text('Select email platform:'));
-    final prayerHeading = tester.widget<Text>(find.text('Prayer request'));
+    final prayerHeading = tester.widget<Text>(find.text('Prayer Request'));
     expect(selectHeading.style?.fontWeight, prayerHeading.style?.fontWeight);
     expect(selectHeading.style?.color, prayerHeading.style?.color);
 
@@ -161,6 +167,7 @@ void main() {
   });
 
   test('compose URI helpers match expected clients', () {
+    final s = AppStrings('en');
     expect(
       prayerEmailComposeUri('a@b.com', PrayerEmailClient.gmail).toString(),
       'https://mail.google.com/mail/?view=cm&fs=1&to=a%40b.com',
@@ -173,8 +180,8 @@ void main() {
       prayerEmailComposeUri('a@b.com', PrayerEmailClient.systemMailto).toString(),
       'mailto:a@b.com',
     );
-    expect(prayerEmailClientLabel(PrayerEmailClient.gmail), 'Gmail');
-    expect(prayerEmailClientLabel(PrayerEmailClient.outlook), 'Outlook');
-    expect(prayerEmailClientLabel(PrayerEmailClient.systemMailto), 'Default app');
+    expect(prayerEmailClientLabel(PrayerEmailClient.gmail, s), 'Gmail');
+    expect(prayerEmailClientLabel(PrayerEmailClient.outlook, s), 'Outlook');
+    expect(prayerEmailClientLabel(PrayerEmailClient.systemMailto, s), 'Default app');
   });
 }

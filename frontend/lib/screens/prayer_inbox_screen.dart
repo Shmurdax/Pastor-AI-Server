@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/l10n/app_locale.dart';
+import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/brand_gradient.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -53,14 +56,14 @@ Uri prayerEmailComposeUri(String to, PrayerEmailClient client) {
   }
 }
 
-String prayerEmailClientLabel(PrayerEmailClient client) {
+String prayerEmailClientLabel(PrayerEmailClient client, AppStrings s) {
   switch (client) {
     case PrayerEmailClient.gmail:
-      return 'Gmail';
+      return s.emailClientGmail;
     case PrayerEmailClient.outlook:
       return 'Outlook';
     case PrayerEmailClient.systemMailto:
-      return 'Default app';
+      return s.emailClientDefaultApp;
   }
 }
 
@@ -106,7 +109,7 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Could not load prayer requests. Make sure you are signed in as staff.';
+        _error = context.read<LocaleController>().strings.prayerInboxLoadFailed;
       });
     }
   }
@@ -135,12 +138,13 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final dateFmt = DateFormat('MMM d, y • h:mm a');
 
     return Scaffold(
       backgroundColor: _surface,
       appBar: brandGradientAppBar(
-        title: Text('Prayer inbox', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+        title: Text(s.prayerInbox, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh)),
         ],
@@ -154,9 +158,9 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _filterChip('All', _InboxFilter.all),
-                _filterChip('Needs follow-up', _InboxFilter.needsFollowUp),
-                _filterChip('Followed up', _InboxFilter.done),
+                _filterChip(s.prayerFilterAll, _InboxFilter.all),
+                _filterChip(s.prayerNeedsFollowUp, _InboxFilter.needsFollowUp),
+                _filterChip(s.prayerFollowedUp, _InboxFilter.done),
               ],
             ),
           ),
@@ -173,7 +177,7 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
                     : _items.isEmpty
                         ? Center(
                             child: Text(
-                              'No prayer requests in this view.',
+                              s.prayerInboxEmpty,
                               style: GoogleFonts.figtree(color: Colors.black54),
                             ),
                           )
@@ -214,7 +218,7 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
-                                                  'Followed up',
+                                                  s.prayerFollowedUp,
                                                   style: GoogleFonts.figtree(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w600,
@@ -230,7 +234,7 @@ class _PrayerInboxScreenState extends State<PrayerInboxScreen> {
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
-                                                  'Open',
+                                                  s.prayerStatusOpen,
                                                   style: GoogleFonts.figtree(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.w600,
@@ -361,15 +365,16 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
         _notesController.text = updated.pastorNotes;
         _saving = false;
       });
+      final s = context.read<LocaleController>().strings;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Follow-up saved')),
+        SnackBar(content: Text(s.followUpSaved)),
       );
       Navigator.of(context).pop(updated);
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = 'Could not save changes.';
+        _error = context.read<LocaleController>().strings.couldNotSaveChanges;
       });
     }
   }
@@ -380,8 +385,9 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
         : LaunchMode.platformDefault;
     if (!await launchUrl(uri, mode: mode)) {
       if (mounted) {
+        final s = context.read<LocaleController>().strings;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open ${uri.scheme} link')),
+          SnackBar(content: Text(s.couldNotOpenLink(uri.scheme))),
         );
       }
     }
@@ -392,9 +398,9 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     await _launch(prayerEmailComposeUri(to, client));
   }
 
-  Widget _emailClientChip(PrayerEmailClient client, {required bool selected}) {
+  Widget _emailClientChip(PrayerEmailClient client, AppStrings s, {required bool selected}) {
     return FilterChip(
-      label: Text(prayerEmailClientLabel(client), style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
+      label: Text(prayerEmailClientLabel(client, s), style: GoogleFonts.figtree(fontWeight: FontWeight.w600)),
       selected: selected,
       onSelected: (_) => _setEmailPreference(client),
       selectedColor: _gold.withValues(alpha: 0.35),
@@ -404,6 +410,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<LocaleController>().strings;
     final item = _item!;
     final dateFmt = DateFormat('EEEE, MMM d, y • h:mm a');
     final email = item.bestEmail;
@@ -411,7 +418,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
     return Scaffold(
       backgroundColor: _surface,
       appBar: brandGradientAppBar(
-        title: Text('Prayer Response', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+        title: Text(s.prayerResponseTitle, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -431,7 +438,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Submitted anonymously',
+                  s.submittedAnonymously,
                   style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -439,14 +446,14 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
-                  'Signed-in account: ${item.submitterUserName ?? item.submitterUserEmail}',
+                  s.signedInAccount(item.submitterUserName ?? item.submitterUserEmail!),
                   style: GoogleFonts.figtree(fontSize: 12, color: Colors.black54),
                 ),
               ),
             if (email != null) ...[
               const SizedBox(height: 16),
               Text(
-                'Select email platform:',
+                s.selectEmailPlatform,
                 style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
               ),
               const SizedBox(height: 8),
@@ -456,21 +463,24 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                 children: [
                   _emailClientChip(
                     PrayerEmailClient.gmail,
+                    s,
                     selected: _preferredEmailClient == PrayerEmailClient.gmail,
                   ),
                   _emailClientChip(
                     PrayerEmailClient.outlook,
+                    s,
                     selected: _preferredEmailClient == PrayerEmailClient.outlook,
                   ),
                   _emailClientChip(
                     PrayerEmailClient.systemMailto,
+                    s,
                     selected: _preferredEmailClient == PrayerEmailClient.systemMailto,
                   ),
                 ],
               ),
             ],
             const SizedBox(height: 20),
-            Text('Prayer request', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
+            Text(s.prayerRequest, style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(16),
@@ -485,11 +495,11 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Text('Follow-up', style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
+            Text(s.followUpSection, style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy)),
             const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('Mark as followed up', style: GoogleFonts.figtree()),
+              title: Text(s.markAsFollowedUp, style: GoogleFonts.figtree()),
               value: _followedUp,
               activeThumbColor: _gold,
               onChanged: _saving ? null : (v) => setState(() => _followedUp = v),
@@ -498,8 +508,8 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
               controller: _notesController,
               maxLines: 5,
               decoration: InputDecoration(
-                labelText: 'Pastor notes',
-                hintText: 'How you connected, prayer points, next steps…',
+                labelText: s.pastorNotes,
+                hintText: s.pastorNotesHint,
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -508,7 +518,9 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
             if (item.contactedAt != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Last marked contacted: ${DateFormat.yMMMd().add_jm().format(item.contactedAt!.toLocal())}',
+                s.lastMarkedContacted(
+                  DateFormat.yMMMd().add_jm().format(item.contactedAt!.toLocal()),
+                ),
                 style: GoogleFonts.figtree(fontSize: 12, color: Colors.black45),
               ),
             ],
@@ -530,7 +542,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                       width: 22,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Save follow-up', style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+                  : Text(s.saveFollowUp, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
             ),
             if (email != null) ...[
               const SizedBox(height: 12),
@@ -538,7 +550,7 @@ class _PrayerRequestDetailScreenState extends State<PrayerRequestDetailScreen> {
                 onPressed: () => _openEmail(email, _preferredEmailClient),
                 icon: const Icon(Icons.email_outlined, size: 18),
                 label: Text(
-                  'Email with ${prayerEmailClientLabel(_preferredEmailClient)}',
+                  s.emailWithClient(prayerEmailClientLabel(_preferredEmailClient, s)),
                   style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
                 ),
                 style: FilledButton.styleFrom(
