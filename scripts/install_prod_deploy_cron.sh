@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WORKSPACE_ROOT:-$ROOT}"
 TZ_NAME="${PROD_DEPLOY_TZ:-America/Chicago}"
 LOG="$WS/logs/scheduled-deploy.log"
-# Minute 0 of every UTC hour. prod_cron_tick.sh continues only at 02:00 Chicago.
+# Minute 0 of every UTC hour. prod_cron_tick.sh continues only at 01:00 Chicago.
 # Keep this line free of %; cron turns an unescaped % into a newline.
 CMD="0 * * * * bash $WS/scripts/prod_cron_tick.sh >> $LOG 2>&1
 "
@@ -61,4 +61,4 @@ fi
 printf '%s\n' "$CMD" >> /tmp/pastor-cron.$$
 crontab /tmp/pastor-cron.$$
 rm -f /tmp/pastor-cron.$$
-echo "Installed 02:00 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."
+echo "Installed 01:00 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."
