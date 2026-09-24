@@ -31,6 +31,7 @@ export PERSIST_ROOT="$TMP/persistent"
 export START_SH="$TMP/start.sh"
 # Do not inherit a keep-alive from the test runner.
 unset PASTOR_KEEP_ALIVE || true
+export PASTOR_SKIP_CRON=1
 
 set +e
 timeout 2 bash "$ROOT/onboot.sh" >/dev/null 2>&1

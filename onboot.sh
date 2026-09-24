@@ -100,6 +100,14 @@ else
   warn "sync_git_channel.sh missing — boot will not fetch GitHub"
 fi
 
+# The crontab lives on the container disk. Remigration wipes it, and the image
+# policy blocks `service cron start`, so start the daemon directly.
+if [[ "${CHANNEL:-}" == "master" && -f "$WS/scripts/install_prod_deploy_cron.sh" ]]; then
+  # shellcheck source=/dev/null
+  source "$WS/scripts/install_prod_deploy_cron.sh"
+  pastor_ensure_prod_cron "$WS" || warn "production cron was not installed"
+fi
+
 # start.sh launches services in screen and returns. Keep this process so the
 # container does not exit (RunPod treats that as a crash and restarts).
 # Do not export PASTOR_KEEP_ALIVE before deploy_update: that script calls

@@ -515,9 +515,20 @@ screen -dmS django bash -c "
   exec gunicorn pastor_ai.wsgi:application --bind 0.0.0.0:${DJANGO_PORT} --worker-class gthread --threads 4 --workers 2 --timeout 1800 \
     >> '${LOG_DIR}/django.log' 2>&1
 "
-sleep 3
-curl -sf -o /dev/null "http://127.0.0.1:${DJANGO_PORT}/" && log "Django on :${DJANGO_PORT}" \
-  || warn "Django not responding yet — see ${LOG_DIR}/django.log"
+django_ready=0
+for _django_try in $(seq 1 45); do
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${DJANGO_PORT}/api/auth/config/" || true)"
+  if [[ "$code" == "200" ]]; then
+    django_ready=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$django_ready" == "1" ]]; then
+  log "Django on :${DJANGO_PORT}"
+else
+  warn "Django not responding yet — see ${LOG_DIR}/django.log"
+fi
 
 # Whisper media ingest must not run inside gunicorn — start.sh kills those workers.
 # On GPU pods Whisper uses leftover MIG VRAM unless a serverless Whisper endpoint

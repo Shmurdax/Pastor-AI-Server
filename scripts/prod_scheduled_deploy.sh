@@ -17,6 +17,27 @@ source "$_sched_root/deploy_steps.sh"
 
 sched_log() { echo "[scheduled-deploy] $*"; }
 
+# Cron's PATH is /usr/bin:/bin. deploy_update.sh adds the SDK; this job must too.
+sched_prepare_env() {
+  local ws="$1"
+  if [[ -f "$ws/scripts/load_env.sh" && -f "$ws/config.env" ]]; then
+    # shellcheck source=/dev/null
+    source "$ws/scripts/load_env.sh"
+    pastor_load_env_file "$ws/config.env"
+  fi
+  if [[ -x "$ws/.flutter-sdk/bin/flutter" ]]; then
+    export PATH="$ws/.flutter-sdk/bin:$PATH"
+  fi
+  if [[ -x "$ws/venv/bin/python" ]]; then
+    export PATH="$ws/venv/bin:$PATH"
+  fi
+  if [[ "${SCHEDULED_SKIP_TOOL_CHECKS:-0}" != "1" && -f "$ws/scripts/git_safe_directory.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$ws/scripts/git_safe_directory.sh"
+    pastor_allow_git_on_runpod_volume "$ws"
+  fi
+}
+
 sched_arm_file() {
   printf '%s\n' "${DEPLOY_ARM_FILE:-${PERSIST_ROOT:-/workspace/persistent}/deploy/armed}"
 }
@@ -81,6 +102,7 @@ sched_preflight() {
 prod_scheduled_deploy() {
   local ws="${1:-${WORKSPACE_ROOT:-/workspace/pastor-ai}}"
   local arm sha armed manifest frontend dump
+  sched_prepare_env "$ws"
   arm="$(sched_arm_file)"
   if [[ ! -f "$arm" ]]; then
     sched_log "skipped: not armed"
