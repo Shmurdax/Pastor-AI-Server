@@ -88,6 +88,11 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
 fi
 
 # Publish the manifest without changing the master SHA.
+# commit-tree refuses when the pod has no user.email.
+export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-pastor-promote}"
+export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-promote@dev.invalid}"
+export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-pastor-promote}"
+export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-promote@dev.invalid}"
 if git check-ref-format "refs/pastor/manifests/${dev_sha}" 2>/dev/null; then
   blob="$(git hash-object -w "$MANIFEST")"
   tree="$(printf '100644 blob %s\tmanifest\n' "$blob" | git mktree)"

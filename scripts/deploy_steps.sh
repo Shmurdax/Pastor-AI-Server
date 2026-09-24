@@ -99,10 +99,20 @@ deploy_health_localhost() {
     return
   fi
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
-  local path code
+  local path code allowed ok
+  # Premium routes return 401 when the gate is closed. That still means Django is up.
+  local -A expect_ok=(
+    [/api/auth/config/]=200
+    [/api/media/]="200 401"
+    [/api/church-events/]="200 401"
+  )
   for path in /api/auth/config/ /api/media/ /api/church-events/; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}${path}" || true)"
-    [[ "$code" == "200" ]] || deploy_steps_die "GET ${path} returned ${code:-000}"
+    ok=0
+    for allowed in ${expect_ok[$path]}; do
+      [[ "$code" == "$allowed" ]] && ok=1
+    done
+    [[ "$ok" == "1" ]] || deploy_steps_die "GET ${path} returned ${code:-000}"
   done
 }
 
