@@ -214,7 +214,7 @@ const Map<String, Map<String, String>> _tables = {
     'chatDeleted': 'Chat deleted',
     'welcomeTitle': "Welcome to the Nordin's AI Assistant",
     'welcomeBody':
-        "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information.",
+        "This tool is trained on Pastor Don Nordin and Pastor Susan Nordin's sermon notes and resources. The AI may occasionally produce inaccurate information.",
     'welcomeBibleVerify': 'Please verify insights with your Bible.',
     'welcomeMobileLibraryHint':
         'Reference the arrow in the top left to access the sermon library and media link.',
