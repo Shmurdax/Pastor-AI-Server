@@ -6,9 +6,27 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WORKSPACE_ROOT:-$ROOT}"
 TZ_NAME="${PROD_DEPLOY_TZ:-America/Chicago}"
 LOG="$WS/logs/scheduled-deploy.log"
-CMD="CRON_TZ=${TZ_NAME}
-0 1 * * * bash $WS/scripts/prod_scheduled_deploy.sh >> $LOG 2>&1
+# The pod clock is UTC. Fire at minute 30 of every UTC hour and continue only
+# when that instant is 01:30 in Chicago, so daylight and standard time both hit.
+CMD="30 * * * * TZ=${TZ_NAME} bash -c 'hour=\$(date +%H); [ \"\$hour\" = 01 ] || exit 0; bash $WS/scripts/prod_scheduled_deploy.sh' >> $LOG 2>&1
 "
+pastor_relax_cron_pam() {
+  local pam="/etc/pam.d/cron"
+  [[ -f "$pam" ]] || return 0
+  sed -i 's/^\(session[[:space:]]\+\)required\([[:space:]]\+pam_loginuid\.so\)/\1optional\2/' "$pam"
+}
+
+pastor_start_cron_daemon() {
+  pastor_relax_cron_pam
+  if pgrep -x cron >/dev/null 2>&1; then
+    kill "$(pgrep -x cron | head -1)" 2>/dev/null || true
+    sleep 1
+  fi
+  if [[ -x /usr/sbin/cron ]]; then
+    /usr/sbin/cron || true
+  fi
+}
+
 pastor_ensure_prod_cron() {
   # Reinstall the 1:00am job after a remigration. Does not arm a deploy.
   local ws="${1:-${WORKSPACE_ROOT:-/workspace/pastor-ai}}"
@@ -25,9 +43,7 @@ pastor_ensure_prod_cron() {
     apt-get update -qq || true
     apt-get install -y -qq cron || true
   fi
-  if ! pgrep -x cron >/dev/null 2>&1 && [[ -x /usr/sbin/cron ]]; then
-    /usr/sbin/cron || true
-  fi
+  pastor_start_cron_daemon
   command -v crontab >/dev/null 2>&1 || return 0
   WORKSPACE_ROOT="$ws" bash "$ws/scripts/install_prod_deploy_cron.sh"
 }
@@ -45,4 +61,4 @@ fi
 printf '%s\n' "$CMD" >> /tmp/pastor-cron.$$
 crontab /tmp/pastor-cron.$$
 rm -f /tmp/pastor-cron.$$
-echo "Installed 01:00 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."
+echo "Installed 01:30 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."

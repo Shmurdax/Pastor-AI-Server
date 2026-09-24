@@ -37,5 +37,5 @@ grep -q "^SHA=${SHA}$" "$MANIFEST" || { echo "arm: manifest SHA does not match $
 mkdir -p "$(dirname "$ARM")"
 printf '%s\n' "$SHA" > "$ARM"
 chmod 600 "$ARM"
-echo "Armed $SHA for the next 01:00 ${PROD_DEPLOY_TZ:-America/Chicago} window."
+echo "Armed $SHA for the next 01:30 ${PROD_DEPLOY_TZ:-America/Chicago} window."
 echo "Cancel with: rm -f $ARM"
