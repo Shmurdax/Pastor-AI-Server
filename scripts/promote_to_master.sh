@@ -83,10 +83,6 @@ fi
 echo "Promoting development → master"
 git push "$REMOTE" "$REMOTE/development:master"
 
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  rm -f "${ASKPASS:-}"
-fi
-
 # Publish the manifest without changing the master SHA.
 # commit-tree refuses when the pod has no user.email.
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-pastor-promote}"
@@ -99,6 +95,10 @@ if git check-ref-format "refs/pastor/manifests/${dev_sha}" 2>/dev/null; then
   commit="$(git commit-tree "$tree" -m "release ${dev_sha}")"
   git update-ref "refs/pastor/manifests/${dev_sha}" "$commit"
   git push "$REMOTE" "refs/pastor/manifests/${dev_sha}" || echo "promote: manifest ref was not pushed"
+fi
+
+if [[ -n "${ASKPASS:-}" ]]; then
+  rm -f "$ASKPASS"
 fi
 
 echo "Done. The production pod is unchanged."
