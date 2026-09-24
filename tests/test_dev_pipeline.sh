@@ -199,4 +199,46 @@ if grep -q "auth/config/.*|| true" "$ROOT/deploy_update.sh"; then
   fail "deploy_update.sh must not ignore health-check failures"
 fi
 
+# Health checks retry until Django is listening.
+unset DEPLOY_HOOK_HEALTH
+health_dir="$(mktemp -d)"
+cat > "$health_dir/curl" <<EOF
+#!/bin/bash
+f="$health_dir/n"
+n=\$(cat "\$f" 2>/dev/null || echo 0)
+n=\$((n + 1))
+echo "\$n" > "\$f"
+if [[ "\$n" -le 3 ]]; then printf 000; else printf 200; fi
+EOF
+chmod +x "$health_dir/curl"
+PATH="$health_dir:$PATH" DEPLOY_HEALTH_ATTEMPTS=4 DEPLOY_HEALTH_INTERVAL=0 DEPLOY_SKIP_GPU=1 \
+  deploy_health_localhost 8000 || fail "health check should wait for Django"
+printf '%s\n' '#!/bin/bash' 'printf 000' > "$health_dir/curl"
+code=0
+PATH="$health_dir:$PATH" DEPLOY_HEALTH_ATTEMPTS=2 DEPLOY_HEALTH_INTERVAL=0 \
+  deploy_health_localhost 8000 || code=$?
+[[ "$code" == "1" ]] || fail "health check should fail when Django stays down"
+rm -rf "$health_dir"
+
+# Dev smoke records success only when the hook says the endpoint answered.
+# shellcheck source=/dev/null
+source "$ROOT/scripts/gpu_smoke.sh"
+gpu_mark() { PASTOR_GPU_SMOKE=1; }
+GPU_SMOKE_HOOK=true pastor_serverless_gpu_smoke
+[[ "${PASTOR_GPU_SMOKE:-0}" == "0" ]] || fail "smoke hook must set the flag itself"
+GPU_SMOKE_HOOK=gpu_mark pastor_serverless_gpu_smoke
+[[ "$PASTOR_GPU_SMOKE" == "1" ]] || fail "smoke hook should be able to mark GPU_SMOKE"
+unset GPU_SMOKE_HOOK
+RUNPOD_VLLM_ENDPOINT_ID="" RUNPOD_API_KEY="" pastor_serverless_gpu_smoke
+[[ "$PASTOR_GPU_SMOKE" == "0" ]] || fail "missing endpoint must leave GPU_SMOKE=0"
+
+# Production cron install is master-only and does not create an arm file.
+# shellcheck source=/dev/null
+source "$ROOT/scripts/install_prod_deploy_cron.sh"
+cron_ws="$(mktemp -d)"
+printf 'development\n' > "$cron_ws/.git_channel"
+PASTOR_GIT_BRANCH="" REPO_BRANCH="" pastor_ensure_prod_cron "$cron_ws"
+[[ ! -e "$cron_ws/logs/scheduled-deploy.log" ]] || fail "development boot must not install the production cron"
+rm -rf "$cron_ws"
+
 echo "OK dev pipeline gates"

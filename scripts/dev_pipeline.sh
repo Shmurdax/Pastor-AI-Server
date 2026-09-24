@@ -69,7 +69,13 @@ if [[ "${DEV_PIPELINE_SKIP_HEALTH:-0}" != "1" ]]; then
 fi
 
 SHA="$(git -C "$WS" rev-parse HEAD 2>/dev/null || echo unknown)"
-GPU_SMOKE="${GPU_SMOKE:-0}"
+PASTOR_GPU_SMOKE=0
+if [[ "${DEV_PIPELINE_SKIP_GPU_SMOKE:-0}" != "1" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/scripts/gpu_smoke.sh"
+  pastor_serverless_gpu_smoke || true
+fi
+GPU_SMOKE="${PASTOR_GPU_SMOKE:-0}"
 mkdir -p "$WS/release"
 cat > "$WS/.dev_pipeline_success" <<EOF
 SHA=${SHA}

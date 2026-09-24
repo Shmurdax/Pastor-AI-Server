@@ -92,6 +92,14 @@ deploy_start() {
   bash "$ws/start.sh"
 }
 
+# Premium routes return 401 when the gate is closed. That still means Django is up.
+deploy_health_codes() {
+  case "$1" in
+    /api/auth/config/) printf '%s\n' 200 ;;
+    /api/media/|/api/church-events/) printf '%s\n' 200 401 ;;
+  esac
+}
+
 deploy_health_localhost() {
   local port="${1:-8000}"
   if [[ -n "${DEPLOY_HOOK_HEALTH:-}" ]]; then
@@ -99,21 +107,62 @@ deploy_health_localhost() {
     return
   fi
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
-  local path code allowed ok
-  # Premium routes return 401 when the gate is closed. That still means Django is up.
-  local -A expect_ok=(
-    [/api/auth/config/]=200
-    [/api/media/]="200 401"
-    [/api/church-events/]="200 401"
-  )
-  for path in /api/auth/config/ /api/media/ /api/church-events/; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}${path}" || true)"
-    ok=0
-    for allowed in ${expect_ok[$path]}; do
-      [[ "$code" == "$allowed" ]] && ok=1
+  local attempts="${DEPLOY_HEALTH_ATTEMPTS:-45}"
+  local interval="${DEPLOY_HEALTH_INTERVAL:-2}"
+  local i path code allowed ok failed last
+  for ((i = 1; i <= attempts; i++)); do
+    failed=""
+    last=""
+    for path in /api/auth/config/ /api/media/ /api/church-events/; do
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:${port}${path}" || true)"
+      code="${code:-000}"
+      ok=0
+      while IFS= read -r allowed; do
+        [[ "$code" == "$allowed" ]] && ok=1
+      done < <(deploy_health_codes "$path")
+      if [[ "$ok" != "1" ]]; then
+        failed="$path"
+        last="$code"
+      fi
     done
-    [[ "$ok" == "1" ]] || deploy_steps_die "GET ${path} returned ${code:-000}"
+    [[ -z "$failed" ]] && break
+    if [[ "$i" -eq "$attempts" ]]; then
+      deploy_steps_die "GET ${failed} returned ${last:-000}"
+      return 1
+    fi
+    sleep "$interval"
   done
+  if deploy_wants_local_gpu; then
+    deploy_local_vllm_completion
+  fi
+}
+
+deploy_wants_local_gpu() {
+  [[ "${DEPLOY_SKIP_GPU:-0}" == "1" ]] && return 1
+  declare -F pastor_git_channel >/dev/null 2>&1 || return 1
+  declare -F pastor_vllm_mode_name >/dev/null 2>&1 || return 1
+  [[ "$(pastor_git_channel "${WORKSPACE_ROOT:-}")" == "master" ]] || return 1
+  [[ "$(pastor_vllm_mode_name)" == "local" ]] || return 1
+  return 0
+}
+
+deploy_local_vllm_completion() {
+  if [[ -n "${DEPLOY_HOOK_GPU:-}" ]]; then
+    "$DEPLOY_HOOK_GPU"
+    return
+  fi
+  local port="${VLLM_PORT:-8010}" model="${VLLM_MODEL:-christianai}" body payload
+  body="$(curl -sf --max-time 20 "http://127.0.0.1:${port}/v1/models" || true)"
+  [[ "$body" == *'"data"'* || "$body" == *'"object"'* ]] || {
+    deploy_steps_die "local vLLM /v1/models is not ready"
+    return 1
+  }
+  payload="$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply with ok"}],"max_tokens":8,"temperature":0}' "$model")"
+  body="$(curl -sf --max-time 60 -H 'Content-Type: application/json' -d "$payload" "http://127.0.0.1:${port}/v1/chat/completions" || true)"
+  [[ "$body" == *'"content":"'* && "$body" != *'"content":""'* ]] || {
+    deploy_steps_die "local vLLM completion was empty"
+    return 1
+  }
 }
 
 deploy_rollback_code() {
