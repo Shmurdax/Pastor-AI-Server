@@ -6,9 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS="${WORKSPACE_ROOT:-$ROOT}"
 TZ_NAME="${PROD_DEPLOY_TZ:-America/Chicago}"
 LOG="$WS/logs/scheduled-deploy.log"
-# The pod clock is UTC. Fire at minute 30 of every UTC hour and continue only
-# when that instant is 01:30 in Chicago, so daylight and standard time both hit.
-CMD="30 * * * * TZ=${TZ_NAME} bash -c 'hour=\$(date +%H); [ \"\$hour\" = 01 ] || exit 0; bash $WS/scripts/prod_scheduled_deploy.sh' >> $LOG 2>&1
+# Minute 0 of every UTC hour. prod_cron_tick.sh continues only at 02:00 Chicago.
+# Keep this line free of %; cron turns an unescaped % into a newline.
+CMD="0 * * * * bash $WS/scripts/prod_cron_tick.sh >> $LOG 2>&1
 "
 pastor_relax_cron_pam() {
   local pam="/etc/pam.d/cron"
@@ -54,11 +54,11 @@ fi
 
 mkdir -p "$WS/logs"
 if crontab -l >/dev/null 2>&1; then
-  crontab -l | grep -v 'prod_scheduled_deploy.sh' > /tmp/pastor-cron.$$ || true
+  crontab -l | grep -v -e 'prod_scheduled_deploy.sh' -e 'prod_cron_tick.sh' > /tmp/pastor-cron.$$ || true
 else
   : > /tmp/pastor-cron.$$
 fi
 printf '%s\n' "$CMD" >> /tmp/pastor-cron.$$
 crontab /tmp/pastor-cron.$$
 rm -f /tmp/pastor-cron.$$
-echo "Installed 01:30 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."
+echo "Installed 02:00 ${TZ_NAME} cron. It stays quiet until arm_prod_deploy.sh is run."

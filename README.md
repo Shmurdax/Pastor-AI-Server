@@ -26,11 +26,11 @@ git checkout master
 # After rehearsal on christian-ai-dev, promote GitHub master (does not restart production):
 bash scripts/promote_to_master.sh --yes
 
-# On the GPU pod, arm the next 1:30am Central window. Delete the arm file to cancel.
+# On the GPU pod, arm the next 2:00am Central window. Delete the arm file to cancel.
 bash scripts/arm_prod_deploy.sh
 ```
 
-`development` is a copy of production plus new work. The 1:30am Central cron on the GPU pod runs `scripts/prod_scheduled_deploy.sh` only when that arm file names the current `master` commit. It builds Flutter to a staging directory, migrates, restarts, and returns to the previous commit if health checks fail.
+`development` is a copy of production plus new work. The 2:00am Central cron on the GPU pod runs `scripts/prod_scheduled_deploy.sh` only when that arm file names the current `master` commit. It builds Flutter to a staging directory, migrates, restarts, and returns to the previous commit if health checks fail.
 
 On a RunPod host, `deploy_update.sh` fetches and hard-resets to **`master`** (local pod edits are discarded). `onboot.sh` does the same fetch+reset on every pod start/recreate so the volume cannot keep an old SHA or a dirty overlay. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Override with `PASTOR_GIT_BRANCH=development` on `christian-ai-dev`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch. Dev pods keep test secrets in `tokens.test.env` and a promote-only GitHub token in `tokens.promote.env`.
 
