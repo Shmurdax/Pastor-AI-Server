@@ -48,9 +48,20 @@ fi
 
 PORT="${DJANGO_PORT:-8000}"
 if [[ "${DEV_PIPELINE_SKIP_HEALTH:-0}" != "1" ]]; then
+  # auth/config is public. Media and church events are premium routes:
+  # 401 means Django is up and the gate is closed.
+  declare -A expect_ok=(
+    [/api/auth/config/]=200
+    [/api/media/]="200 401"
+    [/api/church-events/]="200 401"
+  )
   for path in /api/auth/config/ /api/media/ /api/church-events/; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}${path}" || true)"
-    [[ "$code" == "200" ]] || {
+    ok=0
+    for allowed in ${expect_ok[$path]}; do
+      [[ "$code" == "$allowed" ]] && ok=1
+    done
+    [[ "$ok" == "1" ]] || {
       echo "dev-pipeline: GET $path returned ${code:-000}" >&2
       exit 1
     }
