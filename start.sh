@@ -390,6 +390,11 @@ elif [[ -f "$CONFIG_ENV" ]]; then
   fi
 fi
 
+# Development pods rewrite live keys to test values before Django listens.
+if declare -F pastor_git_channel >/dev/null 2>&1 && [[ "$(pastor_git_channel "$WS")" == "development" ]]; then
+  bash "$SCRIPT_DIR/scripts/isolate_dev_env.sh"
+fi
+
 # Django
 [[ -f "$APP_DIR/manage.py" ]] || die "App missing at $APP_DIR"
 ensure_persistent_uploads

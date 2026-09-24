@@ -52,9 +52,12 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
+# shellcheck source=/dev/null
+source "$WS/scripts/deploy_steps.sh" 2>/dev/null || source "$(dirname "$0")/scripts/deploy_steps.sh"
+
 if [[ -f "$APP_DIR/requirements.txt" ]]; then
   log "Installing Python requirements (Whisper, etc.)"
-  pip install -q -r "$APP_DIR/requirements.txt" || warn "pip install requirements failed"
+  deploy_pip "$APP_DIR" "$VENV_DIR"
 fi
 
 log "Running Django migrations"
@@ -83,34 +86,17 @@ if [[ -x "$WS/.flutter-sdk/bin/flutter" ]]; then
   export PATH="$WS/.flutter-sdk/bin:$PATH"
   log "Using $WS/.flutter-sdk (git safe.directory already set for this volume)"
 fi
-if command -v flutter >/dev/null 2>&1; then
-  log "Building Flutter web"
-  cd "$FRONTEND_DIR"
-  FLUTTER_ARGS=(build web --release --dart-define=API_BASE_URL=)
-  if [[ -n "${GOOGLE_CLIENT_ID:-}" ]]; then
-    FLUTTER_ARGS+=(--dart-define=GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID}")
-  fi
-  flutter "${FLUTTER_ARGS[@]}"
-else
-  warn "flutter not in PATH — skipping web rebuild (old UI may still be served)"
-fi
+log "Building Flutter web into a staging directory"
+deploy_flutter_staging "$FRONTEND_DIR"
+deploy_swap_web "$FRONTEND_DIR"
 
 log "Restarting services"
-bash "$WS/start.sh"
+deploy_start "$WS"
 if declare -F pastor_record_running_git >/dev/null 2>&1; then
   pastor_record_running_git "$WS" || true
 fi
 
 log "Health checks (localhost)"
-curl -sf -o /dev/null -w "  GET /api/auth/config/ → %{http_code}\n" \
-  "http://127.0.0.1:${DJANGO_PORT:-8000}/api/auth/config/" || true
-curl -sf -o /dev/null -w "  GET /api/church-events/ → %{http_code}\n" \
-  "http://127.0.0.1:${DJANGO_PORT:-8000}/api/church-events/" || true
-curl -sf -o /dev/null -w "  GET /api/media/ → %{http_code}\n" \
-  "http://127.0.0.1:${DJANGO_PORT:-8000}/api/media/" || true
-curl -sf -o /dev/null -w "  POST /api/auth/google/ → %{http_code}\n" \
-  -X POST "http://127.0.0.1:${DJANGO_PORT:-8000}/api/auth/google/" \
-  -H "Content-Type: application/json" \
-  -d '{"id_token":"x"}' || true
+deploy_health_localhost "${DJANGO_PORT:-8000}"
 
 log "Done. Public URL: $(cat "$WS/public_url.txt" 2>/dev/null || echo unknown)"

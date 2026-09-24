@@ -225,11 +225,13 @@ First smoke test on each endpoint can take **1–3 minutes** (worker pull + mode
 Paste both IDs plus `RUNPOD_API_KEY` into `tokens.env` on the CPU pod, then
 `bash apply-tokens.sh --restart`.
 
-## Production CPU pod
+## Production GPU pod
 
-The always-on GPU pod (`6pf27d8080515x`, `christian-ai-prd`) was **terminated**.
-Production is a CPU-only Secure Cloud pod on the same network volume
-(`int0elzo4l` at `/workspace`):
+Production is the always-on enclosed GPU pod. It tracks `master`, runs local vLLM, and keeps the named Cloudflare tunnel. `scripts/pod_profile.sh` is the source of truth for channel, GPU, and tunnel; do not trust a stale pod id in this file after a recreate.
+
+Updates do not happen when `development` is promoted. On the GPU pod, install the cron once with `bash scripts/install_prod_deploy_cron.sh`. It wakes at 1:00am America/Chicago and exits unless `bash scripts/arm_prod_deploy.sh` wrote `/workspace/persistent/deploy/armed` for the current `master` SHA. The job builds Flutter to a staging directory, dumps Postgres, migrates, restarts, and checks health. A failed health check checks out the previous SHA and restores `frontend/build/web.prev`. The predeploy dump is restored only when migrate failed or the previous process cannot boot. The arm file is removed either way.
+
+The historical CPU production pod id, if still listed below, is not the deploy target:
 
 | | |
 |--|--|
@@ -245,7 +247,7 @@ Production is a CPU-only Secure Cloud pod on the same network volume
 
 ## Development CPU pod
 
-`christian-ai-dev` is a clone of production on its own network volume. It tracks Git **`development`**. All new code lands there first. Promote with `bash scripts/promote_to_master.sh`, then `bash deploy_update.sh` on production.
+`christian-ai-dev` is a separate CPU pod on its own volume. It tracks Git **`development`**, which is a copy of production plus new work. Chat and Whisper use dev-only serverless endpoints. Secrets live in `tokens.test.env` (test Stripe, sandbox mail). `tokens.promote.env` holds the GitHub token used only by `bash scripts/promote_to_master.sh --yes`. That push does not restart production. Copy `tokens.test.env.example` and never commit the filled file. Isolation deletes live keys that have no test replacement and refuses `admin123`.
 
 | | |
 |--|--|

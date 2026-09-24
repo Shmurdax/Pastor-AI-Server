@@ -2,6 +2,12 @@
 .env
 config.env
 tokens.env
+tokens.test.env
+tokens.promote.env
+.isolation_denylist
+.dev_pipeline_success
+isolation_report
+release/*.manifest
 secrets/*.json
 .git_channel
 *.log
