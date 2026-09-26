@@ -61,6 +61,7 @@
         <th>Vimeo ID</th>
         <th>Matched download</th>
         <th>Transcript</th>
+        <th>Study notes</th>
         <th>Embed</th>
         <th></th>
       </tr>
@@ -96,6 +97,13 @@
           {% endif %}
         </td>
         <td>
+          {% if video.has_notes and video.notes_source_name %}
+            <a href="{% url 'admin:core_ingested_document_file' video.notes_source_name %}" target="_blank" rel="noopener">{{ video.notes_title }}</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
           <a href="{{ video.embed_url }}" target="_blank" rel="noopener">{{ video.embed_url }}</a>
         </td>
         <td>
@@ -104,7 +112,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="6">No Vimeo-matched videos were found.</td>
+        <td colspan="7">No Vimeo-matched videos were found.</td>
       </tr>
       {% endfor %}
     </tbody>

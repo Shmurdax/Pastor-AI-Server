@@ -25,6 +25,8 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 "Done. "
                 f"fetched={result['fetched']} created={result['created']} "
-                f"updated={result['updated']} unpublished={result['unpublished']}"
+                f"updated={result['updated']} unpublished={result['unpublished']} "
+                f"notes_attached={result.get('notes_attached', 0)} "
+                f"notes_updated={result.get('notes_updated', 0)}"
             )
         )

@@ -128,6 +128,12 @@
         · Whisper model: {{ video.whisper_model }}
       {% endif %}
     </p>
+    {% if video.has_notes and video.notes_source_name %}
+      <p>
+        Study notes:
+        <a href="{% url 'admin:core_ingested_document_file' video.notes_source_name %}" target="_blank" rel="noopener">{{ video.notes_title }}</a>
+      </p>
+    {% endif %}
   </div>
 
   <div class="embedded-split">

@@ -140,8 +140,39 @@ class MediaVideoListAPI(APIView):
     permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
 
     def get(self, request):
-        qs = MediaVideo.objects.filter(is_published=True).order_by(
-            "-published_at",
-            "title",
+        qs = (
+            MediaVideo.objects.filter(is_published=True)
+            .select_related("notes_document")
+            .order_by(
+                "-published_at",
+                "title",
+            )
         )
-        return Response({"results": MediaVideoSerializer(qs, many=True).data})
+        return Response(
+            {
+                "results": MediaVideoSerializer(
+                    qs, many=True, context={"request": request}
+                ).data
+            }
+        )
+
+
+class MediaVideoNotesFileAPI(APIView):
+    """GET /api/media/<vimeo_id>/notes/ — study notes PDF attached to a video."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
+
+    def get(self, request, vimeo_id: str):
+        from django.http import Http404
+
+        from core.views import _file_response_for_document
+
+        video = (
+            MediaVideo.objects.filter(is_published=True, vimeo_id=vimeo_id)
+            .select_related("notes_document")
+            .first()
+        )
+        if video is None or video.notes_document is None:
+            raise Http404("Study notes were not found for this video.")
+        return _file_response_for_document(video.notes_document)

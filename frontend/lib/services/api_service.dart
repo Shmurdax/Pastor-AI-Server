@@ -182,6 +182,9 @@ class ApiService {
     return rows.map(MediaItem.fromApiJson).toList();
   }
 
+  Future<Uint8List> getMediaNotesFile(String vimeoId) =>
+      _apiClient.getMediaNotesFile(vimeoId);
+
   Future<Map<String, dynamic>> getChatHistory() => _apiClient.getChatHistory();
 
   Future<Map<String, dynamic>> putChatHistory({

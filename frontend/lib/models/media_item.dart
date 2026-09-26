@@ -26,6 +26,10 @@ class MediaItem {
     this.thumbnailUrl,
     this.tags = const [],
     this.isPublished = false,
+    this.notesDocumentId,
+    this.notesTitle,
+    this.notesViewOnly = false,
+    this.notesFileUrl,
   });
 
   final String id;
@@ -45,11 +49,25 @@ class MediaItem {
   final List<String> tags;
   /// True when a playable file/embed is wired up; false for coming-soon placeholders.
   final bool isPublished;
+  /// Ingested study-notes document attached to this Walk through the Word video.
+  final int? notesDocumentId;
+  final String? notesTitle;
+  final bool notesViewOnly;
+  final String? notesFileUrl;
 
   bool get isPlayable =>
       isPublished && (vimeoId != null || videoAssetPath != null);
 
   bool get isLocked => accessTier == MediaAccessTier.premium && !isPlayable;
+
+  bool isLockedForUser({required bool hasPremiumAccess}) {
+    if (accessTier != MediaAccessTier.premium) return false;
+    return !hasPremiumAccess;
+  }
+
+  bool get hasNotes =>
+      (notesDocumentId != null && notesDocumentId! > 0) ||
+      (notesFileUrl != null && notesFileUrl!.trim().isNotEmpty);
 
   factory MediaItem.fromApiJson(Map<String, dynamic> json) {
     final tierRaw = (json['access_tier'] as String? ?? 'premium').toLowerCase();
@@ -62,6 +80,10 @@ class MediaItem {
         : DateTime.now();
     final vimeoId = (json['vimeo_id'] as String?)?.trim();
     final hash = (json['privacy_hash'] as String?)?.trim();
+    final notesIdRaw = json['notes_document_id'];
+    final notesDocumentId = notesIdRaw is int
+        ? notesIdRaw
+        : int.tryParse('$notesIdRaw');
     return MediaItem(
       id: '${json['id'] ?? vimeoId ?? ''}',
       title: json['title'] as String? ?? 'Untitled',
@@ -75,6 +97,12 @@ class MediaItem {
       thumbnailUrl: (json['thumbnail_url'] as String?)?.trim(),
       isPublished: json['is_published'] as bool? ?? true,
       tags: const ['devotional'],
+      notesDocumentId: (notesDocumentId != null && notesDocumentId > 0)
+          ? notesDocumentId
+          : null,
+      notesTitle: (json['notes_title'] as String?)?.trim(),
+      notesViewOnly: json['notes_view_only'] == true,
+      notesFileUrl: (json['notes_file_url'] as String?)?.trim(),
     );
   }
 }

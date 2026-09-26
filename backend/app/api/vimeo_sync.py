@@ -238,11 +238,18 @@ def sync_vimeo_media(
         row.save(update_fields=["is_published", "synced_at", "updated_at"])
         unpublished += 1
 
+    from .media_notes import attach_notes_to_media_videos
+
+    notes = attach_notes_to_media_videos()
+
     return {
         "fetched": len(remote),
         "created": created,
         "updated": updated,
         "unpublished": unpublished,
+        "notes_attached": notes.get("attached", 0),
+        "notes_updated": notes.get("updated", 0),
+        "notes_skipped_manual": notes.get("skipped_manual", 0),
     }
 
 

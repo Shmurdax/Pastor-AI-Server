@@ -171,3 +171,24 @@ cd backend/app && python manage.py sync_vimeo_media
 `deploy_update.sh` runs this sync after migrate when the token and folder id are set.
 Public catalog: `GET /api/media/`.
 
+## Dropbox Walk through the Word notes
+
+Study notes for each video live in a Dropbox folder until they are downloaded.
+
+1. Create a Dropbox app token with `files.content.read` and `files.metadata.read`.
+2. Set in `tokens.env` then `bash apply-tokens.sh`:
+
+```bash
+DROPBOX_ACCESS_TOKEN=sl....
+DROPBOX_NOTES_FOLDER=/Walk through the Word/Notes
+# or: DROPBOX_SHARED_URL=https://www.dropbox.com/sh/...
+```
+
+3. Sync (admin **Content tools → Dropbox notes**, or):
+
+```bash
+cd backend/app && python manage.py sync_dropbox_notes
+```
+
+Each PDF/DOCX is ingested, then attached to the matching Walk through the Word video by sermon date (for example `January 4.pdf` → Vimeo title “January 4”) or Vimeo id in the filename. Staff can also pick a notes document on each `MediaVideo` in Django admin. Premium `GET /api/media/` includes `notes_file_url` so the Media page can open the notes next to the video.
+
