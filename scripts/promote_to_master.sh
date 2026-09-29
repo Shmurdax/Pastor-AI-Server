@@ -66,12 +66,9 @@ MANIFEST="$ROOT/release/${dev_sha}.manifest"
 } > "$MANIFEST"
 chmod 600 "$MANIFEST"
 
-if [[ "$dev_sha" == "$master_sha" ]]; then
-  echo "master already matches development — nothing to promote"
-  echo "Live site unchanged. Arm production only when you want the 1:00am window:"
-  echo "  bash scripts/arm_prod_deploy.sh"
-  exit 0
-fi
+ASKPASS=""
+cleanup_askpass() { [[ -n "${ASKPASS}" ]] && rm -f "$ASKPASS"; }
+trap cleanup_askpass EXIT
 
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   ASKPASS="$(mktemp)"
@@ -80,15 +77,15 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   export GIT_ASKPASS="$ASKPASS" GITHUB_TOKEN
 fi
 
-echo "Promoting development → master"
-git push "$REMOTE" "$REMOTE/development:master"
-
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  rm -f "${ASKPASS:-}"
+if [[ "$dev_sha" == "$master_sha" ]]; then
+  echo "master already matches development — skipping branch push"
+else
+  echo "Promoting development → master"
+  git push "$REMOTE" "$REMOTE/development:master"
 fi
 
 # Publish the manifest without changing the master SHA.
-# commit-tree refuses when the pod has no user.email.
+# The login stays active for this push. commit-tree refuses when the pod has no user.email.
 export GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-pastor-promote}"
 export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-promote@dev.invalid}"
 export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-pastor-promote}"
@@ -98,7 +95,10 @@ if git check-ref-format "refs/pastor/manifests/${dev_sha}" 2>/dev/null; then
   tree="$(printf '100644 blob %s\tmanifest\n' "$blob" | git mktree)"
   commit="$(git commit-tree "$tree" -m "release ${dev_sha}")"
   git update-ref "refs/pastor/manifests/${dev_sha}" "$commit"
-  git push "$REMOTE" "refs/pastor/manifests/${dev_sha}" || echo "promote: manifest ref was not pushed"
+  git push "$REMOTE" "refs/pastor/manifests/${dev_sha}"
+else
+  echo "promote: bad manifest ref for ${dev_sha}" >&2
+  exit 1
 fi
 
 echo "Done. The production pod is unchanged."
