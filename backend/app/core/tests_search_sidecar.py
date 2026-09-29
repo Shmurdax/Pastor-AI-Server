@@ -56,6 +56,10 @@ class SearchSidecarContractTests(unittest.TestCase):
             emb = SidecarEmbeddings(base)
             self.assertEqual(emb.embed_query("grace"), [5.0, 0.25])
             self.assertEqual(SidecarReranker(base).predict([["q", "ab"]]), [2.0])
+            batched = SidecarEmbeddings(base).embed_documents(["a"] * 65)
+            self.assertEqual(len(batched), 65)
+            self.assertEqual(batched[0], [1.0, 0.25])
+            self.assertEqual(batched[64], [1.0, 0.25])
         finally:
             server.shutdown()
             server.server_close()
@@ -87,6 +91,7 @@ class SearchSidecarContractTests(unittest.TestCase):
         import core.embeddings_utils as embeddings
 
         embeddings._EMBEDDINGS = None
+        embeddings._LOCAL_EMBEDDINGS = None
         captured = {}
 
         def fake_post(url, payload, timeout):
@@ -103,3 +108,38 @@ class SearchSidecarContractTests(unittest.TestCase):
         self.assertTrue(sent.lower().startswith("represent this sentence"))
         self.assertTrue(sent.endswith("grace"))
         embeddings._EMBEDDINGS = None
+        embeddings._LOCAL_EMBEDDINGS = None
+
+    def test_ingest_skips_sidecar_when_cuda_is_down(self):
+        import core.embeddings_utils as embeddings
+
+        embeddings._EMBEDDINGS = None
+        embeddings._LOCAL_EMBEDDINGS = None
+        fake_model = mock.Mock()
+        local = QueryPrefixedEmbeddings(fake_model)
+        with mock.patch.dict(
+            os.environ,
+            {"SEARCH_SIDECAR_URL": "http://127.0.0.1:8012", "EMBEDDING_DEVICE": "cpu"},
+            clear=False,
+        ):
+            with mock.patch("core.embeddings_utils._load_local_embeddings", return_value=local) as loader:
+                client = get_embeddings(force_new=True, allow_sidecar=False)
+        self.assertIs(client, local)
+        self.assertNotIsInstance(client._inner, SidecarEmbeddings)
+        loader.assert_called_once()
+        embeddings._EMBEDDINGS = None
+        embeddings._LOCAL_EMBEDDINGS = None
+
+    def test_sidecar_embed_documents_batches_over_max_texts(self):
+        posts = []
+
+        def fake_post(url, payload, timeout):
+            posts.append(payload["texts"])
+            return {"vectors": [[float(len(text)), 0.1] for text in payload["texts"]]}
+
+        with mock.patch("core.search_sidecar._post_json", side_effect=fake_post):
+            vectors = SidecarEmbeddings("http://127.0.0.1:8012").embed_documents(["ab"] * 65)
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(len(posts[0]), 64)
+        self.assertEqual(len(posts[1]), 1)
+        self.assertEqual(len(vectors), 65)
