@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 const _navy = Color(0xFF1B264F);
 
-/// Compact replacement for the top-right Home / Chat / Events / Media
+/// Compact replacement for the top-right Home / Chat / Media / Events
 /// row on viewports narrower than 1024px.
 class AppHamburgerNav extends StatelessWidget {
   const AppHamburgerNav({
@@ -50,8 +50,8 @@ class AppHamburgerNav extends StatelessWidget {
         menuChildren: [
           _MenuRow(label: s.home, icon: Icons.home_outlined, onPressed: onHome),
           _MenuRow(label: s.chat, icon: Icons.chat_bubble_outline, onPressed: onChat),
-          _MenuRow(label: s.events, icon: Icons.event_outlined, onPressed: onEvents),
           _MenuRow(label: s.media, icon: Icons.video_library_outlined, onPressed: onMedia),
+          _MenuRow(label: s.events, icon: Icons.event_outlined, onPressed: onEvents),
         ],
         builder: (context, controller, child) {
           return IconButton(

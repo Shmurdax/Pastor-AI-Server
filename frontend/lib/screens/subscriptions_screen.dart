@@ -507,13 +507,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                   onTap: _goToAiHome,
                 ),
                 _NavButton(
+                  label: s.media,
+                  onTap: _openMedia,
+                ),
+                _NavButton(
                   label: s.events,
                   onTap: () => _toggleEvents(open: true),
                   active: _eventsOpen,
-                ),
-                _NavButton(
-                  label: s.media,
-                  onTap: _openMedia,
                 ),
                 const SizedBox(width: 40),
               ],

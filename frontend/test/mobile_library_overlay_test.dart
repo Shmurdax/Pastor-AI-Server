@@ -75,8 +75,8 @@ void main() {
     expect((home.dy - events.dy).abs(), lessThan(2));
     expect((home.dy - media.dy).abs(), lessThan(2));
     expect(home.dx, lessThan(chat.dx));
-    expect(chat.dx, lessThan(events.dx));
-    expect(events.dx, lessThan(media.dx));
+    expect(chat.dx, lessThan(media.dx));
+    expect(media.dx, lessThan(events.dx));
 
     await tester.tap(find.byTooltip('Browse all documents'));
     await tester.pump();

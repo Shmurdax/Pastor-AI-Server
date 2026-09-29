@@ -486,14 +486,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                 _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
                 _NavButton(label: s.chat, onTap: _goToAiHome),
                 _NavButton(
-                  label: s.events,
-                  onTap: () => _toggleEvents(open: true),
-                  active: _eventsOpen,
-                ),
-                _NavButton(
                   label: s.media,
                   onTap: () => _toggleEvents(open: false),
                   active: true,
+                ),
+                _NavButton(
+                  label: s.events,
+                  onTap: () => _toggleEvents(open: true),
+                  active: _eventsOpen,
                 ),
                 const SizedBox(width: 40),
               ],

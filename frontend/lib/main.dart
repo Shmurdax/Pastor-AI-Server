@@ -56,8 +56,8 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
-/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Events /
-/// Media on one row without feeling oversized.
+/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Media /
+/// Events on one row without feeling oversized.
 const _compactSidebarWidth = 310.0;
 
 /// Prevents Material 3 stretch / glow from painting grey at the viewport edge on web.
@@ -1877,8 +1877,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
               children: [
                 _buildNavButton(_s.home, () => _launchUrl("https://thenordins.org/")),
                 _buildNavButton(_s.chat, _focusChatNav),
-                _buildNavButton(_s.events, _openChurchEvents),
                 _buildNavButton(_s.media, _openMedia),
+                _buildNavButton(_s.events, _openChurchEvents),
                 const SizedBox(width: 40),
               ],
             ),
@@ -2214,14 +2214,14 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                       horizontalPadding: 6,
                     ),
                     _buildNavButton(
-                      _s.events,
-                      _openChurchEvents,
+                      _s.media,
+                      _openMedia,
                       textColor: Colors.white,
                       horizontalPadding: 6,
                     ),
                     _buildNavButton(
-                      _s.media,
-                      _openMedia,
+                      _s.events,
+                      _openChurchEvents,
                       textColor: Colors.white,
                       horizontalPadding: 6,
                     ),
