@@ -132,7 +132,11 @@ void main() {
     expect((events.dy - logo.dy).abs(), lessThan(30));
 
     await _openEventsPanel(tester);
-    expect(_eventsPanelCenter(tester), closeTo(1023 / 2, 24));
+    expect(_eventsPanelCenter(tester), greaterThan(1023 * 0.6));
+    expect(
+      tester.getTopRight(find.byTooltip('Close events')).dx,
+      greaterThan(1023 * 0.85),
+    );
   });
 
   testWidgets('media header keeps nav links on a phone', (tester) async {

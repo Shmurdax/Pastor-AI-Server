@@ -16,8 +16,8 @@ double churchEventsOverlayWidth(double screenWidth) {
   return screenWidth * 0.3;
 }
 
-/// Phone and tablet keep the events panel in the middle of the screen.
-bool churchEventsOverlayCentered(double screenWidth) => screenWidth < 1024;
+/// Phones keep the events panel in the middle. Tablet and desktop pin it to the right.
+bool churchEventsOverlayCentered(double screenWidth) => screenWidth < 600;
 
 /// Top-right Church Events panel used from chat / media / subscribe nav.
 class ChurchEventsNavOverlay extends StatelessWidget {

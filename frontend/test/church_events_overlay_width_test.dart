@@ -12,8 +12,10 @@ void main() {
     expect(churchEventsOverlayWidth(1280), 1280 * 0.3);
 
     expect(churchEventsOverlayCentered(390), isTrue);
-    expect(churchEventsOverlayCentered(800), isTrue);
-    expect(churchEventsOverlayCentered(1023), isTrue);
+    expect(churchEventsOverlayCentered(599), isTrue);
+    expect(churchEventsOverlayCentered(600), isFalse);
+    expect(churchEventsOverlayCentered(800), isFalse);
+    expect(churchEventsOverlayCentered(1023), isFalse);
     expect(churchEventsOverlayCentered(1024), isFalse);
   });
 }
