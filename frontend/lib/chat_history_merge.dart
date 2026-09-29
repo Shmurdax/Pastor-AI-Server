@@ -74,6 +74,44 @@ bool historyEntryIsStreaming(Map<String, dynamic>? entry) {
   return false;
 }
 
+/// True when a fast poll should keep running.
+///
+/// A reply this tab is already generating does not count: that tab has the
+/// tokens on the chat stream. Polling is for a draft another client is writing.
+bool historyNeedsLivePolling(
+  List<Map<String, dynamic>> entries, {
+  bool Function(String sessionId)? isLocallyGenerating,
+}) {
+  for (final entry in entries) {
+    if (!historyEntryIsStreaming(entry)) continue;
+    final sid = entry['sessionId']?.toString().trim() ?? '';
+    if (sid.isEmpty) continue;
+    if (isLocallyGenerating != null && isLocallyGenerating(sid)) continue;
+    return true;
+  }
+  return false;
+}
+
+/// Fingerprint for skipping a rebuild when a history fetch did not change.
+String chatHistorySnapshotKey(List<Map<String, dynamic>> entries) {
+  final buffer = StringBuffer();
+  for (final entry in entries) {
+    final messages = (entry['messages'] as List?) ?? const [];
+    buffer
+      ..write(entry['sessionId']?.toString() ?? '')
+      ..write('|')
+      ..write(entry['updatedAt'] ?? 0)
+      ..write('|')
+      ..write(messages.length)
+      ..write('|')
+      ..write(historyEntryIsStreaming(entry) ? '1' : '0')
+      ..write('|')
+      ..write(_lastAiText(entry).length)
+      ..write(';');
+  }
+  return buffer.toString();
+}
+
 Map<String, dynamic> richerHistoryEntry(
   Map<String, dynamic> existing,
   Map<String, dynamic> incoming,
