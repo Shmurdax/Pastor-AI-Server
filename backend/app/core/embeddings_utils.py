@@ -3,9 +3,10 @@ Shared embedding helpers.
 
 vLLM owns most GPU VRAM on a combined GPU host (including 24GB MIG slices).
 On a CPU web pod, vLLM is remote (RunPod Serverless) and there is no local GPU.
-Sentence-Transformers embeddings stay on CPU for chat retrieval and Django
-admin ingestion so they cannot CUDA-OOM against the chat model. Whisper
-transcription runs in a separate worker that may use leftover CUDA.
+Chat query embeddings go through the GPU search sidecar when it is up.
+Django admin ingestion stays on CPU so a wedged CUDA sidecar cannot fail
+document uploads, and bulk embed_documents cannot CUDA-OOM against vLLM.
+Whisper transcription runs in a separate worker that may use leftover CUDA.
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ BGE_QUERY_INSTRUCTION = os.getenv(
 )
 
 _EMBEDDINGS = None
+_LOCAL_EMBEDDINGS = None
 
 try:
     from langchain_core.embeddings import Embeddings as LangChainEmbeddings
@@ -72,31 +74,8 @@ def _resolve_device() -> str:
     return raw
 
 
-def get_embeddings(*, force_new: bool = False):
-    """
-    Return a process-wide embedding client.
-
-    When SEARCH_SIDECAR_URL is set, chat uses the shared GPU process and this
-    worker does not load a model or touch CUDA. Otherwise the model stays on CPU.
-    """
-    global _EMBEDDINGS
-    from .search_sidecar import SidecarEmbeddings, sidecar_url
-
-    remote = sidecar_url()
-    if remote:
-        inner = getattr(_EMBEDDINGS, "_inner", None)
-        if (
-            _EMBEDDINGS is None
-            or force_new
-            or not isinstance(inner, SidecarEmbeddings)
-        ):
-            logger.info("Using GPU sermon search sidecar at %s", remote)
-            _EMBEDDINGS = QueryPrefixedEmbeddings(SidecarEmbeddings(remote))
-        return _EMBEDDINGS
-
-    if _EMBEDDINGS is not None and not force_new:
-        return _EMBEDDINGS
-
+def _load_local_embeddings():
+    """CPU (or EMBEDDING_DEVICE) Sentence-Transformers client. Never the GPU sidecar."""
     # Ensure GPU is invisible before sentence-transformers/torch initialize.
     if _resolve_device() == "cpu":
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -124,6 +103,41 @@ def get_embeddings(*, force_new: bool = False):
             except Exception as exc:  # pragma: no cover
                 logger.warning("Could not force embedding client to CPU: %s", exc)
 
-    wrapped = QueryPrefixedEmbeddings(emb, BGE_QUERY_INSTRUCTION)
-    _EMBEDDINGS = wrapped
-    return _EMBEDDINGS
+    return QueryPrefixedEmbeddings(emb, BGE_QUERY_INSTRUCTION)
+
+
+def get_embeddings(*, force_new: bool = False, allow_sidecar: bool = True):
+    """
+    Return a process-wide embedding client.
+
+    When SEARCH_SIDECAR_URL is set and ``allow_sidecar`` is true, chat uses the
+    shared GPU process and this worker does not load a model or touch CUDA.
+    Admin ingest passes ``allow_sidecar=False`` so uploads stay on CPU even if
+    the sidecar is in a CUDA error state.
+    """
+    global _EMBEDDINGS, _LOCAL_EMBEDDINGS
+    from .search_sidecar import SidecarEmbeddings, sidecar_url
+
+    if allow_sidecar:
+        remote = sidecar_url()
+        if remote:
+            inner = getattr(_EMBEDDINGS, "_inner", None)
+            if (
+                _EMBEDDINGS is None
+                or force_new
+                or not isinstance(inner, SidecarEmbeddings)
+            ):
+                logger.info("Using GPU sermon search sidecar at %s", remote)
+                _EMBEDDINGS = QueryPrefixedEmbeddings(SidecarEmbeddings(remote))
+            return _EMBEDDINGS
+
+        if _EMBEDDINGS is not None and not force_new:
+            return _EMBEDDINGS
+
+        _EMBEDDINGS = _load_local_embeddings()
+        return _EMBEDDINGS
+
+    if _LOCAL_EMBEDDINGS is not None and not force_new:
+        return _LOCAL_EMBEDDINGS
+    _LOCAL_EMBEDDINGS = _load_local_embeddings()
+    return _LOCAL_EMBEDDINGS

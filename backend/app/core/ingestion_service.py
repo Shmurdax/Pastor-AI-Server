@@ -561,7 +561,7 @@ def ingest_uploaded_files(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(allow_sidecar=False)
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)
@@ -796,7 +796,7 @@ def ingest_markdown_documents(
     result = IngestionResult(files_received=len(documents))
 
     # CPU embeddings — vLLM already owns GPU VRAM; CUDA embeddings cause OOM mid-ingest.
-    embeddings = get_embeddings()
+    embeddings = get_embeddings(allow_sidecar=False)
     qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
     collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
     ensure_sermon_collection(qdrant_client, collection_name)

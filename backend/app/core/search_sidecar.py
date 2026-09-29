@@ -66,10 +66,14 @@ class SidecarEmbeddings:
         rows = [str(text) for text in (texts or [])]
         if not rows:
             return []
-        body = _post_json(f"{self._base}/embed", {"texts": rows}, self._timeout)
-        vectors = body.get("vectors")
-        if not isinstance(vectors, list):
-            raise RuntimeError("search sidecar embed response missing vectors")
+        vectors: list = []
+        for start in range(0, len(rows), MAX_TEXTS):
+            batch = rows[start : start + MAX_TEXTS]
+            body = _post_json(f"{self._base}/embed", {"texts": batch}, self._timeout)
+            batch_vectors = body.get("vectors")
+            if not isinstance(batch_vectors, list) or len(batch_vectors) != len(batch):
+                raise RuntimeError("search sidecar embed response missing vectors")
+            vectors.extend(batch_vectors)
         return vectors
 
     def embed_query(self, text: str):

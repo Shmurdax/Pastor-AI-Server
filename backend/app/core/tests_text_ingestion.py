@@ -66,7 +66,7 @@ class TextUploadIngestTests(TestCase):
                 "core.ingestion_service.admin_ingestion_dir", return_value=Path(tmp)
             ), patch(
                 "core.ingestion_service.get_embeddings", return_value=fake_embeddings
-            ), patch(
+            ) as get_emb, patch(
                 "core.ingestion_service.QdrantClient", return_value=fake_qdrant
             ), patch(
                 "core.ingestion_service.ensure_sermon_collection"
@@ -76,6 +76,7 @@ class TextUploadIngestTests(TestCase):
                 "core.ingestion_service._extract_pdf_text", return_value="EXTRACTED FROM PDF"
             ):
                 result = ingest_uploaded_files([upload], log_fn=logs.append)
+            get_emb.assert_called_with(allow_sidecar=False)
             pdf_path = Path(tmp) / f"{Path(upload.name).stem}.pdf"
             pdf_bytes = pdf_path.read_bytes() if pdf_path.is_file() else b""
             return result, bool(pdf_bytes), pdf_bytes, fake_qdrant, logs

@@ -197,7 +197,7 @@ class Command(BaseCommand):
             os.environ.get("VIDEO_INGEST_CHUNK_SIZE", str(DEFAULT_SPLITTER_KWARGS["chunk_size"]))
         )
         overlap_segments = int(os.environ.get("VIDEO_INGEST_CHUNK_OVERLAP_SEGMENTS", "1"))
-        embeddings = get_embeddings()
+        embeddings = get_embeddings(allow_sidecar=False)
         qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL", "http://qdrant:6333"))
         collection_name = os.getenv("QDRANT_COLLECTION", "sermon_brain")
         ensure_sermon_collection(qdrant_client, collection_name)
