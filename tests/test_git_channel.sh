@@ -34,8 +34,10 @@ pastor_write_git_channel "$DIR" latest
 [[ "$(cat "$DIR/.git_channel")" == "development" ]] || fail "write should persist canonical development"
 
 grep -q 'PASTOR_GIT_BRANCH' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must honor PASTOR_GIT_BRANCH"
-grep -q 'pastor_git_channel' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must use git_channel helper"
-grep -q 'CHANNEL=master' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must default to master"
+grep -q 'pastor_resolve_git_channel' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must follow .git_channel"
+if grep -q 'CHANNEL=master' "$ROOT/deploy_update.sh"; then
+  fail "deploy_update.sh must not force master when .git_channel is set"
+fi
 grep -q 'pastor_sync_git_channel' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must sync via helper"
 grep -q 'pastor_sync_git_channel' "$ROOT/onboot.sh" || fail "onboot.sh must sync git before start"
 grep -q 'checkout -f -B' "$ROOT/scripts/sync_git_channel.sh" || fail "sync helper must force-checkout the fetched channel"
@@ -57,6 +59,16 @@ fi
 source "$ROOT/scripts/git_safe_directory.sh"
 # shellcheck source=/dev/null
 source "$ROOT/scripts/sync_git_channel.sh"
+unset PASTOR_GIT_BRANCH REPO_BRANCH
+rm -f "$DIR/.git_channel"
+[[ "$(pastor_resolve_git_channel "$DIR")" == "master" ]] || fail "missing .git_channel should resolve to master"
+printf 'development\n' > "$DIR/.git_channel"
+[[ "$(pastor_resolve_git_channel "$DIR")" == "development" ]] || fail "dev pod .git_channel should resolve to development"
+printf 'master\n' > "$DIR/.git_channel"
+[[ "$(pastor_resolve_git_channel "$DIR")" == "master" ]] || fail "prod pod .git_channel should resolve to master"
+PASTOR_GIT_BRANCH=development
+[[ "$(pastor_resolve_git_channel "$DIR")" == "development" ]] || fail "PASTOR_GIT_BRANCH should override .git_channel at resolve"
+unset PASTOR_GIT_BRANCH
 UPSTREAM="$(mktemp -d)"
 CLONE="$(mktemp -d)"
 git init -q -b master "$UPSTREAM"

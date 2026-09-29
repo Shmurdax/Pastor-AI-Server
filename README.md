@@ -32,7 +32,7 @@ bash scripts/arm_prod_deploy.sh
 
 `development` is a copy of production plus new work. The 1:00am cron on the GPU pod runs `scripts/prod_scheduled_deploy.sh` only when that arm file names the current `master` commit. It builds Flutter to a staging directory, migrates, restarts, and returns to the previous commit if health checks fail.
 
-On a RunPod host, `deploy_update.sh` fetches and hard-resets to **`master`** (local pod edits are discarded). `onboot.sh` does the same fetch+reset on every pod start/recreate so the volume cannot keep an old SHA or a dirty overlay. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Override with `PASTOR_GIT_BRANCH=development` on `christian-ai-dev`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch. Dev pods keep test secrets in `tokens.test.env` and a promote-only GitHub token in `tokens.promote.env`.
+On a RunPod host, `deploy_update.sh` fetches and hard-resets to the pod's `.git_channel` (`development` on christian-ai-dev, `master` on production). Local pod edits are discarded. A checkout with no channel file stays on `master`. `PASTOR_GIT_BRANCH` still overrides the file. `onboot.sh` uses the same rule on every pod start. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch. Dev pods keep test secrets in `tokens.test.env` and a promote-only GitHub token in `tokens.promote.env`.
 
 ## One-command install (RunPod / Ubuntu GPU host)
 

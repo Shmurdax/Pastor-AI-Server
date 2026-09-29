@@ -243,11 +243,11 @@ The historical CPU production pod id, if still listed below, is not the deploy t
 | SSH | `ssh f4dfpc5x5sosvs-64411dd1@ssh.runpod.io -i ~/.ssh/id_ed25519` |
 | Public URL | `https://christianaiapophatictestdomain.com` (named Cloudflare tunnel) |
 
-`bash /workspace/pastor-ai/deploy_update.sh` fetches and **hard-resets** this pod to GitHub `master` (local edits are discarded). `onboot.sh` runs that same sync before `start.sh` on every Stop/Start or remigration, then writes `DEPLOYED_SHA` so the stamp cannot lag HEAD. Check `GET /api/health/` (`in_sync`, `dirty`, `git_sha`). The script used to `git checkout` with stderr swallowed, so a dirty tree stayed on an old SHA. File overlays + `kill -HUP` still drift until the next boot or `deploy_update.sh`.
+`bash /workspace/pastor-ai/deploy_update.sh` fetches and **hard-resets** this pod to the branch in `.git_channel` (local edits are discarded). On this pod that file is `master`. `onboot.sh` runs that same sync before `start.sh` on every Stop/Start or remigration, then writes `DEPLOYED_SHA` so the stamp cannot lag HEAD. Check `GET /api/health/` (`in_sync`, `dirty`, `git_sha`). The script used to `git checkout` with stderr swallowed, so a dirty tree stayed on an old SHA. File overlays + `kill -HUP` still drift until the next boot or `deploy_update.sh`.
 
 ## Development CPU pod
 
-`christian-ai-dev` is a separate CPU pod on its own volume. It tracks Git **`development`**, which is a copy of production plus new work. Chat and Whisper use dev-only serverless endpoints. Secrets live in `tokens.test.env` (test Stripe, sandbox mail). `tokens.promote.env` holds the GitHub token used only by `bash scripts/promote_to_master.sh --yes`. That push does not restart production. Copy `tokens.test.env.example` and never commit the filled file. Isolation deletes live keys that have no test replacement and refuses `admin123`.
+`christian-ai-dev` is a separate CPU pod on its own volume. It tracks Git **`development`**, which is a copy of production plus new work. `bash /workspace/pastor-ai/deploy_update.sh` follows `.git_channel`, so a plain run stays on `development`, rebuilds Flutter, and restarts. Chat and Whisper use dev-only serverless endpoints. Secrets live in `tokens.test.env` (test Stripe, sandbox mail). `tokens.promote.env` holds the GitHub token used only by `bash scripts/promote_to_master.sh --yes`. That push does not restart production. Copy `tokens.test.env.example` and never commit the filled file. Isolation deletes live keys that have no test replacement and refuses `admin123`.
 
 | | |
 |--|--|
