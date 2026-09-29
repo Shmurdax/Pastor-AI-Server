@@ -26,8 +26,10 @@ fi
 
 pastor_load_env_file "$CONFIG_ENV"
 
-# Git channel: PASTOR_GIT_BRANCH / REPO_BRANCH override, else master.
-# christian-ai-dev: PASTOR_GIT_BRANCH=development bash deploy_update.sh
+# Same channel rule as onboot: PASTOR_GIT_BRANCH / REPO_BRANCH, else
+# .git_channel, else master. christian-ai-dev keeps .git_channel=development,
+# so `bash deploy_update.sh` stays on development. A pod with no channel file
+# stays on master.
 # shellcheck source=/dev/null
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
 # shellcheck source=/dev/null
@@ -35,11 +37,8 @@ source "$WS/scripts/git_safe_directory.sh" 2>/dev/null || source "$(dirname "$0"
 # shellcheck source=/dev/null
 source "$WS/scripts/sync_git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/sync_git_channel.sh"
 pastor_allow_git_on_runpod_volume "$WS"
-if [[ -n "${PASTOR_GIT_BRANCH:-}${REPO_BRANCH:-}" ]]; then
-  CHANNEL="$(pastor_git_channel "$WS")"
-else
-  CHANNEL=master
-fi
+CHANNEL="$(pastor_resolve_git_channel "$WS")"
+log "Git channel: $CHANNEL"
 pastor_write_git_channel "$WS" "$CHANNEL"
 if [[ -d "$WS/.git" ]]; then
   pastor_sync_git_channel "$WS" "$CHANNEL" \
