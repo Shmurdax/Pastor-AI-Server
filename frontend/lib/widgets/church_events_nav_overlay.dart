@@ -16,6 +16,9 @@ double churchEventsOverlayWidth(double screenWidth) {
   return screenWidth * 0.3;
 }
 
+/// Phone and tablet keep the events panel in the middle of the screen.
+bool churchEventsOverlayCentered(double screenWidth) => screenWidth < 1024;
+
 /// Top-right Church Events panel used from chat / media / subscribe nav.
 class ChurchEventsNavOverlay extends StatelessWidget {
   const ChurchEventsNavOverlay({
@@ -37,13 +40,16 @@ class ChurchEventsNavOverlay extends StatelessWidget {
     final screenWidth = size.width;
     final panelWidth = churchEventsOverlayWidth(screenWidth);
     final panelHeight = (size.height * 0.32).clamp(200.0, 340.0);
+    final centered = churchEventsOverlayCentered(screenWidth);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(8, 0, screenWidth < 600 ? 8 : 16, 8),
-      child: SizedBox(
-        width: panelWidth,
-        height: panelHeight,
-        child: Material(
+    return Align(
+      alignment: centered ? Alignment.topCenter : Alignment.topRight,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(8, 0, centered ? 8 : 16, 8),
+        child: SizedBox(
+          width: panelWidth,
+          height: panelHeight,
+          child: Material(
           color: _surface,
           elevation: 2,
           shadowColor: Colors.black26,
@@ -85,6 +91,7 @@ class ChurchEventsNavOverlay extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

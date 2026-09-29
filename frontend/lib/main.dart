@@ -1914,6 +1914,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
           if (_eventsNavPanelOpen)
             Positioned(
               top: 0,
+              left: 0,
               right: 0,
               child: NotificationListener<ScrollNotification>(
                 onNotification: (_) => true,

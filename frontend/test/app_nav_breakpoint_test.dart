@@ -12,6 +12,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Future<void> _openEventsPanel(WidgetTester tester) async {
+  await tester.tap(find.text('EVENTS'));
+  await tester.pump();
+  expect(find.text('Church Events'), findsOneWidget);
+}
+
+double _eventsPanelCenter(WidgetTester tester) {
+  final left = tester.getTopLeft(find.text('Church Events')).dx;
+  final right = tester.getTopRight(find.byTooltip('Close events')).dx;
+  return (left + right) / 2;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -118,6 +130,9 @@ void main() {
     );
     final events = tester.getCenter(find.text('EVENTS'));
     expect((events.dy - logo.dy).abs(), lessThan(30));
+
+    await _openEventsPanel(tester);
+    expect(_eventsPanelCenter(tester), closeTo(1023 / 2, 24));
   });
 
   testWidgets('media header keeps nav links on a phone', (tester) async {
@@ -147,6 +162,9 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
     );
     expect((logo.dx - screenCenter).abs(), lessThan(16));
+
+    await _openEventsPanel(tester);
+    expect(_eventsPanelCenter(tester), closeTo(screenCenter, 24));
   });
 
   testWidgets('chat header hides top-right nav at tablet width', (tester) async {

@@ -731,6 +731,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
           if (_eventsOpen)
             Positioned(
               top: 0,
+              left: 0,
               right: 0,
               child: ChurchEventsNavOverlay(
                 apiService: _apiService,
