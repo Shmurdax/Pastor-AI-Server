@@ -12,6 +12,7 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
 import 'package:flutter_application_1/widgets/account_profile_chip.dart';
 import 'package:flutter_application_1/widgets/app_bar_identity_cluster.dart';
+import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/app_hamburger_nav.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
@@ -101,6 +102,7 @@ class SubscriptionsScreen extends StatefulWidget {
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   final _apiService = ApiService();
   bool _eventsOpen = false;
+  late final VoidCallback _onPageChange = _closeEventsForPageChange;
   BillingPeriod _billingPeriod = BillingPeriod.monthly;
   bool _syncing = false;
   bool _changingPlan = false;
@@ -109,9 +111,21 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   @override
   void initState() {
     super.initState();
+    AppPageNavigation.addListener(_onPageChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_syncSubscriptionIfNeeded());
     });
+  }
+
+  @override
+  void dispose() {
+    AppPageNavigation.removeListener(_onPageChange);
+    super.dispose();
+  }
+
+  void _closeEventsForPageChange() {
+    if (!mounted || !_eventsOpen) return;
+    setState(() => _eventsOpen = false);
   }
 
   Future<void> _syncSubscriptionIfNeeded() async {
@@ -153,16 +167,19 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   void _goToAiHome() {
+    _closeEventsForPageChange();
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   void _openMedia() {
+    _closeEventsForPageChange();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
     );
   }
 
   void _openPrayerInbox() {
+    _closeEventsForPageChange();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PrayerInboxScreen(apiService: _apiService),
@@ -175,6 +192,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   void _openCheckout() {
+    _closeEventsForPageChange();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CheckoutScreen(billingPeriod: _billingPeriod),
@@ -183,6 +201,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 
   void _openPaymentMethodUpdate() {
+    _closeEventsForPageChange();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const UpdatePaymentMethodScreen(),
@@ -202,6 +221,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       return;
     }
 
+    _closeEventsForPageChange();
     final signedIn = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
     );
@@ -381,6 +401,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final premiumPeriod =
         _billingPeriod == BillingPeriod.monthly ? '/ month' : '/ year';
     final auth = context.watch<AuthController>();
+    _apiService.setAccessToken(auth.token);
     final s = context.watch<LocaleController>().strings;
     final paid = auth.user?.isPaidPremium == true;
     final canUpdatePayment = auth.user?.canManagePaymentMethod == true;
@@ -417,7 +438,10 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         toolbarHeight: isMobileOrTablet ? 100 : 120,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: _navy),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            _closeEventsForPageChange();
+            Navigator.of(context).pop();
+          },
         ),
         automaticallyImplyLeading: true,
         title: Padding(

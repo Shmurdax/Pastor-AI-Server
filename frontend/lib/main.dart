@@ -122,6 +122,7 @@ class SermonBrainApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         textTheme: GoogleFonts.figtreeTextTheme(),
       ),
+      navigatorObservers: [AppPageNavigation.observer],
       home: const AppAccessGate(),
     );
   }
@@ -292,6 +293,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _authInitialized = false;
   _SidebarPanel _sidebarPanel = _SidebarPanel.sermonLibrary;
   bool _eventsNavPanelOpen = false;
+  late final VoidCallback _onPageChange = _closeChurchEventsPanel;
   bool _ingestedDocsOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
   final Set<String> _deletedSessionIds = {};
@@ -398,6 +400,7 @@ final bibleRefRegex = RegExp(
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppPageNavigation.addListener(_onPageChange);
     ChatNavActions.openEvents = _openChurchEvents;
     _controller.addListener(_enforceChatInputLimit);
     _scrollController.addListener(() {
@@ -1031,6 +1034,7 @@ final bibleRefRegex = RegExp(
 
   @override
   void dispose() {
+    AppPageNavigation.removeListener(_onPageChange);
     WidgetsBinding.instance.removeObserver(this);
     _stopLiveHistoryPolling();
     _localeListener?.removeListener(_onLocaleChanged);
@@ -1330,6 +1334,7 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _openLogin() async {
+    _closeChurchEventsPanel();
     final signedIn = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
     );
@@ -1345,6 +1350,7 @@ final bibleRefRegex = RegExp(
   }
 
   void _openPrayerInbox() {
+    _closeChurchEventsPanel();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PrayerInboxScreen(apiService: _apiService),
@@ -1353,6 +1359,7 @@ final bibleRefRegex = RegExp(
   }
 
   void _openResponseReportsInbox() {
+    _closeChurchEventsPanel();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ResponseReportsInboxScreen(apiService: _apiService),
@@ -1393,6 +1400,7 @@ final bibleRefRegex = RegExp(
 
   void _openMedia() {
     // TODO: gate on Premium subscription.
+    _closeChurchEventsPanel();
     _closeLibraryDrawer(jump: true);
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MediaLibraryScreen()),
@@ -1414,6 +1422,7 @@ final bibleRefRegex = RegExp(
   }
 
   void _closeChurchEventsPanel() {
+    if (!mounted || !_eventsNavPanelOpen) return;
     setState(() => _eventsNavPanelOpen = false);
   }
 

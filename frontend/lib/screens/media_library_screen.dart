@@ -5,6 +5,7 @@ import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
+import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:flutter_application_1/widgets/new_tab.dart';
@@ -64,6 +65,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   late final ApiService _apiService = widget._injectedApi ?? ApiService();
   final _searchController = TextEditingController();
   bool _eventsOpen = false;
+  late final VoidCallback _onPageChange = _closeEventsForPageChange;
   bool _catalogLoading = true;
   bool _openedInitialVideo = false;
   List<MediaItem> _catalogItems = const [];
@@ -78,13 +80,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    AppPageNavigation.addListener(_onPageChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadCatalog();
     });
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _apiService.setAccessToken(context.read<AuthController>().token);
+  }
+
+  @override
   void dispose() {
+    AppPageNavigation.removeListener(_onPageChange);
     _searchController.dispose();
     super.dispose();
   }
@@ -168,16 +178,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   void _openSubscriptions() {
+    _closeEventsForPageChange();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const SubscriptionsScreen()),
     );
   }
 
   void _goToAiHome() {
+    _closeEventsForPageChange();
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  void _closeEventsForPageChange() {
+    if (!mounted || !_eventsOpen) return;
+    setState(() => _eventsOpen = false);
+  }
+
   void _toggleEvents({bool? open}) {
+    final auth = context.read<AuthController>();
+    _apiService.setAccessToken(auth.token);
     setState(() => _eventsOpen = open ?? !_eventsOpen);
   }
 
@@ -239,6 +258,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         openNewTab().openUrl(watchUrl);
         return;
       }
+      _closeEventsForPageChange();
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => _WatchEpisodeScreen(
@@ -419,6 +439,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthController>();
+    _apiService.setAccessToken(auth.token);
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobileOrTablet = screenWidth < 1024;
     final isMobile = screenWidth < 600;
@@ -435,7 +457,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         toolbarHeight: isMobileOrTablet ? 100 : 120,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: _navy),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () {
+            _closeEventsForPageChange();
+            Navigator.of(context).pop();
+          },
         ),
         title: Padding(
           padding: EdgeInsets.only(
@@ -671,7 +696,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
               right: 0,
               child: ChurchEventsNavOverlay(
                 apiService: _apiService,
-                isStaff: false,
+                isStaff: auth.isAuthenticated && (auth.user?.isStaff ?? false),
                 onClose: () => _toggleEvents(open: false),
               ),
             ),
