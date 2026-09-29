@@ -466,6 +466,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final useGrid = screenWidth >= 720;
     final s = context.watch<LocaleController>().strings;
 
+    final logo = GestureDetector(
+      onTap: () => _launchUrl('https://thenordins.org/'),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Image.asset(
+          'assets/images/nordins_main_logo.png',
+          height: isMobile ? 72 : (isMobileOrTablet ? 80 : 95),
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -480,22 +492,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             Navigator.of(context).pop();
           },
         ),
-        title: Padding(
-          padding: EdgeInsets.only(
-            left: isMobileOrTablet ? 0.0 : 12.0,
-          ),
-          child: GestureDetector(
-            onTap: () => _launchUrl('https://thenordins.org/'),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Image.asset(
-                'assets/images/nordins_main_logo.png',
-                height: isMobileOrTablet ? 80 : 95,
-                fit: BoxFit.contain,
+        title: isMobile
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: EdgeInsets.only(left: isMobileOrTablet ? 0.0 : 12.0),
+                child: logo,
               ),
-            ),
-          ),
-        ),
+        flexibleSpace: isMobile
+            ? SafeArea(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    height: 100,
+                    child: Center(child: logo),
+                  ),
+                ),
+              )
+            : null,
         actions: [
           if (!isMobileOrTablet)
             Row(
@@ -510,12 +523,12 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(40),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 12, 6),
+                  padding: EdgeInsets.fromLTRB(isMobile ? 8 : 8, 0, isMobile ? 8 : 12, 6),
                   child: Align(
-                    alignment: Alignment.centerRight,
+                    alignment: isMobile ? Alignment.center : Alignment.centerRight,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
+                      alignment: isMobile ? Alignment.center : Alignment.centerRight,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: _mediaNavButtons(s),

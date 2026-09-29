@@ -132,6 +132,15 @@ void main() {
     expect(chat.dx, lessThan(media.dx));
     expect(media.dx, lessThan(events.dx));
     expect((home.dy - events.dy).abs(), lessThan(2));
+
+    const screenCenter = 390 / 2;
+    final linksCenter = (home.dx + events.dx) / 2;
+    expect((linksCenter - screenCenter).abs(), lessThan(16));
+
+    final logo = tester.getCenter(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    expect((logo.dx - screenCenter).abs(), lessThan(16));
   });
 
   testWidgets('chat header hides top-right nav at tablet width', (tester) async {
