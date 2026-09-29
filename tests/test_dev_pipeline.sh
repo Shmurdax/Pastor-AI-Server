@@ -193,6 +193,24 @@ prod_scheduled_deploy "$DIR" || code=$?
 [[ "$code" == "2" ]] || fail "SHA mismatch should skip, got $code"
 [[ -f "$DEPLOY_ARM_FILE" ]] || fail "SHA mismatch must leave the arm file"
 
+# Promote must publish the release manifest with the GitHub login still active.
+promote="$ROOT/scripts/promote_to_master.sh"
+grep -q 'skipping branch push' "$promote" || fail "promote must still publish when master matches"
+grep -q 'refs/pastor/manifests' "$promote" || fail "promote must push the manifest ref"
+if grep -q 'manifest ref was not pushed' "$promote"; then
+  fail "promote must not ignore a failed manifest push"
+fi
+if grep -q 'nothing to promote' "$promote"; then
+  fail "promote must not exit before the manifest push"
+fi
+awk '
+  /git push "\$REMOTE" "\$REMOTE\/development:master"/ { branch = NR }
+  /git push "\$REMOTE" "refs\/pastor\/manifests/ { manifest = NR }
+  END {
+    if (branch == 0 || manifest == 0 || manifest < branch) exit 1
+  }
+' "$promote" || fail "manifest push must follow the master push"
+
 grep -q 'deploy_flutter_staging' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must stage the Flutter build"
 grep -q 'deploy_health_localhost' "$ROOT/deploy_update.sh" || fail "deploy_update.sh health checks must fail the script"
 if grep -q "auth/config/.*|| true" "$ROOT/deploy_update.sh"; then
