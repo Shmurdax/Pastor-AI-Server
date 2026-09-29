@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
+import 'package:flutter_application_1/l10n/app_strings.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
@@ -198,6 +199,23 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
     setState(() => _eventsOpen = open ?? !_eventsOpen);
+  }
+
+  List<Widget> _mediaNavButtons(AppStrings s) {
+    return [
+      _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
+      _NavButton(label: s.chat, onTap: _goToAiHome),
+      _NavButton(
+        label: s.media,
+        onTap: () => _toggleEvents(open: false),
+        active: true,
+      ),
+      _NavButton(
+        label: s.events,
+        onTap: () => _toggleEvents(),
+        active: _eventsOpen,
+      ),
+    ];
   }
 
   /// Catalog visible for the current access level (video-only).
@@ -483,22 +501,30 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _NavButton(label: s.home, onTap: () => _launchUrl('https://thenordins.org/')),
-                _NavButton(label: s.chat, onTap: _goToAiHome),
-                _NavButton(
-                  label: s.media,
-                  onTap: () => _toggleEvents(open: false),
-                  active: true,
-                ),
-                _NavButton(
-                  label: s.events,
-                  onTap: () => _toggleEvents(open: true),
-                  active: _eventsOpen,
-                ),
+                ..._mediaNavButtons(s),
                 const SizedBox(width: 40),
               ],
             ),
         ],
+        bottom: isMobileOrTablet
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(40),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 12, 6),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: _mediaNavButtons(s),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : null,
       ),
       body: Stack(
         children: [

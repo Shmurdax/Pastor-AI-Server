@@ -46,6 +46,14 @@ void main() {
     expect(find.text('Church Events'), findsOneWidget);
     expect(find.text('Add event'), findsOneWidget);
 
+    await _tapNav(tester, 'EVENTS');
+    expect(find.text('Church Events'), findsNothing);
+    expect(find.text('Add event'), findsNothing);
+
+    await _openEvents(tester);
+    await _pumpUntil(tester, find.text('Add event'));
+    expect(find.text('Church Events'), findsOneWidget);
+
     await _tapNav(tester, 'MEDIA');
     expect(find.text('Church Events'), findsNothing);
     expect(find.text('Add event'), findsNothing);
@@ -97,6 +105,17 @@ void main() {
 
     expect(find.text('Other page'), findsNothing);
     expect(find.text('MEDIA'), findsWidgets);
+    expect(find.text('Church Events'), findsNothing);
+    expect(find.text('Add event'), findsNothing);
+  });
+
+  testWidgets('tapping Events again closes the panel on the media page', (tester) async {
+    await _pumpMedia(tester, staff: true);
+    await _openEvents(tester);
+    await _pumpUntil(tester, find.text('Add event'));
+
+    await _tapNav(tester, 'EVENTS');
+
     expect(find.text('Church Events'), findsNothing);
     expect(find.text('Add event'), findsNothing);
   });

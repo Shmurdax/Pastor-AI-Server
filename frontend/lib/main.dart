@@ -1408,6 +1408,10 @@ final bibleRefRegex = RegExp(
   }
 
   void _openChurchEvents() {
+    if (_eventsNavPanelOpen) {
+      _closeChurchEventsPanel();
+      return;
+    }
     _closeLibraryDrawer();
     setState(() => _eventsNavPanelOpen = true);
   }

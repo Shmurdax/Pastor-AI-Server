@@ -82,12 +82,24 @@ void main() {
     expect(find.byType(LanguageSelector), findsNothing);
   });
 
-  testWidgets('media header hides top-right nav at 1023px without hamburger or language', (tester) async {
+  testWidgets('media header keeps Home Chat Media Events below 1024px', (tester) async {
     await pumpMedia(tester, const Size(1023, 900));
 
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('HOME')),
-      findsNothing,
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('CHAT')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('MEDIA')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('EVENTS')),
+      findsOneWidget,
     );
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('STORE')),
@@ -100,6 +112,26 @@ void main() {
     );
     expect(find.byType(LanguageSelector), findsNothing);
     expect(find.byIcon(Icons.language), findsNothing);
+  });
+
+  testWidgets('media header keeps nav links on a phone', (tester) async {
+    await pumpMedia(tester, const Size(390, 844));
+
+    for (final label in ['HOME', 'CHAT', 'MEDIA', 'EVENTS']) {
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text(label)),
+        findsOneWidget,
+      );
+    }
+
+    final home = tester.getCenter(find.text('HOME'));
+    final chat = tester.getCenter(find.text('CHAT'));
+    final media = tester.getCenter(find.text('MEDIA'));
+    final events = tester.getCenter(find.text('EVENTS'));
+    expect(home.dx, lessThan(chat.dx));
+    expect(chat.dx, lessThan(media.dx));
+    expect(media.dx, lessThan(events.dx));
+    expect((home.dy - events.dy).abs(), lessThan(2));
   });
 
   testWidgets('chat header hides top-right nav at tablet width', (tester) async {

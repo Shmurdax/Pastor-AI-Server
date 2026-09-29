@@ -489,7 +489,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                     dense: isMobile,
                     onHome: () => _launchUrl('https://thenordins.org/'),
                     onChat: _goToAiHome,
-                    onEvents: () => _toggleEvents(open: true),
+                    onEvents: () => _toggleEvents(),
                     onMedia: _openMedia,
                   )
                 : null,
@@ -512,7 +512,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 ),
                 _NavButton(
                   label: s.events,
-                  onTap: () => _toggleEvents(open: true),
+                  onTap: () => _toggleEvents(),
                   active: _eventsOpen,
                 ),
                 const SizedBox(width: 40),
