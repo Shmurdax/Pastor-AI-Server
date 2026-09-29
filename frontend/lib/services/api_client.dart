@@ -582,17 +582,16 @@ class ApiClient {
   }
 
   /// Durable sidebar history for the signed-in account (server backup).
+  ///
+  /// The response is `Cache-Control: private, no-store`. Request headers repeat
+  /// that so a proxy cannot reuse a previous body. The URL stays stable so the
+  /// browser can reuse the connection instead of a new cache-busted GET.
   Future<Map<String, dynamic>> getChatHistory() async {
-    final uri = Uri.parse(_resolveUrl('/api/chat/history/')).replace(
-      queryParameters: {
-        't': '${DateTime.now().millisecondsSinceEpoch}',
-      },
-    );
     final res = await _client.get(
-      uri,
+      Uri.parse(_resolveUrl('/api/chat/history/')),
       headers: {
         ..._headers(),
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-store',
         'Pragma': 'no-cache',
       },
     );

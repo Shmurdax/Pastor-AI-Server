@@ -274,7 +274,8 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+class _ChatScreenState extends State<ChatScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   // Services & controllers
   final _apiService = ApiService();
@@ -296,8 +297,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final Set<String> _deletedSessionIds = {};
   Timer? _liveHistoryTimer;
   bool _liveHistoryPollInFlight = false;
-  /// When true, do not steal the visible thread for a different live session.
-  bool _holdCurrentSession = false;
+  /// Server still has a reply streaming that this tab is not generating.
+  bool _followRemoteStream = false;
 
   AppStrings get _s => context.read<LocaleController>().strings;
   String get _languageCode => context.read<LocaleController>().languageCode;
@@ -396,6 +397,7 @@ final bibleRefRegex = RegExp(
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ChatNavActions.openEvents = _openChurchEvents;
     _controller.addListener(_enforceChatInputLimit);
     _scrollController.addListener(() {
@@ -410,7 +412,7 @@ final bibleRefRegex = RegExp(
       unawaited(_apiService.warmupChat());
       await _handleBillingReturn();
       if (!mounted) return;
-      _startLiveHistoryPolling();
+      _syncLiveHistoryPolling();
       _localeListener = context.read<LocaleController>();
       _appliedLanguageCode = _localeListener!.languageCode;
       _localeListener!.addListener(_onLocaleChanged);
@@ -715,23 +717,63 @@ final bibleRefRegex = RegExp(
       await _restoreMessagesForCurrentSession(storageId);
     }
 
+    _followRemoteStream = auth.isAuthenticated &&
+        historyNeedsLivePolling(
+          history,
+          isLocallyGenerating: _sessions.isGenerating,
+        );
     if (mounted) setState(() => _authInitialized = true);
   }
 
-  void _startLiveHistoryPolling() {
+  void _stopLiveHistoryPolling() {
     _liveHistoryTimer?.cancel();
+    _liveHistoryTimer = null;
+  }
+
+  /// Start the 400ms poll only while another client is still streaming.
+  void _syncLiveHistoryPolling() {
+    if (!mounted || !_followRemoteStream) {
+      _stopLiveHistoryPolling();
+      return;
+    }
     final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated) return;
-    unawaited(_pollLiveChatHistory());
+    if (!auth.isAuthenticated) {
+      _followRemoteStream = false;
+      _stopLiveHistoryPolling();
+      return;
+    }
+    if (_liveHistoryTimer != null) return;
     _liveHistoryTimer = Timer.periodic(const Duration(milliseconds: 400), (_) {
       unawaited(_pollLiveChatHistory());
     });
   }
 
+  /// One server read. Used when the Chats tab opens and when the window
+  /// regains focus. Starts the fast poll only if that read is still streaming.
+  Future<void> _refreshRemoteChatHistory() async {
+    if (!mounted) return;
+    final auth = context.read<AuthController>();
+    if (!auth.isAuthenticated) {
+      await _reloadChatHistory();
+      return;
+    }
+    await _pollLiveChatHistory();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !_authInitialized) return;
+    unawaited(_refreshRemoteChatHistory());
+  }
+
   Future<void> _pollLiveChatHistory() async {
     if (!mounted || _liveHistoryPollInFlight) return;
     final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated) return;
+    if (!auth.isAuthenticated) {
+      _followRemoteStream = false;
+      _stopLiveHistoryPolling();
+      return;
+    }
     _liveHistoryPollInFlight = true;
     try {
       _apiService.setAccessToken(auth.token);
@@ -741,6 +783,10 @@ final bibleRefRegex = RegExp(
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+      _followRemoteStream = historyNeedsLivePolling(
+        remoteEntries,
+        isLocallyGenerating: _sessions.isGenerating,
+      );
       if (remoteEntries.isEmpty) return;
       final merged = mergeChatHistoryEntries(
         _chatHistoryEntries,
@@ -749,44 +795,11 @@ final bibleRefRegex = RegExp(
       );
       _forgetConfirmedDeletedSessions(remoteEntries);
       final localGenerating = _sessions.current.activeClient != null;
-      var nextSessionId = sessionId;
       Map<String, dynamic>? currentRemote;
-      Map<String, dynamic>? activeRemote;
       for (final entry in merged) {
         if (entry['sessionId'] == sessionId) {
           currentRemote = entry;
-        }
-      }
-      final active = (remote['active_session_id'] ?? '').toString().trim();
-      if (active.isNotEmpty) {
-        for (final entry in merged) {
-          if (entry['sessionId'] == active) {
-            activeRemote = entry;
-            break;
-          }
-        }
-      }
-      final currentEmpty = _sessions.current.messages.isEmpty;
-      final activeLive = historyEntryIsStreaming(activeRemote);
-      if (!localGenerating && !_holdCurrentSession) {
-        if (activeLive && active.isNotEmpty) {
-          nextSessionId = active;
-        } else if (currentEmpty && active.isNotEmpty && activeRemote != null) {
-          nextSessionId = active;
-        } else if (currentEmpty && merged.isNotEmpty) {
-          final latestId = merged.first['sessionId']?.toString() ?? '';
-          if (latestId.isNotEmpty) nextSessionId = latestId;
-        }
-      }
-      if (nextSessionId != sessionId) {
-        sessionId = nextSessionId;
-        unawaited(_persistSessionId());
-        currentRemote = null;
-        for (final entry in merged) {
-          if (entry['sessionId'] == nextSessionId) {
-            currentRemote = entry;
-            break;
-          }
+          break;
         }
       }
       final runtime = _sessions.ensure(sessionId);
@@ -796,7 +809,9 @@ final bibleRefRegex = RegExp(
             remoteEntry: currentRemote,
             localGenerating: localGenerating,
           );
-      if (!mounted) return;
+      final changed =
+          chatHistorySnapshotKey(merged) != chatHistorySnapshotKey(_chatHistoryEntries);
+      if (!mounted || (!changed && !shouldApply)) return;
       setState(() {
         _chatHistoryEntries = merged;
         if (shouldApply && currentRemote != null) {
@@ -806,11 +821,14 @@ final bibleRefRegex = RegExp(
       if (shouldApply) {
         _scrollToBottom(followStream: true);
       }
-      await _tokenStorage.saveChatHistory(_historyStorageId, merged);
+      if (changed) {
+        await _tokenStorage.saveChatHistory(_historyStorageId, merged);
+      }
     } catch (e) {
       debugPrint('Live chat history poll failed: $e');
     } finally {
       _liveHistoryPollInFlight = false;
+      if (mounted) _syncLiveHistoryPolling();
     }
   }
 
@@ -1013,7 +1031,8 @@ final bibleRefRegex = RegExp(
 
   @override
   void dispose() {
-    _liveHistoryTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopLiveHistoryPolling();
     _localeListener?.removeListener(_onLocaleChanged);
     if (ChatNavActions.openEvents == _openChurchEvents) {
       ChatNavActions.openEvents = null;
@@ -1303,7 +1322,6 @@ final bibleRefRegex = RegExp(
     await _persistChatHistory();
     if (!mounted) return;
     // Leave any in-flight reply on the previous session running in the background.
-    _holdCurrentSession = true;
     setState(() {
       _sessions.startNewChat(const Uuid().v4());
       _showBackToBottomButton = false;
@@ -1318,7 +1336,7 @@ final bibleRefRegex = RegExp(
     if (signedIn == true && mounted) {
       await _syncAuthState();
       if (mounted) {
-        _startLiveHistoryPolling();
+        _syncLiveHistoryPolling();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_s.signedInAs(context.read<AuthController>().user?.name ?? 'user'))),
         );
@@ -1443,7 +1461,7 @@ final bibleRefRegex = RegExp(
 
   void _selectSidebarPanel(_SidebarPanel panel) {
     if (panel == _SidebarPanel.previousChats) {
-      _reloadChatHistory();
+      unawaited(_refreshRemoteChatHistory());
     }
     setState(() {
       _sidebarPanel = panel;
@@ -1467,7 +1485,6 @@ final bibleRefRegex = RegExp(
 
   void _loadChatFromHistory(Map<String, dynamic> entry) {
     final sid = entry['sessionId'] as String? ?? sessionId;
-    _holdCurrentSession = true;
     setState(() {
       // View switch only — do not cancel streams on other chats.
       _sessions.switchTo(sid, historyEntry: entry);
@@ -1486,8 +1503,8 @@ final bibleRefRegex = RegExp(
       onOpenResponseReports: _openResponseReportsInbox,
       onSignedOut: () {
         if (!mounted) return;
-        _liveHistoryTimer?.cancel();
-        _holdCurrentSession = false;
+        _followRemoteStream = false;
+        _stopLiveHistoryPolling();
         _deletedSessionIds.clear();
         _sessions.disposeAll(cancelledText: _s.responseCancelled);
         setState(() {
@@ -1611,7 +1628,6 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
   // Only one in-flight reply per chat; other chats may still stream.
   if (runtime.isGenerating) return;
 
-  _holdCurrentSession = true;
   final client = http.Client();
   final epoch = runtime.beginStream(client: client);
   if (epoch == null) {
@@ -1828,6 +1844,8 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                     onOpenResponseReports: _openResponseReportsInbox,
                     onSignedOut: () {
                       if (!mounted) return;
+                      _followRemoteStream = false;
+                      _stopLiveHistoryPolling();
                       _sessions.disposeAll(cancelledText: _s.responseCancelled);
                       _deletedSessionIds.clear();
                       setState(() {

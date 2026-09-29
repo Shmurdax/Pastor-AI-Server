@@ -240,4 +240,60 @@ void main() {
       'Faith is trust in God.',
     );
   });
+
+  test('live polling follows a remote stream and skips this tab\'s own', () {
+    final remoteStreaming = [
+      {
+        'sessionId': 'other',
+        'updatedAt': 2,
+        'messages': [
+          {'role': 'user', 'text': 'Hi'},
+          {'role': 'ai', 'text': 'Hel', 'streaming': true},
+        ],
+      },
+    ];
+    expect(historyNeedsLivePolling(remoteStreaming), isTrue);
+    expect(
+      historyNeedsLivePolling(
+        remoteStreaming,
+        isLocallyGenerating: (id) => id == 'other',
+      ),
+      isFalse,
+    );
+    expect(
+      historyNeedsLivePolling([
+        {
+          'sessionId': 'done',
+          'updatedAt': 3,
+          'messages': [
+            {'role': 'ai', 'text': 'Hello.', 'streaming': false},
+          ],
+        },
+      ]),
+      isFalse,
+    );
+  });
+
+  test('snapshot key changes when a streamed answer grows', () {
+    final short = [
+      {
+        'sessionId': 'a',
+        'updatedAt': 1,
+        'messages': [
+          {'role': 'ai', 'text': 'Hel', 'streaming': true},
+        ],
+      },
+    ];
+    final longer = [
+      {
+        'sessionId': 'a',
+        'updatedAt': 1,
+        'messages': [
+          {'role': 'ai', 'text': 'Hello', 'streaming': true},
+        ],
+      },
+    ];
+    expect(chatHistorySnapshotKey(short), isNot(chatHistorySnapshotKey(longer)));
+    expect(chatHistorySnapshotKey(short), chatHistorySnapshotKey(short));
+  });
 }
