@@ -112,6 +112,12 @@ void main() {
     );
     expect(find.byType(LanguageSelector), findsNothing);
     expect(find.byIcon(Icons.language), findsNothing);
+
+    final logo = tester.getCenter(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
+    );
+    final events = tester.getCenter(find.text('EVENTS'));
+    expect((events.dy - logo.dy).abs(), lessThan(30));
   });
 
   testWidgets('media header keeps nav links on a phone', (tester) async {

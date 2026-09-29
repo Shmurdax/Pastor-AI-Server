@@ -510,7 +510,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
               )
             : null,
         actions: [
-          if (!isMobileOrTablet)
+          if (!isMobile)
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -519,16 +519,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
               ],
             ),
         ],
-        bottom: isMobileOrTablet
+        bottom: isMobile
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(40),
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(isMobile ? 8 : 8, 0, isMobile ? 8 : 12, 6),
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
                   child: Align(
-                    alignment: isMobile ? Alignment.center : Alignment.centerRight,
+                    alignment: Alignment.center,
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      alignment: isMobile ? Alignment.center : Alignment.centerRight,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: _mediaNavButtons(s),
