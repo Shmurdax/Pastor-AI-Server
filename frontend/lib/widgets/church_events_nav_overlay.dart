@@ -9,11 +9,11 @@ const _surface = Color(0xFFF4F4F9);
 /// Width of the events panel card.
 ///
 /// Phone (under 600px): 4/5 of the screen. Tablet (under 1024px): 500px.
-/// Desktop stays at 30%.
+/// Desktop: 300px.
 double churchEventsOverlayWidth(double screenWidth) {
   if (screenWidth < 600) return screenWidth * 4 / 5;
   if (screenWidth < 1024) return 500;
-  return screenWidth * 0.3;
+  return 300;
 }
 
 /// Phones keep the events panel in the middle. Tablet and desktop pin it to the right.

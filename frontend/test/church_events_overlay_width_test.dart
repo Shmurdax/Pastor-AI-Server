@@ -8,8 +8,8 @@ void main() {
     expect(churchEventsOverlayWidth(600), 500);
     expect(churchEventsOverlayWidth(800), 500);
     expect(churchEventsOverlayWidth(1023), 500);
-    expect(churchEventsOverlayWidth(1024), 1024 * 0.3);
-    expect(churchEventsOverlayWidth(1280), 1280 * 0.3);
+    expect(churchEventsOverlayWidth(1024), 300);
+    expect(churchEventsOverlayWidth(1280), 300);
 
     expect(churchEventsOverlayCentered(390), isTrue);
     expect(churchEventsOverlayCentered(599), isTrue);
