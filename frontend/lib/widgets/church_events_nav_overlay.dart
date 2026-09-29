@@ -6,6 +6,16 @@ import 'package:google_fonts/google_fonts.dart';
 const _navy = Color(0xFF1B264F);
 const _surface = Color(0xFFF4F4F9);
 
+/// Width of the events panel card.
+///
+/// Phone (under 600px): 4/5 of the screen. Tablet (under 1024px): 3/4.
+/// Desktop stays at 30%.
+double churchEventsOverlayWidth(double screenWidth) {
+  if (screenWidth < 600) return screenWidth * 4 / 5;
+  if (screenWidth < 1024) return screenWidth * 3 / 4;
+  return screenWidth * 0.3;
+}
+
 /// Top-right Church Events panel used from chat / media / subscribe nav.
 class ChurchEventsNavOverlay extends StatelessWidget {
   const ChurchEventsNavOverlay({
@@ -25,8 +35,7 @@ class ChurchEventsNavOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final screenWidth = size.width;
-    final targetWidth = screenWidth * 0.3;
-    final panelWidth = targetWidth < 260 ? screenWidth * 0.92 : targetWidth;
+    final panelWidth = churchEventsOverlayWidth(screenWidth);
     final panelHeight = (size.height * 0.32).clamp(200.0, 340.0);
 
     return Padding(
