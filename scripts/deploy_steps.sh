@@ -94,26 +94,38 @@ deploy_start() {
 
 deploy_health_localhost() {
   local port="${1:-8000}"
+  local attempts="${DEPLOY_HEALTH_ATTEMPTS:-30}"
+  local pause="${DEPLOY_HEALTH_PAUSE_S:-10}"
   if [[ -n "${DEPLOY_HOOK_HEALTH:-}" ]]; then
     "$DEPLOY_HOOK_HEALTH" "$port"
     return
   fi
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
-  local path code allowed ok
+  local try path code allowed matched ready
   # Premium routes return 401 when the gate is closed. That still means Django is up.
+  # Gunicorn binds only after migrate, so retry instead of treating a slow boot as failure.
   local -A expect_ok=(
     [/api/auth/config/]=200
     [/api/media/]="200 401"
     [/api/church-events/]="200 401"
   )
-  for path in /api/auth/config/ /api/media/ /api/church-events/; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}${path}" || true)"
-    ok=0
-    for allowed in ${expect_ok[$path]}; do
-      [[ "$code" == "$allowed" ]] && ok=1
+  for ((try=1; try<=attempts; try++)); do
+    ready=1
+    for path in /api/auth/config/ /api/media/ /api/church-events/; do
+      code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}${path}" || true)"
+      matched=0
+      for allowed in ${expect_ok[$path]}; do
+        [[ "$code" == "$allowed" ]] && matched=1
+      done
+      if [[ "$matched" != "1" ]]; then
+        ready=0
+        break
+      fi
     done
-    [[ "$ok" == "1" ]] || deploy_steps_die "GET ${path} returned ${code:-000}"
+    [[ "$ready" == "1" ]] && return 0
+    [[ "$try" -lt "$attempts" ]] && sleep "$pause"
   done
+  deploy_steps_die "GET ${path} returned ${code:-000}"
 }
 
 deploy_rollback_code() {
@@ -155,4 +167,30 @@ deploy_pg_restore() {
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
   [[ -f "$dump" ]] || deploy_steps_die "missing dump $dump"
   su -s /bin/bash postgres -c "pg_restore --no-owner --clean --if-exists -d '${db}' '${dump}'"
+  deploy_pg_grant_app_owner "$db" "${POSTGRES_USER:-pastor}"
+}
+
+# pg_restore runs as the postgres superuser with --no-owner, so restored tables
+# belong to postgres. Django connects as POSTGRES_USER and must own them.
+# Linked sequences follow their table; changing a sequence owner directly fails.
+deploy_pg_grant_app_owner() {
+  local db="$1" user="$2"
+  [[ "$db" =~ ^[A-Za-z0-9_]+$ ]] || deploy_steps_die "refusing unsafe database name"
+  [[ "$user" =~ ^[A-Za-z0-9_]+$ ]] || deploy_steps_die "refusing unsafe POSTGRES_USER"
+  su -s /bin/bash postgres -c "psql -d '${db}' -v ON_ERROR_STOP=1" <<SQL
+GRANT USAGE, CREATE ON SCHEMA public TO "${user}";
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.oid::regclass AS rel
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m')
+  LOOP
+    EXECUTE format('ALTER TABLE %s OWNER TO %I', r.rel, '${user}');
+  END LOOP;
+END
+\$\$;
+SQL
 }

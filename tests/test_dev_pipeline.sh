@@ -211,6 +211,53 @@ awk '
   }
 ' "$promote" || fail "manifest push must follow the master push"
 
+grep -q '.flutter-sdk/bin' "$ROOT/scripts/prod_scheduled_deploy.sh" \
+  || fail "scheduled deploy must put the Flutter SDK on PATH"
+grep -q 'MIN_FREE_GPU_MIB:-1024' "$ROOT/scripts/prod_scheduled_deploy.sh" \
+  || fail "scheduled deploy GPU floor must allow a loaded vLLM card"
+grep -q "relkind IN ('r','p','v','m')" "$ROOT/scripts/deploy_steps.sh" \
+  || fail "restore must give tables back to the app user"
+grep -q 'DEPLOY_HEALTH_ATTEMPTS' "$ROOT/scripts/deploy_steps.sh" \
+  || fail "health check must retry while Django binds port 8000"
+if grep -q 'MIN_FREE_GPU_MIB:-8000' "$ROOT/scripts/prod_scheduled_deploy.sh"; then
+  fail "8000 MiB free-GPU floor blocks a loaded production GPU"
+fi
+
+health_bin="$(mktemp -d)"
+health_count="$health_bin/count"
+cat > "$health_bin/curl" <<'EOF'
+#!/bin/bash
+n=0
+[[ -f "$CURL_COUNT_FILE" ]] && n="$(cat "$CURL_COUNT_FILE")"
+n=$((n + 1))
+printf '%s\n' "$n" > "$CURL_COUNT_FILE"
+if [[ "$n" -le "${CURL_FAIL_UNTIL:-0}" ]]; then
+  printf '000'
+else
+  printf '200'
+fi
+EOF
+chmod +x "$health_bin/curl"
+saved_path="$PATH"
+saved_hook="${DEPLOY_HOOK_HEALTH:-}"
+unset DEPLOY_HOOK_HEALTH
+export PATH="$health_bin:$PATH"
+export CURL_COUNT_FILE="$health_count"
+export CURL_FAIL_UNTIL=1 DEPLOY_HEALTH_ATTEMPTS=3 DEPLOY_HEALTH_PAUSE_S=0
+deploy_health_localhost 8000 || fail "health check should pass after Django starts answering"
+printf '0\n' > "$health_count"
+export CURL_FAIL_UNTIL=100 DEPLOY_HEALTH_ATTEMPTS=2
+if deploy_health_localhost 8000; then
+  fail "health check should fail when port 8000 never answers"
+fi
+export PATH="$saved_path"
+if [[ -n "$saved_hook" ]]; then
+  export DEPLOY_HOOK_HEALTH="$saved_hook"
+else
+  unset DEPLOY_HOOK_HEALTH
+fi
+rm -rf "$health_bin"
+
 grep -q 'deploy_flutter_staging' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must stage the Flutter build"
 grep -q 'deploy_health_localhost' "$ROOT/deploy_update.sh" || fail "deploy_update.sh health checks must fail the script"
 if grep -q "auth/config/.*|| true" "$ROOT/deploy_update.sh"; then

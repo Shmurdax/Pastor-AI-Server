@@ -25,6 +25,27 @@ sched_clear_arm() {
   rm -f "$(sched_arm_file)"
 }
 
+# Cron starts with a minimal PATH. The vendored Flutter SDK and git safe.directory
+# match deploy_update.sh so the 1:00am job can build the web app.
+sched_prepare_host() {
+  local ws="$1"
+  [[ "${SCHEDULED_SKIP_TOOL_CHECKS:-0}" == "1" ]] && return 0
+  # shellcheck source=/dev/null
+  source "$_sched_root/git_safe_directory.sh"
+  # shellcheck source=/dev/null
+  source "$_sched_root/load_env.sh"
+  pastor_allow_git_on_runpod_volume "$ws"
+  if [[ -f "$ws/config.env" ]]; then
+    pastor_load_env_file "$ws/config.env"
+  fi
+  if [[ -x "$ws/.flutter-sdk/bin/flutter" ]]; then
+    case ":${PATH}:" in
+      *":$ws/.flutter-sdk/bin:"*) ;;
+      *) export PATH="$ws/.flutter-sdk/bin:${PATH}" ;;
+    esac
+  fi
+}
+
 sched_preflight() {
   local ws="$1" sha="$2" manifest="$3"
   local channel disk_kb free_mib flutter_bin
@@ -61,7 +82,8 @@ sched_preflight() {
     }
     if pastor_has_gpu; then
       free_mib="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ' || true)"
-      if [[ "$free_mib" =~ ^[0-9]+$ && "$free_mib" -lt "${MIN_FREE_GPU_MIB:-8000}" ]]; then
+      # vLLM stays loaded, so free memory is the leftover headroom, not an empty card.
+      if [[ "$free_mib" =~ ^[0-9]+$ && "$free_mib" -lt "${MIN_FREE_GPU_MIB:-1024}" ]]; then
         sched_log "preflight: GPU has ${free_mib} MiB free"
         return 1
       fi
@@ -86,6 +108,7 @@ prod_scheduled_deploy() {
     sched_log "skipped: not armed"
     return 2
   fi
+  sched_prepare_host "$ws"
   armed="$(tr -d '[:space:]' < "$arm")"
   if [[ -d "$ws/.git" && "${SCHEDULED_SKIP_FETCH:-0}" != "1" ]]; then
     git -C "$ws" fetch origin master >/dev/null 2>&1 || true

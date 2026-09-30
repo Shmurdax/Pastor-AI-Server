@@ -10,6 +10,16 @@ CMD="CRON_TZ=${TZ_NAME}
 0 1 * * * bash $WS/scripts/prod_scheduled_deploy.sh >> $LOG 2>&1
 "
 mkdir -p "$WS/logs"
+if ! command -v crontab >/dev/null 2>&1; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get install -y cron
+fi
+if command -v service >/dev/null 2>&1; then
+  service cron start || true
+else
+  cron || true
+fi
 if crontab -l >/dev/null 2>&1; then
   crontab -l | grep -v 'prod_scheduled_deploy.sh' > /tmp/pastor-cron.$$ || true
 else
