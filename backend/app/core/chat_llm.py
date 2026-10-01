@@ -28,6 +28,22 @@ CHAT_VLLM_EXTRA_BODY = {
     "top_k": 20,
 }
 
+# End the first English draft when Qwen starts a rewrite. These are sampler
+# stops, not a second pass over text the user has already seen.
+CHAT_STOP_SEQUENCES = (
+    "以下是",
+    "让我",
+    "重塑回答",
+    "here is the revised",
+    "here is the adjusted",
+    "here is the rewritten",
+    "here is the updated answer",
+    "let me revise",
+    "let me rewrite",
+    "i'll now revise",
+    "i will now revise",
+)
+
 
 def _env_get(env: Mapping[str, str], *keys: str, default: str = "") -> str:
     for key in keys:
@@ -428,7 +444,7 @@ def get_chat_llm(
         env = env_with_workspace()
     remote = vllm_is_remote(env)
     if max_tokens is None:
-        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="1024"))
+        max_tokens = int(_env_get(env, "CHAT_MAX_TOKENS", default="2048"))
     if timeout is None:
         default_timeout = "600" if remote else "360"
         timeout = float(_env_get(env, "CHAT_TIMEOUT_S", default=default_timeout))
@@ -462,6 +478,7 @@ def get_chat_llm(
         presence_penalty=presence_penalty,
         frequency_penalty=frequency_penalty,
         extra_body=extra_body,
+        stop=list(CHAT_STOP_SEQUENCES),
         max_tokens=max_tokens,
         timeout=timeout,
         max_retries=max_retries,

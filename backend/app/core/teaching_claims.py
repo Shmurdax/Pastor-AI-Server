@@ -324,6 +324,7 @@ _SERMON_OUTLINE_REQUEST_RE = re.compile(
     r"(?i)\b(?:"
     r"(?:\d+|one|two|three|four|five)\s*[- ]?\s*points?"
     r"|sermon\s+outline"
+    r"|sermon\s+notes"
     r"|outline\s+(?:of|on|for)"
     r"|bullet\s+points?"
     r")\b"
@@ -616,7 +617,10 @@ def format_generation_user_prompt(
                 "theses as a Markdown outline (numbered or bulleted points, with a short "
                 "paragraph under a point when it helps). If they asked for N points, use N "
                 "of these theses as the labeled points, then cover any remaining theses. "
-                "Do not invent extra points. Cover every numbered point."
+                "Do not invent extra points. Cover every numbered point. "
+                "If the user named a Bible passage that is not in these numbered points "
+                "or in the attached NKJV block, say the notes do not cover that passage "
+                "and teach these points. Do not teach that passage from memory."
             )
         else:
             lines.append(
@@ -624,7 +628,7 @@ def format_generation_user_prompt(
                 "Cover every numbered point. Do not invent extra outline points. "
                 "Do not stop after the first sentence."
             )
-    elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY}:
+    elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY} or looks_like_sermon_outline_request(question):
         lines.append("User question:")
         lines.append(question or "(empty)")
         lines.append("")
@@ -636,6 +640,38 @@ def format_generation_user_prompt(
         lines.append("User question:")
         lines.append(question or "(empty)")
     return "\n".join(lines)
+
+
+def docs_supporting_claims(
+    docs: Iterable[Any] | None,
+    claims: Iterable[str] | None,
+) -> list[Any]:
+    """Sermon windows whose text contains an extracted thesis.
+
+    Retrieval stays wide. The prompt should only carry the windows behind the
+    numbered points, so a generic chapter outline is not fed by neighboring notes.
+    """
+    points = [str(item).strip() for item in (claims or []) if item and str(item).strip()]
+    documents = [doc for doc in (docs or []) if doc is not None]
+    if not points or not documents:
+        return []
+    needed_sets: list[set[str]] = []
+    for claim in points:
+        tokens = set(claim_content_tokens(claim))
+        if len(tokens) >= 3:
+            needed_sets.append(tokens)
+    if not needed_sets:
+        return []
+    kept: list[Any] = []
+    for doc in documents:
+        text_tokens = set(claim_content_tokens(chunk_text(doc)))
+        if not text_tokens:
+            continue
+        for needed in needed_sets:
+            if len(needed & text_tokens) >= min(4, len(needed)):
+                kept.append(doc)
+                break
+    return kept
 
 
 def claim_is_covered(claim: str, answer: str) -> bool:
