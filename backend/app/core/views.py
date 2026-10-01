@@ -37,8 +37,6 @@ from .chat_language import (
 )
 from .chat_sanitize import (
     looks_like_rewrite_leak,
-    recover_english_generation,
-    sanitize_chat_answer,
     sanitize_history_text,
     sanitize_stream_delta,
 )
@@ -67,7 +65,12 @@ from .chat_sse import (
     wants_chat_stream,
 )
 from .bible_refs import scripture_refs_from_metadata
-from .teaching_claims import retrieval_search_text
+from .teaching_claims import (
+    docs_supporting_claims,
+    extract_teaching_claims,
+    format_generation_user_prompt,
+    retrieval_search_text,
+)
 from .notes_coverage import COVERAGE_PARTIAL, select_reference_notes
 from .chat_retrieval import (
     format_reference_notes,
@@ -78,18 +81,8 @@ from .chat_retrieval import (
 from .scripture_support import attach_supporting_scripture, is_bible_chunk
 from .rerank import rerank_scored_hits
 from .chat_system_prompt import (
-    CONTINUE_STEER,
-    FINISH_STEER,
-    MAX_EXPANSION_PASSES,
-    answer_char_count,
-    answer_looks_incomplete,
-    should_run_expansion,
     build_chat_system_prompt,
-    continuation_token_budget,
     find_biblical_character_names,
-    join_continuation,
-    looks_like_continue_dump,
-    novel_continuation,
 )
 from .chat_translate import display_reply, english_search_query, translate_texts
 from .live_chat_history import LiveHistoryPublisher
@@ -105,7 +98,9 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "1024"))
+# The model reads a short bundle behind the numbered theses, not the full search.
+PROMPT_CONTEXT_CHARS = int(os.getenv("CHAT_PROMPT_CONTEXT_CHARS", "12000"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
 BIBLE_SOURCE_MARKERS = tuple(
     marker.strip().lower()
@@ -333,160 +328,6 @@ def _iter_chat_tokens(bound_llm, messages):
     return iter_chat_tokens(bound_llm, messages)
 
 
-def _continuation_messages(messages, first_answer: str, steer: str | None = None):
-    if not steer:
-        steer = FINISH_STEER if answer_looks_incomplete(first_answer) else CONTINUE_STEER
-    reminder = language_generation_reminder()
-    return list(messages) + [
-        AIMessage(content=sanitize_chat_answer(first_answer)),
-        HumanMessage(content=steer + reminder),
-    ]
-
-
-def _join_continuation(answer: str, extra: str) -> str:
-    return join_continuation(answer, extra)
-
-
-def _usable_extra(prepared, answer: str, extra: str) -> str:
-    """Keep generated continuation text; only drop leaks and restart dumps."""
-    _ = prepared
-    raw = (extra or "").strip()
-    if not raw:
-        return ""
-    if looks_like_rewrite_leak(raw):
-        logger.info("Dropped a continuation that leaked CJK or rewrite notes")
-        return ""
-    extra = novel_continuation(answer, sanitize_chat_answer(raw))
-    if raw and not extra:
-        logger.info("Dropped a second-pass continue dump after a finished answer")
-        return ""
-    if looks_like_continue_dump(answer, extra):
-        logger.info("Dropped a second-pass continue dump after a finished answer")
-        return ""
-    return extra
-
-
-def _should_run_expansion(prepared, answer: str, query: str) -> bool:
-    """Do not start a second generate pass when sermon notes already bind the answer."""
-    return should_run_expansion(
-        answer,
-        query,
-        has_retrieved_notes=bool(prepared.get("docs") or prepared.get("teaching_claims")),
-    )
-
-
-def _claim_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    """Do not start a second LLM pass to fill missed teaching points."""
-    _ = (prepared, answer, query)
-    return None, 0
-
-
-def _quote_repair_plan(prepared, answer: str, *, query: str = "") -> tuple[str | None, int]:
-    """Quotes are optional; never start a second LLM pass to insert them."""
-    _ = (prepared, answer, query)
-    return None, 0
-
-
-def _grounding_repair_plan(prepared, answer: str) -> tuple[str | None, int]:
-    """Do not start a second LLM pass after generation."""
-    _ = (prepared, answer)
-    return None, 0
-
-
-def _finish_incomplete_extra(prepared, answer: str) -> str:
-    """If a continue/repair pass was token-capped mid-sentence, finish that sentence."""
-    if not answer_looks_incomplete(answer):
-        return ""
-    budget = continuation_token_budget(
-        answer, completion_tokens=prepared.get("completion_tokens") or 0
-    )
-    if budget <= 0:
-        budget = 160
-    budget = min(max(budget, 96), 256)
-    extra_parts = []
-    try:
-        for text in _iter_continuation_tokens(
-            prepared,
-            answer,
-            steer=FINISH_STEER,
-            token_budget=budget,
-        ):
-            extra_parts.append(text)
-    except Exception:
-        logger.exception("Finish-cut-off pass failed; keeping the truncated answer")
-        return ""
-    return _usable_extra(prepared, answer, "".join(extra_parts).strip())
-
-
-def _trim_continuation_messages(messages):
-    """Drop history and clip notes so a continue turn still fits a short worker."""
-    system = None
-    last_human = None
-    last_ai = None
-    for msg in messages:
-        if isinstance(msg, SystemMessage):
-            system = msg
-        elif isinstance(msg, HumanMessage):
-            last_human = msg
-        elif isinstance(msg, AIMessage):
-            last_ai = msg
-    trimmed = []
-    if system is not None:
-        content = getattr(system, "content", "") or ""
-        if len(content) > 2400:
-            idx = content.find(NOTES_MARKER)
-            if idx >= 0:
-                prefix = content[: idx + len(NOTES_MARKER)]
-                notes = content[idx + len(NOTES_MARKER) :]
-                keep_notes = notes[: max(1200, min(len(notes), 2200))]
-                keep_prefix = prefix
-                budget = 3200
-                if len(keep_prefix) + len(keep_notes) > budget:
-                    keep_prefix = keep_prefix[: max(900, budget - len(keep_notes))]
-                content = keep_prefix + keep_notes
-            else:
-                content = content[:2400]
-        trimmed.append(SystemMessage(content=content))
-    if last_ai is not None:
-        trimmed.append(last_ai)
-    if last_human is not None:
-        trimmed.append(last_human)
-    return trimmed
-
-
-def _iter_continuation_tokens(prepared, answer: str, steer: str | None = None, *, token_budget: int | None = None):
-    budget = (
-        token_budget
-        if token_budget is not None
-        else continuation_token_budget(
-            answer, completion_tokens=prepared["completion_tokens"]
-        )
-    )
-    if budget <= 0:
-        return
-        yield
-    full = _continuation_messages(prepared["messages"], answer, steer=steer)
-    trimmed = _trim_continuation_messages(full)
-    bound = prepared["llm"].bind(max_tokens=budget)
-    attempts = (
-        (bound, full),
-        (bound, trimmed),
-    )
-    for bound, messages in attempts:
-        yielded = False
-        try:
-            for text in _iter_chat_tokens(bound, messages):
-                yielded = True
-                yield text
-            if yielded:
-                return
-        except Exception:
-            if yielded:
-                return
-            logger.exception("Continuation attempt failed")
-    logger.warning("Continuation produced no extra text")
-
-
 def _save_ai_response(
     *,
     regenerate: bool,
@@ -498,7 +339,6 @@ def _save_ai_response(
     allow_create: bool = True,
 ):
     last_error = None
-    answer = sanitize_chat_answer(answer)
     for attempt in range(2):
         close_old_connections()
         try:
@@ -842,14 +682,17 @@ class ChatAPIView(APIView):
                 collection_name,
                 embeddings,
             )
+            teaching_claims = extract_teaching_claims(docs, query=search_text)
+            prompt_docs = docs_supporting_claims(docs, teaching_claims)
+            if not prompt_docs:
+                prompt_docs = list(docs)[:8]
             context = format_reference_notes(
-                docs,
+                prompt_docs,
                 _doc_source_label,
-                max_chars=MAX_CONTEXT_CHARS,
+                max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
                 preserve_order=True,
                 scripture_docs=scripture_docs,
             )
-            teaching_claims = []
             logger.warning(
                 "Note coverage=%s docs=%s scripture=%s lane=%s query=%s",
                 notes_coverage,
@@ -927,7 +770,10 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
-            human_content = f"{user_query_llm.strip()}{language_generation_reminder()}"
+            human_content = (
+                format_generation_user_prompt(user_query_llm, teaching_claims)
+                + language_generation_reminder()
+            )
             messages = (
                 [SystemMessage(content=system_filled)]
                 + history_messages
@@ -1068,23 +914,6 @@ class ChatAPIView(APIView):
                 logger.exception("Smaller-budget chat stream also failed")
             raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
 
-        def _retry_if_cjk_leak(prepared, first_raw: str) -> tuple[str, bool]:
-            answer, leaked = recover_english_generation(first_raw)
-            if not leaked:
-                return answer, False
-            logger.warning("Chat reply leaked CJK or rewrite notes; retrying once")
-            try:
-                retry_raw = "".join(_generate_tokens(prepared))
-            except Exception:
-                logger.exception("CJK leak retry failed; sanitizing the first answer")
-                retry_raw = ""
-            recovered, still_leaked = recover_english_generation(first_raw, retry_raw)
-            if still_leaked:
-                logger.warning(
-                    "CJK leak retry still mixed scripts; keeping the English lead-in"
-                )
-            return recovered, still_leaked
-
         if want_stream:
             def produce_events():
                 emit_live = chat_language == "en"
@@ -1097,21 +926,15 @@ class ChatAPIView(APIView):
                 leak_started = False
                 for text in _generate_tokens(prepared):
                     first_raw_parts.append(text)
-                    raw_so_far = "".join(first_raw_parts)
                     if leak_started:
-                        if live_history:
-                            live_history.publish(
-                                sanitize_chat_answer(raw_so_far), streaming=True
-                            )
                         continue
+                    raw_so_far = "".join(first_raw_parts)
                     if looks_like_rewrite_leak(raw_so_far):
+                        # Stop painting. Do not replace text already on screen.
                         leak_started = True
-                        recovered_now = sanitize_chat_answer(raw_so_far)
-                        painted_parts = [recovered_now]
-                        if emit_live:
-                            yield _sse({"type": "replace", "text": recovered_now})
-                        if live_history:
-                            live_history.publish(recovered_now, streaming=True)
+                        logger.warning(
+                            "Chat reply started a rewrite after the first draft; stopping the stream"
+                        )
                         continue
                     visible = sanitize_stream_delta(text)
                     if visible:
@@ -1123,128 +946,9 @@ class ChatAPIView(APIView):
                 first_raw = "".join(first_raw_parts)
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
-                answer, leaked = _retry_if_cjk_leak(prepared, first_raw)
-                painted = "".join(painted_parts)
-                if emit_live and answer != painted:
-                    yield _sse({"type": "replace", "text": answer})
-                if live_history:
-                    live_history.publish(answer, streaming=True)
-                expansion_pass = 0
-                while (
-                    not leaked
-                    and _should_run_expansion(prepared, answer, user_query_llm)
-                    and expansion_pass < MAX_EXPANSION_PASSES
-                ):
-                    expansion_pass += 1
-                    logger.warning(
-                        "Chat answer was short (%s chars); requesting continuation %s/%s",
-                        answer_char_count(answer),
-                        expansion_pass,
-                        MAX_EXPANSION_PASSES,
-                    )
-                    extra_parts = []
-                    try:
-                        for text in _iter_continuation_tokens(prepared, answer):
-                            extra_parts.append(text)
-                    except Exception:
-                        logger.exception("Continuation failed; keeping the first answer")
-                        break
-                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
-                    if not extra:
-                        break
-                    if emit_live:
-                        yield _sse({"type": "delta", "text": "\n\n" + extra})
-                    answer = _join_continuation(answer, extra)
-                    if live_history:
-                        live_history.publish(answer, streaming=True)
-                repair_steer, repair_budget = (
-                    (None, 0) if leaked else _claim_repair_plan(
-                        prepared, answer, query=user_query_llm
-                    )
-                )
-                if repair_steer:
-                    extra_parts = []
-                    try:
-                        for text in _iter_continuation_tokens(
-                            prepared,
-                            answer,
-                            steer=repair_steer,
-                            token_budget=repair_budget,
-                        ):
-                            extra_parts.append(text)
-                    except Exception:
-                        logger.exception("Claim-coverage repair failed; keeping the first answer")
-                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
-                    if extra:
-                        if emit_live:
-                            yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
-                        if live_history:
-                            live_history.publish(answer, streaming=True)
-                quote_steer, quote_budget = (
-                    (None, 0) if leaked else _quote_repair_plan(
-                        prepared, answer, query=user_query_llm
-                    )
-                )
-                if quote_steer:
-                    extra_parts = []
-                    try:
-                        for text in _iter_continuation_tokens(
-                            prepared,
-                            answer,
-                            steer=quote_steer,
-                            token_budget=quote_budget,
-                        ):
-                            extra_parts.append(text)
-                    except Exception:
-                        logger.exception("Quote repair failed; keeping the first answer")
-                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
-                    if extra:
-                        if emit_live:
-                            yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
-                        if live_history:
-                            live_history.publish(answer, streaming=True)
-                grounding_steer, grounding_budget = (
-                    (None, 0) if leaked else _grounding_repair_plan(
-                        prepared, answer
-                    )
-                )
-                if grounding_steer:
-                    extra_parts = []
-                    try:
-                        for text in _iter_continuation_tokens(
-                            prepared,
-                            answer,
-                            steer=grounding_steer,
-                            token_budget=grounding_budget,
-                        ):
-                            extra_parts.append(text)
-                    except Exception:
-                        logger.exception("RAG grounding repair failed; keeping the first answer")
-                    extra = _usable_extra(prepared, answer, "".join(extra_parts))
-                    if extra:
-                        if emit_live:
-                            yield _sse({"type": "delta", "text": "\n\n" + extra})
-                        answer = _join_continuation(answer, extra)
-                        if live_history:
-                            live_history.publish(answer, streaming=True)
-                finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
-                if finish_extra:
-                    if emit_live:
-                        prefix = "" if answer.endswith((" ", "\n")) else " "
-                        yield _sse({"type": "delta", "text": prefix + finish_extra})
-                    answer = _join_continuation(answer, finish_extra)
-                final_answer = sanitize_chat_answer(answer)
-                if emit_live:
-                    prefix = (answer or "").rstrip()
-                    if final_answer.startswith(prefix):
-                        extra = final_answer[len(prefix) :].strip()
-                        if extra:
-                            yield _sse({"type": "delta", "text": "\n\n" + extra})
-                    elif final_answer != prefix:
-                        yield _sse({"type": "replace", "text": final_answer})
-                answer = final_answer
+                answer = "".join(painted_parts).strip()
+                if not answer:
+                    raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
                 response_sources = _response_sources(
                     prepared["docs"],
                     answer,
@@ -1298,145 +1002,9 @@ class ChatAPIView(APIView):
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
-            answer = response.content or ""
-            answer, leaked = _retry_if_cjk_leak(prepared, answer)
+            answer = sanitize_stream_delta(response.content or "").strip()
             if live_history:
                 live_history.publish(answer, streaming=True)
-            expansion_pass = 0
-            while (
-                not leaked
-                and _should_run_expansion(prepared, answer, user_query_llm)
-                and expansion_pass < MAX_EXPANSION_PASSES
-            ):
-                expansion_pass += 1
-                logger.warning(
-                    "Chat answer was short (%s chars); requesting continuation %s/%s",
-                    answer_char_count(answer),
-                    expansion_pass,
-                    MAX_EXPANSION_PASSES,
-                )
-                continue_tokens = continuation_token_budget(
-                    answer, completion_tokens=prepared["completion_tokens"]
-                )
-                if continue_tokens <= 0:
-                    break
-                try:
-                    extra = prepared["llm"].bind(max_tokens=continue_tokens).invoke(
-                        _continuation_messages(prepared["messages"], answer)
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("Continuation failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(
-                            max_tokens=continue_tokens
-                        ).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(prepared["messages"], answer)
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("Continuation failed; keeping the first answer")
-                        break
-                if not extra_text:
-                    break
-                extra_text = _usable_extra(prepared, answer, extra_text)
-                if not extra_text:
-                    break
-                answer = _join_continuation(answer, extra_text)
-            repair_steer, repair_budget = (
-                (None, 0) if leaked else _claim_repair_plan(
-                    prepared, answer, query=user_query_llm
-                )
-            )
-            if repair_steer:
-                try:
-                    extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
-                        _continuation_messages(
-                            prepared["messages"], answer, steer=repair_steer
-                        )
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("Claim-coverage repair failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(max_tokens=repair_budget).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(
-                                    prepared["messages"], answer, steer=repair_steer
-                                )
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("Claim-coverage repair failed; keeping the first answer")
-                        extra_text = ""
-                extra_text = _usable_extra(prepared, answer, extra_text)
-                if extra_text:
-                    answer = _join_continuation(answer, extra_text)
-            quote_steer, quote_budget = (
-                (None, 0) if leaked else _quote_repair_plan(
-                    prepared, answer, query=user_query_llm
-                )
-            )
-            if quote_steer:
-                try:
-                    extra = prepared["llm"].bind(max_tokens=quote_budget).invoke(
-                        _continuation_messages(
-                            prepared["messages"], answer, steer=quote_steer
-                        )
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("Quote repair failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(max_tokens=quote_budget).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(
-                                    prepared["messages"], answer, steer=quote_steer
-                                )
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("Quote repair failed; keeping the first answer")
-                        extra_text = ""
-                extra_text = _usable_extra(prepared, answer, extra_text)
-                if extra_text:
-                    answer = _join_continuation(answer, extra_text)
-            grounding_steer, grounding_budget = (
-                (None, 0) if leaked else _grounding_repair_plan(prepared, answer)
-            )
-            if grounding_steer:
-                try:
-                    extra = prepared["llm"].bind(max_tokens=grounding_budget).invoke(
-                        _continuation_messages(
-                            prepared["messages"], answer, steer=grounding_steer
-                        )
-                    )
-                    extra_text = (getattr(extra, "content", "") or "").strip()
-                except Exception:
-                    logger.exception("RAG grounding repair failed; retrying with a trimmed prompt")
-                    try:
-                        extra = prepared["llm"].bind(max_tokens=grounding_budget).invoke(
-                            _trim_continuation_messages(
-                                _continuation_messages(
-                                    prepared["messages"], answer, steer=grounding_steer
-                                )
-                            )
-                        )
-                        extra_text = (getattr(extra, "content", "") or "").strip()
-                    except Exception:
-                        logger.exception("RAG grounding repair failed; keeping the first answer")
-                        extra_text = ""
-                extra_text = _usable_extra(prepared, answer, extra_text)
-                if extra_text:
-                    answer = _join_continuation(answer, extra_text)
-            finish_extra = "" if leaked else _finish_incomplete_extra(prepared, answer)
-            if finish_extra:
-                answer = _join_continuation(answer, finish_extra)
-            answer = sanitize_chat_answer(answer)
             response_sources = _response_sources(
                 prepared["docs"],
                 answer,

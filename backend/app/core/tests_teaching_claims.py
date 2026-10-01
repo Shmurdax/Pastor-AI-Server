@@ -5,6 +5,7 @@ from core.teaching_claims import (
     claim_is_covered,
     claim_matches_query,
     claim_repair_steer,
+    docs_supporting_claims,
     extract_teaching_claims,
     format_teaching_claims_block,
     keep_note_paraphrase_sentences,
@@ -139,12 +140,31 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("same thesis", steer)
         self.assertEqual(format_teaching_claims_block([]), "")
 
+    def test_docs_supporting_claims_keeps_only_matching_windows(self):
+        marriage = _doc(
+            "Marriage is a covenant, not a contract, and both spouses must work at it.",
+            source="marriage.pdf",
+        )
+        christmas = _doc(
+            "The angel Gabriel appeared to her with a message she could never have imagined.",
+            source="advent.pdf",
+        )
+        kept = docs_supporting_claims(
+            [christmas, marriage],
+            ["Marriage is a covenant, not a contract, and both spouses must work at it."],
+        )
+        self.assertEqual(kept, [marriage])
+        self.assertEqual(docs_supporting_claims([marriage], []), [])
+
     def test_outline_request_detects_n_point_sermon(self):
         self.assertTrue(
             looks_like_sermon_outline_request("Give a 3 point sermon outline on marriage")
         )
         self.assertTrue(looks_like_sermon_outline_request("Give me a 3 point sermon on faith"))
         self.assertFalse(looks_like_sermon_outline_request("Can Christians drink?"))
+        self.assertTrue(
+            looks_like_sermon_outline_request("Create sermon notes on grace. Use Titus 2.")
+        )
         self.assertFalse(looks_like_sermon_outline_request("What does Pastor Don teach about hope?"))
 
     def test_generation_user_prompt_locks_drink_and_gay_theses(self):
@@ -182,7 +202,15 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("Markdown outline", outline)
         self.assertIn("If they asked for N points, use N", outline)
         self.assertIn("Do not invent extra points", outline)
+        self.assertIn("do not cover that passage", outline)
+        self.assertIn("Do not teach that passage from memory", outline)
         self.assertIn("covenant", outline)
+        empty_outline = format_generation_user_prompt(
+            "Create sermon notes on grace. Use Titus 2.",
+            [],
+        )
+        self.assertIn("did not yield teaching points", empty_outline)
+        self.assertIn("Do not answer from general Christian knowledge", empty_outline)
 
         gay = format_generation_user_prompt(
             "Can gay people be Christians?",
