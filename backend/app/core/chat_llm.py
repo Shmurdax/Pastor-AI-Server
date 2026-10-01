@@ -30,18 +30,12 @@ CHAT_VLLM_EXTRA_BODY = {
 
 # End the first English draft when Qwen starts a rewrite. These are sampler
 # stops, not a second pass over text the user has already seen.
+# This vLLM worker returns HTTP 500 when more than four stop strings are sent.
 CHAT_STOP_SEQUENCES = (
-    "以下是",
     "让我",
-    "重塑回答",
-    "here is the revised",
-    "here is the adjusted",
-    "here is the rewritten",
-    "here is the updated answer",
+    "以下是",
     "let me revise",
-    "let me rewrite",
-    "i'll now revise",
-    "i will now revise",
+    "here is the revised",
 )
 
 
