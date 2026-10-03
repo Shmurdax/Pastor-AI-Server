@@ -1,0 +1,88 @@
+{
+  "name": "dev sermon chat suite",
+  "description": "Ten grokbot1 chats used to check sermon-note influence on the dev server. Run one session per chat, in order, with a pause between turns so retrieval and generation do not pile up. Each chat asks for sermon notes, a direct question, or a biblical narrative, then two follow-ups.",
+  "account": "grokbot1@gmail.com",
+  "pause_seconds": 30,
+  "chats": [
+    {
+      "topic": "marriage covenant notes",
+      "turns": [
+        "Create sermon notes on marriage as a blood covenant. What does Pastor Don actually teach a husband and wife to do?",
+        "What should a husband practice this week from that teaching?",
+        "Which part of that answer came from the sermon notes rather than Ephesians 5 in general?"
+      ]
+    },
+    {
+      "topic": "David and Goliath",
+      "turns": [
+        "Tell the story of David and Goliath the way the sermon notes teach it. What is the point of the story?",
+        "What was David's real advantage when he faced Goliath?",
+        "How should a believer apply that story when they are afraid of something bigger than they are?"
+      ]
+    },
+    {
+      "topic": "tithing question",
+      "turns": [
+        "What do the sermon notes teach about tithing? Is giving worship or an obligation?",
+        "Is the tithe the same thing as a freewill offering in those notes?",
+        "What do the notes say a person should do if they feel they cannot afford to give?"
+      ]
+    },
+    {
+      "topic": "Holy Spirit notes",
+      "turns": [
+        "Create sermon notes on why a believer should receive the Holy Spirit. Stay with what the notes teach.",
+        "What do the notes say the Spirit does when a believer prays?",
+        "What happens if someone wants the Spirit's power but will not obey?"
+      ]
+    },
+    {
+      "topic": "prodigal son",
+      "turns": [
+        "Explain the parable of the prodigal son from the sermon notes. Who is the father, and what does he do?",
+        "What do the notes say about the older brother?",
+        "How should a church treat someone who comes back after walking away?"
+      ]
+    },
+    {
+      "topic": "alcohol question",
+      "turns": [
+        "According to the sermon notes, can a Christian drink alcohol?",
+        "Do those notes treat communion wine as the same issue?",
+        "What should a parent tell a teenager who asks if one drink is fine?"
+      ]
+    },
+    {
+      "topic": "Red Sea",
+      "turns": [
+        "Walk through Moses and the Red Sea the way the sermon notes tell it.",
+        "What did God tell the people to do when the sea was still in front of them?",
+        "How do the notes apply a dead-end situation to an ordinary believer?"
+      ]
+    },
+    {
+      "topic": "forgiveness notes",
+      "turns": [
+        "Create a pastoral outline from the sermon notes for restoring a broken relationship inside the church.",
+        "What is the first step the notes say the offended person must take?",
+        "When, if ever, do the notes say the whole church should be told?"
+      ]
+    },
+    {
+      "topic": "good Samaritan",
+      "turns": [
+        "Tell the story of the good Samaritan from the sermon notes. What is the teaching point?",
+        "Why did the priest and the Levite pass by, according to the notes?",
+        "Who is my neighbor in that teaching, and what should I do this week?"
+      ]
+    },
+    {
+      "topic": "hope in suffering",
+      "turns": [
+        "Create sermon notes on hope for someone who is sick or grieving. Use what the notes actually say.",
+        "Do the notes treat God's silence during illness as absence?",
+        "What practical step do the notes give a person who is in pain?"
+      ]
+    }
+  ]
+}
