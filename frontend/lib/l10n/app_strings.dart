@@ -131,7 +131,7 @@ class AppStrings {
 
 const Map<String, Map<String, String>> _tables = {
   'en': {
-    'home': 'Home',
+    'home': 'Nordins Website',
     'store': 'Store',
     'events': 'Events',
     'nordinsAi': "NORDIN'S AI",

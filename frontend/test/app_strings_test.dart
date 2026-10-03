@@ -13,7 +13,7 @@ void main() {
 
   test('Unknown language falls back to English', () {
     final s = AppStrings('xx');
-    expect(s.home, 'Home');
+    expect(s.home, 'Nordins Website');
     expect(s.sermonLibrary, 'Sermon Library');
   });
 
@@ -46,7 +46,7 @@ void main() {
       expect(s.mentionsVerse('John 3:16').contains('John 3:16'), isTrue, reason: lang.code);
       // smoke: not accidentally returning the key name
       expect(s.home, isNot('home'));
-      expect(enKeys.home, 'Home');
+      expect(enKeys.home, 'Nordins Website');
     }
   });
 }

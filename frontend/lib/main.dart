@@ -58,7 +58,7 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
-/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Media /
+/// Phone/tablet sermon-library drawer. Wide enough for Nordins Website / Chat / Media /
 /// Events on one row without feeling oversized.
 const _compactSidebarWidth = 310.0;
 
