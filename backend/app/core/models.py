@@ -328,3 +328,43 @@ class UserChatHistory(models.Model):
 
     def __str__(self):
         return f"chat history for {self.user_id} ({len(self.entries or [])} chats)"
+
+
+class SiteBanner(models.Model):
+    """Singleton notice shown at the top of every public website page."""
+
+    MODE_DOWNTIME = "downtime"
+    MODE_CUSTOM = "custom"
+    MODE_CHOICES = [
+        (MODE_DOWNTIME, "Downtime notice"),
+        (MODE_CUSTOM, "Custom message"),
+    ]
+
+    enabled = models.BooleanField(default=False)
+    mode = models.CharField(
+        max_length=16,
+        choices=MODE_CHOICES,
+        default=MODE_DOWNTIME,
+    )
+    reason = models.CharField(max_length=300, blank=True, default="")
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    starts_label = models.CharField(max_length=80, blank=True, default="")
+    ends_label = models.CharField(max_length=80, blank=True, default="")
+    custom_message = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Website banner"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return "Website banner"
+
+    @classmethod
+    def load(cls):
+        banner, _created = cls.objects.get_or_create(pk=1)
+        return banner

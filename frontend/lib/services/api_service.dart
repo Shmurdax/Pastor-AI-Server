@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_application_1/models/church_event.dart';
+import 'package:flutter_application_1/site_banner.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/models/response_report.dart';
@@ -181,6 +182,8 @@ class ApiService {
     final rows = await _apiClient.listMediaVideos();
     return rows.map(MediaItem.fromApiJson).toList();
   }
+
+  Future<SiteBannerNotice> getSiteBanner() => _apiClient.getSiteBanner();
 
   Future<Map<String, dynamic>> getChatHistory() => _apiClient.getChatHistory();
 

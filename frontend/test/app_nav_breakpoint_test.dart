@@ -67,7 +67,7 @@ void main() {
     await pumpMedia(tester, const Size(1100, 900));
 
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('HOME')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('NORDINS WEBSITE')),
       findsOneWidget,
     );
     expect(
@@ -98,7 +98,7 @@ void main() {
     await pumpMedia(tester, const Size(1023, 900));
 
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('HOME')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('NORDINS WEBSITE')),
       findsOneWidget,
     );
     expect(
@@ -142,14 +142,14 @@ void main() {
   testWidgets('media header keeps nav links on a phone', (tester) async {
     await pumpMedia(tester, const Size(390, 844));
 
-    for (final label in ['HOME', 'CHAT', 'MEDIA', 'EVENTS']) {
+    for (final label in ['NORDINS WEBSITE', 'CHAT', 'MEDIA', 'EVENTS']) {
       expect(
         find.descendant(of: find.byType(AppBar), matching: find.text(label)),
         findsOneWidget,
       );
     }
 
-    final home = tester.getCenter(find.text('HOME'));
+    final home = tester.getCenter(find.text('NORDINS WEBSITE'));
     final chat = tester.getCenter(find.text('CHAT'));
     final media = tester.getCenter(find.text('MEDIA'));
     final events = tester.getCenter(find.text('EVENTS'));
@@ -159,8 +159,12 @@ void main() {
     expect((home.dy - events.dy).abs(), lessThan(2));
 
     const screenCenter = 390 / 2;
-    final linksCenter = (home.dx + events.dx) / 2;
-    expect((linksCenter - screenCenter).abs(), lessThan(16));
+    final links = tester.getRect(
+      find.descendant(of: find.byType(AppBar), matching: find.byType(FittedBox)),
+    );
+    expect((links.center.dx - screenCenter).abs(), lessThan(16));
+    expect(links.right, lessThan(390));
+    expect(links.left, greaterThan(0));
 
     final logo = tester.getCenter(
       find.descendant(of: find.byType(AppBar), matching: find.byType(Image)),
@@ -199,7 +203,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('HOME')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('NORDINS WEBSITE')),
       findsNothing,
     );
     expect(find.byKey(SermonLibrarySlidePanel.handleKey), findsOneWidget);

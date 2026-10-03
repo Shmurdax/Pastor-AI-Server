@@ -11,6 +11,7 @@ import 'package:flutter_application_1/chat_session_store.dart';
 import 'package:flutter_application_1/chat_stream.dart';
 import 'package:flutter_application_1/chat_stream_scroll.dart';
 import 'package:flutter_application_1/sermon_sources.dart';
+import 'package:flutter_application_1/site_banner.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
@@ -34,6 +35,7 @@ import 'package:flutter_application_1/widgets/chat_response_action_button.dart';
 import 'package:flutter_application_1/widgets/sermon_source_link.dart';
 import 'package:flutter_application_1/widgets/new_tab.dart';
 import 'package:flutter_application_1/widgets/sermon_library_slide_panel.dart';
+import 'package:flutter_application_1/widgets/site_status_banner.dart';
 import 'package:flutter_application_1/widgets/response_sources_dropdown.dart';
 import 'package:flutter_application_1/widgets/user_account_badge.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -56,7 +58,7 @@ const _layoutBottomInsetMobile = 15.0;
 /// Min height from [_buildInputArea] top padding through the send row (excludes bottom inset).
 const _chatInputBarBlockHeight = 74.0;
 const _prayerFabClearanceBelowWide = 1900.0;
-/// Phone/tablet sermon-library drawer. Wide enough for Home / Chat / Media /
+/// Phone/tablet sermon-library drawer. Wide enough for Nordins Website / Chat / Media /
 /// Events on one row without feeling oversized.
 const _compactSidebarWidth = 310.0;
 
@@ -102,7 +104,10 @@ void main() => runApp(
     );
 
 class SermonBrainApp extends StatelessWidget {
-  const SermonBrainApp({super.key});
+  const SermonBrainApp({super.key, this.loadSiteBanner});
+
+  /// When null, the banner is loaded from `GET /api/site-banner/`.
+  final Future<SiteBannerNotice> Function()? loadSiteBanner;
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +128,12 @@ class SermonBrainApp extends StatelessWidget {
         textTheme: GoogleFonts.figtreeTextTheme(),
       ),
       navigatorObservers: [AppPageNavigation.observer],
+      builder: (context, child) {
+        return SiteBannerFrame(
+          load: loadSiteBanner ?? () => ApiService().getSiteBanner(),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const AppAccessGate(),
     );
   }

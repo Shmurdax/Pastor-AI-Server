@@ -62,12 +62,12 @@ void main() {
     expect(find.text('Sermons').hitTestable(), findsOneWidget);
     expect(find.text('Sermon Library').hitTestable(), findsOneWidget);
     expect(find.text('Full Library').hitTestable(), findsOneWidget);
-    expect(find.text('HOME').hitTestable(), findsOneWidget);
+    expect(find.text('NORDINS WEBSITE').hitTestable(), findsOneWidget);
     expect(find.text('CHAT').hitTestable(), findsOneWidget);
     expect(find.text('EVENTS').hitTestable(), findsOneWidget);
     expect(find.text('MEDIA').hitTestable(), findsOneWidget);
 
-    final home = tester.getCenter(find.text('HOME'));
+    final home = tester.getCenter(find.text('NORDINS WEBSITE'));
     final chat = tester.getCenter(find.text('CHAT'));
     final events = tester.getCenter(find.text('EVENTS'));
     final media = tester.getCenter(find.text('MEDIA'));
@@ -85,7 +85,7 @@ void main() {
     expect(find.text('Sermons').hitTestable(), findsNothing);
     expect(find.text('Sermon Library').hitTestable(), findsNothing);
     expect(find.text('New Chat').hitTestable(), findsNothing);
-    expect(find.text('HOME').hitTestable(), findsOneWidget);
+    expect(find.text('NORDINS WEBSITE').hitTestable(), findsOneWidget);
     expect(find.text('CHAT').hitTestable(), findsOneWidget);
     expect(find.text('MEDIA').hitTestable(), findsOneWidget);
 

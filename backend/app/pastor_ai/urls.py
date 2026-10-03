@@ -43,6 +43,7 @@ from api.views import (
     ResponseReportDetailAPI,
 )
 from core.chat_history_views import ChatHistoryAPIView
+from core.site_banner import SiteBannerAPIView
 from core.views import (
     ChatAPIView,
     ChatWarmupAPIView,
@@ -77,6 +78,8 @@ urlpatterns = [
         RedirectView.as_view(url=f"/{_admin_slug}/", permanent=False),
     ),
     path(f"{_admin_slug}/", admin.site.urls),
+
+    path('api/site-banner/', SiteBannerAPIView.as_view(), name='site_banner_api'),
 
     # Auth — Flutter AuthService paths
     path('api/auth/register/', RegisterView.as_view()),

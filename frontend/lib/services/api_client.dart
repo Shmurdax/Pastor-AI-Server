@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/chat_stream.dart';
+import 'package:flutter_application_1/site_banner.dart';
 import 'package:flutter_application_1/models/church_event.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
 import 'package:flutter_application_1/models/response_report.dart';
@@ -579,6 +581,35 @@ class ApiClient {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final results = body['results'] as List<dynamic>? ?? [];
     return results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Public status bar. Hidden when the admin toggle is off or the request fails.
+  ///
+  /// Same-origin web builds call `/api/site-banner/`. Other platforms need an
+  /// absolute [API_BASE_URL]; otherwise the banner stays hidden.
+  Future<SiteBannerNotice> getSiteBanner() async {
+    final uri = Uri.parse(_resolveUrl('/api/site-banner/'));
+    if ((!uri.hasScheme || uri.host.isEmpty) && !kIsWeb) {
+      return SiteBannerNotice.hidden;
+    }
+    try {
+      final res = await _client
+          .get(
+            uri,
+            headers: {
+              ..._headers(),
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return SiteBannerNotice.hidden;
+      }
+      return SiteBannerNotice.fromJson(jsonDecode(res.body));
+    } catch (_) {
+      return SiteBannerNotice.hidden;
+    }
   }
 
   /// Durable sidebar history for the signed-in account (server backup).

@@ -26,6 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.persist_db import dump_persistent_postgres
+from core.site_banner import site_banner_html
 
 from .models import Profile
 from .serializers import UserSerializer
@@ -86,18 +87,22 @@ def _checkout_consent_kwargs(period: str, app_url: str = "") -> dict:
 
 def subscription_terms_view(_request):
     """Public terms page Stripe Checkout can link from the consent checkbox."""
+    banner = site_banner_html()
     return HttpResponse(
-        """<!doctype html>
+        f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nordin's AI Premium subscription terms</title>
 </head>
-<body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5;">
+<body style="font-family: system-ui, sans-serif; margin: 0; line-height: 1.5;">
+  {banner}
+  <main style="max-width: 40rem; margin: 2rem auto; padding: 0 1rem;">
   <h1>Nordin's AI Premium subscription</h1>
   <p>Premium is a recurring paid subscription. The monthly plan is $15 per month. The yearly plan is $150 per year.</p>
   <p>Your subscription renews automatically until you cancel. After you cancel, you keep Premium until the end of the current billing period.</p>
+  </main>
 </body>
 </html>
 """,
