@@ -1,0 +1,5 @@
+SHA=c1f3c7d48ef4795089c215423802867f40d8b9b9
+HEALTH=ok
+ISOLATION=ok
+GPU_SMOKE=0
+MIGRATIONS=backend/app/core/migrations/0017_sitebanner.py 
