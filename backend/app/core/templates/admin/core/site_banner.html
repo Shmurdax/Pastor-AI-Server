@@ -1,0 +1,227 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .site-banner-page {
+    max-width: 760px;
+  }
+  .site-banner-page h1 {
+    margin-top: 0;
+  }
+  .site-banner-status {
+    margin: 0 0 8px;
+    font-weight: 700;
+  }
+  .site-banner-preview {
+    background: #FFD100;
+    color: #475569;
+    text-align: center;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 0 0 20px;
+  }
+  .site-banner-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    margin: 0 0 16px;
+  }
+  .site-banner-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 0 0 16px;
+    padding: 0;
+    border: 0;
+  }
+  .site-banner-modes label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .site-banner-sentence {
+    font-size: 15px;
+    line-height: 2.4;
+    margin: 0 0 8px;
+  }
+  .site-banner-sentence input[type="text"] {
+    min-width: 16rem;
+    max-width: 100%;
+    margin: 0 6px;
+  }
+  .site-banner-sentence input[type="datetime-local"] {
+    margin: 0 6px;
+  }
+  .site-banner-custom label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .site-banner-custom textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .site-banner-help {
+    color: var(--body-quiet-color, #666);
+    font-size: 13px;
+    margin: 8px 0 16px;
+  }
+  .banner-fields[data-mode="downtime"] .custom-only {
+    display: none;
+  }
+  .banner-fields[data-mode="custom"] .downtime-only {
+    display: none;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="site-banner-page">
+  <h1>Website banner</h1>
+  <p>
+    Adds a hazard-yellow bar at the top of every page on the public website.
+    Turn it off to hide the bar everywhere.
+  </p>
+  <p class="site-banner-status" id="banner-status">{{ form.status_label }}</p>
+  <div class="site-banner-preview" id="banner-preview" role="status">{{ form.preview }}</div>
+
+  <form method="post" id="site-banner-form">
+    {% csrf_token %}
+    <label class="site-banner-toggle">
+      <input type="checkbox" name="enabled" id="banner-enabled"{% if form.enabled %} checked{% endif %}>
+      Show banner on the website
+    </label>
+
+    <div class="banner-fields" id="banner-fields" data-mode="{{ form.mode }}">
+      <fieldset class="site-banner-modes">
+        <legend class="sr-only" style="position:absolute;left:-9999px;">Message type</legend>
+        <label>
+          <input type="radio" name="mode" value="downtime"{% if form.mode != "custom" %} checked{% endif %}>
+          Downtime notice
+        </label>
+        <label>
+          <input type="radio" name="mode" value="custom"{% if form.mode == "custom" %} checked{% endif %}>
+          Custom message
+        </label>
+      </fieldset>
+
+      <div class="downtime-only">
+        <p class="site-banner-sentence">
+          Due to
+          <input type="text" name="reason" id="banner-reason" maxlength="300" value="{{ form.reason }}" placeholder="scheduled maintenance" autocomplete="off">
+          the service will be down from
+          <input type="datetime-local" name="starts_local" id="starts-local" value="{{ form.starts_local }}" data-utc="{{ form.starts_iso }}">
+          to
+          <input type="datetime-local" name="ends_local" id="ends-local" value="{{ form.ends_local }}" data-utc="{{ form.ends_iso }}">.
+        </p>
+        <input type="hidden" name="starts_at" id="starts-at" value="">
+        <input type="hidden" name="ends_at" id="ends-at" value="">
+        <input type="hidden" name="starts_label" id="starts-label" value="">
+        <input type="hidden" name="ends_label" id="ends-label" value="">
+        <p class="site-banner-help">
+          The clock time you pick is the time shown on the website.
+        </p>
+      </div>
+
+      <div class="custom-only site-banner-custom">
+        <label for="custom-message">Message</label>
+        <textarea name="custom_message" id="custom-message" maxlength="500" rows="4">{{ form.custom_message }}</textarea>
+        <p class="site-banner-help">
+          This text replaces the downtime sentence and is shown as written.
+        </p>
+      </div>
+    </div>
+
+    <button type="submit" class="default">Save banner</button>
+  </form>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("site-banner-form");
+  var fields = document.getElementById("banner-fields");
+  var preview = document.getElementById("banner-preview");
+  if (!form || !fields || !preview) return;
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+
+  function utcToLocalInput(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+      + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  function labelFromLocal(value) {
+    if (!value) return "";
+    var d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hourCycle: "h12"
+    }).format(d).replace(/\u202f/g, " ").replace(/\u00a0/g, " ");
+  }
+
+  document.querySelectorAll("[data-utc]").forEach(function (el) {
+    var local = utcToLocalInput(el.getAttribute("data-utc"));
+    if (local) el.value = local;
+  });
+
+  function selectedMode() {
+    var picked = form.querySelector('input[name="mode"]:checked');
+    return picked ? picked.value : "downtime";
+  }
+
+  function syncMode() {
+    fields.setAttribute("data-mode", selectedMode());
+    updatePreview();
+  }
+
+  function updatePreview() {
+    var text = "Fill in the message to preview the banner.";
+    if (selectedMode() === "custom") {
+      var custom = (document.getElementById("custom-message").value || "").trim();
+      if (custom) text = custom;
+    } else {
+      var reason = (document.getElementById("banner-reason").value || "").trim() || "…";
+      var start = labelFromLocal(document.getElementById("starts-local").value) || "…";
+      var end = labelFromLocal(document.getElementById("ends-local").value) || "…";
+      text = "Due to " + reason + " the service will be down from " + start + " to " + end + ".";
+    }
+    preview.textContent = text;
+  }
+
+  function writeInstant(localId, isoId, labelId) {
+    var local = document.getElementById(localId);
+    var iso = document.getElementById(isoId);
+    var label = document.getElementById(labelId);
+    if (!local.value) {
+      iso.value = "";
+      label.value = "";
+      return;
+    }
+    var d = new Date(local.value);
+    if (Number.isNaN(d.getTime())) return;
+    iso.value = d.toISOString();
+    label.value = labelFromLocal(local.value);
+  }
+
+  form.addEventListener("submit", function () {
+    writeInstant("starts-local", "starts-at", "starts-label");
+    writeInstant("ends-local", "ends-at", "ends-label");
+  });
+  form.addEventListener("change", syncMode);
+  form.addEventListener("input", updatePreview);
+  syncMode();
+})();
+</script>
+{% endblock %}

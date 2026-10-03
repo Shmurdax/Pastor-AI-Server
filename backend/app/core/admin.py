@@ -39,6 +39,7 @@ from .video_job_queue import video_job_has_staging
 from .website_crawl.config import ALLOWED_DOMAINS
 from .website_crawl.pipeline import enqueue_website_crawl_job
 from api.mailchimp_admin import mailchimp_export_view
+from .site_banner import site_banner_admin_view
 
 
 STALE_INGESTION_JOB_MINUTES = 30
@@ -972,6 +973,11 @@ def _get_urls():
             name="core_mailchimp_export",
         ),
         path(
+            "core/site-banner/",
+            admin.site.admin_view(site_banner_admin_view),
+            name="core_site_banner",
+        ),
+        path(
             "core/ingestion-jobs/status/",
             admin.site.admin_view(_admin_ingestion_jobs_status_view),
             name="core_ingestion_jobs_status",
@@ -1026,6 +1032,7 @@ PASTORAL_OBJECT_NAMES = {
     "ResponseReport",
     "ChurchEvent",
     "MailchimpExportTool",
+    "SiteBannerTool",
 }
 CONTENT_TOOL_OBJECT_NAMES = {
     "CoreIngestionTool",
@@ -1051,6 +1058,14 @@ def _pastoral_tool_entries():
             "name": "Mailchimp audience",
             "object_name": "MailchimpExportTool",
             "admin_url": reverse("admin:core_mailchimp_export"),
+            "add_url": None,
+            "view_only": True,
+            "perms": {"add": False, "change": True, "delete": False, "view": True},
+        },
+        {
+            "name": "Website banner",
+            "object_name": "SiteBannerTool",
+            "admin_url": reverse("admin:core_site_banner"),
             "add_url": None,
             "view_only": True,
             "perms": {"add": False, "change": True, "delete": False, "view": True},
