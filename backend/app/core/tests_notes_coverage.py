@@ -7,6 +7,7 @@ from core.notes_coverage import (
     COVERAGE_PARTIAL,
     coverage_subject_tokens,
     focus_retrieved_notes,
+    focused_sermon_matches,
     query_changes_locked_sermon,
     select_reference_notes,
     sermon_lines_for_answer,
@@ -222,5 +223,24 @@ class FocusRetrievedNotesTests(unittest.TestCase):
                 "Say more about that.",
                 "Explain the parable of the prodigal son from the sermon notes.",
                 sermon,
+            )
+        )
+
+    def test_one_mention_does_not_count_as_teaching_the_subject(self):
+        aside = _doc(
+            "Jonah ran once. We must wait on God in the wilderness. "
+            "Wait on God through the trial. Wait on God again."
+        )
+        self.assertFalse(
+            focused_sermon_matches(
+                "How does Pastor Don teach the story of Jonah running from the Lord?",
+                [aside],
+            )
+        )
+        giants = _doc("David faced Goliath the giant. " * 4)
+        self.assertTrue(
+            focused_sermon_matches(
+                "Tell the story of David and Goliath from the sermon notes.",
+                [giants],
             )
         )

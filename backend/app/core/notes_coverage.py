@@ -223,8 +223,13 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
 
 
 def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
-    """True when the chosen sermon actually names the question's subject."""
-    tokens = coverage_subject_tokens(query)
+    """True when the chosen sermon teaches the subject, not merely names it once.
+
+    The rarest topic word that shows up must be repeated, and most of the longer
+    topic words must appear at least once. A single aside about Jonah does not
+    qualify. The same count is used for every question.
+    """
+    tokens = [token for token in coverage_subject_tokens(query) if len(token) >= 5]
     documents = [doc for doc in (docs or []) if doc is not None]
     if not documents:
         return False
@@ -233,7 +238,15 @@ def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
     words = normalize_grounding_text(
         " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
     ).split()
-    return any(_token_count(words, token) for token in tokens)
+    counts = [(token, _token_count(words, token)) for token in tokens]
+    present = [count for _token, count in counts if count > 0]
+    if not present or min(present) < 3:
+        return False
+    longer = [token for token in tokens if len(token) >= 6]
+    if not longer:
+        return True
+    found = sum(1 for token in longer if _token_count(words, token) > 0)
+    return found / len(longer) >= 0.5
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
