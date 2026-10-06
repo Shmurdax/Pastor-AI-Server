@@ -222,31 +222,78 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
     return present, hits
 
 
-def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
-    """True when the chosen sermon teaches the subject, not merely names it once.
+# Question wording that is not the subject. Dropped only when deciding whether
+# a sermon teaches the question, so "problems people cannot beat" does not hide Goliath.
+_MATCH_GENERIC = frozenset(
+    {
+        "problems",
+        "problem",
+        "cannot",
+        "people",
+        "running",
+        "practice",
+        "practical",
+        "quiet",
+        "illness",
+        "person",
+        "advantage",
+        "believer",
+        "fear",
+        "louder",
+        "walking",
+        "counts",
+        "supposed",
+        "exactly",
+        "leave",
+        "water",
+        "single",
+        "teenager",
+        "parent",
+        "table",
+        "worship",
+        "extra",
+        "offering",
+        "afford",
+        "power",
+        "obey",
+        "happens",
+        "receive",
+        "create",
+        "house",
+        "lines",
+        "chapter",
+        "general",
+        "fight",
+        "using",
+        "talks",
+        "story",
+        "notes",
+        "sermon",
+        "teach",
+        "teaches",
+        "pastor",
+    }
+)
 
-    The rarest topic word that shows up must be repeated, and most of the longer
-    topic words must appear at least once. A single aside about Jonah does not
-    qualify. The same count is used for every question.
+
+def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
+    """True when the chosen sermon repeats the question's subject.
+
+    Generic question words are ignored. The longest remaining word must occur
+    at least three times, so one aside that names Jonah does not qualify.
     """
     tokens = [token for token in coverage_subject_tokens(query) if len(token) >= 5]
+    specific = [token for token in tokens if token not in _MATCH_GENERIC] or tokens
     documents = [doc for doc in (docs or []) if doc is not None]
     if not documents:
         return False
-    if not tokens:
+    if not specific:
         return True
     words = normalize_grounding_text(
         " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
     ).split()
-    counts = [(token, _token_count(words, token)) for token in tokens]
-    present = [count for _token, count in counts if count > 0]
-    if not present or min(present) < 3:
-        return False
-    longer = [token for token in tokens if len(token) >= 6]
-    if not longer:
-        return True
-    found = sum(1 for token in longer if _token_count(words, token) > 0)
-    return found / len(longer) >= 0.5
+    subject = max(specific, key=len)
+    return _token_count(words, subject) >= 3
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
