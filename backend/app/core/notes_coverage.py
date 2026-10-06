@@ -222,6 +222,43 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
     return present, hits
 
 
+def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
+    """True when the chosen sermon actually names the question's subject."""
+    tokens = coverage_subject_tokens(query)
+    documents = [doc for doc in (docs or []) if doc is not None]
+    if not documents:
+        return False
+    if not tokens:
+        return True
+    words = normalize_grounding_text(
+        " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
+    ).split()
+    return any(_token_count(words, token) for token in tokens)
+
+
+def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
+    """True when a later turn names a subject the locked sermon does not teach.
+
+    Short follow-ups stay. A new subject is a majority of the question's topic
+    words, each long enough to be a topic, and absent from both the sermon and
+    the opening question. This is the same rule for every story.
+    """
+    tokens = coverage_subject_tokens(query)
+    if not tokens or not (sermon_text or "").strip():
+        return False
+    sermon_words = normalize_grounding_text(sermon_text).split()
+    opening_words = normalize_grounding_text(opening_query).split()
+    novel = [
+        token
+        for token in tokens
+        if not _token_count(sermon_words, token) and not _token_count(opening_words, token)
+    ]
+    topical = [token for token in novel if len(token) >= 5]
+    if not topical:
+        return False
+    return len(topical) / len(tokens) >= 0.6
+
+
 def focus_retrieved_notes(
     query: str,
     docs: Iterable[Any] | None,

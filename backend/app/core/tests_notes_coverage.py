@@ -7,6 +7,7 @@ from core.notes_coverage import (
     COVERAGE_PARTIAL,
     coverage_subject_tokens,
     focus_retrieved_notes,
+    query_changes_locked_sermon,
     select_reference_notes,
     sermon_lines_for_answer,
 )
@@ -189,3 +190,37 @@ class FocusRetrievedNotesTests(unittest.TestCase):
         self.assertIn("power of God", lines)
         self.assertLess(lines.find("name Goliath"), lines.find("untamed tongue"))
         self.assertLess(lines.find("untamed tongue"), lines.find("power of God"))
+
+    def test_followup_stays_unless_the_new_subject_is_absent(self):
+        sermon = (
+            "The older brother stayed outside. The father ran to the younger son. "
+            "A husband who will not love his wife sins against the marriage covenant."
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "What about the older brother?",
+                "Explain the parable of the prodigal son from the sermon notes.",
+                sermon,
+            )
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "What should a husband practice this week?",
+                "Create sermon notes on marriage as a covenant.",
+                sermon,
+            )
+        )
+        self.assertTrue(
+            query_changes_locked_sermon(
+                "Now tell me what Pastor Don teaches about Pentecost.",
+                "Create sermon notes on marriage as a covenant.",
+                sermon,
+            )
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "Say more about that.",
+                "Explain the parable of the prodigal son from the sermon notes.",
+                sermon,
+            )
+        )

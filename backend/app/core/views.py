@@ -73,12 +73,15 @@ from .teaching_claims import (
     system_notes_text,
 )
 from .notes_coverage import (
-    COVERAGE_PARTIAL,
+    COVERAGE_FULL,
     focus_retrieved_notes,
+    focused_sermon_matches,
+    query_changes_locked_sermon,
     select_reference_notes,
     sermon_lines_for_answer,
 )
 from .chat_retrieval import (
+    chunk_text,
     format_reference_notes,
     is_bible_source,
     is_video_chunk,
@@ -97,6 +100,8 @@ from .qdrant_utils import ensure_sermon_collection, get_collection_name, get_qdr
 from .storage_paths import ingested_media_path
 
 logger = logging.getLogger(__name__)
+GREETING_REPLY = "Hello. I can help you study Pastor Don and Susan's sermon notes."
+NO_SERMON_REPLY = "I do not have a sermon note that covers this question."
 PUBLIC_API_KEY = os.getenv("PUBLIC_API_KEY", "").strip()
 SESSION_SCOPE_SALT = os.getenv("SESSION_SCOPE_SALT", settings.SECRET_KEY)
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "24"))
@@ -391,6 +396,48 @@ def _immediate_sse(payload: dict):
     yield _sse(done)
 
 
+def _file_hashes(docs) -> list[str]:
+    found = []
+    for doc in docs or []:
+        file_hash = str((getattr(doc, "metadata", None) or {}).get("file_hash") or "").strip()
+        if file_hash and file_hash not in found:
+            found.append(file_hash)
+    return found
+
+
+def _focused_sermon_docs(vectorstore, client, collection_name, search_text):
+    """Search, keep the sermon that teaches the question, then load that file."""
+    candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
+    scored_hits = search_queries_on_store(
+        vectorstore,
+        [search_text],
+        k_per_query=candidate_k,
+    )
+    scored_hits = rerank_scored_hits(search_text, scored_hits)
+    docs, coverage = select_reference_notes(
+        search_text,
+        scored_hits,
+        limit=RETRIEVAL_K,
+    )
+    docs = focus_retrieved_notes(search_text, docs)
+    hashes = _file_hashes(docs)
+    if hashes:
+        try:
+            expanded = lookup_chunks_by_file_hashes(
+                client,
+                collection_name,
+                hashes[:1],
+                query=search_text,
+                limit_per_file=10,
+            )
+        except Exception:
+            logger.exception("Could not load the rest of the matching sermon")
+            expanded = []
+        if expanded:
+            docs = expanded
+    return docs, coverage
+
+
 def _client_fingerprint(request) -> str:
     """Stable-ish anon fingerprint.
 
@@ -659,88 +706,107 @@ class ChatAPIView(APIView):
 
             search_text = retrieval_search_text(user_query_llm)
             search_queries = [search_text]
-            candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
             logger.debug(
-                "Searching Qdrant with %s queries (k=%s each, session=%s): %s",
-                len(search_queries),
-                candidate_k,
+                "Searching Qdrant (session=%s): %s",
                 session_id[:18],
                 search_queries,
             )
-            scored_hits = search_queries_on_store(
-                vectorstore,
-                search_queries,
-                k_per_query=candidate_k,
-            )
-            scored_hits = rerank_scored_hits(
-                search_text,
-                scored_hits,
-            )
-            docs, notes_coverage = select_reference_notes(
-                search_text,
-                scored_hits,
-                limit=RETRIEVAL_K,
-            )
-            docs = focus_retrieved_notes(search_text, docs)
-            if docs and not is_greeting_turn(user_query_llm):
-                # Teach the matching sermon, not only the one window the
-                # reranker happened to rank first.
-                file_hashes = []
-                for doc in docs:
-                    file_hash = str(
-                        (getattr(doc, "metadata", None) or {}).get("file_hash") or ""
-                    ).strip()
-                    if file_hash and file_hash not in file_hashes:
-                        file_hashes.append(file_hash)
-                if file_hashes:
-                    try:
-                        expanded = lookup_chunks_by_file_hashes(
-                            client,
-                            collection_name,
-                            file_hashes[:1],
-                            query=search_text,
-                            limit_per_file=10,
-                        )
-                    except Exception:
-                        logger.exception("Could not load the rest of the matching sermon")
-                        expanded = []
-                    if expanded:
-                        docs = expanded
+            scripture_docs = []
+            scripture_lane = ""
+            context = ""
+            direct_answer = ""
             if is_greeting_turn(user_query_llm):
-                # Retrieval still ran. A greeting does not preach those sermons.
                 docs = []
-                scripture_docs = []
-                scripture_lane = ""
-                context = ""
+                notes_coverage = "none"
+                direct_answer = GREETING_REPLY
             else:
-                scripture_docs, scripture_lane = attach_supporting_scripture(
-                    search_text,
-                    docs,
-                    notes_coverage,
+                docs, notes_coverage = _focused_sermon_docs(
+                    vectorstore,
                     client,
                     collection_name,
-                    embeddings,
+                    search_text,
                 )
-                context = sermon_lines_for_answer(search_text, docs)
-                scripture_block = ""
-                if scripture_docs:
-                    from .scripture_support import format_nkjv_scripture_block
-
-                    scripture_block = format_nkjv_scripture_block(scripture_docs)
-                if scripture_block:
-                    context = (
-                        f"{context}\n\n{scripture_block}".strip()
-                        if context
-                        else scripture_block
+                if not focused_sermon_matches(user_query_llm, docs):
+                    docs = []
+                    notes_coverage = "none"
+                opening = ""
+                if first_row is not None:
+                    opening = (first_row.user_query or "").strip()
+                stayed_on_opening = False
+                if (
+                    opening
+                    and opening.lower() != user_query_stored.lower()
+                    and not is_greeting_turn(opening)
+                ):
+                    opening_search = retrieval_search_text(opening)
+                    locked_docs, _locked_coverage = _focused_sermon_docs(
+                        vectorstore,
+                        client,
+                        collection_name,
+                        opening_search,
                     )
-                if not context:
-                    context = format_reference_notes(
+                    locked_text = "\n".join(
+                        chunk_text(doc) for doc in locked_docs if chunk_text(doc)
+                    )
+                    if locked_docs and not query_changes_locked_sermon(
+                        user_query_llm,
+                        opening,
+                        locked_text,
+                    ):
+                        stayed_on_opening = True
+                        hashes = _file_hashes(locked_docs)
+                        stayed = []
+                        if hashes:
+                            try:
+                                stayed = lookup_chunks_by_file_hashes(
+                                    client,
+                                    collection_name,
+                                    hashes[:1],
+                                    query=search_text,
+                                    limit_per_file=10,
+                                )
+                            except Exception:
+                                logger.exception("Could not keep the opening sermon")
+                                stayed = []
+                        docs = stayed or locked_docs
+                        notes_coverage = COVERAGE_FULL
+                if not stayed_on_opening and notes_coverage != COVERAGE_FULL:
+                    # Nearest sermons that never name the subject are not a license
+                    # to teach from memory or from an unrelated file.
+                    docs = []
+                    direct_answer = NO_SERMON_REPLY
+                elif not docs:
+                    direct_answer = NO_SERMON_REPLY
+                else:
+                    line_query = search_text
+                    if stayed_on_opening and opening:
+                        line_query = retrieval_search_text(f"{opening} {user_query_llm}")
+                    scripture_docs, scripture_lane = attach_supporting_scripture(
+                        line_query,
                         docs,
-                        _doc_source_label,
-                        max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
-                        preserve_order=True,
-                        scripture_docs=scripture_docs,
+                        notes_coverage,
+                        client,
+                        collection_name,
+                        embeddings,
                     )
+                    context = sermon_lines_for_answer(line_query, docs)
+                    if context and scripture_docs:
+                        from .scripture_support import format_nkjv_scripture_block
+
+                        scripture_block = format_nkjv_scripture_block(scripture_docs)
+                        if scripture_block:
+                            context = f"{context}\n\n{scripture_block}".strip()
+                    if not context:
+                        context = format_reference_notes(
+                            docs,
+                            _doc_source_label,
+                            max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
+                            preserve_order=True,
+                            scripture_docs=scripture_docs,
+                        )
+                    if not (context or "").strip():
+                        docs = []
+                        direct_answer = NO_SERMON_REPLY
             logger.warning(
                 "Note coverage=%s docs=%s scripture=%s lane=%s query=%s",
                 notes_coverage,
@@ -787,17 +853,9 @@ class ChatAPIView(APIView):
             biblical_names = find_biblical_character_names(user_query_llm)
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
-            coverage_line = ""
-            if notes_coverage == COVERAGE_PARTIAL and not is_greeting_turn(user_query_llm):
-                coverage_line = (
-                    "\nThe attached notes are the nearest sermons, not a confirmed match. "
-                    "If they do not teach this question, say the notes do not cover it, "
-                    "then teach only what they do say. Do not invent historians or book citations.\n"
-                )
             system_content = (
                 build_chat_system_prompt(biblical_names=biblical_names)
                 + language_reply_instruction("en")
-                + coverage_line
                 + "\nREFERENCE NOTES:\n{context}"
             )
             prompt_notes = system_notes_text(user_query_llm, context)
@@ -850,6 +908,27 @@ class ChatAPIView(APIView):
                 "target_message": target_message,
                 "topic_query": topic_query,
             }
+            if direct_answer:
+                if live_history:
+                    live_history.publish(direct_answer, streaming=False, sources=[], force=True)
+                saved_message = _save_ai_response(
+                    regenerate=regenerate,
+                    target_message=target_message,
+                    session_id=session_id,
+                    chat_user=chat_user,
+                    user_query_stored=user_query_stored,
+                    answer=direct_answer,
+                )
+                prepared = {
+                    "kind": "final",
+                    "payload": _chat_payload(
+                        direct_answer,
+                        sources=[],
+                        message_id=None if saved_message is None else saved_message.id,
+                    ),
+                    "docs": [],
+                    "target_message": target_message,
+                }
 
         except Exception as exc:
             logger.exception("Error in Memory-RAG loop: %s", str(exc))
