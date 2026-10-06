@@ -276,24 +276,36 @@ _MATCH_GENERIC = frozenset(
 )
 
 
+def primary_subject_token(query: str) -> str:
+    """Longest topic word that is not generic question wording."""
+    tokens = [token for token in coverage_subject_tokens(query) if len(token) >= 5]
+    specific = [token for token in tokens if token not in _MATCH_GENERIC]
+    pool = specific or tokens
+    if not pool:
+        return ""
+    return max(pool, key=len)
+
+
+def subject_token_count(text: str, token: str) -> int:
+    if not token:
+        return 0
+    return _token_count(normalize_grounding_text(text).split(), token)
+
+
 def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
     """True when the chosen sermon repeats the question's subject.
 
     Generic question words are ignored. The longest remaining word must occur
     at least three times, so one aside that names Jonah does not qualify.
     """
-    tokens = [token for token in coverage_subject_tokens(query) if len(token) >= 5]
-    specific = [token for token in tokens if token not in _MATCH_GENERIC] or tokens
     documents = [doc for doc in (docs or []) if doc is not None]
     if not documents:
         return False
-    if not specific:
+    subject = primary_subject_token(query)
+    if not subject:
         return True
-    words = normalize_grounding_text(
-        " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
-    ).split()
-    subject = max(specific, key=len)
-    return _token_count(words, subject) >= 3
+    text = " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
+    return subject_token_count(text, subject) >= 3
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:

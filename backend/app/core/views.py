@@ -76,11 +76,14 @@ from .notes_coverage import (
     COVERAGE_FULL,
     focus_retrieved_notes,
     focused_sermon_matches,
+    primary_subject_token,
     query_changes_locked_sermon,
+    subject_token_count,
     select_reference_notes,
     sermon_lines_for_answer,
 )
 from .chat_retrieval import (
+    chunk_source_key,
     chunk_text,
     format_reference_notes,
     is_bible_source,
@@ -419,23 +422,61 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text):
         scored_hits,
         limit=RETRIEVAL_K,
     )
-    docs = focus_retrieved_notes(search_text, docs)
-    hashes = _file_hashes(docs)
-    if hashes:
-        try:
-            expanded = lookup_chunks_by_file_hashes(
-                client,
-                collection_name,
-                hashes[:1],
-                query=search_text,
-                limit_per_file=10,
-            )
-        except Exception:
-            logger.exception("Could not load the rest of the matching sermon")
-            expanded = []
-        if expanded:
-            docs = expanded
-    return docs, coverage
+    subject = primary_subject_token(search_text)
+    if not subject:
+        docs = focus_retrieved_notes(search_text, docs)
+        hashes = _file_hashes(docs)
+        if hashes:
+            try:
+                expanded = lookup_chunks_by_file_hashes(
+                    client,
+                    collection_name,
+                    hashes[:1],
+                    query=search_text,
+                    limit_per_file=10,
+                )
+            except Exception:
+                logger.exception("Could not load the rest of the matching sermon")
+                expanded = []
+            if expanded:
+                docs = expanded
+        return docs, coverage
+
+    groups: dict[str, list] = {}
+    for doc in docs:
+        hashes = _file_hashes([doc])
+        key = hashes[0] if hashes else chunk_source_key(doc)
+        groups.setdefault(key, []).append(doc)
+    ranked = []
+    for key, group in groups.items():
+        text = "\n".join(chunk_text(doc) for doc in group if chunk_text(doc))
+        ranked.append((subject_token_count(text, subject), key, group))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    for _count, _key, group in ranked:
+        hashes = _file_hashes(group)
+        expanded = []
+        if hashes:
+            try:
+                expanded = lookup_chunks_by_file_hashes(
+                    client,
+                    collection_name,
+                    hashes[:1],
+                    query=search_text,
+                    limit_per_file=16,
+                )
+            except Exception:
+                logger.exception("Could not load the rest of the matching sermon")
+                expanded = []
+        chosen = expanded or group
+        total = subject_token_count(
+            "\n".join(chunk_text(doc) for doc in chosen if chunk_text(doc)),
+            subject,
+        )
+        if total >= 3:
+            logger.warning("Teaching sermon token=%s count=%s", subject, total)
+            return chosen, COVERAGE_FULL
+    logger.warning("No sermon repeats token=%s", subject)
+    return [], "none"
 
 
 def _client_fingerprint(request) -> str:
