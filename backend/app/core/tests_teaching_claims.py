@@ -132,7 +132,8 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertNotIn("Teach these numbered points in order", block)
         self.assertNotIn("first sentence must paraphrase point 1", block)
         self.assertIn("Do not invent a yes/no", block)
-        self.assertIn("Romans 14 liberty", block)
+        self.assertNotIn("Romans 14 liberty", block)
+        self.assertIn("Do not add a position that is not written in the points", block)
         steer = claim_repair_steer(claims)
         self.assertIn("do not restart", steer.lower())
         self.assertIn("let's continue", steer.lower())
@@ -167,76 +168,61 @@ class TeachingClaimTests(unittest.TestCase):
         )
         self.assertFalse(looks_like_sermon_outline_request("What does Pastor Don teach about hope?"))
 
-    def test_generation_user_prompt_locks_drink_and_gay_theses(self):
+    def test_generation_user_prompt_teaches_the_notes_for_every_question(self):
         from core.teaching_claims import format_generation_user_prompt
 
-        drink = format_generation_user_prompt(
-            "Can Christians drink?",
-            [
-                "Total abstinence from alcoholic beverages is the only acceptable way "
-                "of life for the Christian.",
-                "Alcoholism is a sin; it is not a sickness or a disease!",
-            ],
+        notes = (
+            "Total abstinence from alcoholic beverages is the only acceptable way "
+            "of life for the Christian. Alcoholism is a sin; it is not a sickness or a disease!"
         )
-        self.assertIn("Can Christians drink?", drink)
-        self.assertIn("only acceptable way", drink)
-        self.assertIn("Alcoholism is a sin", drink)
-        self.assertIn("Romans 14 liberty", drink)
-        self.assertIn("Do not say drinking is a personal decision", drink)
-        self.assertIn("Cover every numbered point", drink)
-        self.assertIn("Paraphrase every numbered sermon point", drink)
-        self.assertIn("Mix short paragraphs and bullets", drink)
-        self.assertNotIn("Start with a paraphrase of point 1", drink)
-        self.assertIn("User question:", drink)
-
+        drink = format_generation_user_prompt("Can Christians drink?", notes)
         outline = format_generation_user_prompt(
             "Give a 3 point sermon outline on marriage",
-            [
-                "Marriage is a covenant, not a contract.",
-                "A wife who does not meet her husband's needs sins against God.",
-                "Flexibility is key in disagreements.",
-            ],
+            "Marriage is a covenant, not a contract. A wife who does not meet her husband's needs sins against God.",
         )
-        self.assertIn("Give a 3 point sermon outline on marriage", outline)
-        self.assertIn("The user asked for an outline", outline)
-        self.assertIn("Markdown outline", outline)
-        self.assertIn("If they asked for N points, use N", outline)
-        self.assertIn("Do not invent extra points", outline)
-        self.assertIn("do not cover that passage", outline)
-        self.assertIn("Do not teach that passage from memory", outline)
-        self.assertIn("covenant", outline)
-        empty_outline = format_generation_user_prompt(
-            "Create sermon notes on grace. Use Titus 2.",
-            [],
-        )
-        self.assertIn("did not yield teaching points", empty_outline)
-        self.assertIn("Do not answer from general Christian knowledge", empty_outline)
-
         gay = format_generation_user_prompt(
             "Can gay people be Christians?",
-            [
-                "We must love the homosexual but we are to stand firmly against the lifestyle.",
-            ],
+            "We must love the homosexual but we are to stand firmly against the lifestyle.",
         )
+        for prompt in (drink, outline, gay):
+            self.assertIn("SERMON NOTES:", prompt)
+            self.assertIn("Answer the question from the sermon notes below", prompt)
+            self.assertIn("Do not blend a different sermon", prompt)
+            self.assertNotIn("Paraphrase every numbered sermon point", prompt)
+            self.assertNotIn("Romans 14 liberty", prompt)
+            self.assertNotIn("LGBTQ inclusion", prompt)
+            self.assertNotIn("The user asked for an outline", prompt)
+            self.assertNotIn("If they asked for N points", prompt)
+        self.assertIn("only acceptable way", drink)
+        self.assertIn("Can Christians drink?", drink)
+        self.assertIn("covenant", outline)
+        self.assertIn("Give a 3 point sermon outline on marriage", outline)
         self.assertIn("stand firmly", gay)
-        self.assertIn("LGBTQ inclusion", gay)
-        self.assertIn("Mark 12", gay)
-        self.assertIn("Do not begin by saying gay people can be Christians", gay)
-        self.assertIn("Do not write Certainly", gay)
-        self.assertIn("Cover every numbered point", gay)
+        self.assertIn("User question:", drink)
 
-        empty = format_generation_user_prompt("Can Christians drink?", [])
-        self.assertIn("did not yield teaching points", empty)
+        empty = format_generation_user_prompt("Create sermon notes on grace. Use Titus 2.", "")
+        self.assertIn("No sermon notes were retrieved", empty)
+        self.assertIn("Do not answer from general Christian knowledge", empty)
+        self.assertNotIn("SERMON NOTES:", empty)
+        drink_empty = format_generation_user_prompt("Can Christians drink?", "")
+        self.assertIn("No sermon notes were retrieved", drink_empty)
         self.assertNotIn("This is a follow-up", outline)
         followup = format_generation_user_prompt(
             "Expand on the first point",
-            ["Faith is the conviction of things hoped for and not yet seen."],
+            "Faith is the conviction of things hoped for and not yet seen.",
             followup_focus="faith — Faith as Evidence of Things Unseen",
         )
         self.assertIn("Faith as Evidence of Things Unseen", followup)
         self.assertIn("Do not answer a different sermon subject", followup)
         self.assertIn("Expand on the first point", followup)
-        self.assertIn("Do not answer from general Christian knowledge", empty)
+        self.assertIn("SERMON NOTES:", followup)
+        greeting = format_generation_user_prompt(
+            "Hello how are you today?",
+            "Faith must refuse the if factor of doubt.",
+        )
+        self.assertNotIn("if factor", greeting)
+        self.assertNotIn("SERMON NOTES:", greeting)
+        self.assertIn("one short warm sentence", greeting)
 
     def test_skips_memoir_and_off_topic_repair_for_faith_query(self):
         docs = [

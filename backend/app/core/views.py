@@ -51,6 +51,7 @@ from .chat_llm import (
     fit_chat_budget,
     get_chat_llm,
     select_pinned_history_rows,
+    split_reference_notes,
 )
 from .chat_sse import (
     ChatGenerationError,
@@ -66,12 +67,17 @@ from .chat_sse import (
 )
 from .bible_refs import scripture_refs_from_metadata
 from .teaching_claims import (
-    docs_supporting_claims,
-    extract_teaching_claims,
     format_generation_user_prompt,
+    is_greeting_turn,
     retrieval_search_text,
+    system_notes_text,
 )
-from .notes_coverage import COVERAGE_PARTIAL, select_reference_notes
+from .notes_coverage import (
+    COVERAGE_PARTIAL,
+    focus_retrieved_notes,
+    select_reference_notes,
+    sermon_lines_for_answer,
+)
 from .chat_retrieval import (
     format_reference_notes,
     is_bible_source,
@@ -80,6 +86,7 @@ from .chat_retrieval import (
 )
 from .scripture_support import attach_supporting_scripture, is_bible_chunk
 from .rerank import rerank_scored_hits
+from .sermon_catalog import lookup_chunks_by_file_hashes
 from .chat_system_prompt import (
     build_chat_system_prompt,
     find_biblical_character_names,
@@ -98,7 +105,7 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-# The model reads a short bundle behind the numbered theses, not the full search.
+# One sermon's retrieved windows. The model teaches this text, not a claim outline.
 PROMPT_CONTEXT_CHARS = int(os.getenv("CHAT_PROMPT_CONTEXT_CHARS", "12000"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
@@ -674,25 +681,66 @@ class ChatAPIView(APIView):
                 scored_hits,
                 limit=RETRIEVAL_K,
             )
-            scripture_docs, scripture_lane = attach_supporting_scripture(
-                search_text,
-                docs,
-                notes_coverage,
-                client,
-                collection_name,
-                embeddings,
-            )
-            teaching_claims = extract_teaching_claims(docs, query=search_text)
-            prompt_docs = docs_supporting_claims(docs, teaching_claims)
-            if not prompt_docs:
-                prompt_docs = list(docs)[:8]
-            context = format_reference_notes(
-                prompt_docs,
-                _doc_source_label,
-                max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
-                preserve_order=True,
-                scripture_docs=scripture_docs,
-            )
+            docs = focus_retrieved_notes(search_text, docs)
+            if docs and not is_greeting_turn(user_query_llm):
+                # Teach the matching sermon, not only the one window the
+                # reranker happened to rank first.
+                file_hashes = []
+                for doc in docs:
+                    file_hash = str(
+                        (getattr(doc, "metadata", None) or {}).get("file_hash") or ""
+                    ).strip()
+                    if file_hash and file_hash not in file_hashes:
+                        file_hashes.append(file_hash)
+                if file_hashes:
+                    try:
+                        expanded = lookup_chunks_by_file_hashes(
+                            client,
+                            collection_name,
+                            file_hashes[:1],
+                            query=search_text,
+                            limit_per_file=10,
+                        )
+                    except Exception:
+                        logger.exception("Could not load the rest of the matching sermon")
+                        expanded = []
+                    if expanded:
+                        docs = expanded
+            if is_greeting_turn(user_query_llm):
+                # Retrieval still ran. A greeting does not preach those sermons.
+                docs = []
+                scripture_docs = []
+                scripture_lane = ""
+                context = ""
+            else:
+                scripture_docs, scripture_lane = attach_supporting_scripture(
+                    search_text,
+                    docs,
+                    notes_coverage,
+                    client,
+                    collection_name,
+                    embeddings,
+                )
+                context = sermon_lines_for_answer(search_text, docs)
+                scripture_block = ""
+                if scripture_docs:
+                    from .scripture_support import format_nkjv_scripture_block
+
+                    scripture_block = format_nkjv_scripture_block(scripture_docs)
+                if scripture_block:
+                    context = (
+                        f"{context}\n\n{scripture_block}".strip()
+                        if context
+                        else scripture_block
+                    )
+                if not context:
+                    context = format_reference_notes(
+                        docs,
+                        _doc_source_label,
+                        max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
+                        preserve_order=True,
+                        scripture_docs=scripture_docs,
+                    )
             logger.warning(
                 "Note coverage=%s docs=%s scripture=%s lane=%s query=%s",
                 notes_coverage,
@@ -740,7 +788,7 @@ class ChatAPIView(APIView):
             if biblical_names:
                 logger.debug("Biblical character names detected: %s", biblical_names)
             coverage_line = ""
-            if notes_coverage == COVERAGE_PARTIAL:
+            if notes_coverage == COVERAGE_PARTIAL and not is_greeting_turn(user_query_llm):
                 coverage_line = (
                     "\nThe attached notes are the nearest sermons, not a confirmed match. "
                     "If they do not teach this question, say the notes do not cover it, "
@@ -752,14 +800,21 @@ class ChatAPIView(APIView):
                 + coverage_line
                 + "\nREFERENCE NOTES:\n{context}"
             )
+            prompt_notes = system_notes_text(user_query_llm, context)
             system_filled = system_content.replace(
                 "{context}",
-                context if context.strip() else EMPTY_REFERENCE_NOTES,
+                prompt_notes if prompt_notes else EMPTY_REFERENCE_NOTES,
+            )
+            # Count the sermon text twice: it stays in the system notes and is
+            # repeated in the user message, which is what the model actually follows.
+            provisional_human = (
+                format_generation_user_prompt(user_query_llm, prompt_notes)
+                + language_generation_reminder()
             )
             system_filled, history_messages, completion_tokens, used_tokens = fit_chat_budget(
                 system_filled,
                 history_messages,
-                user_query_llm,
+                provisional_human,
                 CHAT_MAX_TOKENS,
                 safety=int(os.getenv("CHAT_TOKEN_SAFETY", "96")),
             )
@@ -770,8 +825,12 @@ class ChatAPIView(APIView):
                 len(history_messages),
             )
 
+            _prefix, kept_notes = split_reference_notes(system_filled)
             human_content = (
-                format_generation_user_prompt(user_query_llm, teaching_claims)
+                format_generation_user_prompt(
+                    user_query_llm,
+                    kept_notes if kept_notes and kept_notes.strip() != EMPTY_REFERENCE_NOTES else "",
+                )
                 + language_generation_reminder()
             )
             messages = (
@@ -789,7 +848,6 @@ class ChatAPIView(APIView):
                 "completion_tokens": completion_tokens,
                 "used_tokens": used_tokens,
                 "target_message": target_message,
-                "teaching_claims": teaching_claims,
                 "topic_query": topic_query,
             }
 

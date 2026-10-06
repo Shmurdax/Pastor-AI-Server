@@ -8,10 +8,18 @@ notes that do not mention the asked subject.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Iterable, Optional
 
-from .chat_retrieval import chunk_text
-from .grounding import normalize_grounding_text
+from .chat_retrieval import (
+    chunk_source_key,
+    chunk_text,
+    is_bible_source,
+    metadata_source_hint,
+)
+from .quote_chunking import split_sentences
+from .grounding import looks_like_scripture_blob, normalize_grounding_text
+from .note_priority import looks_like_deck_junk, looks_like_kjv_diction, thesis_sentence_score
 from .teaching_claims import distinctive_query_tokens, query_topic_tokens
 
 COVERAGE_FULL = "full"
@@ -35,6 +43,15 @@ _FILLER_SUBJECT_TOKENS = frozenset(
         "would",
         "could",
         "should",
+        "create",
+        "explain",
+        "write",
+        "walk",
+        "show",
+        "describe",
+        "according",
+        "actually",
+        "really",
     }
 )
 
@@ -57,19 +74,46 @@ def notes_partial_limit(env: Optional[dict] = None, *, default: int = 8) -> int:
         return default
 
 
+_LAYOUT_TOKENS = frozenset(
+    {
+        "sermon",
+        "sermons",
+        "point",
+        "points",
+        "outline",
+        "topic",
+        "topics",
+        "week",
+        "note",
+        "notes",
+    }
+)
+
+
 def coverage_subject_tokens(query: str) -> set[str]:
     """Distinctive topic words used to tell on-topic notes from nearest neighbors.
 
     Generic identity words (Jesus, Bible, Christian) stay out unless they are
     the only topic, which distinctive_query_tokens already handles. Filler
-    words such as real or outside do not count as coverage.
+    words such as real or outside do not count as coverage. Request words
+    such as "tell the story" must not hide the topic word behind them.
     """
-    distinctive = distinctive_query_tokens(query_topic_tokens(query))
-    return {
-        token
-        for token in distinctive
-        if token not in _FILLER_SUBJECT_TOKENS and len(token) >= 3
-    }
+    raw = query_topic_tokens(query)
+    distinctive = distinctive_query_tokens(raw)
+
+    def _usable(tokens: set[str]) -> set[str]:
+        return {
+            token
+            for token in tokens
+            if token not in _FILLER_SUBJECT_TOKENS
+            and token not in _LAYOUT_TOKENS
+            and len(token) >= 3
+        }
+
+    kept = _usable(distinctive)
+    if kept:
+        return kept
+    return _usable(raw)
 
 
 def _blob_has_subject(text: str, tokens: set[str]) -> bool:
@@ -140,3 +184,197 @@ def select_reference_notes(
         return kept, COVERAGE_FULL
     adjacent = notes_partial_limit() if partial_limit is None else max(1, int(partial_limit))
     return kept[:adjacent], COVERAGE_PARTIAL
+
+
+_VERSE_LEAK_RE = re.compile(
+    r"(?i)(\(nkjv\)|\(kjv\)|\(niv\)|\(nasb\)|\(lb\)|\d+\s*[“\"']|\d+for\b)"
+)
+
+
+def _is_bible_doc(doc: Any) -> bool:
+    meta = getattr(doc, "metadata", None) or {}
+    kind = str(meta.get("chunk_kind") or "").lower()
+    if kind.startswith("bible"):
+        return True
+    return is_bible_source(metadata_source_hint(doc))
+
+
+def _token_count(words: list[str], token: str) -> int:
+    """Count a topic word, including alcoholic/drinking style variants."""
+    if not token:
+        return 0
+    if len(token) >= 5:
+        return sum(1 for word in words if word == token or word.startswith(token))
+    return words.count(token)
+
+
+def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
+    words = normalize_grounding_text(text).split()
+    if not words or not subject:
+        return 0, 0
+    present = 0
+    hits = 0
+    for token in subject:
+        count = _token_count(words, token)
+        if count:
+            present += 1
+            hits += count
+    return present, hits
+
+
+def focus_retrieved_notes(
+    query: str,
+    docs: Iterable[Any] | None,
+    *,
+    max_sources: int = 2,
+    max_docs: int = 12,
+) -> list[Any]:
+    """Keep the sermon that is actually about the question.
+
+    The same rule applies to every question. A sermon that only mentions the
+    topic in passing loses to the sermon that keeps teaching it. A second
+    sermon is included only when it is about the topic to nearly the same
+    degree, so five loosely related sermons are not mashed into one outline.
+    """
+    documents = [doc for doc in (docs or []) if doc is not None]
+    sermons = [doc for doc in documents if not _is_bible_doc(doc)]
+    cap = max(1, int(max_docs))
+    if not sermons:
+        return documents[:cap]
+    subject = coverage_subject_tokens(query)
+    if not subject:
+        return sermons[:cap]
+
+    groups: dict[str, list[Any]] = {}
+    order: list[str] = []
+    first_index: dict[str, int] = {}
+    for index, doc in enumerate(sermons):
+        key = chunk_source_key(doc)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+            first_index[key] = index
+        groups[key].append(doc)
+
+    scored: list[tuple[int, int, int, str]] = []
+    for key in order:
+        blob = " ".join(
+            f"{metadata_source_hint(doc)} {chunk_text(doc)}" for doc in groups[key]
+        )
+        present, hits = _subject_hits(blob, subject)
+        scored.append((present, hits, -first_index[key], key))
+    scored.sort(reverse=True)
+    best_present, best_hits, _rank, best_key = scored[0]
+    if best_present <= 0:
+        return sermons[:cap]
+
+    chosen = [best_key]
+    source_cap = max(1, int(max_sources))
+    for present, hits, _rank, key in scored[1:]:
+        if len(chosen) >= source_cap:
+            break
+        if present < best_present:
+            break
+        if best_hits <= 0 or hits * 4 < best_hits * 3:
+            break
+        chosen.append(key)
+    kept: list[Any] = []
+    for key in chosen:
+        kept.extend(groups[key])
+    return kept[:cap]
+
+
+def sermon_lines_for_answer(
+    query: str,
+    docs: Iterable[Any] | None,
+    *,
+    limit: int = 8,
+) -> str:
+    """Sentences from the focused sermon, in sermon order.
+
+    Short enough that the model actually teaches them. The same selection
+    runs for every question. A following sentence is kept so the application
+    is not dropped when it does not repeat the topic word.
+    """
+    sermons = [doc for doc in (docs or []) if doc is not None and not _is_bible_doc(doc)]
+    blob = "\n".join(chunk_text(doc) for doc in sermons if chunk_text(doc))
+    sentences = [sentence.strip() for sentence in split_sentences(blob) if sentence.strip()]
+    usable = []
+    for index, sentence in enumerate(sentences):
+        if len(sentence) < 40:
+            continue
+        if (
+            looks_like_kjv_diction(sentence)
+            or looks_like_scripture_blob(sentence)
+            or _VERSE_LEAK_RE.search(sentence)
+        ):
+            continue
+        if re.search(r"\bthe LORD\b", sentence) and not re.search(
+            r"(?i)\b(giant|tongue|covenant|husband|wife|means)\b",
+            sentence,
+        ):
+            continue
+        if re.search(r"(?i)\bthey will (?:fail|cease|vanish)\b", sentence) and not re.search(
+            r"(?i)\b(?:we|our|you|your)\b",
+            sentence,
+        ):
+            continue
+        if len(re.findall(r"(?i)\b\w+eth\b", sentence)) >= 2:
+            continue
+        if looks_like_deck_junk(sentence):
+            continue
+        usable.append((index, sentence))
+    if not usable:
+        return ""
+    subject = coverage_subject_tokens(query)
+    cap = max(1, int(limit))
+    picked: list[int] = []
+    if subject:
+        # A word the sermon uses everywhere (David, marriage) must not hide
+        # the sentence that names the rare topic (Goliath, covenant).
+        sermon_words = normalize_grounding_text(blob).split()
+        rarity = {
+            token: 1.0 / max(1, _token_count(sermon_words, token))
+            for token in subject
+        }
+
+        def _specificity(sentence: str) -> float:
+            words = normalize_grounding_text(sentence).split()
+            return sum(rarity[token] for token in subject if _token_count(words, token))
+
+        topical = [item for item in usable if _specificity(item[1]) > 0]
+        ranked = sorted(
+            topical,
+            key=lambda item: (
+                _specificity(item[1]) + max(thesis_sentence_score(item[1]), 0.0),
+                -item[0],
+            ),
+            reverse=True,
+        )
+        if ranked and _specificity(ranked[0][1]) > 0:
+            center = ranked[0][0]
+            for index, sentence in usable:
+                if index < center - 2:
+                    continue
+                if index > center + 8 and len(picked) >= 3:
+                    break
+                picked.append(index)
+                if len(picked) >= cap:
+                    break
+    if not picked:
+        picked = [index for index, _sentence in usable[:cap]]
+    ordered: list[int] = []
+    seen: set[int] = set()
+    for index in picked:
+        if index in seen:
+            continue
+        seen.add(index)
+        ordered.append(index)
+    ordered.sort()
+    lines = []
+    for index in ordered[:cap]:
+        cleaned = re.sub(r"\s+\d{1,3}\b", " ", sentences[index])
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -•●▪")
+        if len(cleaned) >= 40:
+            lines.append(cleaned)
+    return "\n\n".join(lines)
