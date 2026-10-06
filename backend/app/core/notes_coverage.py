@@ -447,9 +447,15 @@ def sermon_lines_for_answer(
             for token in subject
         }
 
+        primary = primary_subject_token(query)
+
         def _specificity(sentence: str) -> float:
             words = normalize_grounding_text(sentence).split()
-            return sum(rarity[token] for token in subject if _token_count(words, token))
+            score = sum(rarity[token] for token in subject if _token_count(words, token))
+            # The subject word itself outranks a rarer generic word such as "problems".
+            if primary and _token_count(words, primary):
+                score += 5
+            return score
 
         topical = [item for item in usable if _specificity(item[1]) > 0]
         ranked = sorted(
