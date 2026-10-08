@@ -496,6 +496,15 @@ class FaithClaimDistinctiveTests(unittest.TestCase):
             retrieval_search_text("Can Christians drink?"),
             "Can Christians drink?",
         )
+        hope = retrieval_search_text(
+            "Create sermon notes on hope for someone who is sick or grieving. "
+            "Stay with what the notes say."
+        ).split()
+        self.assertIn("hope", hope)
+        self.assertIn("sick", hope)
+        self.assertIn("grieving", hope)
+        self.assertNotIn("sermon", hope)
+        self.assertNotIn("notes", hope)
 
 
 class QueryPrefixEmbeddingTests(unittest.TestCase):

@@ -6,7 +6,11 @@ from core.notes_coverage import (
     COVERAGE_NONE,
     COVERAGE_PARTIAL,
     coverage_subject_tokens,
+    focus_retrieved_notes,
+    choose_sermon_by_rerank,
+    query_changes_locked_sermon,
     select_reference_notes,
+    sermon_lines_for_answer,
 )
 
 
@@ -93,3 +97,188 @@ class NotesCoverageTests(unittest.TestCase):
         docs, coverage = select_reference_notes("historical evidence", [])
         self.assertEqual(coverage, COVERAGE_NONE)
         self.assertEqual(docs, [])
+
+
+class FocusRetrievedNotesTests(unittest.TestCase):
+    def test_goliath_keeps_the_sermon_that_teaches_it(self):
+        stuff = _doc(
+            "David was anointed by Samuel. He once fought Goliath. "
+            "Then he fled to Ziklag and wanted his stuff back.",
+            source="stuff.pdf",
+        )
+        giants = _doc(
+            "Goliath is the giant of the untamed tongue. David faced Goliath "
+            "for forty days. The tongue is a giant like Goliath. "
+            "Keys to victory over Goliath start with the words we speak.",
+            source="giants.pdf",
+        )
+        generation = _doc(
+            "David killed Goliath, then sinned with Bathsheba. "
+            "Family and friends, trusted advisors, mighty men, and the arsenal "
+            "supported the next generation.",
+            source="generation.pdf",
+        )
+        kept = focus_retrieved_notes(
+            "Tell the story of David and Goliath the way the sermon notes teach it.",
+            [stuff, generation, giants],
+        )
+        self.assertEqual(kept, [giants])
+
+    def test_marriage_prefers_the_marriage_sermon_over_church_covenant(self):
+        church = _doc(
+            "Covenant means we are in covenant with one another in the body of Christ. "
+            "A culture of covenant brings people to Jesus. Covenant relationships serve.",
+            source="covenant.pdf",
+        )
+        home = _doc(
+            "Both the husband and the wife have needs that should be fulfilled inside "
+            "their marriage. Withholding is sinning against God, the marriage covenant, "
+            "and their mate. When one marries they forfeit control of their body.",
+            source="home.pdf",
+        )
+        kept = focus_retrieved_notes(
+            "Create sermon notes on marriage as a blood covenant. "
+            "What does Pastor Don teach a husband and wife to do?",
+            [church, home],
+        )
+        self.assertEqual(kept, [home])
+
+    def test_drink_prefers_alcohol_notes_over_communion(self):
+        table = _doc(
+            "Come to the Lord's table and drink from the cup. Eat the bread and remember.",
+            source="communion.pdf",
+        )
+        sippin = _doc(
+            "Total abstinence from alcoholic beverages is the only acceptable way. "
+            "Alcoholism is a sin, not a sickness. A Christian should not drink alcohol.",
+            source="sippin.pdf",
+        )
+        kept = focus_retrieved_notes(
+            "According to the sermon notes, can a Christian drink alcohol?",
+            [table, sippin],
+        )
+        self.assertEqual(kept, [sippin])
+
+    def test_same_instruction_shape_is_not_required_for_focus(self):
+        faith = _doc(
+            "Faith must refuse the if factor of doubt and receive what God promised.",
+            source="faith.pdf",
+        )
+        groups = _doc(
+            "Small groups discuss the Sunday sermon after church.",
+            source="groups.pdf",
+        )
+        story = focus_retrieved_notes("Tell the story of faith from the sermon notes.", [groups, faith])
+        question = focus_retrieved_notes("What do the notes teach about faith?", [groups, faith])
+        self.assertEqual(story, [faith])
+        self.assertEqual(question, [faith])
+
+    def test_sermon_lines_keep_the_goliath_point_in_order(self):
+        giants = _doc(
+            "David faced giants. David is our template. David trusted God when he was afraid. "
+            "The name Goliath means to reveal or advertise in a disgraceful sense. "
+            "What weapon did Goliath use against the men of Israel? Words! "
+            "Goliath is the giant of the untamed tongue. "
+            "The only way we can tame the tongue is through the power of God. "
+            "David later fled to Ziklag and wanted his stuff back.",
+            source="giants.pdf",
+        )
+        lines = sermon_lines_for_answer(
+            "Tell the story of David and Goliath the way the sermon notes teach it.",
+            [giants],
+        )
+        self.assertIn("untamed tongue", lines)
+        self.assertIn("power of God", lines)
+        self.assertLess(lines.find("name Goliath"), lines.find("untamed tongue"))
+        self.assertLess(lines.find("untamed tongue"), lines.find("power of God"))
+
+    def test_followup_stays_unless_the_new_subject_is_absent(self):
+        sermon = (
+            "The older brother stayed outside. The father ran to the younger son. "
+            "A husband who will not love his wife sins against the marriage covenant."
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "What about the older brother?",
+                "Explain the parable of the prodigal son from the sermon notes.",
+                sermon,
+            )
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "What should a husband practice this week?",
+                "Create sermon notes on marriage as a covenant.",
+                sermon,
+            )
+        )
+        self.assertTrue(
+            query_changes_locked_sermon(
+                "Now tell me what Pastor Don teaches about Pentecost.",
+                "Create sermon notes on marriage as a covenant.",
+                sermon,
+            )
+        )
+        self.assertFalse(
+            query_changes_locked_sermon(
+                "Say more about that.",
+                "Explain the parable of the prodigal son from the sermon notes.",
+                sermon,
+            )
+        )
+
+    def test_rerank_score_picks_the_sermon_that_teaches_the_question(self):
+        aside = _doc(
+            "Jonah ran once. We must wait on God in the wilderness. "
+            "Wait on God through the trial. Wait on God again.",
+            source="wait.pdf",
+        )
+        aside.metadata["rerank_score"] = 0.42
+        teaching = _doc(
+            "Jonah ran from the Lord and the storm found him. "
+            "The sermon teaches that running from God does not end the assignment.",
+            source="jonah.pdf",
+        )
+        teaching.metadata["rerank_score"] = 0.86
+        weak = _doc(
+            "The council discussed many customs in the city.",
+            source="customs.pdf",
+        )
+        weak.metadata["rerank_score"] = 0.18
+        chosen, coverage, score = choose_sermon_by_rerank(
+            [(aside, 0.42), (teaching, 0.86), (weak, 0.18)],
+            min_score=0.5,
+        )
+        self.assertEqual(coverage, "full")
+        self.assertEqual(chosen, [teaching])
+        self.assertAlmostEqual(score, 0.86)
+        refused, refused_coverage, refused_score = choose_sermon_by_rerank(
+            [(weak, 0.18)],
+            min_score=0.5,
+        )
+        self.assertEqual(refused, [])
+        self.assertEqual(refused_coverage, "none")
+        self.assertAlmostEqual(refused_score, 0.18)
+
+    def test_incidental_word_does_not_count_as_covering_the_question(self):
+        from core.notes_coverage import sermon_mentions_question
+
+        hope = _doc(
+            "Hope in God and wait expectantly for Him, for I shall yet praise Him.",
+            source="It Is Time for Hope",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "Create sermon notes on hope for someone who is sick or grieving.",
+                [hope],
+            )
+        )
+        selling = _doc(
+            "Everywhere you turn you see a new best-selling book about leadership.",
+            source="Nextsteps 101",
+        )
+        self.assertFalse(
+            sermon_mentions_question(
+                "What did Pastor Don teach about the Council of Trent and selling indulgences in 1545?",
+                [selling],
+            )
+        )

@@ -113,8 +113,9 @@ _QUERY_TOPIC_WORDS = frozenset(
         "thankfulness",
     }
 )
-# Words almost every sermon uses. Overlap on these alone must not make a
-# Community / harvest sentence a required point for "why this church…".
+# Words almost every sermon uses. Coverage and follow-up locking still ignore
+# these when the question also names a more specific subject. Retrieval search
+# text keeps them, so "hope for the grieving" is not searched as grieving alone.
 _WEAK_QUERY_WORDS = frozenset(
     {
         "faith",
@@ -339,41 +340,41 @@ def looks_like_sermon_outline_request(query: str) -> bool:
 def retrieval_search_text(query: str) -> str:
     """Text embedded and reranked for an outline request.
 
-    "3 point sermon on faith" embeds the layout words sermon and point, so any
-    sermon window outranks a note whose subject is faith. Search the topic.
+    Layout words such as sermon, notes, and point are removed so they do not
+    outrank the subject. Every other content word stays, including short words
+    and words such as hope, faith, and spirit.
     """
     text = " ".join((query or "").split()).strip()
     if not text or not looks_like_sermon_outline_request(text):
         return text
-    distinctive = distinctive_query_tokens(query_topic_tokens(text))
-    if not distinctive:
-        return text
     kept: list[str] = []
     seen: set[str] = set()
     for word in normalize_grounding_text(text).split():
-        if word in distinctive and word not in seen:
-            kept.append(word)
-            seen.add(word)
+        if word in _OUTLINE_DISTINCTIVE_STOP:
+            continue
+        if word in _STOP and word not in _QUERY_TOPIC_WORDS:
+            continue
+        if len(word) < 3 and word not in _QUERY_TOPIC_WORDS:
+            continue
+        if word in seen:
+            continue
+        seen.add(word)
+        kept.append(word)
     return " ".join(kept) if kept else text
 
 
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
-    """Query words that identify the topic.
+    """Topic words from the question, with layout words removed.
 
-    Outline words (sermon / point) are never distinctive. Weak Christian words
-    (faith, gratitude, church) become distinctive when they are the only topic
-    left, so a one-word faith question keeps faith theses instead of
-    discussion-guide sentences that only say "sermon".
+    Weak words the user actually said (hope, faith, spirit) stay even when the
+    question also contains a more specific word. Dropping them made a hope
+    question search only for the longer word grieving.
     """
-    tokens = {
+    return {
         str(token).lower()
         for token in query_tokens
         if str(token).strip() and str(token).lower() not in _OUTLINE_DISTINCTIVE_STOP
     }
-    distinctive = {token for token in tokens if token not in _WEAK_QUERY_WORDS}
-    if distinctive:
-        return distinctive
-    return {token for token in tokens if token in _QUERY_TOPIC_WORDS or token in _WEAK_QUERY_WORDS}
 
 
 def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") -> bool:
@@ -395,8 +396,10 @@ def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") 
         return True
     claim_words = set(normalize_grounding_text(claim).split())
     distinctive = distinctive_query_tokens(query_tokens)
-    if distinctive:
-        return bool(distinctive & claim_words)
+    strong = {token for token in distinctive if token not in _WEAK_QUERY_WORDS}
+    needed = strong or distinctive
+    if needed:
+        return bool(needed & claim_words)
     return bool(query_tokens & claim_words)
 
 
@@ -554,14 +557,9 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
         "and teach a different point with it.",
         "They are the outline and the doctrine. Do not replace them with generic Christian topics "
         "(for example a communication or conflict-resolution seminar) unless those topics appear below.",
-        "Cover every numbered point. If the user asked for an outline or N sermon points, "
-        "present that many of these theses as labeled Markdown points, then continue with "
-        "any remaining theses. Otherwise mix paragraphs and bullets as the question needs. "
+        "Cover every numbered point. Mix paragraphs and bullets as the question needs. "
         "Do not invent a yes/no that is not in the points. "
-        "Do not substitute an LGBTQ inclusion frame, sexual-orientation "
-        "acceptance, or a greatest-commandment / Mark 12 answer unless that idea appears in the points.",
-        "Do not teach that alcoholic drink is a personal decision, a Romans 14 liberty issue, "
-        "or that many Christians may drink in moderation unless that idea appears in the points.",
+        "Do not add a position that is not written in the points.",
         "If part of the user's question is not covered by these points, say the retrieved teaching does not address that part. "
         "Do not fill the gap from general Christian knowledge.",
     ]
@@ -571,74 +569,101 @@ def format_teaching_claims_block(claims: Iterable[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def is_greeting_turn(query: str) -> bool:
+    from .chat_system_prompt import looks_like_brief_social
+
+    return looks_like_brief_social(query or "")
+
+
+def system_notes_text(query: str, notes: str | None) -> str:
+    """Reference block for the system prompt.
+
+    Greetings must not carry sermon excerpts, or the model preaches at "hello".
+    """
+    if is_greeting_turn(query or ""):
+        return (
+            "This is a greeting. Reply with one short warm sentence. "
+            "Do not teach sermon notes."
+        )
+    return (notes or "").strip()
+
+
+def notes_for_generation(query: str, notes: str | None) -> str:
+    """Sermon text that should steer this turn.
+
+    Greetings stay conversational. Every other question gets the same notes.
+    """
+    text = (notes or "").strip()
+    if not text or is_greeting_turn(query or ""):
+        return ""
+    return text
+
+
 def format_generation_user_prompt(
     query: str,
-    claims: Iterable[str] | None,
+    notes: str | Iterable[str] | None = "",
     followup_focus: str = "",
 ) -> str:
-    """Last-turn lock so the first generate paraphrases retrieved theses."""
+    """Ask for an answer from the retrieved sermon text.
+
+    Every question uses this same instruction. The notes themselves are the
+    content. There is no separate outline, alcohol, or sexuality template.
+    """
     question = " ".join((query or "").split()).strip()
-    points = [item.strip() for item in (claims or []) if item and str(item).strip()]
-    sense = query_topic_sense(question)
+    if is_greeting_turn(question):
+        return "\n".join(
+            [
+                "The user is only greeting or thanking you. "
+                "Reply with one short warm sentence. Do not teach sermon notes.",
+                "",
+                "User question:",
+                question or "(empty)",
+            ]
+        )
+    if isinstance(notes, str):
+        raw_notes = notes.strip()
+    else:
+        raw_notes = "\n".join(
+            str(item).strip() for item in (notes or []) if item and str(item).strip()
+        ).strip()
+    notes_text = notes_for_generation(question, raw_notes)
     lines: list[str] = []
     focus = " ".join((followup_focus or "").split())
     if focus:
         lines.append(
-            "This is a follow-up. Stay on this topic from the previous answer: "
-            f"{focus}. Deepen that topic from the numbered sermon points below. "
-            "Do not answer a different sermon subject."
+            "This is a follow-up. Stay inside the same sermon notes and this topic: "
+            f"{focus}. Do not answer a different sermon subject."
         )
         lines.append("")
-    if points:
+    lines.append("User question:")
+    lines.append(question or "(empty)")
+    lines.append("")
+    if notes_text:
         lines.append(
-            "Paraphrase every numbered sermon point below. "
-            "They are the doctrine. Do not add theology or a yes/no that is not in them. "
-            "Do not invent extra outline points."
+            "Answer the question from the sermon notes below and nowhere else. "
+            "Teach only what those notes say, including their illustrations, contrasts, and applications. "
+            "Do not add a point, story, verse, or application that is not written in the notes. "
+            "Do not invent points to fill an outline. "
+            "Do not blend a different sermon into this answer. "
+            "If the notes do not cover part of the question, say so, then teach only what they cover. "
+            "Do not answer that gap from general Christian knowledge."
         )
-        for index, claim in enumerate(points, start=1):
-            lines.append(f"{index}. {claim}")
-        if sense == SENSE_ALCOHOL:
-            lines.append(
-                "Do not say drinking is a personal decision, a Romans 14 liberty issue, "
-                "or that many Christians may drink in moderation unless a numbered point says that."
-            )
-        if sense == SENSE_SEXUALITY:
-            lines.append(
-                "Do not begin by saying gay people can be Christians unless a numbered point says that. "
-                "Do not write Certainly. Do not give an LGBTQ inclusion, sexual-orientation acceptance, "
-                "or Mark 12 greatest-commandment answer unless a numbered point says that."
-            )
         lines.append("")
-        lines.append("User question:")
-        lines.append(question or "(empty)")
-        if looks_like_sermon_outline_request(question):
-            lines.append(
-                "Write the answer now. The user asked for an outline. Present the retrieved "
-                "theses as a Markdown outline (numbered or bulleted points, with a short "
-                "paragraph under a point when it helps). If they asked for N points, use N "
-                "of these theses as the labeled points, then cover any remaining theses. "
-                "Do not invent extra points. Cover every numbered point. "
-                "If the user named a Bible passage that is not in these numbered points "
-                "or in the attached NKJV block, say the notes do not cover that passage "
-                "and teach these points. Do not teach that passage from memory."
-            )
-        else:
-            lines.append(
-                "Write the answer now. Mix short paragraphs and bullets as the question needs. "
-                "Cover every numbered point. Do not invent extra outline points. "
-                "Do not stop after the first sentence."
-            )
-    elif sense in {SENSE_ALCOHOL, SENSE_SEXUALITY} or looks_like_sermon_outline_request(question):
-        lines.append("User question:")
-        lines.append(question or "(empty)")
+        lines.append("SERMON NOTES:")
+        lines.append(notes_text)
         lines.append("")
         lines.append(
-            "Retrieved sermon notes did not yield teaching points for this question. "
-            "Say that plainly. Do not answer from general Christian knowledge."
+            "Write the answer now. Let the question choose the shape. "
+            "If they asked for sermon notes, an outline, or the points, do not write an essay. "
+            "Use a heading for each idea that is in the notes, with bullets under it. "
+            "If they asked a question, for a retelling, or for a sermon flow, write paragraphs only. "
+            "Do not add headings or bullets to that kind of answer."
         )
     else:
-        lines.append("User question:")
-        lines.append(question or "(empty)")
+        lines.append(
+            "No sermon notes were retrieved for this question. "
+            "Say that plainly. Do not answer from general Christian knowledge."
+        )
     return "\n".join(lines)
 
 
