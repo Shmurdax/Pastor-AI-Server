@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/models/episode_note.dart';
+
 enum MediaContentType { video, audio }
 
 enum MediaAccessTier { freePreview, premium }
@@ -26,6 +28,7 @@ class MediaItem {
     this.thumbnailUrl,
     this.tags = const [],
     this.isPublished = false,
+    this.note,
   });
 
   final String id;
@@ -45,6 +48,8 @@ class MediaItem {
   final List<String> tags;
   /// True when a playable file/embed is wired up; false for coming-soon placeholders.
   final bool isPublished;
+  /// Study notes for this episode, when a dated PDF is linked.
+  final EpisodeNoteSummary? note;
 
   bool get isPlayable =>
       isPublished && (vimeoId != null || videoAssetPath != null);
@@ -75,6 +80,7 @@ class MediaItem {
       thumbnailUrl: (json['thumbnail_url'] as String?)?.trim(),
       isPublished: json['is_published'] as bool? ?? true,
       tags: const ['devotional'],
+      note: EpisodeNoteSummary.tryParse(json['note']),
     );
   }
 }

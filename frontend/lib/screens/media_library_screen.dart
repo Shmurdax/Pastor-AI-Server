@@ -1,16 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
 import 'package:flutter_application_1/l10n/app_locale.dart';
 import 'package:flutter_application_1/l10n/app_strings.dart';
+import 'package:flutter_application_1/models/episode_note.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/widgets/episode_notes_pane.dart';
+import 'package:flutter_application_1/widgets/pdf_viewer_embed.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
-import 'package:flutter_application_1/widgets/new_tab.dart';
-import 'package:flutter_application_1/widgets/vimeo_player_src.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -23,6 +26,9 @@ const _surface = Color(0xFFF4F4F9);
 
 /// Tight caption strip under the 16:9 thumbnail (title and date).
 const kMediaTileCaptionHeight = 84.0;
+
+/// Extra room when a search snippet is shown under the title.
+const kMediaTileCaptionHeightWithSnippet = 132.0;
 
 /// Aspect ratio for a media grid cell so the video fills most of the tile.
 double mediaGridChildAspectRatio({
@@ -65,11 +71,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   late final ApiService _apiService = widget._injectedApi ?? ApiService();
   final _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _eventsOpen = false;
   late final VoidCallback _onPageChange = _closeEventsForPageChange;
   bool _catalogLoading = true;
   bool _openedInitialVideo = false;
+  int _catalogRequest = 0;
   List<MediaItem> _catalogItems = const [];
+  List<String> _topics = const [];
+  String? _topicFilter;
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   MediaAccessTier? _tierFilter;
@@ -83,7 +93,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     super.initState();
     AppPageNavigation.addListener(_onPageChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadCatalog();
+      if (!mounted) return;
+      _loadCatalog();
+      _loadTopics();
     });
   }
 
@@ -96,22 +108,46 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   @override
   void dispose() {
     AppPageNavigation.removeListener(_onPageChange);
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCatalog() async {
+  void _scheduleSearch() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _loadCatalog();
+    });
+  }
+
+  Future<void> _loadTopics() async {
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
     try {
-      final items = await _apiService.listMediaVideos();
+      final topics = await _apiService.listMediaTopics();
       if (!mounted) return;
+      setState(() => _topics = topics);
+    } catch (_) {}
+  }
+
+  Future<void> _loadCatalog() async {
+    final requestId = ++_catalogRequest;
+    final auth = context.read<AuthController>();
+    _apiService.setAccessToken(auth.token);
+    final query = _searchController.text.trim();
+    final topic = _topicFilter;
+    try {
+      final items = await _apiService.listMediaVideos(
+        query: query.isEmpty ? null : query,
+        topic: topic,
+      );
+      if (!mounted || requestId != _catalogRequest) return;
       setState(() {
         _catalogItems = items;
         _catalogLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestId != _catalogRequest) return;
       setState(() {
         _catalogItems = const [];
         _catalogLoading = false;
@@ -147,7 +183,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
         );
         return;
       }
-      final item = inCatalog!;
+      final item = inCatalog;
       final allowed = _accessibleItems.any(
         (entry) => (entry.vimeoId ?? '').trim() == targetId,
       );
@@ -230,18 +266,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   List<MediaItem> get _filteredItems {
-    final query = _searchController.text.trim().toLowerCase();
     var items = _accessibleItems.where((item) {
       if (_tierFilter != null && item.accessTier != _tierFilter) return false;
       if (_yearFilter != null && item.publishedAt.year != _yearFilter) return false;
-      if (query.isEmpty) return true;
-      final haystack = [
-        item.title,
-        item.description,
-        ...item.tags,
-        kMediaCollectionLabel,
-      ].join(' ').toLowerCase();
-      return haystack.contains(query);
+      return true;
     }).toList();
 
     switch (_sort) {
@@ -269,19 +297,22 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     });
   }
 
+  String get _noteHighlightQuery {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty) return query;
+    return _topicFilter ?? '';
+  }
+
   void _openItem(MediaItem item, {int? seekSeconds}) {
     if (item.isPlayable) {
-      final watchUrl = mediaItemWatchUrl(item, startSeconds: seekSeconds);
-      if (watchUrl != null) {
-        openNewTab().openUrl(watchUrl);
-        return;
-      }
       _closeEventsForPageChange();
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => _WatchEpisodeScreen(
+          builder: (_) => WatchEpisodeScreen(
             item: item,
             startSeconds: seekSeconds,
+            highlightQuery: _noteHighlightQuery,
+            apiService: _apiService,
           ),
         ),
       );
@@ -561,8 +592,29 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             const SizedBox(height: 28),
                             _SearchBar(
                               controller: _searchController,
-                              onChanged: (_) => setState(() {}),
+                              onChanged: (_) => _scheduleSearch(),
                             ),
+                            if (_topics.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final topic in _topics)
+                                    _FilterChip(
+                                      label: topic,
+                                      selected: _topicFilter == topic,
+                                      onTap: () {
+                                        setState(() {
+                                          _topicFilter = _topicFilter == topic ? null : topic;
+                                        });
+                                        _searchDebounce?.cancel();
+                                        _loadCatalog();
+                                      },
+                                    ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             _ToolbarRow(
                               sort: _sort,
@@ -656,8 +708,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                             OutlinedButton(
                               onPressed: () {
                                 _searchController.clear();
+                                _searchDebounce?.cancel();
+                                setState(() => _topicFilter = null);
                                 _clearFilters();
-                                setState(() {});
+                                _loadCatalog();
                               },
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: _navy,
@@ -697,6 +751,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           viewportWidth: screenWidth,
                           crossAxisCount: screenWidth >= 1100 ? 3 : 2,
                           horizontalPadding: isMobile ? 32 : 64,
+                          captionHeight: items.any(
+                            (item) => (item.note?.snippet ?? '').trim().isNotEmpty,
+                          )
+                              ? kMediaTileCaptionHeightWithSnippet
+                              : kMediaTileCaptionHeight,
                         ),
                       ),
                       delegate: SliverChildBuilderDelegate(
@@ -804,7 +863,7 @@ class _SearchBar extends StatelessWidget {
       controller: controller,
       onChanged: onChanged,
       decoration: InputDecoration(
-        hintText: 'Search posts by title, topic, or tag…',
+        hintText: 'Search videos by title, topic, or keyword…',
         hintStyle: GoogleFonts.figtree(color: Colors.black38),
         prefixIcon: const Icon(Icons.search, color: _navy),
         filled: true,
@@ -1095,6 +1154,19 @@ class _MediaPostCardBody extends StatelessWidget {
           const SizedBox(height: 12),
         ] else
           const SizedBox(height: 6),
+        if ((item.note?.snippet ?? '').trim().isNotEmpty) ...[
+          Text(
+            item.note!.snippet!,
+            maxLines: compact ? 2 : 3,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.figtree(
+              fontSize: 12,
+              height: 1.35,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         Row(
           children: [
             Expanded(
@@ -1158,30 +1230,47 @@ class _Badge extends StatelessWidget {
   }
 }
 
-class _WatchEpisodeScreen extends StatefulWidget {
-  const _WatchEpisodeScreen({
+class WatchEpisodeScreen extends StatefulWidget {
+  const WatchEpisodeScreen({
+    super.key,
     required this.item,
     this.startSeconds,
+    this.highlightQuery = '',
+    this.apiService,
   });
 
   final MediaItem item;
   final int? startSeconds;
+  final String highlightQuery;
+  final ApiService? apiService;
 
   @override
-  State<_WatchEpisodeScreen> createState() => _WatchEpisodeScreenState();
+  State<WatchEpisodeScreen> createState() => _WatchEpisodeScreenState();
 }
 
-class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
+class _WatchEpisodeScreenState extends State<WatchEpisodeScreen> {
   VideoPlayerController? _controller;
   Future<void>? _initializeFuture;
   bool _showControls = true;
+  EpisodeNoteDetail? _detail;
+  bool _noteLoading = false;
+  bool _noteError = false;
 
   bool get _useVimeo =>
       widget.item.vimeoId != null && widget.item.vimeoId!.trim().isNotEmpty;
 
+  bool get _hasNotes => widget.item.note?.showNotes == true;
+
   @override
   void initState() {
     super.initState();
+    final noteId = widget.item.note?.id;
+    if (_hasNotes && noteId != null) {
+      _noteLoading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadNote(noteId);
+      });
+    }
     if (!_useVimeo && widget.item.videoAssetPath != null) {
       final controller = VideoPlayerController.asset(widget.item.videoAssetPath!);
       _controller = controller;
@@ -1200,6 +1289,81 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
   void dispose() {
     _controller?.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadNote(int id) async {
+    final api = widget.apiService;
+    if (api == null) {
+      if (!mounted) return;
+      setState(() {
+        _noteLoading = false;
+        _noteError = true;
+      });
+      return;
+    }
+    try {
+      final detail = await api.getEpisodeNote(id);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        _noteLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _noteLoading = false;
+        _noteError = true;
+      });
+    }
+  }
+
+  Future<void> _openOriginalPdf() async {
+    final note = widget.item.note;
+    final api = widget.apiService;
+    if (note == null || api == null) return;
+    try {
+      final bytes = await api.getEpisodeNoteFile(note.id);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          return Dialog(
+            insetPadding: const EdgeInsets.all(24),
+            child: SizedBox(
+              width: 840,
+              height: 640,
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close, color: _navy),
+                    ),
+                  ),
+                  Expanded(
+                    child: PdfViewerEmbed(
+                      bytes: bytes,
+                      viewKey: 'episode-note-${note.id}',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not open the original notes PDF.',
+            style: GoogleFonts.figtree(),
+          ),
+        ),
+      );
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -1314,9 +1478,122 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
     );
   }
 
+  Widget _playerCard() {
+    return ClipRRect(
+      key: const Key('episode-player'),
+      borderRadius: BorderRadius.circular(12),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: ColoredBox(
+          color: Colors.black,
+          child: _buildPlayer(),
+        ),
+      ),
+    );
+  }
+
+  Widget _heading(bool isMobile, {bool compactDescription = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          widget.item.title,
+          style: GoogleFonts.figtree(
+            fontSize: isMobile ? 22 : 28,
+            fontWeight: FontWeight.bold,
+            color: _navy,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          widget.item.description,
+          maxLines: compactDescription ? 2 : null,
+          overflow: compactDescription ? TextOverflow.ellipsis : TextOverflow.clip,
+          style: GoogleFonts.figtree(fontSize: 15, height: 1.45, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+
+  Widget _notesPane() {
+    final note = widget.item.note!;
+    return EpisodeNotesPane(
+      key: const Key('episode-notes-pane'),
+      episodeDate: _detail?.episodeDate ?? note.episodeDate,
+      topics: _detail?.topics ?? note.topics,
+      body: _detail?.body ?? '',
+      loading: _noteLoading,
+      error: _noteError,
+      highlightQuery: widget.highlightQuery,
+      onViewPdf: _openOriginalPdf,
+    );
+  }
+
+  Widget _buildPlain(bool isMobile) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 900),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _playerCard(),
+              const SizedBox(height: 24),
+              _heading(isMobile),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWithNotes(bool isMobile, {required bool wide}) {
+    if (wide) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 5,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _playerCard(),
+                    const SizedBox(height: 24),
+                    _heading(isMobile),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(flex: 4, child: _notesPane()),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 16, isMobile ? 16 : 32, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _playerCard(),
+          const SizedBox(height: 16),
+          _heading(isMobile, compactDescription: true),
+          const SizedBox(height: 16),
+          Expanded(child: _notesPane()),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 600;
+    final wide = width >= 900;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -1333,43 +1610,7 @@ class _WatchEpisodeScreenState extends State<_WatchEpisodeScreen> {
         ),
       ),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 900),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: ColoredBox(
-                        color: Colors.black,
-                        child: _buildPlayer(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    widget.item.title,
-                    style: GoogleFonts.figtree(
-                      fontSize: isMobile ? 22 : 28,
-                      fontWeight: FontWeight.bold,
-                      color: _navy,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.item.description,
-                    style: GoogleFonts.figtree(fontSize: 15, height: 1.45, color: Colors.black54),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        child: _hasNotes ? _buildWithNotes(isMobile, wide: wide) : _buildPlain(isMobile),
       ),
     );
   }

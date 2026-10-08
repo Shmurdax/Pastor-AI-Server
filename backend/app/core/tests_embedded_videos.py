@@ -37,6 +37,8 @@ class EmbeddedVideoMatchingTests(TestCase):
         self.assertEqual(sermon_date_key("mar_19_v1_240p.mp4"), "03-19")
         self.assertEqual(sermon_date_key("Mar 19"), "03-19")
         self.assertEqual(sermon_date_key("may_15_v2 (240p).mp4"), "05-15")
+        self.assertEqual(sermon_date_key("May 15_2026.pdf"), "05-15")
+        self.assertEqual(sermon_date_key("May 15, 2026"), "05-15")
         self.assertIsNone(sermon_date_key("faith_that_moves.mp4"))
 
     def test_embed_url_includes_privacy_hash(self):

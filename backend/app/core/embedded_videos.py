@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable, Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -48,7 +48,9 @@ SERMON_DATE_RE = re.compile(
     r"(?i)(?:copy\s+of\s+)?"
     r"(january|february|march|april|may|june|july|august|september|october|november|december|"
     r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)"
-    r"[\s_\-]+(\d{1,2})(?:st|nd|rd|th)?(?!\d)"
+    r"[\s_\-]+(\d{1,2})(?:st|nd|rd|th)?"
+    r"(?:[\s_\-,]+(\d{4}))?"
+    r"(?!\d)"
 )
 
 # Known Vimeo pages to embed even before a local file exists.
@@ -136,16 +138,42 @@ def parse_vimeo_id_from_filename(name: str) -> Optional[str]:
 
 def sermon_date_key(value: str) -> Optional[str]:
     """Stable month-day key from Vimeo titles or download names like april_10_v1_240p."""
-    match = SERMON_DATE_RE.search(value or "")
-    if not match:
-        return None
-    month = MONTH_NAMES.get(match.group(1).lower())
-    if not month:
-        return None
-    day = int(match.group(2))
-    if day < 1 or day > 31:
+    month, day, _year = _sermon_date_parts(value)
+    if month is None or day is None:
         return None
     return f"{month:02d}-{day:02d}"
+
+
+def parse_episode_date(value: str) -> Optional[date]:
+    """Calendar date when a filename or title includes month, day, and year.
+
+    ``May 15_2026``, ``May 15, 2026``, and ``May_15_2026`` all become 2026-05-15.
+    Month and day without a year stay a sermon date key only.
+    """
+    month, day, year = _sermon_date_parts(value)
+    if month is None or day is None or year is None:
+        return None
+    if year < 1900 or year > 2100:
+        return None
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _sermon_date_parts(value: str) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    match = SERMON_DATE_RE.search(value or "")
+    if not match:
+        return None, None, None
+    month = MONTH_NAMES.get(match.group(1).lower())
+    if not month:
+        return None, None, None
+    day = int(match.group(2))
+    if day < 1 or day > 31:
+        return None, None, None
+    year_raw = match.group(3)
+    year = int(year_raw) if year_raw else None
+    return month, day, year
 
 
 def is_copy_title(title: str) -> bool:

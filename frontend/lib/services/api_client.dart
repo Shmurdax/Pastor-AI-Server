@@ -572,15 +572,56 @@ class ApiClient {
     return ResponseReportItem.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  Future<List<Map<String, dynamic>>> listMediaVideos() async {
-    final res = await _client.get(
-      Uri.parse(_resolveUrl('/api/media/')),
-      headers: _headers(),
+  Future<List<Map<String, dynamic>>> listMediaVideos({
+    String? query,
+    String? topic,
+  }) async {
+    final params = <String, String>{};
+    final q = query?.trim() ?? '';
+    final topicLabel = topic?.trim() ?? '';
+    if (q.isNotEmpty) params['q'] = q;
+    if (topicLabel.isNotEmpty) params['topic'] = topicLabel;
+    final uri = Uri.parse(_resolveUrl('/api/media/')).replace(
+      queryParameters: params.isEmpty ? null : params,
     );
+    final res = await _client.get(uri, headers: _headers());
     _ensureOk(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final results = body['results'] as List<dynamic>? ?? [];
     return results.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  Future<List<String>> listMediaTopics() async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/media/topics/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final results = body['results'];
+    if (results is! List) return const [];
+    return [
+      for (final item in results)
+        if (item is String && item.trim().isNotEmpty) item.trim(),
+    ];
+  }
+
+  Future<Map<String, dynamic>> getEpisodeNote(int id) async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/episode-notes/$id/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Uint8List> getEpisodeNoteFile(int id) async {
+    final res = await _client.get(
+      Uri.parse(_resolveUrl('/api/episode-notes/$id/file/')),
+      headers: _headers(),
+    );
+    _ensureOk(res);
+    return res.bodyBytes;
   }
 
   /// Public status bar. Hidden when the admin toggle is off or the request fails.
