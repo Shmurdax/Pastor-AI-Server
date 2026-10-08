@@ -29,6 +29,7 @@ class MediaItem {
     this.tags = const [],
     this.isPublished = false,
     this.note,
+    this.matchRank = 0,
   });
 
   final String id;
@@ -50,6 +51,9 @@ class MediaItem {
   final bool isPublished;
   /// Study notes for this episode, when a dated PDF is linked.
   final EpisodeNoteSummary? note;
+  /// Search order: title, publish month, topic, then keyword. Ignored when
+  /// the search box is empty.
+  final int matchRank;
 
   bool get isPlayable =>
       isPublished && (vimeoId != null || videoAssetPath != null);
@@ -81,6 +85,7 @@ class MediaItem {
       isPublished: json['is_published'] as bool? ?? true,
       tags: const ['devotional'],
       note: EpisodeNoteSummary.tryParse(json['note']),
+      matchRank: (json['match_rank'] as num?)?.toInt() ?? 0,
     );
   }
 }

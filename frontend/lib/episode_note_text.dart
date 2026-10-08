@@ -1,5 +1,21 @@
 import 'package:flutter/material.dart';
 
+/// How a topic chip should read.
+///
+/// `babel` becomes `Babel`. `GodsWord` and `TheNameOfTheLord` become
+/// `Gods Word` and `The Name Of The Lord`.
+String displayTopicLabel(String topic) {
+  final trimmed = topic.trim().replaceFirst(RegExp(r'^#+'), '');
+  if (trimmed.isEmpty) return trimmed;
+  final spaced = trimmed
+      .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
+      .replaceAllMapped(RegExp(r'(?<=[A-Z])(?=[A-Z][a-z])'), (_) => ' ');
+  return spaced.split(RegExp(r'\s+')).map((word) {
+    if (word.isEmpty) return word;
+    return word[0].toUpperCase() + word.substring(1);
+  }).join(' ');
+}
+
 /// Words worth highlighting in a note. The full query comes first so a phrase
 /// wins over its individual words at the same position.
 List<String> highlightNeedles(String query) {

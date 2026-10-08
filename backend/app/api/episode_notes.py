@@ -16,7 +16,7 @@ from typing import Optional
 from django.db import DataError, connection, transaction
 from django.utils import timezone
 
-from core.embedded_videos import parse_episode_date, sermon_date_key
+from core.embedded_videos import MONTH_NAMES, parse_episode_date, sermon_date_key
 from core.storage_paths import episode_notes_dir
 
 from .models import EpisodeNote, MediaVideo
@@ -393,11 +393,80 @@ def note_matches_query(note: EpisodeNote, query: str, *, fts_ids: Optional[set[i
     return False
 
 
-def video_matches_query(video: MediaVideo, query: str) -> bool:
+def _compact_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
+
+
+def _query_months(query: str) -> set[int]:
+    """Months named by the whole search, such as ``January`` or ``March 10``.
+
+    A longer phrase that merely contains a month word is left as a keyword.
+    """
+    words = re.findall(r"[A-Za-z]+", query or "")
+    if not words:
+        return set()
+    months = {MONTH_NAMES[word.lower()] for word in words if word.lower() in MONTH_NAMES}
+    other_words = [word for word in words if word.lower() not in MONTH_NAMES]
+    if other_words or not months:
+        return set()
+    return months
+
+
+def _published_month(video: MediaVideo) -> int:
+    published = video.published_at
+    if timezone.is_aware(published):
+        published = timezone.localtime(published)
+    return published.month
+
+
+def _title_match_rank(video: MediaVideo, query: str, months: set[int]) -> Optional[int]:
+    """0 when the title contains the search, 1 when the publish month matches."""
+    needle = (query or "").strip().lower()
+    if needle and needle in (video.title or "").lower():
+        return 0
+    if months and _published_month(video) in months:
+        return 1
+    return None
+
+
+def _topic_match(note: Optional[EpisodeNote], query: str) -> bool:
+    needle = (query or "").strip().lower()
+    compact = _compact_label(needle)
+    if note is None or not needle:
+        return False
+    for item in note.topics or []:
+        label = topic_label(str(item))
+        if not label:
+            continue
+        if needle in label.lower() or (compact and compact in _compact_label(label)):
+            return True
+    return False
+
+
+def _keyword_match(
+    video: MediaVideo,
+    note: Optional[EpisodeNote],
+    query: str,
+    *,
+    fts_ids: set[int],
+) -> bool:
     needle = (query or "").strip().lower()
     if not needle:
         return False
-    return needle in (video.title or "").lower() or needle in (video.description or "").lower()
+    if needle in (video.description or "").lower():
+        return True
+    if note is None:
+        return False
+    if note.pk in fts_ids:
+        return True
+    return needle in (note.search_text or "").lower()
+
+
+# Title, then the publish month, then a topic, then a keyword in the notes.
+_TITLE_RANK = 0
+_MONTH_RANK = 1
+_TOPIC_RANK = 2
+_KEYWORD_RANK = 3
 
 
 def make_snippet(text: str, query: str, *, radius: int = 80) -> str:
@@ -440,7 +509,12 @@ def list_media_topics(*, limit: int = 40) -> list[str]:
 
 
 def search_published_media(*, query: str = "", topic: str = "") -> list[dict]:
-    """Published videos, optionally filtered by keyword and one topic."""
+    """Published videos, optionally filtered by keyword and one topic.
+
+    A search is ordered the way the box is labeled: title, then topic, then
+    keyword. ``January`` also matches videos published in January, ahead of
+    notes that only mention the word.
+    """
     query = (query or "").strip()
     topic = topic_label(topic)
     videos = list(MediaVideo.objects.filter(is_published=True).order_by("-published_at", "title"))
@@ -450,27 +524,38 @@ def search_published_media(*, query: str = "", topic: str = "") -> list[dict]:
         if note.media_video_id is not None
     }
     fts_ids = full_text_note_ids(query) if query else set()
+    months = _query_months(query)
     results: list[dict] = []
     for video in videos:
         note = notes_by_video.get(video.id)
         if topic and (note is None or not note_has_topic(note, topic)):
             continue
         snippet = ""
+        rank = _TITLE_RANK
         if query:
-            note_hit = note is not None and note_matches_query(note, query, fts_ids=fts_ids)
-            title_hit = video_matches_query(video, query)
-            if not note_hit and not title_hit:
+            title_rank = _title_match_rank(video, query, months)
+            topic_hit = _topic_match(note, query)
+            keyword_hit = _keyword_match(video, note, query, fts_ids=fts_ids)
+            if title_rank is None and not topic_hit and not keyword_hit:
                 continue
-            if note_hit and note is not None:
+            if title_rank is not None:
+                rank = title_rank
+            elif topic_hit:
+                rank = _TOPIC_RANK
+            else:
+                rank = _KEYWORD_RANK
+            if keyword_hit and note is not None:
                 snippet = make_snippet(note.search_text, query)
-            elif title_hit:
-                snippet = make_snippet(video.description, query)
+            elif title_rank is not None:
+                snippet = make_snippet(video.description or video.title, query)
         results.append(
             {
                 "video": video,
                 "note": note_summary(note, snippet=snippet),
+                "match_rank": rank,
             }
         )
+    results.sort(key=lambda item: (item["match_rank"],))
     return results
 
 
