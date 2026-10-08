@@ -406,9 +406,10 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text):
     docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
     if docs:
         logger.warning(
-            "Teaching sermon score=%.3f source=%s",
+            "Teaching sermon score=%.3f source=%s query=%s",
             best_score,
             _doc_source_label(docs[0]),
+            search_text[:80],
         )
     else:
         logger.warning("No sermon clears rerank score=%.3f query=%s", best_score, search_text[:80])

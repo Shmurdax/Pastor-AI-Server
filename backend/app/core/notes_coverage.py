@@ -7,6 +7,7 @@ notes that do not mention the asked subject.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any, Iterable, Optional
@@ -21,6 +22,8 @@ from .quote_chunking import split_sentences
 from .grounding import looks_like_scripture_blob, normalize_grounding_text
 from .note_priority import looks_like_deck_junk, looks_like_kjv_diction
 from .teaching_claims import _WEAK_QUERY_WORDS, distinctive_query_tokens, query_topic_tokens
+
+logger = logging.getLogger(__name__)
 
 COVERAGE_FULL = "full"
 COVERAGE_PARTIAL = "partial"
@@ -224,6 +227,20 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
     return present, hits
 
 
+def sermon_rerank_min_margin(env: Optional[dict] = None) -> float:
+    """How far the best sermon must lead the next one.
+
+    Unrelated questions produce a cluster of low, similar scores. A sermon that
+    actually teaches the question leads the next file. Zero disables the check.
+    """
+    source = env if env is not None else os.environ
+    raw = str(source.get("SERMON_RERANK_MIN_MARGIN", "0") or "0").strip()
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.0
+
+
 def sermon_rerank_min_score(env: Optional[dict] = None) -> float:
     """Lowest rerank score that still counts as teaching the question.
 
@@ -277,9 +294,29 @@ def choose_sermon_by_rerank(
         groups.setdefault(chunk_source_key(doc), []).append((score, doc))
     if not groups:
         return [], COVERAGE_NONE, 0.0
-    best_key = max(groups, key=lambda key: max(score for score, _doc in groups[key]))
+    ranked_groups = sorted(
+        groups.items(),
+        key=lambda item: max(score for score, _doc in item[1]),
+        reverse=True,
+    )
+    best_key = ranked_groups[0][0]
     ranked = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
     best_score = ranked[0][0]
+    second_score = 0.0
+    if len(ranked_groups) > 1:
+        second_score = max(score for score, _doc in ranked_groups[1][1])
+    # A weak cluster of unrelated sermons sits near the same score. A real match
+    # pulls ahead of the next sermon. The absolute floor alone cannot separate
+    # those two cases when both land near 0.5.
+    margin = best_score - second_score
+    logger.warning(
+        "Rerank candidates best=%.3f second=%.3f margin=%.3f",
+        best_score,
+        second_score,
+        margin,
+    )
+    if margin < sermon_rerank_min_margin() and second_score > 0:
+        return [], COVERAGE_NONE, best_score
     if best_score < floor:
         return [], COVERAGE_NONE, best_score
     return [doc for _score, doc in ranked], COVERAGE_FULL, best_score
