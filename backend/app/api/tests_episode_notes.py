@@ -199,6 +199,26 @@ class EpisodeNoteImportTests(TestCase):
         self.assertNotRegex(note.search_text, r"[\ud800-\udfff]")
         self.assertIn("TheNameOfTheLord", note.topics)
 
+    def test_note_links_when_the_only_video_for_that_day_is_another_year(self):
+        march = MediaVideo.objects.create(
+            vimeo_id="mar-16-2020",
+            title="Mar 16",
+            description="",
+            published_at=timezone.make_aware(datetime(2020, 3, 16, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            (inbox / "Mar 16_2026.pdf").write_bytes(_pdf_bytes("Day 75 March 16\n\nA reading for the day."))
+            with patch.dict(os.environ, {"EPISODE_NOTES_DIR": str(root / "stored")}):
+                result = import_episode_notes(inbox)
+        self.assertEqual(result["unlinked"], [])
+        note = EpisodeNote.objects.get(episode_date=datetime(2026, 3, 16).date())
+        self.assertEqual(note.media_video_id, march.id)
+
     def test_same_day_prefers_the_closer_published_video(self):
         later = MediaVideo.objects.create(
             vimeo_id="may-2026-later",

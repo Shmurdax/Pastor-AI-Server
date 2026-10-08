@@ -230,17 +230,23 @@ def extract_pdf_text(path: Path) -> str:
 
 
 def match_video_for_episode_date(episode_date: date) -> Optional[MediaVideo]:
-    """Published video whose title has this month and day and whose year matches."""
+    """Published video whose title has this month and day.
+
+    Titles look like ``Mar 16`` or ``March 10`` and usually leave the year
+    off. When several videos share that day, prefer one whose Vimeo date is
+    in the note's year, then the closest Vimeo date. One ``Mar 16`` video
+    still matches ``Mar 16_2026.pdf`` when Vimeo dated that video 2020.
+    """
     month_day = f"{episode_date.month:02d}-{episode_date.day:02d}"
-    candidates: list[MediaVideo] = []
+    same_day: list[MediaVideo] = []
     for video in MediaVideo.objects.filter(is_published=True).order_by("id"):
         if sermon_date_key(video.title) != month_day:
             continue
-        if _published_year(video) != episode_date.year:
-            continue
-        candidates.append(video)
-    if not candidates:
+        same_day.append(video)
+    if not same_day:
         return None
+    same_year = [video for video in same_day if _published_year(video) == episode_date.year]
+    candidates = same_year or same_day
 
     def sort_key(video: MediaVideo) -> tuple[int, int]:
         published = video.published_at
