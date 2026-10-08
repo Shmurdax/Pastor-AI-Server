@@ -233,6 +233,36 @@ class MediaVideo(models.Model):
         return f"{minutes}:{seconds:02d}"
 
 
+class EpisodeNote(models.Model):
+    """Daily study notes shown beside one Walk through the Word video.
+
+    These rows are not sermon-library documents and are never embedded into
+    the chat knowledge base.
+    """
+
+    media_video = models.OneToOneField(
+        MediaVideo,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="episode_note",
+    )
+    episode_date = models.DateField(unique=True, db_index=True)
+    original_filename = models.CharField(max_length=255)
+    stored_filename = models.CharField(max_length=255)
+    search_text = models.TextField(blank=True, default="")
+    topics = models.JSONField(default=list, blank=True)
+    content_hash = models.CharField(max_length=64, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-episode_date", "original_filename"]
+
+    def __str__(self):
+        return f"{self.episode_date.isoformat()} ({self.original_filename})"
+
+
 class MailchimpExportRun(models.Model):
     """One staff export of AI login emails into the Mailchimp audience."""
 

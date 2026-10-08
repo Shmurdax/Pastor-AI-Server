@@ -44,6 +44,11 @@ def admin_video_ingestion_chunks_dir() -> Path:
     return _dir_from_env("VIDEO_INGESTION_CHUNKS_DIR", "admin_video_ingestion_chunks")
 
 
+def episode_notes_dir() -> Path:
+    """PDFs for the watch page. Kept out of sermon ingestion on purpose."""
+    return _dir_from_env("EPISODE_NOTES_DIR", "episode_notes")
+
+
 def video_job_staging_dir(job_id: int) -> Path:
     path = admin_video_ingestion_jobs_dir() / f"job_{int(job_id)}"
     path.mkdir(parents=True, exist_ok=True)

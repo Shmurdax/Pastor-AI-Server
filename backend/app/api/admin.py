@@ -7,7 +7,7 @@ from core.persist_db import dump_persistent_postgres
 
 from .mailchimp import MailchimpError, collect_exportable_members
 from .mailchimp_admin import export_members_to_mailchimp
-from .models import MediaVideo, Profile
+from .models import EpisodeNote, MediaVideo, Profile
 
 
 class ProfileInlineFormSet(BaseInlineFormSet):
@@ -211,6 +211,53 @@ class MediaVideoAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if change and "access_tier" in form.changed_data:
             obj.access_tier_manual = True
+        super().save_model(request, obj, form, change)
+        dump_persistent_postgres()
+
+
+class UnlinkedEpisodeNoteFilter(admin.SimpleListFilter):
+    title = "video link"
+    parameter_name = "linked"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("linked", "Linked to a video"),
+            ("unlinked", "Unlinked"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "linked":
+            return queryset.exclude(media_video__isnull=True)
+        if self.value() == "unlinked":
+            return queryset.filter(media_video__isnull=True)
+        return queryset
+
+
+@admin.register(EpisodeNote)
+class EpisodeNoteAdmin(admin.ModelAdmin):
+    """Attach an unmatched notes PDF to a video by hand. These are not sermon documents."""
+
+    list_display = ("episode_date", "original_filename", "media_video", "topic_preview")
+    list_filter = (UnlinkedEpisodeNoteFilter,)
+    search_fields = (
+        "original_filename",
+        "search_text",
+        "media_video__title",
+        "media_video__vimeo_id",
+    )
+    autocomplete_fields = ("media_video",)
+    readonly_fields = ("stored_filename", "content_hash", "search_text", "created_at", "updated_at")
+    ordering = ("-episode_date",)
+
+    @admin.display(description="Topics")
+    def topic_preview(self, obj):
+        return ", ".join(str(item) for item in (obj.topics or [])[:6])
+
+    def save_model(self, request, obj, form, change):
+        if obj.media_video_id:
+            EpisodeNote.objects.filter(media_video_id=obj.media_video_id).exclude(pk=obj.pk).update(
+                media_video=None
+            )
         super().save_model(request, obj, form, change)
         dump_persistent_postgres()
 

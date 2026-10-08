@@ -3,6 +3,9 @@
 Chat / public prayer POST live in core.views (production vLLM + Qdrant stack).
 """
 
+from pathlib import Path
+
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
 from rest_framework.authentication import TokenAuthentication
@@ -13,7 +16,6 @@ from api.permissions import HasPremiumAccess
 
 from core.models import PrayerRequest, ChurchEvent, ResponseReport
 
-from .models import MediaVideo
 from .serializers import (
     ChurchEventSerializer,
     ChurchEventWriteSerializer,
@@ -133,15 +135,85 @@ class ResponseReportDetailAPI(APIView):
         return Response(ResponseReportSerializer(report).data)
 
 
-class MediaVideoListAPI(APIView):
-    """GET /api/media/ — Premium list of published Walk through the Word videos."""
+class MediaTopicListAPI(APIView):
+    """GET /api/media/topics/ — topics from episode notes linked to published videos."""
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
 
     def get(self, request):
-        qs = MediaVideo.objects.filter(is_published=True).order_by(
-            "-published_at",
-            "title",
+        from .episode_notes import list_media_topics
+
+        return Response({"results": list_media_topics()})
+
+
+class MediaVideoListAPI(APIView):
+    """GET /api/media/ — Premium list of published Walk through the Word videos.
+
+    Optional ``q`` matches the title, description, note text, and topics.
+    Optional ``topic`` keeps episodes whose notes include that topic.
+    """
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
+
+    def get(self, request):
+        from .episode_notes import search_published_media
+
+        matches = search_published_media(
+            query=request.query_params.get("q") or "",
+            topic=request.query_params.get("topic") or "",
         )
-        return Response({"results": MediaVideoSerializer(qs, many=True).data})
+        videos = [item["video"] for item in matches]
+        rows = MediaVideoSerializer(videos, many=True).data
+        for row, item in zip(rows, matches):
+            row["note"] = item["note"]
+        return Response({"results": rows})
+
+
+class EpisodeNoteDetailAPI(APIView):
+    """GET /api/episode-notes/<id>/ — reflowed notes for one published episode."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
+
+    def get(self, request, note_id: int):
+        from .episode_notes import visible_note
+
+        note = visible_note(note_id)
+        if note is None:
+            raise Http404("Notes were not found.")
+        return Response(
+            {
+                "id": note.pk,
+                "episode_date": note.episode_date.isoformat(),
+                "topics": [str(item) for item in (note.topics or [])],
+                "body": note.search_text,
+                "original_filename": note.original_filename,
+                "has_notes": True,
+            }
+        )
+
+
+class EpisodeNoteFileAPI(APIView):
+    """GET /api/episode-notes/<id>/file/ — original PDF, not a sermon-library file."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
+
+    def get(self, request, note_id: int):
+        from .episode_notes import note_file_path, visible_note
+
+        note = visible_note(note_id)
+        if note is None:
+            raise Http404("Notes were not found.")
+        path = note_file_path(note)
+        if not path.is_file():
+            raise Http404("Notes were not found.")
+        filename = Path(note.original_filename).name.replace('"', "") or path.name
+        return FileResponse(
+            path.open("rb"),
+            content_type="application/pdf",
+            filename=filename,
+            as_attachment=False,
+        )

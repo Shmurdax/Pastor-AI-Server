@@ -171,3 +171,11 @@ cd backend/app && python manage.py sync_vimeo_media
 `deploy_update.sh` runs this sync after migrate when the token and folder id are set.
 Public catalog: `GET /api/media/`.
 
+Daily study notes (PDFs named like `May 15_2026.pdf`) attach to the matching video and show beside the player. They are not added to the sermon knowledge base:
+
+```bash
+cd backend/app && python manage.py import_episode_notes /path/to/notes
+```
+
+Search the library with `GET /api/media/?q=sheba` or `GET /api/media/?topic=TheNameOfTheLord`. Topic chips come from `GET /api/media/topics/`.
+

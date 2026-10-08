@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_application_1/models/church_event.dart';
+import 'package:flutter_application_1/models/episode_note.dart';
 import 'package:flutter_application_1/site_banner.dart';
 import 'package:flutter_application_1/models/media_item.dart';
 import 'package:flutter_application_1/models/prayer_request.dart';
@@ -178,10 +179,22 @@ class ApiService {
     );
   }
 
-  Future<List<MediaItem>> listMediaVideos() async {
-    final rows = await _apiClient.listMediaVideos();
+  Future<List<MediaItem>> listMediaVideos({
+    String? query,
+    String? topic,
+  }) async {
+    final rows = await _apiClient.listMediaVideos(query: query, topic: topic);
     return rows.map(MediaItem.fromApiJson).toList();
   }
+
+  Future<List<String>> listMediaTopics() => _apiClient.listMediaTopics();
+
+  Future<EpisodeNoteDetail> getEpisodeNote(int id) async {
+    final json = await _apiClient.getEpisodeNote(id);
+    return EpisodeNoteDetail.fromJson(json);
+  }
+
+  Future<Uint8List> getEpisodeNoteFile(int id) => _apiClient.getEpisodeNoteFile(id);
 
   Future<SiteBannerNotice> getSiteBanner() => _apiClient.getSiteBanner();
 
