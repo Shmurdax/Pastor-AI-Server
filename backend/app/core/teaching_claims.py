@@ -641,9 +641,12 @@ def format_generation_user_prompt(
     if notes_text:
         lines.append(
             "Answer the question from the sermon notes below and nowhere else. "
-            "Restate their points, illustrations, contrasts, and applications. "
-            "Use their phrases for the main idea. "
-            "Do not add a point, story, or application that is not written in the notes. "
+            "Teach only what those notes say, including their illustrations, contrasts, and applications. "
+            "Let the question choose the shape. A question, a retelling, or a sermon flow is paragraphs. "
+            "Sermon notes, an outline, or a request for the points is headings and bullets "
+            "built from ideas that are actually in the notes. "
+            "Do not add a point, story, verse, or application that is not written in the notes. "
+            "Do not invent points to fill an outline. "
             "Do not blend a different sermon into this answer. "
             "If the notes do not cover part of the question, say so, then teach only what they cover. "
             "Do not answer that gap from general Christian knowledge."
@@ -652,7 +655,7 @@ def format_generation_user_prompt(
         lines.append("SERMON NOTES:")
         lines.append(notes_text)
         lines.append("")
-        lines.append("Write the answer now. The sermon notes above are the last word.")
+        lines.append("Write the answer now.")
     else:
         lines.append(
             "No sermon notes were retrieved for this question. "
