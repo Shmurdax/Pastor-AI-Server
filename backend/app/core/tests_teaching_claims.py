@@ -189,6 +189,7 @@ class TeachingClaimTests(unittest.TestCase):
             self.assertIn("Answer the question from the sermon notes below", prompt)
             self.assertIn("Let the question choose the shape", prompt)
             self.assertIn("headings and bullets", prompt)
+            self.assertGreater(prompt.rfind("Let the question choose the shape"), prompt.rfind("SERMON NOTES:"))
             self.assertIn("Do not blend a different sermon", prompt)
             self.assertNotIn("Restate their points", prompt)
             self.assertNotIn("the last word", prompt)
