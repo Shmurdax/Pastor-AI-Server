@@ -24,97 +24,10 @@ from .models import EpisodeNote, MediaVideo
 logger = logging.getLogger(__name__)
 
 _PAGE_MARKER_RE = re.compile(r"(?i)^--\s*\d+\s+of\s+\d+\s*--$")
-_HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z][A-Za-z0-9_]{2,})")
-_WORD_RE = re.compile(r"[A-Za-z][A-Za-z']{3,}")
-_DAY_HEADING_RE = re.compile(r"(?i)\bday\s+\d+\b")
-
-# Series boilerplate and function words. Kept out of topic chips so a search
-# for "Sheba" or a hashtag is not crowded out by the header on every PDF.
-_TOPIC_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "but",
-        "by",
-        "can",
-        "did",
-        "for",
-        "from",
-        "had",
-        "has",
-        "have",
-        "her",
-        "him",
-        "his",
-        "how",
-        "into",
-        "its",
-        "not",
-        "our",
-        "she",
-        "that",
-        "the",
-        "their",
-        "them",
-        "then",
-        "there",
-        "they",
-        "this",
-        "was",
-        "were",
-        "what",
-        "when",
-        "with",
-        "you",
-        "your",
-        "about",
-        "after",
-        "also",
-        "because",
-        "been",
-        "before",
-        "being",
-        "bible",
-        "books",
-        "children",
-        "chronological",
-        "daily",
-        "developed",
-        "don",
-        "gmnonline",
-        "lagard",
-        "lord",
-        "need",
-        "needs",
-        "note",
-        "notes",
-        "nordin",
-        "ordered",
-        "other",
-        "pages",
-        "penned",
-        "reading",
-        "resource",
-        "resources",
-        "smith",
-        "studied",
-        "susan",
-        "these",
-        "through",
-        "today",
-        "tools",
-        "visit",
-        "walk",
-        "word",
-        "would",
-        "your",
-    }
-)
+# A hashtag keeps the PDF's own spelling and spaces. `#Wont He Do It` stays
+# `Wont He Do It`. A token with no spaces, `#wontHedoIt`, stays `wontHedoIt`.
+_HASHTAG_LINE_RE = re.compile(r"#([^\n#]+)")
+_INLINE_HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z][A-Za-z0-9_]+)")
 
 _BOILERPLATE_HASHTAGS = frozenset({"walkthroughtheword"})
 
@@ -157,7 +70,7 @@ def reflow_note_text(raw: str) -> str:
             bullet = True
             current.append(stripped.lstrip("•").strip())
             continue
-        if stripped.startswith("#") and " " not in stripped:
+        if stripped.startswith("#"):
             flush()
             blocks.append(stripped)
             continue
@@ -166,42 +79,41 @@ def reflow_note_text(raw: str) -> str:
     return "\n\n".join(blocks)
 
 
-def extract_note_topics(text: str, *, limit: int = 12) -> list[str]:
-    """Hashtags first, then repeated keywords from the day's study body."""
+def _clean_hashtag(label: str) -> str:
+    return re.sub(r"\s+", " ", (label or "").strip().lstrip("#")).strip(" \t.,;:")
+
+
+def hashtags_in_text(text: str, *, limit: int = 12) -> list[str]:
+    """Hashtag text exactly as written in the note, without the leading #."""
     topics: list[str] = []
     seen: set[str] = set()
 
     def add(label: str) -> None:
-        cleaned = label.strip().lstrip("#")
+        cleaned = _clean_hashtag(label)
         key = cleaned.lower()
         if not cleaned or key in seen or key in _BOILERPLATE_HASHTAGS:
             return
         seen.add(key)
         topics.append(cleaned)
 
-    for match in _HASHTAG_RE.finditer(text or ""):
-        add(match.group(1))
-        if len(topics) >= limit:
-            return topics
-
-    body = text or ""
-    day = _DAY_HEADING_RE.search(body)
-    if day:
-        body = body[day.start() :]
-    counts: dict[str, int] = {}
-    for match in _WORD_RE.finditer(body):
-        word = match.group(0).lower().strip("'")
-        if len(word) < 4 or word in _TOPIC_STOPWORDS or word in seen:
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            for match in _HASHTAG_LINE_RE.finditer(stripped):
+                add(match.group(1))
+                if len(topics) >= limit:
+                    return topics
             continue
-        counts[word] = counts.get(word, 0) + 1
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    for word, count in ranked:
-        if count < 2 and len(topics) >= 6:
-            break
-        add(word)
-        if len(topics) >= limit:
-            break
+        for match in _INLINE_HASHTAG_RE.finditer(line):
+            add(match.group(1))
+            if len(topics) >= limit:
+                return topics
     return topics
+
+
+def extract_note_topics(text: str, *, limit: int = 12) -> list[str]:
+    """Topics are the note's hashtags, in PDF order and spelling."""
+    return hashtags_in_text(text, limit=limit)
 
 
 def _text_for_database(value: str) -> str:
@@ -348,76 +260,33 @@ def topic_label(value: str) -> str:
     return (value or "").strip().lstrip("#")
 
 
-_WORD_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?")
-
-
-def _title_word(word: str) -> str:
-    if not word:
-        return word
-    return word[0].upper() + word[1:]
-
-
-def _fallback_topic_phrase(topic: str) -> str:
-    """Split CamelCase when the note never writes the phrase out."""
-    label = topic_label(topic)
-    if not label:
-        return ""
-    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", label)
-    spaced = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", spaced)
-    return " ".join(_title_word(word) for word in spaced.split())
-
-
-def topic_phrase(topic: str, text: str) -> str:
-    """Read a stored topic back from the note in the words the note uses.
-
-    ``wontHedoIt`` becomes ``Wont He Do It`` when the note says
-    ``Wont He do it``. A single smashed token stays a CamelCase fallback.
-    """
-    target = _compact_label(topic_label(topic))
-    fallback = _fallback_topic_phrase(topic)
-    if not target or not text:
-        return fallback
-    words = _WORD_TOKEN_RE.findall(text)
-    compacts = [_compact_label(word) for word in words]
-    best: Optional[tuple[int, int]] = None
-    for start, _word in enumerate(words):
-        acc = ""
-        for end in range(start, len(words)):
-            piece = compacts[end]
-            if not piece:
-                break
-            acc += piece
-            if len(acc) > len(target) or not target.startswith(acc):
-                break
-            if acc == target:
-                if best is None or (end - start) > (best[1] - best[0]):
-                    best = (start, end)
-                break
-    if best is None or best[1] == best[0]:
-        return fallback
-    return " ".join(_title_word(word) for word in words[best[0] : best[1] + 1])
-
-
-def display_topics(note: EpisodeNote) -> list[str]:
-    text = note.search_text or ""
+def note_topic_labels(note: EpisodeNote) -> list[str]:
+    """Hashtags from the note text. Stored topics are a fallback."""
+    found = hashtags_in_text(note.search_text or "")
+    if found:
+        return found
     labels: list[str] = []
     seen: set[str] = set()
     for item in note.topics or []:
-        phrase = topic_phrase(str(item), text)
-        key = _compact_label(phrase)
-        if not phrase or key in seen:
+        label = topic_label(str(item))
+        key = label.lower()
+        if not label or key in seen or key in _BOILERPLATE_HASHTAGS:
             continue
         seen.add(key)
-        labels.append(phrase)
+        labels.append(label)
     return labels
+
+
+def display_topics(note: EpisodeNote) -> list[str]:
+    return note_topic_labels(note)
 
 
 def note_has_topic(note: EpisodeNote, topic: str) -> bool:
     wanted = _compact_label(topic)
     if not wanted:
         return False
-    for item in note.topics or []:
-        if _compact_label(str(item)) == wanted:
+    for item in note_topic_labels(note):
+        if _compact_label(item) == wanted:
             return True
     return False
 
@@ -498,10 +367,7 @@ def _topic_match(note: Optional[EpisodeNote], query: str) -> bool:
     compact = _compact_label(needle)
     if note is None or not needle:
         return False
-    for item in note.topics or []:
-        label = topic_label(str(item))
-        if not label:
-            continue
+    for label in note_topic_labels(note):
         if needle in label.lower() or (compact and compact in _compact_label(label)):
             return True
     return False
@@ -554,30 +420,17 @@ def make_snippet(text: str, query: str, *, radius: int = 80) -> str:
 
 
 def list_media_topics(*, limit: int = 40) -> list[str]:
-    """Topics for filter chips, worded the way the notes write them."""
+    """Hashtags for filter chips, spelled the way the PDF writes them."""
     counts: dict[str, int] = {}
     display: dict[str, str] = {}
-    raw: dict[str, str] = {}
-    phrase_words: dict[str, int] = {}
     notes = EpisodeNote.objects.filter(media_video__is_published=True)
     for note in notes:
-        text = note.search_text or ""
-        for item in note.topics or []:
-            label = topic_label(str(item))
-            key = _compact_label(label)
-            if not key:
-                continue
+        for label in note_topic_labels(note):
+            key = label.lower()
             counts[key] = counts.get(key, 0) + 1
-            raw.setdefault(key, label)
-            phrase = topic_phrase(label, text)
-            words = len(phrase.split())
-            if key not in display or words > phrase_words[key]:
-                display[key] = phrase
-                phrase_words[key] = words
-    ranked = sorted(counts, key=lambda key: (-counts[key], key))
-    hashtags = [display[key] for key in ranked if any(char.isupper() for char in raw[key])]
-    keywords = [display[key] for key in ranked if not any(char.isupper() for char in raw[key])]
-    return (hashtags + keywords)[:limit]
+            display.setdefault(key, label)
+    ranked = sorted(counts, key=lambda key: (-counts[key], display[key].lower()))
+    return [display[key] for key in ranked][:limit]
 
 
 def search_published_media(*, query: str = "", topic: str = "") -> list[dict]:
