@@ -78,32 +78,28 @@ class EpisodeDateParseTests(SimpleTestCase):
         self.assertIn("#TheNameOfTheLord", text)
         self.assertNotIn("1 of 2", text)
 
-    def test_topic_phrase_uses_the_words_written_in_the_note(self):
-        from api.episode_notes import topic_phrase
+    def test_hashtags_keep_the_pdf_spelling(self):
+        from api.episode_notes import hashtags_in_text
 
-        text = (
-            "Wont He do it.\n"
-            "Through the Bible in one year.\n"
-            "Together we read. Confess all sin. Believe in Jesus.\n"
-            "Accept this forgiveness.\n"
-            "#wontHedoIt #Throughthebibleinoneyear"
+        text = "\n".join(
+            [
+                "The Queen of Sheba traveled to Solomon.",
+                "#wontHedoIt",
+                "#Wont He Do It",
+                "#TheNameOfTheLord #makemeamagnet",
+                "#walkthroughtheword",
+            ]
         )
-        self.assertEqual(topic_phrase("wontHedoIt", text), "Wont He Do It")
+        topics = hashtags_in_text(text)
         self.assertEqual(
-            topic_phrase("Throughthebibleinoneyear", text),
-            "Through The Bible In One Year",
+            topics,
+            ["wontHedoIt", "Wont He Do It", "TheNameOfTheLord", "makemeamagnet"],
         )
-        self.assertEqual(topic_phrase("togetherweread", text), "Together We Read")
-        self.assertEqual(topic_phrase("Confessallsin", text), "Confess All Sin")
-        self.assertEqual(topic_phrase("Believeinjesus", text), "Believe In Jesus")
-        self.assertEqual(topic_phrase("Acceptthisforgiveness", text), "Accept This Forgiveness")
-        self.assertEqual(topic_phrase("jesus", "Come to Jesus."), "Jesus")
 
-    def test_topics_prefer_hashtags_then_repeated_words(self):
+    def test_topics_are_the_hashtags_only(self):
         topics = extract_note_topics(reflow_note_text(_note_text()))
-        self.assertIn("TheNameOfTheLord", topics)
-        self.assertIn("makemeamagnet", topics)
-        self.assertIn("sheba", topics)
+        self.assertEqual(topics, ["TheNameOfTheLord", "makemeamagnet"])
+        self.assertNotIn("sheba", [item.lower() for item in topics])
         self.assertNotIn("walkthroughtheword", [item.lower() for item in topics])
 
     def test_module_does_not_call_the_knowledge_base(self):
@@ -301,8 +297,7 @@ class EpisodeNoteApiTests(TestCase):
         by_title = {row["title"]: row for row in listing.data["results"]}
         self.assertEqual(by_title["May 15"]["note"]["id"], self.note.id)
         self.assertEqual(by_title["May 15"]["note"]["episode_date"], "2026-05-15")
-        self.assertIn("The Name Of The Lord", by_title["May 15"]["note"]["topics"])
-        self.assertIn("Sheba", by_title["May 15"]["note"]["topics"])
+        self.assertEqual(by_title["May 15"]["note"]["topics"], ["TheNameOfTheLord"])
         self.assertTrue(by_title["May 15"]["note"]["has_notes"])
         self.assertIsNone(by_title["June 2"]["note"])
 
@@ -386,7 +381,7 @@ class EpisodeNoteApiTests(TestCase):
         self.assertEqual(sheba_ids, ["sheba-title", "may-api", "sheba-body"])
         self.assertEqual(
             [row["match_rank"] for row in sheba.data["results"]],
-            [0, 2, 3],
+            [0, 3, 3],
         )
         self.assertEqual(titled.title, "Sheba")
 
@@ -396,9 +391,9 @@ class EpisodeNoteApiTests(TestCase):
 
         topics = self.client.get("/api/media/topics/")
         self.assertEqual(topics.status_code, 200)
-        self.assertIn("The Name Of The Lord", topics.data["results"])
-        self.assertIn("Sheba", topics.data["results"])
-        spaced = self.client.get("/api/media/", {"topic": "The Name Of The Lord"})
+        self.assertIn("TheNameOfTheLord", topics.data["results"])
+        self.assertNotIn("sheba", [item.lower() for item in topics.data["results"]])
+        spaced = self.client.get("/api/media/", {"topic": "TheNameOfTheLord"})
         self.assertEqual([row["vimeo_id"] for row in spaced.data["results"]], ["may-api"])
 
         detail = self.client.get(f"/api/episode-notes/{self.note.id}/")

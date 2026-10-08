@@ -1,19 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// How a topic chip should read.
-///
-/// `babel` becomes `Babel`. `GodsWord` and `TheNameOfTheLord` become
-/// `Gods Word` and `The Name Of The Lord`.
+/// Topic chip text. Hashtags are shown exactly as written in the PDF, without
+/// the leading `#`.
 String displayTopicLabel(String topic) {
-  final trimmed = topic.trim().replaceFirst(RegExp(r'^#+'), '');
-  if (trimmed.isEmpty) return trimmed;
-  final spaced = trimmed
-      .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
-      .replaceAllMapped(RegExp(r'(?<=[A-Z])(?=[A-Z][a-z])'), (_) => ' ');
-  return spaced.split(RegExp(r'\s+')).map((word) {
-    if (word.isEmpty) return word;
-    return word[0].toUpperCase() + word.substring(1);
-  }).join(' ');
+  var trimmed = topic.trim();
+  while (trimmed.startsWith('#')) {
+    trimmed = trimmed.substring(1).trimLeft();
+  }
+  return trimmed;
 }
 
 /// Words worth highlighting in a note. The full query comes first so a phrase
