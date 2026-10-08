@@ -83,7 +83,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   String? _topicFilter;
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
-  MediaAccessTier? _tierFilter;
   int? _yearFilter;
 
   /// Premium unlock from logged-in profile (`is_premium` / staff).
@@ -268,7 +267,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   List<MediaItem> get _filteredItems {
     var items = _accessibleItems.where((item) {
-      if (_tierFilter != null && item.accessTier != _tierFilter) return false;
       if (_yearFilter != null && item.publishedAt.year != _yearFilter) return false;
       return true;
     }).toList();
@@ -293,7 +291,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   int get _activeFilterCount {
     var n = 0;
-    if (_tierFilter != null) n++;
     if (_yearFilter != null) n++;
     if (_topicFilter != null) n++;
     return n;
@@ -302,7 +299,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   void _clearFilters() {
     final hadTopic = _topicFilter != null;
     setState(() {
-      _tierFilter = null;
       _yearFilter = null;
       _topicFilter = null;
     });
@@ -357,7 +353,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   Future<void> _openFilterSheet() async {
-    var tier = _tierFilter;
     var year = _yearFilter;
     var topic = _topicFilter;
 
@@ -400,29 +395,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                       fontWeight: FontWeight.bold,
                       color: _navy,
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text('Access', style: _sheetLabelStyle()),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      _FilterChip(
-                        label: 'All',
-                        selected: tier == null,
-                        onTap: () => setSheetState(() => tier = null),
-                      ),
-                      _FilterChip(
-                        label: 'Free preview',
-                        selected: tier == MediaAccessTier.freePreview,
-                        onTap: () => setSheetState(() => tier = MediaAccessTier.freePreview),
-                      ),
-                      _FilterChip(
-                        label: 'Premium',
-                        selected: tier == MediaAccessTier.premium,
-                        onTap: () => setSheetState(() => tier = MediaAccessTier.premium),
-                      ),
-                    ],
                   ),
                   const SizedBox(height: 20),
                   Text('Year', style: _sheetLabelStyle()),
@@ -469,7 +441,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                       TextButton(
                         onPressed: () {
                           setSheetState(() {
-                            tier = null;
                             year = null;
                             topic = null;
                           });
@@ -481,7 +452,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         onPressed: () {
                           final topicChanged = _topicFilter != topic;
                           setState(() {
-                            _tierFilter = tier;
                             _yearFilter = year;
                             _topicFilter = topic;
                           });
@@ -644,13 +614,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  if (_tierFilter != null)
-                                    _ActiveFilterPill(
-                                      label: _tierFilter == MediaAccessTier.premium
-                                          ? 'Premium'
-                                          : 'Free preview',
-                                      onRemove: () => setState(() => _tierFilter = null),
-                                    ),
                                   if (_yearFilter != null)
                                     _ActiveFilterPill(
                                       label: '$_yearFilter',

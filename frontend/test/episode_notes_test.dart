@@ -210,6 +210,9 @@ void main() {
 
     await tester.tap(find.text('Filters'));
     await tester.pumpAndSettle();
+    expect(find.text('Access'), findsNothing);
+    expect(find.text('Free preview'), findsNothing);
+    expect(find.text('Year'), findsOneWidget);
     await tester.tap(find.text('TheNameOfTheLord'));
     await tester.tap(find.text('Apply'));
     await tester.pump();
