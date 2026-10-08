@@ -7,7 +7,7 @@ from core.notes_coverage import (
     COVERAGE_PARTIAL,
     coverage_subject_tokens,
     focus_retrieved_notes,
-    focused_sermon_matches,
+    choose_sermon_by_rerank,
     query_changes_locked_sermon,
     select_reference_notes,
     sermon_lines_for_answer,
@@ -226,21 +226,59 @@ class FocusRetrievedNotesTests(unittest.TestCase):
             )
         )
 
-    def test_one_mention_does_not_count_as_teaching_the_subject(self):
+    def test_rerank_score_picks_the_sermon_that_teaches_the_question(self):
         aside = _doc(
             "Jonah ran once. We must wait on God in the wilderness. "
-            "Wait on God through the trial. Wait on God again."
+            "Wait on God through the trial. Wait on God again.",
+            source="wait.pdf",
         )
-        self.assertFalse(
-            focused_sermon_matches(
-                "How does Pastor Don teach the story of Jonah running from the Lord?",
-                [aside],
+        aside.metadata["rerank_score"] = 0.42
+        teaching = _doc(
+            "Jonah ran from the Lord and the storm found him. "
+            "The sermon teaches that running from God does not end the assignment.",
+            source="jonah.pdf",
+        )
+        teaching.metadata["rerank_score"] = 0.86
+        weak = _doc(
+            "The council discussed many customs in the city.",
+            source="customs.pdf",
+        )
+        weak.metadata["rerank_score"] = 0.18
+        chosen, coverage, score = choose_sermon_by_rerank(
+            [(aside, 0.42), (teaching, 0.86), (weak, 0.18)],
+            min_score=0.5,
+        )
+        self.assertEqual(coverage, "full")
+        self.assertEqual(chosen, [teaching])
+        self.assertAlmostEqual(score, 0.86)
+        refused, refused_coverage, refused_score = choose_sermon_by_rerank(
+            [(weak, 0.18)],
+            min_score=0.5,
+        )
+        self.assertEqual(refused, [])
+        self.assertEqual(refused_coverage, "none")
+        self.assertAlmostEqual(refused_score, 0.18)
+
+    def test_incidental_word_does_not_count_as_covering_the_question(self):
+        from core.notes_coverage import sermon_mentions_question
+
+        hope = _doc(
+            "Hope in God and wait expectantly for Him, for I shall yet praise Him.",
+            source="It Is Time for Hope",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "Create sermon notes on hope for someone who is sick or grieving.",
+                [hope],
             )
         )
-        giants = _doc("David faced Goliath the giant. " * 4)
-        self.assertTrue(
-            focused_sermon_matches(
-                "Tell the story of David and Goliath from the sermon notes.",
-                [giants],
+        selling = _doc(
+            "Everywhere you turn you see a new best-selling book about leadership.",
+            source="Nextsteps 101",
+        )
+        self.assertFalse(
+            sermon_mentions_question(
+                "What did Pastor Don teach about the Council of Trent and selling indulgences in 1545?",
+                [selling],
             )
         )

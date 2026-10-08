@@ -187,7 +187,13 @@ class TeachingClaimTests(unittest.TestCase):
         for prompt in (drink, outline, gay):
             self.assertIn("SERMON NOTES:", prompt)
             self.assertIn("Answer the question from the sermon notes below", prompt)
+            self.assertIn("Let the question choose the shape", prompt)
+            self.assertIn("bullets under it", prompt)
+            self.assertIn("write paragraphs only", prompt)
+            self.assertGreater(prompt.rfind("Let the question choose the shape"), prompt.rfind("SERMON NOTES:"))
             self.assertIn("Do not blend a different sermon", prompt)
+            self.assertNotIn("Restate their points", prompt)
+            self.assertNotIn("the last word", prompt)
             self.assertNotIn("Paraphrase every numbered sermon point", prompt)
             self.assertNotIn("Romans 14 liberty", prompt)
             self.assertNotIn("LGBTQ inclusion", prompt)
