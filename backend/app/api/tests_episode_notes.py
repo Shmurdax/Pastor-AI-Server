@@ -170,6 +170,35 @@ class EpisodeNoteImportTests(TestCase):
             unlinked = EpisodeNote.objects.get(episode_date=datetime(2026, 6, 2).date())
             self.assertIsNone(unlinked.media_video_id)
 
+    def test_import_keeps_a_note_when_pdf_text_has_a_broken_character(self):
+        class FakePage:
+            def extract_text(self):
+                return (
+                    "The Queen of Sheba \ud83d traveled far. \ud83d\ude00\n\n"
+                    "#TheNameOfTheLord\n"
+                )
+
+        class FakeReader:
+            def __init__(self, path):
+                self.pages = [FakePage()]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            (inbox / "May 15_2026.pdf").write_bytes(_pdf_bytes(_note_text()))
+            with patch.dict(os.environ, {"EPISODE_NOTES_DIR": str(root / "stored")}), patch(
+                "pypdf.PdfReader", FakeReader
+            ):
+                import_episode_notes(inbox)
+
+        note = EpisodeNote.objects.get(episode_date=datetime(2026, 5, 15).date())
+        note.search_text.encode("utf-8")
+        self.assertIn("Sheba", note.search_text)
+        self.assertIn("😀", note.search_text)
+        self.assertNotRegex(note.search_text, r"[\ud800-\udfff]")
+        self.assertIn("TheNameOfTheLord", note.topics)
+
     def test_same_day_prefers_the_closer_published_video(self):
         later = MediaVideo.objects.create(
             vimeo_id="may-2026-later",
