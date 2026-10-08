@@ -309,11 +309,19 @@ def choose_sermon_by_rerank(
     # pulls ahead of the next sermon. The absolute floor alone cannot separate
     # those two cases when both land near 0.5.
     margin = best_score - second_score
+    top = []
+    for key, pairs in ranked_groups[:3]:
+        score = max(item[0] for item in pairs)
+        sample = pairs[0][1]
+        meta = getattr(sample, "metadata", None) or {}
+        label = meta.get("title") or meta.get("source") or key
+        top.append(f"{score:.3f}:{label}")
     logger.warning(
-        "Rerank candidates best=%.3f second=%.3f margin=%.3f",
+        "Rerank candidates best=%.3f second=%.3f margin=%.3f top=%s",
         best_score,
         second_score,
         margin,
+        " | ".join(top),
     )
     if margin < sermon_rerank_min_margin() and second_score > 0:
         return [], COVERAGE_NONE, best_score

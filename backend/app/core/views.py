@@ -393,8 +393,12 @@ def _immediate_sse(payload: dict):
     yield _sse(done)
 
 
-def _focused_sermon_docs(vectorstore, client, collection_name, search_text):
-    """Search, then keep the one sermon the reranker scores as the match."""
+def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rerank_text=None):
+    """Search, then keep the one sermon the reranker scores as the match.
+
+    Embedding search uses the layout-stripped text. The reranker reads the
+    full question, because a bag of leftover words flattens every score.
+    """
     del client, collection_name
     candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
     scored_hits = search_queries_on_store(
@@ -402,7 +406,7 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text):
         [search_text],
         k_per_query=candidate_k,
     )
-    scored_hits = rerank_scored_hits(search_text, scored_hits)
+    scored_hits = rerank_scored_hits(rerank_text or search_text, scored_hits)
     docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
     if docs:
         logger.warning(
@@ -703,6 +707,7 @@ class ChatAPIView(APIView):
                     client,
                     collection_name,
                     search_text,
+                    rerank_text=user_query_llm,
                 )
                 opening = ""
                 if first_row is not None:
@@ -719,6 +724,7 @@ class ChatAPIView(APIView):
                         client,
                         collection_name,
                         opening_search,
+                        rerank_text=opening,
                     )
                     locked_text = "\n".join(
                         chunk_text(doc) for doc in locked_docs if chunk_text(doc)
