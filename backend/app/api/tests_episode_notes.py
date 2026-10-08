@@ -78,6 +78,27 @@ class EpisodeDateParseTests(SimpleTestCase):
         self.assertIn("#TheNameOfTheLord", text)
         self.assertNotIn("1 of 2", text)
 
+    def test_topic_phrase_uses_the_words_written_in_the_note(self):
+        from api.episode_notes import topic_phrase
+
+        text = (
+            "Wont He do it.\n"
+            "Through the Bible in one year.\n"
+            "Together we read. Confess all sin. Believe in Jesus.\n"
+            "Accept this forgiveness.\n"
+            "#wontHedoIt #Throughthebibleinoneyear"
+        )
+        self.assertEqual(topic_phrase("wontHedoIt", text), "Wont He Do It")
+        self.assertEqual(
+            topic_phrase("Throughthebibleinoneyear", text),
+            "Through The Bible In One Year",
+        )
+        self.assertEqual(topic_phrase("togetherweread", text), "Together We Read")
+        self.assertEqual(topic_phrase("Confessallsin", text), "Confess All Sin")
+        self.assertEqual(topic_phrase("Believeinjesus", text), "Believe In Jesus")
+        self.assertEqual(topic_phrase("Acceptthisforgiveness", text), "Accept This Forgiveness")
+        self.assertEqual(topic_phrase("jesus", "Come to Jesus."), "Jesus")
+
     def test_topics_prefer_hashtags_then_repeated_words(self):
         topics = extract_note_topics(reflow_note_text(_note_text()))
         self.assertIn("TheNameOfTheLord", topics)
@@ -280,7 +301,8 @@ class EpisodeNoteApiTests(TestCase):
         by_title = {row["title"]: row for row in listing.data["results"]}
         self.assertEqual(by_title["May 15"]["note"]["id"], self.note.id)
         self.assertEqual(by_title["May 15"]["note"]["episode_date"], "2026-05-15")
-        self.assertIn("TheNameOfTheLord", by_title["May 15"]["note"]["topics"])
+        self.assertIn("The Name Of The Lord", by_title["May 15"]["note"]["topics"])
+        self.assertIn("Sheba", by_title["May 15"]["note"]["topics"])
         self.assertTrue(by_title["May 15"]["note"]["has_notes"])
         self.assertIsNone(by_title["June 2"]["note"])
 
@@ -374,8 +396,10 @@ class EpisodeNoteApiTests(TestCase):
 
         topics = self.client.get("/api/media/topics/")
         self.assertEqual(topics.status_code, 200)
-        self.assertIn("TheNameOfTheLord", topics.data["results"])
-        self.assertIn("sheba", topics.data["results"])
+        self.assertIn("The Name Of The Lord", topics.data["results"])
+        self.assertIn("Sheba", topics.data["results"])
+        spaced = self.client.get("/api/media/", {"topic": "The Name Of The Lord"})
+        self.assertEqual([row["vimeo_id"] for row in spaced.data["results"]], ["may-api"])
 
         detail = self.client.get(f"/api/episode-notes/{self.note.id}/")
         self.assertEqual(detail.status_code, 200)

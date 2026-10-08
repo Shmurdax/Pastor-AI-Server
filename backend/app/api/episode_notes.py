@@ -348,12 +348,76 @@ def topic_label(value: str) -> str:
     return (value or "").strip().lstrip("#")
 
 
+_WORD_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?")
+
+
+def _title_word(word: str) -> str:
+    if not word:
+        return word
+    return word[0].upper() + word[1:]
+
+
+def _fallback_topic_phrase(topic: str) -> str:
+    """Split CamelCase when the note never writes the phrase out."""
+    label = topic_label(topic)
+    if not label:
+        return ""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", label)
+    spaced = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", spaced)
+    return " ".join(_title_word(word) for word in spaced.split())
+
+
+def topic_phrase(topic: str, text: str) -> str:
+    """Read a stored topic back from the note in the words the note uses.
+
+    ``wontHedoIt`` becomes ``Wont He Do It`` when the note says
+    ``Wont He do it``. A single smashed token stays a CamelCase fallback.
+    """
+    target = _compact_label(topic_label(topic))
+    fallback = _fallback_topic_phrase(topic)
+    if not target or not text:
+        return fallback
+    words = _WORD_TOKEN_RE.findall(text)
+    compacts = [_compact_label(word) for word in words]
+    best: Optional[tuple[int, int]] = None
+    for start, _word in enumerate(words):
+        acc = ""
+        for end in range(start, len(words)):
+            piece = compacts[end]
+            if not piece:
+                break
+            acc += piece
+            if len(acc) > len(target) or not target.startswith(acc):
+                break
+            if acc == target:
+                if best is None or (end - start) > (best[1] - best[0]):
+                    best = (start, end)
+                break
+    if best is None or best[1] == best[0]:
+        return fallback
+    return " ".join(_title_word(word) for word in words[best[0] : best[1] + 1])
+
+
+def display_topics(note: EpisodeNote) -> list[str]:
+    text = note.search_text or ""
+    labels: list[str] = []
+    seen: set[str] = set()
+    for item in note.topics or []:
+        phrase = topic_phrase(str(item), text)
+        key = _compact_label(phrase)
+        if not phrase or key in seen:
+            continue
+        seen.add(key)
+        labels.append(phrase)
+    return labels
+
+
 def note_has_topic(note: EpisodeNote, topic: str) -> bool:
-    wanted = topic_label(topic).lower()
+    wanted = _compact_label(topic)
     if not wanted:
         return False
     for item in note.topics or []:
-        if topic_label(str(item)).lower() == wanted:
+        if _compact_label(str(item)) == wanted:
             return True
     return False
 
@@ -490,21 +554,29 @@ def make_snippet(text: str, query: str, *, radius: int = 80) -> str:
 
 
 def list_media_topics(*, limit: int = 40) -> list[str]:
-    """Topics for filter chips. Hashtags stay ahead of everyday keywords."""
+    """Topics for filter chips, worded the way the notes write them."""
     counts: dict[str, int] = {}
     display: dict[str, str] = {}
+    raw: dict[str, str] = {}
+    phrase_words: dict[str, int] = {}
     notes = EpisodeNote.objects.filter(media_video__is_published=True)
     for note in notes:
+        text = note.search_text or ""
         for item in note.topics or []:
             label = topic_label(str(item))
-            key = label.lower()
+            key = _compact_label(label)
             if not key:
                 continue
             counts[key] = counts.get(key, 0) + 1
-            display.setdefault(key, label)
+            raw.setdefault(key, label)
+            phrase = topic_phrase(label, text)
+            words = len(phrase.split())
+            if key not in display or words > phrase_words[key]:
+                display[key] = phrase
+                phrase_words[key] = words
     ranked = sorted(counts, key=lambda key: (-counts[key], key))
-    hashtags = [display[key] for key in ranked if any(char.isupper() for char in display[key])]
-    keywords = [display[key] for key in ranked if not any(char.isupper() for char in display[key])]
+    hashtags = [display[key] for key in ranked if any(char.isupper() for char in raw[key])]
+    keywords = [display[key] for key in ranked if not any(char.isupper() for char in raw[key])]
     return (hashtags + keywords)[:limit]
 
 
@@ -565,7 +637,7 @@ def note_summary(note: Optional[EpisodeNote], *, snippet: str = "") -> Optional[
     payload = {
         "id": note.pk,
         "episode_date": note.episode_date.isoformat(),
-        "topics": [str(item) for item in (note.topics or []) if str(item).strip()],
+        "topics": display_topics(note),
         "has_notes": True,
     }
     if snippet:
