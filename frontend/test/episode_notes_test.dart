@@ -21,6 +21,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('plain keywords are capitalized and mixed-case labels stay as written', () {
+    expect(displayTopicLabel('babel'), 'Babel');
+    expect(displayTopicLabel('languages'), 'Languages');
+    expect(displayTopicLabel('TheNameOfTheLord'), 'TheNameOfTheLord');
+    expect(displayTopicLabel('butGod'), 'butGod');
+  });
+
   test('keyword highlights keep the original spelling', () {
     final span = highlightedNoteSpan(
       body: 'The Queen of Sheba traveled to Solomon.',
@@ -108,7 +115,8 @@ void main() {
 
     expect(find.text('Episode notes'), findsOneWidget);
     expect(find.text('View original PDF'), findsOneWidget);
-    expect(find.textContaining('Sheba'), findsOneWidget);
+    expect(find.text('Sheba'), findsWidgets);
+    expect(find.text('TheNameOfTheLord'), findsOneWidget);
     final notes = tester.getTopLeft(find.byKey(const Key('episode-notes-pane')));
     final player = tester.getTopLeft(find.byKey(const Key('episode-player')));
     expect(notes.dx, greaterThan(player.dx));

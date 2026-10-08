@@ -1,5 +1,17 @@
 import 'package:flutter/material.dart';
 
+/// How a topic chip should read. Plain keywords are stored in lowercase
+/// (`babel`). A label that already has capitals, such as a hashtag, is left
+/// as written.
+String displayTopicLabel(String topic) {
+  final trimmed = topic.trim().replaceFirst(RegExp(r'^#+'), '');
+  if (trimmed.isEmpty || RegExp(r'[A-Z]').hasMatch(trimmed)) return trimmed;
+  return trimmed.split(RegExp(r'\s+')).map((word) {
+    if (word.isEmpty) return word;
+    return word[0].toUpperCase() + word.substring(1);
+  }).join(' ');
+}
+
 /// Words worth highlighting in a note. The full query comes first so a phrase
 /// wins over its individual words at the same position.
 List<String> highlightNeedles(String query) {

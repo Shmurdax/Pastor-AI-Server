@@ -76,7 +76,7 @@ class EpisodeNotesPane extends StatelessWidget {
                 children: [
                   for (final topic in topics)
                     Chip(
-                      label: Text(topic, style: GoogleFonts.figtree(fontSize: 12)),
+                      label: Text(displayTopicLabel(topic), style: GoogleFonts.figtree(fontSize: 12)),
                       visualDensity: VisualDensity.compact,
                       backgroundColor: _gold.withValues(alpha: 0.2),
                       side: BorderSide(color: _gold.withValues(alpha: 0.45)),
