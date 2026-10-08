@@ -11,6 +11,7 @@ import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
+import 'package:flutter_application_1/episode_note_text.dart';
 import 'package:flutter_application_1/widgets/episode_notes_pane.dart';
 import 'package:flutter_application_1/widgets/pdf_viewer_embed.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
@@ -272,14 +273,21 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       return true;
     }).toList();
 
-    switch (_sort) {
-      case MediaSortOption.newestFirst:
-        items.sort((a, b) => b.publishedAt.compareTo(a.publishedAt));
-      case MediaSortOption.oldestFirst:
-        items.sort((a, b) => a.publishedAt.compareTo(b.publishedAt));
-      case MediaSortOption.titleAZ:
-        items.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-    }
+    final searching = _searchController.text.trim().isNotEmpty;
+    items.sort((a, b) {
+      if (searching) {
+        final rank = a.matchRank.compareTo(b.matchRank);
+        if (rank != 0) return rank;
+      }
+      switch (_sort) {
+        case MediaSortOption.newestFirst:
+          return b.publishedAt.compareTo(a.publishedAt);
+        case MediaSortOption.oldestFirst:
+          return a.publishedAt.compareTo(b.publishedAt);
+        case MediaSortOption.titleAZ:
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+      }
+    });
     return items;
   }
 
@@ -287,14 +295,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     var n = 0;
     if (_tierFilter != null) n++;
     if (_yearFilter != null) n++;
+    if (_topicFilter != null) n++;
     return n;
   }
 
   void _clearFilters() {
+    final hadTopic = _topicFilter != null;
     setState(() {
       _tierFilter = null;
       _yearFilter = null;
+      _topicFilter = null;
     });
+    if (hadTopic) _loadCatalog();
   }
 
   String get _noteHighlightQuery {
@@ -347,6 +359,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   Future<void> _openFilterSheet() async {
     var tier = _tierFilter;
     var year = _yearFilter;
+    var topic = _topicFilter;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -358,7 +371,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
+            return SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
                 24,
                 16,
@@ -431,6 +444,25 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                     ],
                     onChanged: (v) => setSheetState(() => year = v),
                   ),
+                  if (_topics.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Text('Topic', style: _sheetLabelStyle()),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final item in _topics)
+                          _FilterChip(
+                            label: displayTopicLabel(item),
+                            selected: topic == item,
+                            onTap: () => setSheetState(() {
+                              topic = topic == item ? null : item;
+                            }),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Row(
                     children: [
@@ -439,6 +471,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                           setSheetState(() {
                             tier = null;
                             year = null;
+                            topic = null;
                           });
                         },
                         child: Text('Clear all', style: GoogleFonts.figtree(color: _navy)),
@@ -446,11 +479,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                       const Spacer(),
                       FilledButton(
                         onPressed: () {
+                          final topicChanged = _topicFilter != topic;
                           setState(() {
                             _tierFilter = tier;
                             _yearFilter = year;
+                            _topicFilter = topic;
                           });
                           Navigator.pop(ctx);
+                          if (topicChanged) _loadCatalog();
                         },
                         style: FilledButton.styleFrom(
                           backgroundColor: _navy,
@@ -594,27 +630,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                               controller: _searchController,
                               onChanged: (_) => _scheduleSearch(),
                             ),
-                            if (_topics.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final topic in _topics)
-                                    _FilterChip(
-                                      label: topic,
-                                      selected: _topicFilter == topic,
-                                      onTap: () {
-                                        setState(() {
-                                          _topicFilter = _topicFilter == topic ? null : topic;
-                                        });
-                                        _searchDebounce?.cancel();
-                                        _loadCatalog();
-                                      },
-                                    ),
-                                ],
-                              ),
-                            ],
                             const SizedBox(height: 16),
                             _ToolbarRow(
                               sort: _sort,
@@ -640,6 +655,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                     _ActiveFilterPill(
                                       label: '$_yearFilter',
                                       onRemove: () => setState(() => _yearFilter = null),
+                                    ),
+                                  if (_topicFilter != null)
+                                    _ActiveFilterPill(
+                                      label: displayTopicLabel(_topicFilter!),
+                                      onRemove: () {
+                                        setState(() => _topicFilter = null);
+                                        _loadCatalog();
+                                      },
                                     ),
                                   TextButton(
                                     onPressed: _clearFilters,

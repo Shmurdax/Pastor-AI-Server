@@ -289,6 +289,85 @@ class EpisodeNoteApiTests(TestCase):
         self.assertEqual([row["vimeo_id"] for row in keyword.data["results"]], ["may-api"])
         self.assertIn("Sheba", keyword.data["results"][0]["note"]["snippet"])
 
+    def test_search_orders_title_then_month_then_topic_then_keyword(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
+        MediaVideo.objects.create(
+            vimeo_id="jan-title",
+            title="January 4",
+            description="",
+            published_at=timezone.make_aware(datetime(2023, 1, 4, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        MediaVideo.objects.create(
+            vimeo_id="jan-short",
+            title="Jan 9",
+            description="",
+            published_at=timezone.make_aware(datetime(2019, 1, 9, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        march = MediaVideo.objects.create(
+            vimeo_id="mar-keyword",
+            title="Mar 16",
+            description="",
+            published_at=timezone.make_aware(datetime(2020, 3, 16, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        EpisodeNote.objects.create(
+            media_video=march,
+            episode_date=datetime(2020, 3, 16).date(),
+            original_filename="Mar 16_2020.pdf",
+            stored_filename="2020-03-16.pdf",
+            search_text="We studied this passage again in January.",
+            topics=["tower"],
+            content_hash="c" * 64,
+        )
+        titled = MediaVideo.objects.create(
+            vimeo_id="sheba-title",
+            title="Sheba",
+            description="",
+            published_at=timezone.make_aware(datetime(2020, 2, 1, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        body_only = MediaVideo.objects.create(
+            vimeo_id="sheba-body",
+            title="Day 90",
+            description="",
+            published_at=timezone.make_aware(datetime(2020, 4, 1, 15, 0)),
+            duration_seconds=600,
+            is_published=True,
+        )
+        EpisodeNote.objects.create(
+            media_video=body_only,
+            episode_date=datetime(2020, 4, 1).date(),
+            original_filename="April 1_2020.pdf",
+            stored_filename="2020-04-01.pdf",
+            search_text="The queen of Sheba asked hard questions.",
+            topics=["prayer"],
+            content_hash="d" * 64,
+        )
+
+        january = self.client.get("/api/media/", {"q": "January"})
+        self.assertEqual(january.status_code, 200)
+        january_ids = [row["vimeo_id"] for row in january.data["results"]]
+        self.assertEqual(january_ids[:3], ["jan-title", "jan-short", "mar-keyword"])
+        self.assertEqual(
+            [row["match_rank"] for row in january.data["results"][:3]],
+            [0, 1, 3],
+        )
+
+        sheba = self.client.get("/api/media/", {"q": "Sheba"})
+        sheba_ids = [row["vimeo_id"] for row in sheba.data["results"]]
+        self.assertEqual(sheba_ids, ["sheba-title", "may-api", "sheba-body"])
+        self.assertEqual(
+            [row["match_rank"] for row in sheba.data["results"]],
+            [0, 2, 3],
+        )
+        self.assertEqual(titled.title, "Sheba")
+
         topic = self.client.get("/api/media/", {"topic": "thenameofthelord"})
         self.assertEqual(topic.status_code, 200)
         self.assertEqual([row["vimeo_id"] for row in topic.data["results"]], ["may-api"])

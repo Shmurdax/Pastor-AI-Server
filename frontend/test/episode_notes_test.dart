@@ -21,11 +21,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('plain keywords are capitalized and mixed-case labels stay as written', () {
+  test('topic labels are capitalized and camel case is split into words', () {
     expect(displayTopicLabel('babel'), 'Babel');
     expect(displayTopicLabel('languages'), 'Languages');
-    expect(displayTopicLabel('TheNameOfTheLord'), 'TheNameOfTheLord');
-    expect(displayTopicLabel('butGod'), 'butGod');
+    expect(displayTopicLabel('TheNameOfTheLord'), 'The Name Of The Lord');
+    expect(displayTopicLabel('GodsWord'), 'Gods Word');
+    expect(displayTopicLabel('butGod'), 'But God');
+    expect(displayTopicLabel('SOW'), 'SOW');
   });
 
   test('keyword highlights keep the original spelling', () {
@@ -116,7 +118,7 @@ void main() {
     expect(find.text('Episode notes'), findsOneWidget);
     expect(find.text('View original PDF'), findsOneWidget);
     expect(find.text('Sheba'), findsWidgets);
-    expect(find.text('TheNameOfTheLord'), findsOneWidget);
+    expect(find.text('The Name Of The Lord'), findsOneWidget);
     final notes = tester.getTopLeft(find.byKey(const Key('episode-notes-pane')));
     final player = tester.getTopLeft(find.byKey(const Key('episode-player')));
     expect(notes.dx, greaterThan(player.dx));
@@ -205,9 +207,13 @@ void main() {
 
     expect(find.text('May 15'), findsWidgets);
     expect(find.text('June 2'), findsOneWidget);
+    expect(find.text('The Name Of The Lord'), findsNothing);
     expect(requests.any((uri) => uri.path.contains('ingested-documents')), isFalse);
 
-    await tester.tap(find.text('TheNameOfTheLord'));
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('The Name Of The Lord'));
+    await tester.tap(find.text('Apply'));
     await tester.pump();
     await tester.pump();
 

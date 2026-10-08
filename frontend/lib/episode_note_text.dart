@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
-/// How a topic chip should read. Plain keywords are stored in lowercase
-/// (`babel`). A label that already has capitals, such as a hashtag, is left
-/// as written.
+/// How a topic chip should read.
+///
+/// `babel` becomes `Babel`. `GodsWord` and `TheNameOfTheLord` become
+/// `Gods Word` and `The Name Of The Lord`.
 String displayTopicLabel(String topic) {
   final trimmed = topic.trim().replaceFirst(RegExp(r'^#+'), '');
-  if (trimmed.isEmpty || RegExp(r'[A-Z]').hasMatch(trimmed)) return trimmed;
-  return trimmed.split(RegExp(r'\s+')).map((word) {
+  if (trimmed.isEmpty) return trimmed;
+  final spaced = trimmed
+      .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
+      .replaceAllMapped(RegExp(r'(?<=[A-Z])(?=[A-Z][a-z])'), (_) => ' ');
+  return spaced.split(RegExp(r'\s+')).map((word) {
     if (word.isEmpty) return word;
     return word[0].toUpperCase() + word.substring(1);
   }).join(' ');
