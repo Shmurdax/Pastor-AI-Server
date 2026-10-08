@@ -257,6 +257,15 @@ def sermon_rerank_min_score(env: Optional[dict] = None) -> float:
         return 0.01
 
 
+def _passage_embed_score(doc: Any) -> float:
+    meta = getattr(doc, "metadata", None) or {}
+    raw = meta.get("embed_score")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _passage_rerank_score(doc: Any) -> Optional[float]:
     meta = getattr(doc, "metadata", None) or {}
     raw = meta.get("rerank_score")
@@ -266,6 +275,63 @@ def _passage_rerank_score(doc: Any) -> Optional[float]:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+_QUESTION_FILLER = frozenset(
+    {
+        "create",
+        "someone",
+        "stay",
+        "give",
+        "tell",
+        "using",
+        "uses",
+        "talks",
+        "really",
+        "actually",
+        "according",
+        "please",
+        "there",
+        "their",
+    }
+)
+
+
+def sermon_mentions_question(query: str, docs: Iterable[Any] | None) -> bool:
+    """True when the chosen sermon uses the question's own words.
+
+    Measured rerank scores for a real hope sermon and for an unrelated nearest
+    neighbor both sat at about 0.50, so the score ranks sermons but does not
+    separate "nothing in the library covers this." A title hit is enough. A
+    passage must share two words when the question has more than one, so one
+    incidental word such as selling does not keep a sermon.
+    """
+    tokens = distinctive_query_tokens(query_topic_tokens(query))
+    tokens = {token for token in tokens if token not in _QUESTION_FILLER and token not in _FILLER_SUBJECT_TOKENS}
+    if not tokens:
+        return True
+    documents = [doc for doc in (docs or []) if doc is not None]
+    if not documents:
+        return False
+    title_words: set[str] = set()
+    passage_words: list[str] = []
+    for doc in documents:
+        meta = getattr(doc, "metadata", None) or {}
+        title_words.update(
+            normalize_grounding_text(
+                " ".join(
+                    str(meta.get(key) or "")
+                    for key in ("title", "topic_title", "source", "source_name")
+                )
+            ).split()
+        )
+        passage_words.extend(normalize_grounding_text(chunk_text(doc)).split())
+    if any(_token_count(list(title_words), token) for token in tokens):
+        return True
+    hits = sum(1 for token in tokens if _token_count(passage_words, token))
+    if len(tokens) == 1:
+        return hits >= 1
+    return hits >= 2
 
 
 def choose_sermon_by_rerank(
@@ -315,7 +381,8 @@ def choose_sermon_by_rerank(
         sample = pairs[0][1]
         meta = getattr(sample, "metadata", None) or {}
         label = meta.get("title") or meta.get("source") or key
-        top.append(f"{score:.3f}:{label}")
+        embed = _passage_embed_score(sample)
+        top.append(f"rerank={score:.3f}/embed={embed:.3f}:{label}")
     logger.warning(
         "Rerank candidates best=%.3f second=%.3f margin=%.3f top=%s",
         best_score,

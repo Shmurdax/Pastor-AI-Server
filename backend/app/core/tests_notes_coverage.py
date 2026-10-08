@@ -258,3 +258,27 @@ class FocusRetrievedNotesTests(unittest.TestCase):
         self.assertEqual(refused, [])
         self.assertEqual(refused_coverage, "none")
         self.assertAlmostEqual(refused_score, 0.18)
+
+    def test_incidental_word_does_not_count_as_covering_the_question(self):
+        from core.notes_coverage import sermon_mentions_question
+
+        hope = _doc(
+            "Hope in God and wait expectantly for Him, for I shall yet praise Him.",
+            source="It Is Time for Hope",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "Create sermon notes on hope for someone who is sick or grieving.",
+                [hope],
+            )
+        )
+        selling = _doc(
+            "Everywhere you turn you see a new best-selling book about leadership.",
+            source="Nextsteps 101",
+        )
+        self.assertFalse(
+            sermon_mentions_question(
+                "What did Pastor Don teach about the Council of Trent and selling indulgences in 1545?",
+                [selling],
+            )
+        )

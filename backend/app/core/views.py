@@ -77,6 +77,7 @@ from .notes_coverage import (
     choose_sermon_by_rerank,
     query_changes_locked_sermon,
     sermon_lines_for_answer,
+    sermon_mentions_question,
 )
 from .chat_retrieval import (
     chunk_text,
@@ -408,6 +409,13 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rera
     )
     scored_hits = rerank_scored_hits(rerank_text or search_text, scored_hits)
     docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
+    if docs and not sermon_mentions_question(rerank_text or search_text, docs):
+        logger.warning(
+            "Rerank winner does not use the question words score=%.3f query=%s",
+            best_score,
+            (rerank_text or search_text)[:80],
+        )
+        docs, coverage = [], "none"
     if docs:
         logger.warning(
             "Teaching sermon score=%.3f source=%s query=%s",
