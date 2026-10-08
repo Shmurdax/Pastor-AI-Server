@@ -653,11 +653,11 @@ def format_generation_user_prompt(
         lines.append(notes_text)
         lines.append("")
         lines.append(
-            "Write the answer now. "
-            "Let the question choose the shape. "
-            "Sermon notes, an outline, or a request for the points: use headings and bullets "
-            "built only from ideas in the notes above. "
-            "A question, a retelling, or a sermon flow: write paragraphs, not a point list."
+            "Write the answer now. Let the question choose the shape. "
+            "If they asked for sermon notes, an outline, or the points, do not write an essay. "
+            "Use a heading for each idea that is in the notes, with bullets under it. "
+            "If they asked a question, for a retelling, or for a sermon flow, write paragraphs only. "
+            "Do not add headings or bullets to that kind of answer."
         )
     else:
         lines.append(
