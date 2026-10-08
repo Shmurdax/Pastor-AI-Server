@@ -204,12 +204,29 @@ def extract_note_topics(text: str, *, limit: int = 12) -> list[str]:
     return topics
 
 
+def _text_for_database(value: str) -> str:
+    """Return text Postgres can store as UTF-8.
+
+    PDF extractors sometimes leave UTF-16 surrogate code points in the
+    string. A real pair is an emoji split into two characters and is joined
+    back together. A lone surrogate cannot be encoded, so it is replaced.
+    """
+    if not value:
+        return ""
+    encoded = value.encode("utf-16", "surrogatepass")
+    try:
+        value = encoded.decode("utf-16")
+    except UnicodeDecodeError:
+        value = encoded.decode("utf-16", "replace")
+    return value.encode("utf-8", "replace").decode("utf-8")
+
+
 def extract_pdf_text(path: Path) -> str:
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(pages)
+    pages = [_text_for_database(page.extract_text() or "") for page in reader.pages]
+    return _text_for_database("\n".join(pages))
 
 
 def match_video_for_episode_date(episode_date: date) -> Optional[MediaVideo]:
@@ -281,7 +298,7 @@ def _upsert_note_file(path: Path, episode_date: date) -> str:
     data = path.read_bytes()
     content_hash = hashlib.sha256(data).hexdigest()
     raw_text = extract_pdf_text(path)
-    search_text = reflow_note_text(raw_text)
+    search_text = _text_for_database(reflow_note_text(raw_text))
     topics = extract_note_topics(search_text or raw_text)
     stored_filename = f"{episode_date.isoformat()}.pdf"
     dest = _note_path(stored_filename)
@@ -299,7 +316,7 @@ def _upsert_note_file(path: Path, episode_date: date) -> str:
                 others = others.exclude(pk=note.pk)
             others.update(media_video=None)
         note.media_video = video
-        note.original_filename = path.name[:255]
+        note.original_filename = _text_for_database(path.name)[:255]
         note.stored_filename = stored_filename
         note.search_text = search_text
         note.topics = topics
