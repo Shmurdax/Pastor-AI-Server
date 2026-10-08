@@ -19,8 +19,8 @@ from .chat_retrieval import (
 )
 from .quote_chunking import split_sentences
 from .grounding import looks_like_scripture_blob, normalize_grounding_text
-from .note_priority import looks_like_deck_junk, looks_like_kjv_diction, thesis_sentence_score
-from .teaching_claims import distinctive_query_tokens, query_topic_tokens
+from .note_priority import looks_like_deck_junk, looks_like_kjv_diction
+from .teaching_claims import _WEAK_QUERY_WORDS, distinctive_query_tokens, query_topic_tokens
 
 COVERAGE_FULL = "full"
 COVERAGE_PARTIAL = "partial"
@@ -100,6 +100,8 @@ def coverage_subject_tokens(query: str) -> set[str]:
     """
     raw = query_topic_tokens(query)
     distinctive = distinctive_query_tokens(raw)
+    strong = {token for token in distinctive if token not in _WEAK_QUERY_WORDS}
+    distinctive = strong or distinctive
 
     def _usable(tokens: set[str]) -> set[str]:
         return {
@@ -222,90 +224,65 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
     return present, hits
 
 
-# Question wording that is not the subject. Dropped only when deciding whether
-# a sermon teaches the question, so "problems people cannot beat" does not hide Goliath.
-_MATCH_GENERIC = frozenset(
-    {
-        "problems",
-        "problem",
-        "cannot",
-        "people",
-        "running",
-        "practice",
-        "practical",
-        "quiet",
-        "illness",
-        "person",
-        "advantage",
-        "believer",
-        "fear",
-        "louder",
-        "walking",
-        "counts",
-        "supposed",
-        "exactly",
-        "leave",
-        "water",
-        "single",
-        "teenager",
-        "parent",
-        "table",
-        "worship",
-        "extra",
-        "offering",
-        "afford",
-        "power",
-        "obey",
-        "happens",
-        "receive",
-        "create",
-        "house",
-        "lines",
-        "chapter",
-        "general",
-        "fight",
-        "using",
-        "talks",
-        "story",
-        "notes",
-        "sermon",
-        "teach",
-        "teaches",
-        "pastor",
-    }
-)
+def sermon_rerank_min_score(env: Optional[dict] = None) -> float:
+    """Lowest rerank score that still counts as teaching the question.
 
-
-def primary_subject_token(query: str) -> str:
-    """Longest topic word that is not generic question wording."""
-    tokens = [token for token in coverage_subject_tokens(query) if len(token) >= 5]
-    specific = [token for token in tokens if token not in _MATCH_GENERIC]
-    pool = specific or tokens
-    if not pool:
-        return ""
-    return max(pool, key=len)
-
-
-def subject_token_count(text: str, token: str) -> int:
-    if not token:
-        return 0
-    return _token_count(normalize_grounding_text(text).split(), token)
-
-
-def focused_sermon_matches(query: str, docs: Iterable[Any] | None) -> bool:
-    """True when the chosen sermon repeats the question's subject.
-
-    Generic question words are ignored. The longest remaining word must occur
-    at least three times, so one aside that names Jonah does not qualify.
+    The default is a placeholder until a dev-pod run records the score of a
+    hope sermon on a hope question and the score of the best sermon on a
+    question the library does not cover. NOTES_COVERAGE_MIN_SCORE is a
+    different scale and is not this cutoff.
     """
-    documents = [doc for doc in (docs or []) if doc is not None]
-    if not documents:
-        return False
-    subject = primary_subject_token(query)
-    if not subject:
-        return True
-    text = " ".join(chunk_text(doc) for doc in documents if chunk_text(doc))
-    return subject_token_count(text, subject) >= 3
+    source = env if env is not None else os.environ
+    raw = str(source.get("SERMON_RERANK_MIN_SCORE", "0.01") or "0.01").strip()
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.01
+
+
+def _passage_rerank_score(doc: Any) -> Optional[float]:
+    meta = getattr(doc, "metadata", None) or {}
+    raw = meta.get("rerank_score")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def choose_sermon_by_rerank(
+    scored_hits: Iterable[tuple[Any, float]] | None,
+    *,
+    min_score: Optional[float] = None,
+) -> tuple[list[Any], str, float]:
+    """Keep the one sermon whose best passage the reranker scored highest.
+
+    Passages are grouped by sermon file. A lower-scored illustration loses to
+    the sermon the reranker ranks as the match. A weak best score returns no
+    sermon. Hits without a rerank score are ignored so embedding scores on a
+    different scale cannot win.
+    """
+    floor = sermon_rerank_min_score() if min_score is None else float(min_score)
+    groups: dict[str, list[tuple[float, Any]]] = {}
+    for item in scored_hits or []:
+        if not isinstance(item, tuple) or not item:
+            continue
+        doc = item[0]
+        if doc is None or _is_bible_doc(doc):
+            continue
+        score = _passage_rerank_score(doc)
+        if score is None:
+            continue
+        groups.setdefault(chunk_source_key(doc), []).append((score, doc))
+    if not groups:
+        return [], COVERAGE_NONE, 0.0
+    best_key = max(groups, key=lambda key: max(score for score, _doc in groups[key]))
+    ranked = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
+    best_score = ranked[0][0]
+    if best_score < floor:
+        return [], COVERAGE_NONE, best_score
+    return [doc for _score, doc in ranked], COVERAGE_FULL, best_score
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
@@ -393,23 +370,10 @@ def focus_retrieved_notes(
     return kept[:cap]
 
 
-def sermon_lines_for_answer(
-    query: str,
-    docs: Iterable[Any] | None,
-    *,
-    limit: int = 8,
-) -> str:
-    """Sentences from the focused sermon, in sermon order.
-
-    Short enough that the model actually teaches them. The same selection
-    runs for every question. A following sentence is kept so the application
-    is not dropped when it does not repeat the topic word.
-    """
-    sermons = [doc for doc in (docs or []) if doc is not None and not _is_bible_doc(doc)]
-    blob = "\n".join(chunk_text(doc) for doc in sermons if chunk_text(doc))
-    sentences = [sentence.strip() for sentence in split_sentences(blob) if sentence.strip()]
-    usable = []
-    for index, sentence in enumerate(sentences):
+def _usable_passage_sentences(blob: str) -> list[str]:
+    usable: list[str] = []
+    for sentence in split_sentences(blob) or []:
+        sentence = sentence.strip()
         if len(sentence) < 40:
             continue
         if (
@@ -432,64 +396,32 @@ def sermon_lines_for_answer(
             continue
         if looks_like_deck_junk(sentence):
             continue
-        usable.append((index, sentence))
-    if not usable:
-        return ""
-    subject = coverage_subject_tokens(query)
-    cap = max(1, int(limit))
-    picked: list[int] = []
-    if subject:
-        # A word the sermon uses everywhere (David, marriage) must not hide
-        # the sentence that names the rare topic (Goliath, covenant).
-        sermon_words = normalize_grounding_text(blob).split()
-        rarity = {
-            token: 1.0 / max(1, _token_count(sermon_words, token))
-            for token in subject
-        }
-
-        primary = primary_subject_token(query)
-
-        def _specificity(sentence: str) -> float:
-            words = normalize_grounding_text(sentence).split()
-            score = sum(rarity[token] for token in subject if _token_count(words, token))
-            # The subject word itself outranks a rarer generic word such as "problems".
-            if primary and _token_count(words, primary):
-                score += 5
-            return score
-
-        topical = [item for item in usable if _specificity(item[1]) > 0]
-        ranked = sorted(
-            topical,
-            key=lambda item: (
-                _specificity(item[1]) + max(thesis_sentence_score(item[1]), 0.0),
-                -item[0],
-            ),
-            reverse=True,
-        )
-        if ranked and _specificity(ranked[0][1]) > 0:
-            center = ranked[0][0]
-            for index, sentence in usable:
-                if index < center - 2:
-                    continue
-                if index > center + 8 and len(picked) >= 3:
-                    break
-                picked.append(index)
-                if len(picked) >= cap:
-                    break
-    if not picked:
-        picked = [index for index, _sentence in usable[:cap]]
-    ordered: list[int] = []
-    seen: set[int] = set()
-    for index in picked:
-        if index in seen:
-            continue
-        seen.add(index)
-        ordered.append(index)
-    ordered.sort()
-    lines = []
-    for index in ordered[:cap]:
-        cleaned = re.sub(r"\s+\d{1,3}\b", " ", sentences[index])
+        cleaned = re.sub(r"\s+\d{1,3}\b", " ", sentence)
         cleaned = re.sub(r"\s+", " ", cleaned).strip(" -•●▪")
         if len(cleaned) >= 40:
-            lines.append(cleaned)
-    return "\n\n".join(lines)
+            usable.append(cleaned)
+    return usable
+
+
+def sermon_lines_for_answer(
+    query: str,
+    docs: Iterable[Any] | None,
+    *,
+    limit: int = 8,
+) -> str:
+    """Sentences from the highest-scored passage, in passage order.
+
+    The same selection runs for every question. The query is unused for
+    picking a word inside the sermon; the reranker already chose the passage.
+    """
+    del query
+    sermons = [doc for doc in (docs or []) if doc is not None and not _is_bible_doc(doc)]
+    if not sermons:
+        return ""
+    ordered = sorted(sermons, key=lambda doc: _passage_rerank_score(doc) or -1.0, reverse=True)
+    cap = max(1, int(limit))
+    for doc in ordered:
+        lines = _usable_passage_sentences(chunk_text(doc))
+        if lines:
+            return "\n\n".join(lines[:cap])
+    return ""

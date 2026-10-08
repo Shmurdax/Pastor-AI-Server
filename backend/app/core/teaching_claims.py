@@ -113,8 +113,9 @@ _QUERY_TOPIC_WORDS = frozenset(
         "thankfulness",
     }
 )
-# Words almost every sermon uses. Overlap on these alone must not make a
-# Community / harvest sentence a required point for "why this church…".
+# Words almost every sermon uses. Coverage and follow-up locking still ignore
+# these when the question also names a more specific subject. Retrieval search
+# text keeps them, so "hope for the grieving" is not searched as grieving alone.
 _WEAK_QUERY_WORDS = frozenset(
     {
         "faith",
@@ -339,41 +340,41 @@ def looks_like_sermon_outline_request(query: str) -> bool:
 def retrieval_search_text(query: str) -> str:
     """Text embedded and reranked for an outline request.
 
-    "3 point sermon on faith" embeds the layout words sermon and point, so any
-    sermon window outranks a note whose subject is faith. Search the topic.
+    Layout words such as sermon, notes, and point are removed so they do not
+    outrank the subject. Every other content word stays, including short words
+    and words such as hope, faith, and spirit.
     """
     text = " ".join((query or "").split()).strip()
     if not text or not looks_like_sermon_outline_request(text):
         return text
-    distinctive = distinctive_query_tokens(query_topic_tokens(text))
-    if not distinctive:
-        return text
     kept: list[str] = []
     seen: set[str] = set()
     for word in normalize_grounding_text(text).split():
-        if word in distinctive and word not in seen:
-            kept.append(word)
-            seen.add(word)
+        if word in _OUTLINE_DISTINCTIVE_STOP:
+            continue
+        if word in _STOP and word not in _QUERY_TOPIC_WORDS:
+            continue
+        if len(word) < 3 and word not in _QUERY_TOPIC_WORDS:
+            continue
+        if word in seen:
+            continue
+        seen.add(word)
+        kept.append(word)
     return " ".join(kept) if kept else text
 
 
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
-    """Query words that identify the topic.
+    """Topic words from the question, with layout words removed.
 
-    Outline words (sermon / point) are never distinctive. Weak Christian words
-    (faith, gratitude, church) become distinctive when they are the only topic
-    left, so a one-word faith question keeps faith theses instead of
-    discussion-guide sentences that only say "sermon".
+    Weak words the user actually said (hope, faith, spirit) stay even when the
+    question also contains a more specific word. Dropping them made a hope
+    question search only for the longer word grieving.
     """
-    tokens = {
+    return {
         str(token).lower()
         for token in query_tokens
         if str(token).strip() and str(token).lower() not in _OUTLINE_DISTINCTIVE_STOP
     }
-    distinctive = {token for token in tokens if token not in _WEAK_QUERY_WORDS}
-    if distinctive:
-        return distinctive
-    return {token for token in tokens if token in _QUERY_TOPIC_WORDS or token in _WEAK_QUERY_WORDS}
 
 
 def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") -> bool:
@@ -395,8 +396,10 @@ def claim_matches_query(claim: str, query_tokens: set[str], *, query: str = "") 
         return True
     claim_words = set(normalize_grounding_text(claim).split())
     distinctive = distinctive_query_tokens(query_tokens)
-    if distinctive:
-        return bool(distinctive & claim_words)
+    strong = {token for token in distinctive if token not in _WEAK_QUERY_WORDS}
+    needed = strong or distinctive
+    if needed:
+        return bool(needed & claim_words)
     return bool(query_tokens & claim_words)
 
 

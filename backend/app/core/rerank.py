@@ -210,7 +210,11 @@ def rerank_scored_hits(
             value = float(logit)
         except (TypeError, ValueError):
             value = 0.0
-        reranked.append((doc, _sigmoid(value)))
+        score = _sigmoid(value)
+        meta = getattr(doc, "metadata", None)
+        if isinstance(meta, dict):
+            meta["rerank_score"] = score
+        reranked.append((doc, score))
         fp = chunk_fingerprint(chunk_text(doc))
         if fp:
             chosen_fps.add(fp)
