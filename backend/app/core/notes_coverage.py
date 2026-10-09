@@ -204,13 +204,68 @@ def _is_bible_doc(doc: Any) -> bool:
     return is_bible_source(metadata_source_hint(doc))
 
 
+# Light English morphology only — shared stems, not topic synonym lists.
+_MORPH_SUFFIXES = (
+    "ational",
+    "ation",
+    "tion",
+    "sion",
+    "ance",
+    "ence",
+    "ness",
+    "ment",
+    "ings",
+    "ying",
+    "ing",
+    "ied",
+    "ies",
+    "ers",
+    "ely",
+    "ly",
+    "ed",
+    "es",
+    "er",
+    "s",
+)
+
+
+def _morph_stem(word: str) -> str:
+    """Strip one common English suffix for bidirectional topic matching."""
+    text = (word or "").lower()
+    if len(text) < 5:
+        return text
+    for suffix in _MORPH_SUFFIXES:
+        if len(text) > len(suffix) + 3 and text.endswith(suffix):
+            return text[: -len(suffix)]
+    return text
+
+
+def _tokens_morph_match(left: str, right: str) -> bool:
+    """True when two English words share a stem or clear prefix variant."""
+    a = (left or "").lower()
+    b = (right or "").lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(a) >= 4 and len(b) >= 4 and (a.startswith(b) or b.startswith(a)):
+        return True
+    stem_a = _morph_stem(a)
+    stem_b = _morph_stem(b)
+    if len(stem_a) >= 4 and stem_a == stem_b:
+        return True
+    if len(stem_a) >= 4 and len(stem_b) >= 4 and (
+        stem_a.startswith(stem_b) or stem_b.startswith(stem_a)
+    ):
+        return True
+    return False
+
+
 def _token_count(words: list[str], token: str) -> int:
-    """Count a topic word, including alcoholic/drinking style variants."""
+    """Count a topic word, including light morphological variants."""
     if not token:
         return 0
-    if len(token) >= 5:
-        return sum(1 for word in words if word == token or word.startswith(token))
-    return words.count(token)
+    return sum(1 for word in words if _tokens_morph_match(word, token))
 
 
 def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
@@ -293,45 +348,64 @@ _QUESTION_FILLER = frozenset(
         "please",
         "there",
         "their",
+        "together",
+        "between",
+        "among",
+        "within",
+        "daily",
+        "look",
+        "looks",
+        "like",
+        "make",
+        "makes",
+        "does",
+        "what",
+        "when",
+        "where",
+        "which",
     }
 )
 
 
 def sermon_mentions_question(query: str, docs: Iterable[Any] | None) -> bool:
-    """True when the chosen sermon uses the question's own words.
+    """True when the chosen sermon's body is about the question's topic.
 
-    Measured rerank scores for a real hope sermon and for an unrelated nearest
-    neighbor both sat at about 0.50, so the score ranks sermons but does not
-    separate "nothing in the library covers this." A title hit is enough. A
-    passage must share two words when the question has more than one, so one
-    incidental word such as selling does not keep a sermon.
+    Rerank already picked the file. This gate only blocks winners whose
+    passages do not talk about the question. Matching uses light English
+    morphology so forgive/forgiveness style variants count. A title match is
+    never required and never enough on its own. One incidental shared word in
+    a long multi-topic question is not enough; about half of the distinctive
+    topic words must appear in the body (at least one).
     """
     tokens = distinctive_query_tokens(query_topic_tokens(query))
-    tokens = {token for token in tokens if token not in _QUESTION_FILLER and token not in _FILLER_SUBJECT_TOKENS}
+    tokens = {
+        token
+        for token in tokens
+        if token not in _QUESTION_FILLER and token not in _FILLER_SUBJECT_TOKENS
+    }
     if not tokens:
         return True
     documents = [doc for doc in (docs or []) if doc is not None]
     if not documents:
         return False
-    title_words: set[str] = set()
     passage_words: list[str] = []
     for doc in documents:
-        meta = getattr(doc, "metadata", None) or {}
-        title_words.update(
-            normalize_grounding_text(
-                " ".join(
-                    str(meta.get(key) or "")
-                    for key in ("title", "topic_title", "source", "source_name")
-                )
-            ).split()
-        )
         passage_words.extend(normalize_grounding_text(chunk_text(doc)).split())
-    if any(_token_count(list(title_words), token) for token in tokens):
-        return True
     hits = sum(1 for token in tokens if _token_count(passage_words, token))
-    if len(tokens) == 1:
-        return hits >= 1
-    return hits >= 2
+    # Threshold uses non-weak topic words when present, but any topic hit counts —
+    # so a hope sermon still covers a hope/sick/grieving question.
+    strong = {token for token in tokens if token not in _WEAK_QUERY_WORDS}
+    basis = strong or tokens
+    needed = max(1, (len(basis) + 1) // 2)
+    return hits >= needed
+
+
+def _group_rerank_aggregate(pairs: list[tuple[float, Any]], *, top_n: int = 3) -> float:
+    """Score a sermon by its strongest passages together, not one lucky chunk."""
+    if not pairs:
+        return 0.0
+    scores = sorted((float(score) for score, _doc in pairs), reverse=True)[: max(1, top_n)]
+    return float(sum(scores))
 
 
 def choose_sermon_by_rerank(
@@ -339,12 +413,13 @@ def choose_sermon_by_rerank(
     *,
     min_score: Optional[float] = None,
 ) -> tuple[list[Any], str, float]:
-    """Keep the one sermon whose best passage the reranker scored highest.
+    """Keep the sermon whose top passages together best match the question.
 
-    Passages are grouped by sermon file. A lower-scored illustration loses to
-    the sermon the reranker ranks as the match. A weak best score returns no
-    sermon. Hits without a rerank score are ignored so embedding scores on a
-    different scale cannot win.
+    Passages are grouped by sermon file. The winner is chosen by the sum of its
+    top reranked chunks so a file that repeatedly teaches the topic beats one
+    flashy aside. A weak best score returns no sermon. Hits without a rerank
+    score are ignored so embedding scores on a different scale cannot win.
+    Titles are not used to pick the winner.
     """
     floor = sermon_rerank_min_score() if min_score is None else float(min_score)
     groups: dict[str, list[tuple[float, Any]]] = {}
@@ -362,35 +437,45 @@ def choose_sermon_by_rerank(
         return [], COVERAGE_NONE, 0.0
     ranked_groups = sorted(
         groups.items(),
-        key=lambda item: max(score for score, _doc in item[1]),
+        key=lambda item: (
+            _group_rerank_aggregate(item[1]),
+            max(score for score, _doc in item[1]),
+        ),
         reverse=True,
     )
     best_key = ranked_groups[0][0]
     ranked = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
     best_score = ranked[0][0]
+    best_aggregate = _group_rerank_aggregate(ranked)
     second_score = 0.0
+    second_aggregate = 0.0
     if len(ranked_groups) > 1:
-        second_score = max(score for score, _doc in ranked_groups[1][1])
-    # A weak cluster of unrelated sermons sits near the same score. A real match
-    # pulls ahead of the next sermon. The absolute floor alone cannot separate
-    # those two cases when both land near 0.5.
-    margin = best_score - second_score
+        second_pairs = ranked_groups[1][1]
+        second_score = max(score for score, _doc in second_pairs)
+        second_aggregate = _group_rerank_aggregate(second_pairs)
+    # Compare file-level evidence so one hot aside cannot beat repeated teaching.
+    margin = best_aggregate - second_aggregate
     top = []
     for key, pairs in ranked_groups[:3]:
         score = max(item[0] for item in pairs)
+        aggregate = _group_rerank_aggregate(pairs)
         sample = pairs[0][1]
         meta = getattr(sample, "metadata", None) or {}
         label = meta.get("title") or meta.get("source") or key
         embed = _passage_embed_score(sample)
-        top.append(f"rerank={score:.3f}/embed={embed:.3f}:{label}")
+        top.append(
+            f"agg={aggregate:.3f}/best={score:.3f}/embed={embed:.3f}:{label}"
+        )
     logger.warning(
-        "Rerank candidates best=%.3f second=%.3f margin=%.3f top=%s",
+        "Rerank candidates best=%.3f agg=%.3f second=%.3f second_agg=%.3f margin=%.3f top=%s",
         best_score,
+        best_aggregate,
         second_score,
+        second_aggregate,
         margin,
         " | ".join(top),
     )
-    if margin < sermon_rerank_min_margin() and second_score > 0:
+    if margin < sermon_rerank_min_margin() and second_aggregate > 0:
         return [], COVERAGE_NONE, best_score
     if best_score < floor:
         return [], COVERAGE_NONE, best_score
