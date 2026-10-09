@@ -36,6 +36,9 @@ from .chat_language import (
     normalize_chat_language,
 )
 from .chat_sanitize import (
+    ENGLISH_LANGUAGE_FALLBACK,
+    english_answer_incomplete,
+    finalize_english_answer,
     looks_like_rewrite_leak,
     sanitize_history_text,
     sanitize_stream_delta,
@@ -935,6 +938,23 @@ class ChatAPIView(APIView):
 
             warmup_vllm_worker(wait=False, force=True, timeout_s=3.0)
 
+        def _recover_chat_answer(first_raw: str, *, bound, messages) -> str:
+            """Finalize English after generation; retry once on leak or cut-off."""
+            cleaned = finalize_english_answer(first_raw)
+            needs_retry = looks_like_rewrite_leak(first_raw or "") or english_answer_incomplete(
+                cleaned
+            )
+            if not needs_retry:
+                return cleaned
+            retry_text = ""
+            try:
+                response = bound.invoke(messages)
+                retry_text = getattr(response, "content", None) or ""
+            except Exception:
+                logger.exception("English leak recovery retry failed")
+            recovered = finalize_english_answer(first_raw, retry_text)
+            return recovered or ENGLISH_LANGUAGE_FALLBACK
+
         def _short_timeout_bound(max_tokens):
             timeout_s = min(EMPTY_STREAM_RETRY_TIMEOUT_S, float(CHAT_TIMEOUT_S))
             llm = get_chat_llm(
@@ -1058,9 +1078,21 @@ class ChatAPIView(APIView):
                 first_raw = "".join(first_raw_parts)
                 if not first_raw.strip():
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
-                answer = "".join(painted_parts).strip()
+                painted = "".join(painted_parts).strip()
+                answer = _recover_chat_answer(
+                    first_raw,
+                    bound=prepared["bound"],
+                    messages=prepared["messages"],
+                ).strip()
                 if not answer:
                     raise ChatGenerationError(EMPTY_STREAM_USER_MESSAGE)
+                if emit_live and answer != painted:
+                    if painted and answer.startswith(painted):
+                        suffix = answer[len(painted) :]
+                        if suffix:
+                            yield _sse({"type": "delta", "text": suffix})
+                    elif not painted:
+                        yield _sse({"type": "delta", "text": answer})
                 response_sources = _response_sources(
                     prepared["docs"],
                     answer,
@@ -1114,7 +1146,11 @@ class ChatAPIView(APIView):
             if prepared["kind"] == "final":
                 return Response(prepared["payload"], status=status.HTTP_200_OK)
             response = prepared["bound"].invoke(prepared["messages"])
-            answer = sanitize_stream_delta(response.content or "").strip()
+            answer = _recover_chat_answer(
+                response.content or "",
+                bound=prepared["bound"],
+                messages=prepared["messages"],
+            ).strip()
             if live_history:
                 live_history.publish(answer, streaming=True)
             response_sources = _response_sources(

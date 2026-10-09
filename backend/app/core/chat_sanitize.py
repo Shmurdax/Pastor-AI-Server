@@ -252,3 +252,34 @@ def recover_english_generation(first: str, retry: str = "") -> tuple[str, bool]:
     if retry_text.strip():
         salvaged.append(sanitize_chat_answer(retry_text))
     return max(salvaged, key=len), True
+
+
+def english_answer_incomplete(text: str) -> bool:
+    """True when a recovered English draft still ends mid-clause."""
+    cleaned = (text or "").rstrip()
+    if not cleaned:
+        return True
+    if cleaned == ENGLISH_LANGUAGE_FALLBACK:
+        return False
+    return not bool(_SENTENCE_END_RE.search(cleaned))
+
+
+def finalize_english_answer(first: str, retry: str = "") -> str:
+    """Return a complete English answer after optional leak recovery.
+
+    Prefers a clean salvage or retry. Never returns a mid-sentence stub left by
+    a rewrite/CJK cut — falls back to ENGLISH_LANGUAGE_FALLBACK instead.
+    """
+    answer, _leaked = recover_english_generation(first, retry)
+    if not (answer or "").strip():
+        return ENGLISH_LANGUAGE_FALLBACK
+    if english_answer_incomplete(answer) and looks_like_rewrite_leak(first or ""):
+        if retry and not english_answer_incomplete(sanitize_chat_answer(retry)):
+            return sanitize_chat_answer(retry)
+        return ENGLISH_LANGUAGE_FALLBACK
+    if english_answer_incomplete(answer) and not (retry or "").strip():
+        # Caller may still retry; keep salvage only when it already ends cleanly.
+        return answer
+    if english_answer_incomplete(answer):
+        return ENGLISH_LANGUAGE_FALLBACK
+    return answer

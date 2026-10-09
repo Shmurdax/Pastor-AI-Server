@@ -2,6 +2,8 @@ import unittest
 
 from .chat_sanitize import (
     ENGLISH_LANGUAGE_FALLBACK,
+    english_answer_incomplete,
+    finalize_english_answer,
     looks_like_rewrite_leak,
     recover_english_generation,
     sanitize_chat_answer,
@@ -158,3 +160,27 @@ class ChatSanitizeTests(unittest.TestCase):
         self.assertIn("pure grace", answer)
         self.assertNotIn("doesnfsp", answer)
         self.assertNotRegex(answer, r"[\u3400-\u9fff]")
+
+    def test_finalize_does_not_ship_mid_sentence_leak_stub(self):
+        # Generic synthetic cut-off: English stops mid-clause before Han rewrite.
+        first = (
+            "The traveler paused beside the road and considered what love requires "
+            "when a stranger is hurt and"
+            "让我重新调整回答以确保内容完整。以下是修改后的回答："
+        )
+        retry = (
+            "The traveler paused beside the road and considered what love requires "
+            "when a stranger is hurt. Compassion moves toward the wounded person "
+            "instead of walking past them."
+        )
+        self.assertTrue(english_answer_incomplete(sanitize_chat_answer(first)))
+        recovered = finalize_english_answer(first, retry)
+        self.assertFalse(english_answer_incomplete(recovered))
+        self.assertIn("Compassion moves toward", recovered)
+        self.assertNotRegex(recovered, r"[\u3400-\u9fff]")
+
+    def test_finalize_falls_back_when_both_drafts_are_cut_off(self):
+        first = "He began to explain the next step and重塑回答"
+        retry = "Then he started again and以下是调整后的回答"
+        recovered = finalize_english_answer(first, retry)
+        self.assertEqual(recovered, ENGLISH_LANGUAGE_FALLBACK)

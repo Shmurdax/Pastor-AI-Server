@@ -282,3 +282,102 @@ class FocusRetrievedNotesTests(unittest.TestCase):
                 [selling],
             )
         )
+
+    def test_body_morphology_covers_question_without_title_match(self):
+        from core.notes_coverage import sermon_mentions_question
+
+        # Notes use a stem variant; PDF title does not mirror the question.
+        repent = _doc(
+            "The Lord calls every believer to repent of sin and walk in a new direction.",
+            source="Turning Toward God.pdf",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "How should we practice repentance in daily life?",
+                [repent],
+            )
+        )
+        restore = _doc(
+            "Grace restores the broken relationship when people forgive one another freely.",
+            source="Relationships In Christ.pdf",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "What does the teaching say about forgiveness between people?",
+                [restore],
+            )
+        )
+        marriage = _doc(
+            "A husband must love and lead with patience inside the marriage covenant.",
+            source="Home And Family.pdf",
+        )
+        self.assertTrue(
+            sermon_mentions_question(
+                "How should a husband and wife walk together in faith?",
+                [marriage],
+            )
+        )
+
+    def test_title_alone_does_not_count_as_covering_the_question(self):
+        from core.notes_coverage import sermon_mentions_question
+
+        titled = _doc(
+            "The congregation gathered for announcements and a potluck lunch.",
+            source="Forgiveness And Mercy.pdf",
+        )
+        self.assertFalse(
+            sermon_mentions_question(
+                "What did the notes teach about forgiveness and mercy?",
+                [titled],
+            )
+        )
+
+    def test_aggregate_rerank_beats_one_hot_aside_chunk(self):
+        aside_a = _doc(
+            "Someone once sat in a chair and talked about trust for a moment.",
+            source="aside.pdf",
+        )
+        aside_a.metadata["rerank_score"] = 0.91
+        aside_b = _doc(
+            "The weather was mild that afternoon in the courtyard.",
+            source="aside.pdf",
+        )
+        aside_b.metadata["rerank_score"] = 0.21
+        teach_a = _doc(
+            "Leaders go the extra distance and serve beyond what is required.",
+            source="leadership.pdf",
+        )
+        teach_a.metadata["rerank_score"] = 0.72
+        teach_b = _doc(
+            "True leadership carries the load farther than duty demands.",
+            source="leadership.pdf",
+        )
+        teach_b.metadata["rerank_score"] = 0.70
+        teach_c = _doc(
+            "The call is to keep walking with people past the easy stopping place.",
+            source="leadership.pdf",
+        )
+        teach_c.metadata["rerank_score"] = 0.68
+        chosen, coverage, score = choose_sermon_by_rerank(
+            [
+                (aside_a, 0.91),
+                (aside_b, 0.21),
+                (teach_a, 0.72),
+                (teach_b, 0.70),
+                (teach_c, 0.68),
+            ],
+            min_score=0.5,
+        )
+        self.assertEqual(coverage, "full")
+        self.assertTrue(all(doc.metadata["source"] == "leadership.pdf" for doc in chosen))
+        self.assertAlmostEqual(score, 0.72)
+
+    def test_topic_ordinals_survive_non_outline_queries(self):
+        from core.teaching_claims import distinctive_query_tokens, query_topic_tokens
+
+        tokens = distinctive_query_tokens(
+            query_topic_tokens("What does second mile leadership look like for servants?")
+        )
+        self.assertIn("second", tokens)
+        self.assertIn("mile", tokens)
+        self.assertIn("leadership", tokens)

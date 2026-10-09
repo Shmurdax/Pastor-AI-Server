@@ -180,11 +180,14 @@ _STOP = frozenset(
         "time", "times", "today", "now", "let", "lets", "need", "needs", "needed",
         "want", "wants", "like", "make", "makes", "come", "comes", "go", "goes",
         "know", "knows", "see", "sees", "say", "says", "get", "gets", "give",
-        "gives", "take", "takes", "one", "two", "first", "second", "third",
+        "gives", "take", "takes", "one", "two",
         "point", "points", "week", "topic", "topics", "note", "notes",
         "verse", "verses", "word", "words", "amen", "hallelujah",
     }
 )
+# Ordinals are layout noise next to "point", but topic-bearing in phrases such as
+# "second mile". Strip them only for outline-shaped retrieval text.
+_OUTLINE_ORDINAL_STOP = frozenset({"first", "second", "third"})
 
 
 def _metadata(doc: Any) -> dict:
@@ -350,7 +353,7 @@ def retrieval_search_text(query: str) -> str:
     kept: list[str] = []
     seen: set[str] = set()
     for word in normalize_grounding_text(text).split():
-        if word in _OUTLINE_DISTINCTIVE_STOP:
+        if word in _OUTLINE_DISTINCTIVE_STOP or word in _OUTLINE_ORDINAL_STOP:
             continue
         if word in _STOP and word not in _QUERY_TOPIC_WORDS:
             continue
