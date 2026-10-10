@@ -248,24 +248,29 @@ def rerank_scored_hits(
             value = float(logit)
         except (TypeError, ValueError):
             value = 0.0
-        score = _sigmoid(value)
+        # Rank and select on raw logits so near-zero ties are not crushed to ~0.50.
+        # Keep sigmoid only for logging / optional fusion helpers.
+        prob = _sigmoid(value)
         meta = getattr(doc, "metadata", None)
         if isinstance(meta, dict):
-            meta["rerank_score"] = score
+            meta["rerank_logit"] = value
+            meta["rerank_sigmoid"] = prob
+            meta["rerank_score"] = value
             try:
                 meta["embed_score"] = float(_old)
             except (TypeError, ValueError):
                 pass
-        reranked.append((doc, score))
+        reranked.append((doc, value))
         fp = chunk_fingerprint(chunk_text(doc))
         if fp:
             chosen_fps.add(fp)
     reranked.sort(key=lambda item: item[1], reverse=True)
     logger.warning(
-        "BGE reranked %s/%s windows query=%s",
+        "BGE reranked %s/%s windows query=%s best_logit=%.3f",
         len(reranked),
         len(unique),
         topic[:80],
+        reranked[0][1] if reranked else 0.0,
     )
 
     rest = [

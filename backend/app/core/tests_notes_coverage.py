@@ -394,16 +394,19 @@ class FocusRetrievedNotesTests(unittest.TestCase):
             source="hope.pdf",
         )
         primary_a.metadata["rerank_score"] = 0.82
+        primary_a.metadata["rerank_logit"] = 0.82
         secondary_a = _doc(
             "Prisoners of hope hold onto the promise while they wait for joy.",
             source="prisoners.pdf",
         )
         secondary_a.metadata["rerank_score"] = 0.74
+        secondary_a.metadata["rerank_logit"] = 0.74
         noise = _doc(
             "The courtyard schedule listed choir practice and potluck times.",
             source="noise.pdf",
         )
         noise.metadata["rerank_score"] = 0.20
+        noise.metadata["rerank_logit"] = 0.20
         chosen, coverage, score = choose_sermon_by_rerank(
             [
                 (primary_a, 0.82),
@@ -427,6 +430,30 @@ class FocusRetrievedNotesTests(unittest.TestCase):
             [doc.metadata["source"] for doc in chosen].index("hope.pdf")
             < [doc.metadata["source"] for doc in chosen].index("prisoners.pdf")
         )
+
+    def test_tiny_logit_margin_prefers_stronger_embed(self):
+        low_embed = _doc(
+            "A soft aside about compassion in community life.",
+            source="aside.pdf",
+        )
+        low_embed.metadata["rerank_logit"] = 0.12
+        low_embed.metadata["rerank_score"] = 0.12
+        low_embed.metadata["embed_score"] = 0.41
+        high_embed = _doc(
+            "A certain man went down to Jericho and was left half dead.",
+            source="neighbor.pdf",
+        )
+        high_embed.metadata["rerank_logit"] = 0.10
+        high_embed.metadata["rerank_score"] = 0.10
+        high_embed.metadata["embed_score"] = 0.78
+        chosen, coverage, score = choose_sermon_by_rerank(
+            [(low_embed, 0.12), (high_embed, 0.10)],
+            min_score=-1.0,
+            max_files=1,
+        )
+        self.assertEqual(coverage, "full")
+        self.assertEqual(chosen[0].metadata["source"], "neighbor.pdf")
+        self.assertAlmostEqual(score, 0.10)
 
     def test_diversify_hits_keeps_multiple_sources(self):
         from core.notes_coverage import diversify_hits_by_source
