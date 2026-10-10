@@ -486,15 +486,16 @@ def choose_sermon_by_rerank(
     max_files: Optional[int] = None,
     query: str = "",
 ) -> tuple[list[Any], str, float]:
-    """Keep the top sermon files that teach the question, primary first.
+    """Keep the top sermon files by rerank score, primary first.
 
     Passages are grouped by sermon file and ranked with a length-fair score so
     short topical sermons can compete with long multi-hit transcripts. Up to
-    max_files sermons that clear the score floor (and, when query is set, the
-    body teaching gate) are kept. The primary file contributes the most
-    windows; secondary files are supporting context. Titles are not used to
-    pick winners. Refuse only when no file clears the gates.
+    max_files sermons that clear the score floor are kept. The primary file
+    contributes the most windows; secondary files are supporting context.
+    Titles and lexical body gates are not used to pick winners. Refuse only
+    when no file clears the rerank score floor.
     """
+    del query  # Kept for call-site compatibility; selection is score-only.
     floor = sermon_rerank_min_score() if min_score is None else float(min_score)
     file_cap = sermon_select_max_files() if max_files is None else max(1, int(max_files))
     primary_cap, secondary_cap, tertiary_cap = _sermon_chunk_caps()
@@ -575,9 +576,6 @@ def choose_sermon_by_rerank(
         file_best = ranked[0][0]
         if file_best < floor:
             continue
-        file_docs = [doc for _score, doc in ranked]
-        if query and not sermon_mentions_question(query, file_docs):
-            continue
         file_aggregate = _group_rerank_aggregate(ranked)
         if kept_labels:
             # Supporting files must be near the primary on length-fair score so a
@@ -605,10 +603,9 @@ def choose_sermon_by_rerank(
     if not kept_docs:
         return [], COVERAGE_NONE, best_score
     logger.warning(
-        "Teaching sermons score=%.3f sources=%s query=%s",
+        "Teaching sermons score=%.3f sources=%s",
         primary_score,
         " | ".join(kept_labels),
-        (query or "")[:80],
     )
     return kept_docs, COVERAGE_FULL, primary_score
 

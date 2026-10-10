@@ -72,6 +72,7 @@ from .bible_refs import scripture_refs_from_metadata
 from .teaching_claims import (
     format_generation_user_prompt,
     is_greeting_turn,
+    meaning_expansion_queries,
     paraphrase_retrieval_queries,
     retrieval_search_text,
     system_notes_text,
@@ -399,12 +400,13 @@ def _immediate_sse(payload: dict):
 
 
 def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rerank_text=None):
-    """Search with paraphrase variants, then keep top weighted sermon files.
+    """Search with paraphrase + note-shaped drafts, then keep top weighted files.
 
-    Embedding search uses a few meaning-preserving queries so story retells
-    still reach short topical sermons. Hits are diversified across files before
-    rerank. The reranker reads the full question. Selection keeps up to a few
-    files that clear the teaching gate, with the primary file weighted heaviest.
+    Embedding search uses topic paraphrases and short note-like meaning drafts
+    so story retells still reach short topical sermons. Hits are diversified
+    across files, then reranked with per-source seats so those files are scored.
+    Selection is by rerank score only (no lexical body gate), with the primary
+    file weighted heaviest.
     """
     del client, collection_name
     rerank_query = rerank_text or search_text
@@ -413,6 +415,9 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rera
         full_query=rerank_query,
         limit=4,
     )
+    for draft in meaning_expansion_queries(rerank_query, limit=2):
+        if draft not in search_queries:
+            search_queries.append(draft)
     candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
     per_query_k = max(48, candidate_k // max(1, len(search_queries)))
     scored_hits = search_queries_on_store(
@@ -426,10 +431,7 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rera
         limit=max(96, candidate_k),
     )
     scored_hits = rerank_scored_hits(rerank_query, scored_hits)
-    docs, coverage, best_score = choose_sermon_by_rerank(
-        scored_hits,
-        query=rerank_query,
-    )
+    docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
     if docs:
         labels = []
         seen = set()

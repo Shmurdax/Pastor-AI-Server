@@ -414,6 +414,57 @@ def paraphrase_retrieval_queries(
     return queries[:cap] if queries else ([base] if base else [])
 
 
+def meaning_expansion_queries(
+    query: str,
+    *,
+    limit: int = 2,
+) -> list[str]:
+    """Build short note-shaped drafts for embedding recall (HyDE-lite).
+
+    Sermon chunks are written as teaching prose, not as user questions. These
+    drafts restate the question's topic in note-like sentences so ANN can reach
+    passages that teach the same idea in different wording. No sermon titles or
+    fixed synonym dictionaries are injected.
+    """
+    text = " ".join((query or "").split()).strip()
+    if not text:
+        return []
+    topic = distinctive_query_tokens(query_topic_tokens(text))
+    ordered: list[str] = []
+    seen_tokens: set[str] = set()
+    for word in normalize_grounding_text(text).split():
+        if word in topic and word not in seen_tokens:
+            ordered.append(word)
+            seen_tokens.add(word)
+    if not ordered:
+        return []
+    strong = [token for token in ordered if token not in _WEAK_QUERY_WORDS]
+    focus = strong or ordered
+    topic_phrase = " ".join(ordered)
+    focus_phrase = " ".join(focus)
+    drafts = [
+        (
+            f"The sermon notes teach about {focus_phrase}. "
+            f"They explain {topic_phrase} and what it means for the believer."
+        ),
+        (
+            f"Pastor Don teaches {focus_phrase} from the notes. "
+            f"The passage describes {topic_phrase} and the point of the teaching."
+        ),
+    ]
+    out: list[str] = []
+    seen: set[str] = set()
+    for draft in drafts:
+        cleaned = " ".join(draft.split()).strip()
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            out.append(cleaned)
+        if len(out) >= max(1, int(limit)):
+            break
+    return out
+
+
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
     """Topic words from the question, with layout words removed.
 
