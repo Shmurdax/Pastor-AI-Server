@@ -372,6 +372,87 @@ class FocusRetrievedNotesTests(unittest.TestCase):
         self.assertTrue(all(doc.metadata["source"] == "leadership.pdf" for doc in chosen))
         self.assertAlmostEqual(score, 0.72)
 
+    def test_short_topical_sermon_not_beaten_by_long_flat_sum(self):
+        from core.notes_coverage import _group_rerank_aggregate
+
+        short = [
+            (0.78, _doc("Hope in God when the heart is cast down.", source="hope.pdf")),
+        ]
+        long_flat = [
+            (0.51, _doc("Anoint the sick and pray together.", source="altar.pdf")),
+            (0.50, _doc("Confess faults one to another.", source="altar.pdf")),
+            (0.50, _doc("The elders gather around the sufferer.", source="altar.pdf")),
+        ]
+        self.assertGreater(
+            _group_rerank_aggregate(short),
+            _group_rerank_aggregate(long_flat),
+        )
+
+    def test_topk_keeps_secondary_sermon_with_weights(self):
+        primary_a = _doc(
+            "Hope in God and wait expectantly when the soul is cast down.",
+            source="hope.pdf",
+        )
+        primary_a.metadata["rerank_score"] = 0.82
+        secondary_a = _doc(
+            "Prisoners of hope hold onto the promise while they wait for joy.",
+            source="prisoners.pdf",
+        )
+        secondary_a.metadata["rerank_score"] = 0.74
+        noise = _doc(
+            "The courtyard schedule listed choir practice and potluck times.",
+            source="noise.pdf",
+        )
+        noise.metadata["rerank_score"] = 0.20
+        chosen, coverage, score = choose_sermon_by_rerank(
+            [
+                (primary_a, 0.82),
+                (secondary_a, 0.74),
+                (noise, 0.20),
+            ],
+            min_score=0.5,
+            max_files=3,
+            query="What hope do the notes give someone who is cast down?",
+        )
+        self.assertEqual(coverage, "full")
+        self.assertAlmostEqual(score, 0.82)
+        sources = {doc.metadata["source"] for doc in chosen}
+        self.assertIn("hope.pdf", sources)
+        self.assertIn("prisoners.pdf", sources)
+        self.assertNotIn("noise.pdf", sources)
+        weights = {doc.metadata["source"]: doc.metadata.get("sermon_weight") for doc in chosen}
+        self.assertEqual(weights["hope.pdf"], 1.0)
+        self.assertEqual(weights["prisoners.pdf"], 0.55)
+        self.assertTrue(
+            [doc.metadata["source"] for doc in chosen].index("hope.pdf")
+            < [doc.metadata["source"] for doc in chosen].index("prisoners.pdf")
+        )
+
+    def test_diversify_hits_keeps_multiple_sources(self):
+        from core.notes_coverage import diversify_hits_by_source
+
+        hits = []
+        for index in range(12):
+            hits.append(
+                (
+                    _doc(f"Long transcript window {index} about many things.", source="long.pdf"),
+                    0.9 - index * 0.01,
+                )
+            )
+        hits.append(
+            (
+                _doc("Short topical passage about the traveler left half dead.", source="short.pdf"),
+                0.55,
+            )
+        )
+        kept = diversify_hits_by_source(hits, max_per_source=3, limit=10)
+        sources = {doc.metadata["source"] for doc, _score in kept}
+        self.assertIn("short.pdf", sources)
+        self.assertLessEqual(
+            sum(1 for doc, _score in kept if doc.metadata["source"] == "long.pdf"),
+            3,
+        )
+
     def test_topic_ordinals_survive_non_outline_queries(self):
         from core.teaching_claims import distinctive_query_tokens, query_topic_tokens
 

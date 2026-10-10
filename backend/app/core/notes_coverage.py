@@ -401,27 +401,103 @@ def sermon_mentions_question(query: str, docs: Iterable[Any] | None) -> bool:
 
 
 def _group_rerank_aggregate(pairs: list[tuple[float, Any]], *, top_n: int = 3) -> float:
-    """Score a sermon by its strongest passages together, not one lucky chunk."""
+    """Score a sermon without punishing short topical files.
+
+    Uses the mean of the strongest available passages (up to top_n), then a
+    small bonus when a second passage is nearly as strong. Raw sums of three
+    mediocre hits from a long transcript no longer beat one clear short-file
+    match. A single hot aside with a weak second chunk still loses to a file
+    that teaches the topic across several strong passages.
+    """
     if not pairs:
         return 0.0
     scores = sorted((float(score) for score, _doc in pairs), reverse=True)[: max(1, top_n)]
-    return float(sum(scores))
+    mean = float(sum(scores)) / float(len(scores))
+    if len(scores) >= 2 and scores[1] >= scores[0] - 0.12:
+        mean += 0.05
+    return mean
+
+
+def sermon_select_max_files(env: Optional[dict] = None) -> int:
+    source = env if env is not None else os.environ
+    raw = str(source.get("SERMON_SELECT_MAX_FILES", "3") or "3").strip()
+    try:
+        return max(1, min(5, int(raw)))
+    except ValueError:
+        return 3
+
+
+def _sermon_chunk_caps(env: Optional[dict] = None) -> tuple[int, int, int]:
+    """How many windows to keep from primary / secondary / tertiary files."""
+    source = env if env is not None else os.environ
+
+    def _read(name: str, default: int) -> int:
+        raw = str(source.get(name, str(default)) or str(default)).strip()
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return default
+
+    return (
+        _read("SERMON_PRIMARY_CHUNK_CAP", 10),
+        _read("SERMON_SECONDARY_CHUNK_CAP", 4),
+        _read("SERMON_TERTIARY_CHUNK_CAP", 3),
+    )
+
+
+def diversify_hits_by_source(
+    scored_hits: Iterable[tuple[Any, float]] | None,
+    *,
+    max_per_source: int = 8,
+    limit: int = 96,
+) -> list[tuple[Any, float]]:
+    """Keep strong hits while reserving slots across distinct sermon files.
+
+    Long transcripts otherwise fill the rerank window and crowd out short
+    topical sermons that only have a few chunks in the ANN shortlist.
+    """
+    hits = [item for item in (scored_hits or []) if isinstance(item, tuple) and item]
+    if not hits:
+        return []
+    ordered = sorted(
+        hits,
+        key=lambda item: float(item[1]) if item[1] is not None else 0.0,
+        reverse=True,
+    )
+    per_source: dict[str, int] = {}
+    kept: list[tuple[Any, float]] = []
+    cap = max(1, int(max_per_source))
+    total = max(1, int(limit))
+    for doc, score in ordered:
+        if doc is None or len(kept) >= total:
+            break
+        key = chunk_source_key(doc)
+        if per_source.get(key, 0) >= cap:
+            continue
+        kept.append((doc, score))
+        per_source[key] = per_source.get(key, 0) + 1
+    return kept
 
 
 def choose_sermon_by_rerank(
     scored_hits: Iterable[tuple[Any, float]] | None,
     *,
     min_score: Optional[float] = None,
+    max_files: Optional[int] = None,
+    query: str = "",
 ) -> tuple[list[Any], str, float]:
-    """Keep the sermon whose top passages together best match the question.
+    """Keep the top sermon files that teach the question, primary first.
 
-    Passages are grouped by sermon file. The winner is chosen by the sum of its
-    top reranked chunks so a file that repeatedly teaches the topic beats one
-    flashy aside. A weak best score returns no sermon. Hits without a rerank
-    score are ignored so embedding scores on a different scale cannot win.
-    Titles are not used to pick the winner.
+    Passages are grouped by sermon file and ranked with a length-fair score so
+    short topical sermons can compete with long multi-hit transcripts. Up to
+    max_files sermons that clear the score floor (and, when query is set, the
+    body teaching gate) are kept. The primary file contributes the most
+    windows; secondary files are supporting context. Titles are not used to
+    pick winners. Refuse only when no file clears the gates.
     """
     floor = sermon_rerank_min_score() if min_score is None else float(min_score)
+    file_cap = sermon_select_max_files() if max_files is None else max(1, int(max_files))
+    primary_cap, secondary_cap, tertiary_cap = _sermon_chunk_caps()
     groups: dict[str, list[tuple[float, Any]]] = {}
     for item in scored_hits or []:
         if not isinstance(item, tuple) or not item:
@@ -444,16 +520,15 @@ def choose_sermon_by_rerank(
         reverse=True,
     )
     best_key = ranked_groups[0][0]
-    ranked = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
-    best_score = ranked[0][0]
-    best_aggregate = _group_rerank_aggregate(ranked)
+    ranked_best = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
+    best_score = ranked_best[0][0]
+    best_aggregate = _group_rerank_aggregate(ranked_best)
     second_score = 0.0
     second_aggregate = 0.0
     if len(ranked_groups) > 1:
         second_pairs = ranked_groups[1][1]
         second_score = max(score for score, _doc in second_pairs)
         second_aggregate = _group_rerank_aggregate(second_pairs)
-    # Compare file-level evidence so one hot aside cannot beat repeated teaching.
     margin = best_aggregate - second_aggregate
     top = []
     for key, pairs in ranked_groups[:3]:
@@ -475,11 +550,67 @@ def choose_sermon_by_rerank(
         margin,
         " | ".join(top),
     )
-    if margin < sermon_rerank_min_margin() and second_aggregate > 0:
+    # Margin alone must not refuse when several files are close — top-K keeps
+    # them. Only an optional positive margin floor still blocks a lone weak
+    # cluster when max_files is forced to 1.
+    if (
+        file_cap <= 1
+        and margin < sermon_rerank_min_margin()
+        and second_aggregate > 0
+    ):
         return [], COVERAGE_NONE, best_score
     if best_score < floor:
         return [], COVERAGE_NONE, best_score
-    return [doc for _score, doc in ranked], COVERAGE_FULL, best_score
+
+    weights = (1.0, 0.55, 0.35)
+    caps = (primary_cap, secondary_cap, tertiary_cap)
+    kept_docs: list[Any] = []
+    kept_labels: list[str] = []
+    primary_score = 0.0
+    primary_aggregate = 0.0
+    for key, pairs in ranked_groups:
+        if len(kept_labels) >= file_cap:
+            break
+        ranked = sorted(pairs, key=lambda item: item[0], reverse=True)
+        file_best = ranked[0][0]
+        if file_best < floor:
+            continue
+        file_docs = [doc for _score, doc in ranked]
+        if query and not sermon_mentions_question(query, file_docs):
+            continue
+        file_aggregate = _group_rerank_aggregate(ranked)
+        if kept_labels:
+            # Supporting files must be near the primary on length-fair score so a
+            # single hot aside cannot ride along as a second "source".
+            if primary_aggregate > 0 and file_aggregate < primary_aggregate * 0.8:
+                continue
+            if primary_score > 0 and file_best < primary_score * 0.55:
+                continue
+        rank_index = len(kept_labels)
+        weight = weights[min(rank_index, len(weights) - 1)]
+        cap = caps[min(rank_index, len(caps) - 1)]
+        sample_meta = getattr(ranked[0][1], "metadata", None) or {}
+        label = sample_meta.get("title") or sample_meta.get("source") or key
+        for _score, doc in ranked[:cap]:
+            meta = getattr(doc, "metadata", None)
+            if isinstance(meta, dict):
+                meta["sermon_weight"] = weight
+                meta["sermon_rank"] = rank_index + 1
+            kept_docs.append(doc)
+        kept_labels.append(str(label))
+        if rank_index == 0:
+            primary_score = file_best
+            primary_aggregate = file_aggregate
+
+    if not kept_docs:
+        return [], COVERAGE_NONE, best_score
+    logger.warning(
+        "Teaching sermons score=%.3f sources=%s query=%s",
+        primary_score,
+        " | ".join(kept_labels),
+        (query or "")[:80],
+    )
+    return kept_docs, COVERAGE_FULL, primary_score
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
