@@ -74,6 +74,7 @@ from .teaching_claims import (
     is_greeting_turn,
     meaning_expansion_queries,
     paraphrase_retrieval_queries,
+    rerank_topic_query,
     retrieval_search_text,
     system_notes_text,
 )
@@ -404,9 +405,9 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rera
 
     Embedding search uses topic paraphrases and short note-like meaning drafts
     so story retells still reach short topical sermons. Hits are diversified
-    across files, then reranked with per-source seats so those files are scored.
-    Selection is by rerank score only (no lexical body gate), with the primary
-    file weighted heaviest.
+    across files, then reranked on a topic-compressed query with per-source
+    seats and raw logits. Selection blends embed scores when the logit margin
+    is tiny. The chat model still receives the full user question.
     """
     del client, collection_name
     rerank_query = rerank_text or search_text
@@ -430,7 +431,10 @@ def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rera
         max_per_source=8,
         limit=max(96, candidate_k),
     )
-    scored_hits = rerank_scored_hits(rerank_query, scored_hits)
+    # Compress instruction chrome for the cross-encoder only. Generation still
+    # receives the full user question separately.
+    topic_for_rerank = rerank_topic_query(rerank_query) or rerank_query
+    scored_hits = rerank_scored_hits(topic_for_rerank, scored_hits)
     docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
     if docs:
         labels = []

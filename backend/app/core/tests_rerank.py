@@ -75,8 +75,11 @@ class RerankTests(unittest.TestCase):
             enabled=True,
         )
         self.assertEqual(out[0][0].page_content, thesis.page_content)
-        self.assertGreater(out[0][1], 0.9)
-        self.assertLess(out[1][1], 0.2)
+        # Ranking uses raw logits; sigmoid is kept only in metadata.
+        self.assertGreater(out[0][1], out[1][1])
+        self.assertGreater(out[0][0].metadata["rerank_sigmoid"], 0.9)
+        self.assertLess(out[1][0].metadata["rerank_sigmoid"], 0.2)
+        self.assertAlmostEqual(out[0][0].metadata["rerank_logit"], 8.0)
 
     def test_forced_catalog_windows_are_kept_even_when_ann_rank_is_low(self):
         extras = [
@@ -159,7 +162,8 @@ class RerankTests(unittest.TestCase):
             enabled=True,
         )
         self.assertEqual(out[0][0].page_content, thesis.page_content)
-        self.assertGreater(out[0][1], 0.9)
+        self.assertGreater(out[0][0].metadata["rerank_sigmoid"], 0.9)
+        self.assertAlmostEqual(out[0][1], 8.0)
 
     def test_predict_failure_keeps_original_hits(self):
         intro = _doc("Opening slide.", source="a.pdf")
@@ -186,8 +190,32 @@ class RerankTests(unittest.TestCase):
             enabled=True,
         )
         self.assertEqual(len(out), 1)
-        self.assertGreater(out[0][1], 0.99)
-        self.assertLessEqual(out[0][1], 1.0)
+        self.assertAlmostEqual(out[0][1], 12.0)
+        self.assertGreater(out[0][0].metadata["rerank_sigmoid"], 0.99)
+        self.assertLessEqual(out[0][0].metadata["rerank_sigmoid"], 1.0)
+
+    def test_ranks_by_logit_not_sigmoid_compression(self):
+        weak = _doc("A mild remark that barely touches the topic.", source="weak.pdf")
+        strong = _doc(
+            "The man went down to Jericho and was left half dead among thieves.",
+            source="strong.pdf",
+        )
+        hits = [(weak, 0.55), (strong, 0.54)]
+
+        def predict(pairs):
+            scores = []
+            for _query, passage in pairs:
+                scores.append(1.2 if "jericho" in passage.lower() else 0.05)
+            return scores
+
+        out = rerank_scored_hits(
+            "man half dead road jericho",
+            hits,
+            predict=predict,
+            enabled=True,
+        )
+        self.assertEqual(out[0][0].page_content, strong.page_content)
+        self.assertGreater(out[0][1] - out[1][1], 1.0)
 
     def test_title_lock_still_pins_boundaries_after_rerank(self):
         vice = _doc(

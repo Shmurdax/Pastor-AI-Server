@@ -366,6 +366,87 @@ def retrieval_search_text(query: str) -> str:
     return " ".join(kept) if kept else text
 
 
+# Instruction chrome for the reranker only. Generation still sees the full question.
+_RERANK_INSTRUCTION_STOP = frozenset(
+    {
+        "tell",
+        "story",
+        "create",
+        "explain",
+        "describe",
+        "write",
+        "please",
+        "using",
+        "according",
+        "really",
+        "actually",
+        "someone",
+        "something",
+        "teaching",
+        "teachings",
+        "question",
+        "answer",
+        "want",
+        "needs",
+        "help",
+        "pull",
+        "gather",
+        "based",
+        "about",
+        "from",
+        "what",
+        "when",
+        "where",
+        "which",
+        "how",
+        "does",
+        "did",
+        "give",
+        "gives",
+        "make",
+        "makes",
+        "look",
+        "looks",
+        "way",
+        "ways",
+    }
+)
+_VERSE_NUM_RE = re.compile(r"^\d+[a-z]?$")
+
+
+def rerank_topic_query(query: str) -> str:
+    """Compress instruction chrome for rerank; keep topical and named anchors.
+
+    Drops ask/layout filler such as tell/story/teaching point/sermon notes.
+    Keeps content words, short topic words (hope, faith), passage markers
+    (luke, 10), and any sermon title words the user typed. Used only for the
+    cross-encoder pair — the chat model still receives the full question.
+    """
+    text = " ".join((query or "").split()).strip()
+    if not text:
+        return text
+    kept: list[str] = []
+    seen: set[str] = set()
+    for word in normalize_grounding_text(text).split():
+        if word in _RERANK_INSTRUCTION_STOP:
+            continue
+        if word in _OUTLINE_DISTINCTIVE_STOP:
+            continue
+        if word in _OUTLINE_ORDINAL_STOP:
+            continue
+        if word in _STOP and word not in _QUERY_TOPIC_WORDS:
+            # Keep chapter/verse numbers next to book names.
+            if not _VERSE_NUM_RE.match(word):
+                continue
+        if len(word) < 3 and word not in _QUERY_TOPIC_WORDS and not _VERSE_NUM_RE.match(word):
+            continue
+        if word in seen:
+            continue
+        seen.add(word)
+        kept.append(word)
+    return " ".join(kept) if kept else text
+
+
 def paraphrase_retrieval_queries(
     search_text: str,
     *,

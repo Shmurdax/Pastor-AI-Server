@@ -279,6 +279,7 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn("choose_sermon_by_rerank", source)
         self.assertIn("paraphrase_retrieval_queries", source)
         self.assertIn("meaning_expansion_queries", source)
+        self.assertIn("rerank_topic_query", source)
         self.assertIn("diversify_hits_by_source", source)
         self.assertIn("rerank_scored_hits", source)
         self.assertNotIn("sermon_mentions_question", source)

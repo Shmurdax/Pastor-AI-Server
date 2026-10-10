@@ -108,6 +108,26 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertIn("dead", joined)
         self.assertNotIn("like a good neighbor", joined)
 
+    def test_rerank_topic_query_keeps_anchors_drops_instructions(self):
+        from core.teaching_claims import rerank_topic_query
+
+        compressed = rerank_topic_query(
+            "Tell the story of the man left half dead on the road to Jericho "
+            "the way the sermon notes tell it. What is the teaching point?"
+        )
+        lowered = compressed.lower()
+        self.assertIn("jericho", lowered)
+        self.assertIn("dead", lowered)
+        self.assertNotIn("teaching", lowered)
+        self.assertNotIn("sermon", lowered)
+        named = rerank_topic_query(
+            "Pull what Pastor Don taught in Like a Good Neighbor about Luke 10."
+        )
+        named_l = named.lower()
+        self.assertIn("neighbor", named_l)
+        self.assertIn("luke", named_l)
+        self.assertIn("10", named_l)
+
     def test_illustration_only_rewrite_does_not_cover_thesis(self):
         claim = (
             "The whistle should mean the train is coming because the same power "

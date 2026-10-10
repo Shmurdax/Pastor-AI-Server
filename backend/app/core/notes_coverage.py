@@ -8,6 +8,7 @@ notes that do not mention the asked subject.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from typing import Any, Iterable, Optional
@@ -283,33 +284,50 @@ def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
 
 
 def sermon_rerank_min_margin(env: Optional[dict] = None) -> float:
-    """How far the best sermon must lead the next one.
+    """How far the best sermon must lead the next one on the select scale.
 
-    Unrelated questions produce a cluster of low, similar scores. A sermon that
-    actually teaches the question leads the next file. Zero disables the check.
+    Used only when max_files is forced to 1. Zero disables the check.
     """
     source = env if env is not None else os.environ
     raw = str(source.get("SERMON_RERANK_MIN_MARGIN", "0") or "0").strip()
     try:
-        return max(0.0, min(1.0, float(raw)))
+        return max(0.0, float(raw))
     except ValueError:
         return 0.0
 
 
 def sermon_rerank_min_score(env: Optional[dict] = None) -> float:
-    """Lowest rerank score that still counts as teaching the question.
+    """Lowest rerank logit that still counts as teaching the question.
 
-    The default is a placeholder until a dev-pod run records the score of a
-    hope sermon on a hope question and the score of the best sermon on a
-    question the library does not cover. NOTES_COVERAGE_MIN_SCORE is a
-    different scale and is not this cutoff.
+    Scores are raw cross-encoder logits (not sigmoid). Slightly negative logits
+    are common for mild matches; only clearly irrelevant windows should fail.
     """
     source = env if env is not None else os.environ
-    raw = str(source.get("SERMON_RERANK_MIN_SCORE", "0.01") or "0.01").strip()
+    raw = str(source.get("SERMON_RERANK_MIN_SCORE", "-2.0") or "-2.0").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return -2.0
+
+
+def sermon_rerank_fuse_margin(env: Optional[dict] = None) -> float:
+    """When the logit lead is smaller than this, blend in embed scores."""
+    source = env if env is not None else os.environ
+    raw = str(source.get("SERMON_RERANK_FUSE_MARGIN", "0.35") or "0.35").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 0.35
+
+
+def sermon_rerank_fuse_embed_weight(env: Optional[dict] = None) -> float:
+    """Share of embed score in the fused ranking when the logit margin is tiny."""
+    source = env if env is not None else os.environ
+    raw = str(source.get("SERMON_RERANK_FUSE_EMBED_WEIGHT", "0.35") or "0.35").strip()
     try:
         return max(0.0, min(1.0, float(raw)))
     except ValueError:
-        return 0.01
+        return 0.35
 
 
 def _passage_embed_score(doc: Any) -> float:
@@ -323,13 +341,29 @@ def _passage_embed_score(doc: Any) -> float:
 
 def _passage_rerank_score(doc: Any) -> Optional[float]:
     meta = getattr(doc, "metadata", None) or {}
-    raw = meta.get("rerank_score")
+    # Prefer explicit logit when present (new path); fall back to rerank_score.
+    raw = meta.get("rerank_logit", meta.get("rerank_score"))
     if raw is None:
         return None
     try:
         return float(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _sigmoid_logit(value: float) -> float:
+    clipped = max(-30.0, min(30.0, float(value)))
+    return 1.0 / (1.0 + math.exp(-clipped))
+
+
+def _group_fused_score(pairs: list[tuple[float, Any]], *, embed_weight: float) -> float:
+    """Blend length-fair logit aggregate with the file's best embed score."""
+    if not pairs:
+        return 0.0
+    logit_agg = _group_rerank_aggregate(pairs)
+    best_embed = max((_passage_embed_score(doc) for _score, doc in pairs), default=0.0)
+    weight = max(0.0, min(1.0, float(embed_weight)))
+    return (1.0 - weight) * _sigmoid_logit(logit_agg) + weight * best_embed
 
 
 _QUESTION_FILLER = frozenset(
@@ -486,19 +520,20 @@ def choose_sermon_by_rerank(
     max_files: Optional[int] = None,
     query: str = "",
 ) -> tuple[list[Any], str, float]:
-    """Keep the top sermon files by rerank score, primary first.
+    """Keep the top sermon files by rerank logit, primary first.
 
-    Passages are grouped by sermon file and ranked with a length-fair score so
-    short topical sermons can compete with long multi-hit transcripts. Up to
-    max_files sermons that clear the score floor are kept. The primary file
-    contributes the most windows; secondary files are supporting context.
-    Titles and lexical body gates are not used to pick winners. Refuse only
-    when no file clears the rerank score floor.
+    Passages are grouped by sermon file and ranked with a length-fair logit
+    aggregate. When the lead over the next file is tiny, files are re-ordered
+    by a blend of logit and embed score so a 0.01 logit coin-flip does not
+    decide the primary. Up to max_files sermons that clear the logit floor are
+    kept. Titles and lexical body gates are not used.
     """
     del query  # Kept for call-site compatibility; selection is score-only.
     floor = sermon_rerank_min_score() if min_score is None else float(min_score)
     file_cap = sermon_select_max_files() if max_files is None else max(1, int(max_files))
     primary_cap, secondary_cap, tertiary_cap = _sermon_chunk_caps()
+    fuse_margin = sermon_rerank_fuse_margin()
+    embed_weight = sermon_rerank_fuse_embed_weight()
     groups: dict[str, list[tuple[float, Any]]] = {}
     for item in scored_hits or []:
         if not isinstance(item, tuple) or not item:
@@ -531,6 +566,26 @@ def choose_sermon_by_rerank(
         second_score = max(score for score, _doc in second_pairs)
         second_aggregate = _group_rerank_aggregate(second_pairs)
     margin = best_aggregate - second_aggregate
+    fused = False
+    if fuse_margin > 0 and len(ranked_groups) > 1 and margin < fuse_margin:
+        ranked_groups = sorted(
+            groups.items(),
+            key=lambda item: (
+                _group_fused_score(item[1], embed_weight=embed_weight),
+                _group_rerank_aggregate(item[1]),
+                max(score for score, _doc in item[1]),
+            ),
+            reverse=True,
+        )
+        fused = True
+        best_key = ranked_groups[0][0]
+        ranked_best = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
+        best_score = ranked_best[0][0]
+        best_aggregate = _group_rerank_aggregate(ranked_best)
+        second_pairs = ranked_groups[1][1]
+        second_score = max(score for score, _doc in second_pairs)
+        second_aggregate = _group_rerank_aggregate(second_pairs)
+        margin = best_aggregate - second_aggregate
     top = []
     for key, pairs in ranked_groups[:3]:
         score = max(item[0] for item in pairs)
@@ -539,25 +594,29 @@ def choose_sermon_by_rerank(
         meta = getattr(sample, "metadata", None) or {}
         label = meta.get("title") or meta.get("source") or key
         embed = _passage_embed_score(sample)
+        fused_score = _group_fused_score(pairs, embed_weight=embed_weight)
         top.append(
-            f"agg={aggregate:.3f}/best={score:.3f}/embed={embed:.3f}:{label}"
+            f"agg={aggregate:.3f}/best={score:.3f}/embed={embed:.3f}/fuse={fused_score:.3f}:{label}"
         )
     logger.warning(
-        "Rerank candidates best=%.3f agg=%.3f second=%.3f second_agg=%.3f margin=%.3f top=%s",
+        "Rerank candidates best=%.3f agg=%.3f second=%.3f second_agg=%.3f margin=%.3f fused=%s top=%s",
         best_score,
         best_aggregate,
         second_score,
         second_aggregate,
         margin,
+        fused,
         " | ".join(top),
     )
-    # Margin alone must not refuse when several files are close — top-K keeps
-    # them. Only an optional positive margin floor still blocks a lone weak
-    # cluster when max_files is forced to 1.
+    # Only refuse on an ambiguous logit lead when max_files is 1. After embed
+    # fusion the logit margin can be negative; that is not a refuse signal.
+    min_margin = sermon_rerank_min_margin()
     if (
         file_cap <= 1
-        and margin < sermon_rerank_min_margin()
-        and second_aggregate > 0
+        and min_margin > 0
+        and not fused
+        and 0 <= margin < min_margin
+        and len(ranked_groups) > 1
     ):
         return [], COVERAGE_NONE, best_score
     if best_score < floor:
