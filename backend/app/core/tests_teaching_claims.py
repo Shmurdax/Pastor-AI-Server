@@ -94,6 +94,20 @@ class TeachingClaimTests(unittest.TestCase):
         # No title injection — only words from the question.
         self.assertNotIn("like a good neighbor", joined)
 
+    def test_meaning_expansion_queries_are_note_shaped(self):
+        from core.teaching_claims import meaning_expansion_queries
+
+        drafts = meaning_expansion_queries(
+            "Tell the story of the man left half dead on the road to Jericho.",
+            limit=2,
+        )
+        self.assertEqual(len(drafts), 2)
+        joined = " ".join(drafts).lower()
+        self.assertIn("sermon notes teach", joined)
+        self.assertIn("jericho", joined)
+        self.assertIn("dead", joined)
+        self.assertNotIn("like a good neighbor", joined)
+
     def test_illustration_only_rewrite_does_not_cover_thesis(self):
         claim = (
             "The whistle should mean the train is coming because the same power "

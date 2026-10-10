@@ -90,10 +90,34 @@ class RerankTests(unittest.TestCase):
         )
         hits = [(doc, 0.99 - (index * 0.001)) for index, doc in enumerate(extras)]
         hits.append((catalog, 0.11))
-        chosen = _select_candidates(hits, pinned_docs=[catalog], limit=40)
+        chosen = _select_candidates(hits, pinned_docs=[catalog], limit=40, source_slots=0)
         texts = [chunk.page_content for chunk, _ in chosen]
         self.assertIn(catalog.page_content, texts)
         self.assertEqual(len(chosen), 40)
+
+    def test_source_slots_keep_short_file_in_rerank_window(self):
+        hits = []
+        for index in range(40):
+            hits.append(
+                (
+                    _doc(
+                        f"Long transcript window {index} about many general things.",
+                        source="long.pdf",
+                    ),
+                    0.95 - index * 0.001,
+                )
+            )
+        short = _doc(
+            "A certain man went down to Jericho and was left half dead.",
+            source="short.pdf",
+        )
+        hits.append((short, 0.40))
+        # Without seats the short file is outside the top 40 by embed score.
+        no_slots = _select_candidates(hits, pinned_docs=None, limit=40, source_slots=0)
+        self.assertNotIn(short.page_content, [doc.page_content for doc, _ in no_slots])
+        with_slots = _select_candidates(hits, pinned_docs=None, limit=40, source_slots=16)
+        self.assertIn(short.page_content, [doc.page_content for doc, _ in with_slots])
+        self.assertEqual(len(with_slots), 40)
 
     def test_forced_catalog_can_exceed_forty(self):
         catalog = [

@@ -13,13 +13,15 @@ import os
 import threading
 from typing import Any, Callable, Iterable, Optional
 
-from .chat_retrieval import chunk_fingerprint, chunk_text
+from .chat_retrieval import chunk_fingerprint, chunk_source_key, chunk_text
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
 RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "40"))
 RERANK_MAX_CHARS = int(os.getenv("RERANK_MAX_CHARS", "1024"))
+# Reserve seats so short topical sermons are scored, not only long transcripts.
+RERANK_SOURCE_SLOTS = int(os.getenv("RERANK_SOURCE_SLOTS", "16"))
 
 _RERANKER = None
 _RERANKER_FAILED = False
@@ -96,7 +98,15 @@ def _select_candidates(
     *,
     pinned_docs: Optional[Iterable[Any]],
     limit: int,
+    source_slots: int = RERANK_SOURCE_SLOTS,
 ) -> list[tuple[Any, float]]:
+    """Pick the rerank window with pinned docs and per-source seats.
+
+    First force pinned fingerprints. Then take the best remaining chunk from
+    each distinct sermon file until source_slots is filled so short topical
+    files still receive a cross-encoder score. Fill any leftover seats by
+    embedding score.
+    """
     pinned_fps = _fingerprint_set(pinned_docs)
     forced: list[tuple[Any, float]] = []
     others: list[tuple[Any, float]] = []
@@ -110,9 +120,37 @@ def _select_candidates(
             others.append((doc, score))
     others.sort(key=lambda item: item[1], reverse=True)
     cap = max(1, int(limit))
+    # Pinned catalog windows may intentionally exceed the usual cap.
     if len(forced) >= cap:
         return forced
-    return forced + others[: cap - len(forced)]
+
+    chosen: list[tuple[Any, float]] = list(forced)
+    chosen_fps = {chunk_fingerprint(chunk_text(doc)) for doc, _score in chosen}
+    reserved_sources: set[str] = set()
+    slot_budget = max(0, min(int(source_slots), cap - len(chosen)))
+
+    for doc, score in others:
+        if len(chosen) >= cap or len(reserved_sources) >= slot_budget:
+            break
+        fp = chunk_fingerprint(chunk_text(doc))
+        if not fp or fp in chosen_fps:
+            continue
+        source = chunk_source_key(doc)
+        if source in reserved_sources:
+            continue
+        chosen.append((doc, score))
+        chosen_fps.add(fp)
+        reserved_sources.add(source)
+
+    for doc, score in others:
+        if len(chosen) >= cap:
+            break
+        fp = chunk_fingerprint(chunk_text(doc))
+        if not fp or fp in chosen_fps:
+            continue
+        chosen.append((doc, score))
+        chosen_fps.add(fp)
+    return chosen
 
 
 def get_reranker(*, force_new: bool = False):
