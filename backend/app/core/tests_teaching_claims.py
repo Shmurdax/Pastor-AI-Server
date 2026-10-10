@@ -79,6 +79,21 @@ class TeachingClaimTests(unittest.TestCase):
         self.assertTrue(claim_is_covered(claim, paraphrase))
         self.assertEqual(uncovered_claims(paraphrase, [claim]), [])
 
+    def test_paraphrase_retrieval_queries_keep_topic_variants(self):
+        from core.teaching_claims import paraphrase_retrieval_queries
+
+        full = (
+            "Tell the story of the man left half dead on the road to Jericho "
+            "the way the sermon notes tell it. What is the teaching point?"
+        )
+        queries = paraphrase_retrieval_queries(full, full_query=full, limit=4)
+        self.assertGreaterEqual(len(queries), 2)
+        joined = " ".join(queries).lower()
+        self.assertIn("jericho", joined)
+        self.assertIn("dead", joined)
+        # No title injection — only words from the question.
+        self.assertNotIn("like a good neighbor", joined)
+
     def test_illustration_only_rewrite_does_not_cover_thesis(self):
         claim = (
             "The whistle should mean the train is coming because the same power "

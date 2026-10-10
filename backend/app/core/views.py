@@ -72,15 +72,16 @@ from .bible_refs import scripture_refs_from_metadata
 from .teaching_claims import (
     format_generation_user_prompt,
     is_greeting_turn,
+    paraphrase_retrieval_queries,
     retrieval_search_text,
     system_notes_text,
 )
 from .notes_coverage import (
     COVERAGE_FULL,
     choose_sermon_by_rerank,
+    diversify_hits_by_source,
     query_changes_locked_sermon,
     sermon_lines_for_answer,
-    sermon_mentions_question,
 )
 from .chat_retrieval import (
     chunk_text,
@@ -111,7 +112,7 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-# One sermon's retrieved windows. The model teaches this text, not a claim outline.
+# Primary sermon windows plus lighter secondary support. Not a claim outline.
 PROMPT_CONTEXT_CHARS = int(os.getenv("CHAT_PROMPT_CONTEXT_CHARS", "12000"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
@@ -398,32 +399,50 @@ def _immediate_sse(payload: dict):
 
 
 def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rerank_text=None):
-    """Search, then keep the one sermon the reranker scores as the match.
+    """Search with paraphrase variants, then keep top weighted sermon files.
 
-    Embedding search uses the layout-stripped text. The reranker reads the
-    full question, because a bag of leftover words flattens every score.
+    Embedding search uses a few meaning-preserving queries so story retells
+    still reach short topical sermons. Hits are diversified across files before
+    rerank. The reranker reads the full question. Selection keeps up to a few
+    files that clear the teaching gate, with the primary file weighted heaviest.
     """
     del client, collection_name
+    rerank_query = rerank_text or search_text
+    search_queries = paraphrase_retrieval_queries(
+        search_text,
+        full_query=rerank_query,
+        limit=4,
+    )
     candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
+    per_query_k = max(48, candidate_k // max(1, len(search_queries)))
     scored_hits = search_queries_on_store(
         vectorstore,
-        [search_text],
-        k_per_query=candidate_k,
+        search_queries,
+        k_per_query=per_query_k,
     )
-    scored_hits = rerank_scored_hits(rerank_text or search_text, scored_hits)
-    docs, coverage, best_score = choose_sermon_by_rerank(scored_hits)
-    if docs and not sermon_mentions_question(rerank_text or search_text, docs):
-        logger.warning(
-            "Rerank winner does not use the question words score=%.3f query=%s",
-            best_score,
-            (rerank_text or search_text)[:80],
-        )
-        docs, coverage = [], "none"
+    scored_hits = diversify_hits_by_source(
+        scored_hits,
+        max_per_source=8,
+        limit=max(96, candidate_k),
+    )
+    scored_hits = rerank_scored_hits(rerank_query, scored_hits)
+    docs, coverage, best_score = choose_sermon_by_rerank(
+        scored_hits,
+        query=rerank_query,
+    )
     if docs:
+        labels = []
+        seen = set()
+        for doc in docs:
+            label = _doc_source_label(doc)
+            key = label.lower()
+            if label and key not in seen:
+                seen.add(key)
+                labels.append(label)
         logger.warning(
-            "Teaching sermon score=%.3f source=%s query=%s",
+            "Teaching sermon score=%.3f sources=%s query=%s",
             best_score,
-            _doc_source_label(docs[0]),
+            " | ".join(labels) or _doc_source_label(docs[0]),
             search_text[:80],
         )
     else:

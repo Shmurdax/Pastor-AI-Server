@@ -277,6 +277,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertNotIn("prepare_chat()", source)
         self.assertIn("search_queries_on_store", source)
         self.assertIn("choose_sermon_by_rerank", source)
+        self.assertIn("paraphrase_retrieval_queries", source)
+        self.assertIn("diversify_hits_by_source", source)
         self.assertIn("rerank_scored_hits", source)
         self.assertIn("attach_supporting_scripture", source)
         self.assertIn("scripture_docs=", source)

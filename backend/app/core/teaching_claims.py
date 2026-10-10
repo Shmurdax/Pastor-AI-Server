@@ -366,6 +366,54 @@ def retrieval_search_text(query: str) -> str:
     return " ".join(kept) if kept else text
 
 
+def paraphrase_retrieval_queries(
+    search_text: str,
+    *,
+    full_query: str = "",
+    limit: int = 4,
+) -> list[str]:
+    """Build a few embedding queries that keep the same meaning.
+
+    The first query is the layout-stripped search text. Extra variants are
+    topic-token bags taken from the full question so story retells and pastoral
+    paraphrases still reach short topical sermons. No sermon titles or fixed
+    synonym lists are injected.
+    """
+    queries: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        cleaned = " ".join((value or "").split()).strip()
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            return
+        seen.add(key)
+        queries.append(cleaned)
+
+    base = (search_text or "").strip()
+    full = (full_query or "").strip() or base
+    add(base)
+    if full and full.lower() != base.lower():
+        add(full)
+
+    topic = distinctive_query_tokens(query_topic_tokens(full or base))
+    if topic:
+        ordered: list[str] = []
+        seen_tokens: set[str] = set()
+        for word in normalize_grounding_text(full or base).split():
+            if word in topic and word not in seen_tokens:
+                ordered.append(word)
+                seen_tokens.add(word)
+        if ordered:
+            add(" ".join(ordered))
+        strong = [token for token in ordered if token not in _WEAK_QUERY_WORDS]
+        if strong and strong != ordered:
+            add(" ".join(strong))
+
+    cap = max(1, int(limit))
+    return queries[:cap] if queries else ([base] if base else [])
+
+
 def distinctive_query_tokens(query_tokens: Iterable[str]) -> set[str]:
     """Topic words from the question, with layout words removed.
 
