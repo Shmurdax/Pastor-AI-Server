@@ -72,8 +72,6 @@ from .bible_refs import scripture_refs_from_metadata
 from .teaching_claims import (
     format_generation_user_prompt,
     is_greeting_turn,
-    meaning_expansion_queries,
-    paraphrase_retrieval_queries,
     rerank_topic_query,
     retrieval_search_text,
     system_notes_text,
@@ -401,24 +399,22 @@ def _immediate_sse(payload: dict):
 
 
 def _focused_sermon_docs(vectorstore, client, collection_name, search_text, rerank_text=None):
-    """Search with paraphrase + note-shaped drafts, then keep top weighted files.
+    """Search once on the layout-stripped question, then keep top weighted files.
 
-    Embedding search uses topic paraphrases and short note-like meaning drafts
-    so story retells still reach short topical sermons. Hits are diversified
-    across files, then reranked on a topic-compressed query with per-source
-    seats and raw logits. Selection blends embed scores when the logit margin
-    is tiny. The chat model still receives the full user question.
+    ANN uses a single retrieval query (no multi-query paraphrase drafts and no
+    note-shaped meaning expansion). Hits are diversified across files, then
+    reranked on a topic-compressed query with per-source seats and raw logits.
+    Selection blends embed scores when the logit margin is tiny. The chat model
+    still receives the full user question.
     """
     del client, collection_name
     rerank_query = rerank_text or search_text
-    search_queries = paraphrase_retrieval_queries(
-        search_text,
-        full_query=rerank_query,
-        limit=4,
-    )
-    for draft in meaning_expansion_queries(rerank_query, limit=2):
-        if draft not in search_queries:
-            search_queries.append(draft)
+    # Ablation: one ANN query only. Extra paraphrase / HyDE-lite drafts were
+    # pulling meta-story and long Full Transcript sermons ahead of the topical
+    # files for hope/grief and Jericho narrative paraphrases.
+    search_queries = [search_text] if (search_text or "").strip() else []
+    if not search_queries and (rerank_query or "").strip():
+        search_queries = [rerank_query]
     candidate_k = max(RETRIEVAL_K * RETRIEVAL_CANDIDATE_MULTIPLIER, 24)
     per_query_k = max(48, candidate_k // max(1, len(search_queries)))
     scored_hits = search_queries_on_store(
