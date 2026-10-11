@@ -81,7 +81,6 @@ from .notes_coverage import (
     choose_sermon_by_rerank,
     diversify_hits_by_source,
     query_changes_locked_sermon,
-    sermon_lines_for_answer,
 )
 from .chat_retrieval import (
     chunk_text,
@@ -112,7 +111,7 @@ RETRIEVAL_SOURCE_MAX = int(os.getenv("RETRIEVAL_SOURCE_MAX", "5"))
 MAX_HISTORY_CHARS = int(os.getenv("CHAT_MAX_HISTORY_CHARS", "20000"))
 MAX_HISTORY_TURNS = int(os.getenv("CHAT_MAX_HISTORY_TURNS", "10"))
 MAX_CONTEXT_CHARS = int(os.getenv("CHAT_MAX_CONTEXT_CHARS", "40000"))
-# Primary sermon windows plus lighter secondary support. Not a claim outline.
+# Kept primary-sermon windows for the generation prompt.
 PROMPT_CONTEXT_CHARS = int(os.getenv("CHAT_PROMPT_CONTEXT_CHARS", "12000"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "2048"))
 CHAT_TIMEOUT_S = float(os.getenv("CHAT_TIMEOUT_S", "360"))
@@ -788,21 +787,16 @@ class ChatAPIView(APIView):
                         collection_name,
                         embeddings,
                     )
-                    context = sermon_lines_for_answer(line_query, docs)
-                    if context and scripture_docs:
-                        from .scripture_support import format_nkjv_scripture_block
-
-                        scripture_block = format_nkjv_scripture_block(scripture_docs)
-                        if scripture_block:
-                            context = f"{context}\n\n{scripture_block}".strip()
-                    if not context:
-                        context = format_reference_notes(
-                            docs,
-                            _doc_source_label,
-                            max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
-                            preserve_order=True,
-                            scripture_docs=scripture_docs,
-                        )
+                    # Use the full kept primary windows. The older
+                    # sermon_lines_for_answer path collapsed retells to a few
+                    # sentences from one chunk and produced stub answers.
+                    context = format_reference_notes(
+                        docs,
+                        _doc_source_label,
+                        max_chars=min(MAX_CONTEXT_CHARS, PROMPT_CONTEXT_CHARS),
+                        preserve_order=True,
+                        scripture_docs=scripture_docs,
+                    )
                     if not (context or "").strip():
                         docs = []
                         direct_answer = NO_SERMON_REPLY
