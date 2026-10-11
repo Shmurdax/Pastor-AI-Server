@@ -520,20 +520,17 @@ def choose_sermon_by_rerank(
     max_files: Optional[int] = None,
     query: str = "",
 ) -> tuple[list[Any], str, float]:
-    """Keep the top sermon files by rerank logit, primary first.
+    """Keep only the top sermon file by length-fair rerank logit.
 
     Passages are grouped by sermon file and ranked with a length-fair logit
-    aggregate. When the lead over the next file is tiny, files are re-ordered
-    by a blend of logit and embed score so a 0.01 logit coin-flip does not
-    decide the primary. Up to max_files sermons that clear the logit floor are
-    kept. Titles and lexical body gates are not used.
+    aggregate. Embed fusion and secondary/tertiary file keep were removed —
+    they promoted long Full Transcripts and mixed weak companions into the
+    answer. max_files is accepted for call-site compatibility but ignored;
+    only the primary file is kept. Titles and lexical body gates are not used.
     """
-    del query  # Kept for call-site compatibility; selection is score-only.
+    del query, max_files  # Selection is score-only; always one primary file.
     floor = sermon_rerank_min_score() if min_score is None else float(min_score)
-    file_cap = sermon_select_max_files() if max_files is None else max(1, int(max_files))
-    primary_cap, secondary_cap, tertiary_cap = _sermon_chunk_caps()
-    fuse_margin = sermon_rerank_fuse_margin()
-    embed_weight = sermon_rerank_fuse_embed_weight()
+    primary_cap, _secondary_cap, _tertiary_cap = _sermon_chunk_caps()
     groups: dict[str, list[tuple[float, Any]]] = {}
     for item in scored_hits or []:
         if not isinstance(item, tuple) or not item:
@@ -566,26 +563,6 @@ def choose_sermon_by_rerank(
         second_score = max(score for score, _doc in second_pairs)
         second_aggregate = _group_rerank_aggregate(second_pairs)
     margin = best_aggregate - second_aggregate
-    fused = False
-    if fuse_margin > 0 and len(ranked_groups) > 1 and margin < fuse_margin:
-        ranked_groups = sorted(
-            groups.items(),
-            key=lambda item: (
-                _group_fused_score(item[1], embed_weight=embed_weight),
-                _group_rerank_aggregate(item[1]),
-                max(score for score, _doc in item[1]),
-            ),
-            reverse=True,
-        )
-        fused = True
-        best_key = ranked_groups[0][0]
-        ranked_best = sorted(groups[best_key], key=lambda item: item[0], reverse=True)
-        best_score = ranked_best[0][0]
-        best_aggregate = _group_rerank_aggregate(ranked_best)
-        second_pairs = ranked_groups[1][1]
-        second_score = max(score for score, _doc in second_pairs)
-        second_aggregate = _group_rerank_aggregate(second_pairs)
-        margin = best_aggregate - second_aggregate
     top = []
     for key, pairs in ranked_groups[:3]:
         score = max(item[0] for item in pairs)
@@ -594,27 +571,21 @@ def choose_sermon_by_rerank(
         meta = getattr(sample, "metadata", None) or {}
         label = meta.get("title") or meta.get("source") or key
         embed = _passage_embed_score(sample)
-        fused_score = _group_fused_score(pairs, embed_weight=embed_weight)
         top.append(
-            f"agg={aggregate:.3f}/best={score:.3f}/embed={embed:.3f}/fuse={fused_score:.3f}:{label}"
+            f"agg={aggregate:.3f}/best={score:.3f}/embed={embed:.3f}:{label}"
         )
     logger.warning(
-        "Rerank candidates best=%.3f agg=%.3f second=%.3f second_agg=%.3f margin=%.3f fused=%s top=%s",
+        "Rerank candidates best=%.3f agg=%.3f second=%.3f second_agg=%.3f margin=%.3f top=%s",
         best_score,
         best_aggregate,
         second_score,
         second_aggregate,
         margin,
-        fused,
         " | ".join(top),
     )
-    # Only refuse on an ambiguous logit lead when max_files is 1. After embed
-    # fusion the logit margin can be negative; that is not a refuse signal.
     min_margin = sermon_rerank_min_margin()
     if (
-        file_cap <= 1
-        and min_margin > 0
-        and not fused
+        min_margin > 0
         and 0 <= margin < min_margin
         and len(ranked_groups) > 1
     ):
@@ -622,51 +593,27 @@ def choose_sermon_by_rerank(
     if best_score < floor:
         return [], COVERAGE_NONE, best_score
 
-    weights = (1.0, 0.55, 0.35)
-    caps = (primary_cap, secondary_cap, tertiary_cap)
+    ranked = ranked_best
+    file_best = best_score
+    if file_best < floor:
+        return [], COVERAGE_NONE, best_score
+    sample_meta = getattr(ranked[0][1], "metadata", None) or {}
+    label = sample_meta.get("title") or sample_meta.get("source") or best_key
     kept_docs: list[Any] = []
-    kept_labels: list[str] = []
-    primary_score = 0.0
-    primary_aggregate = 0.0
-    for key, pairs in ranked_groups:
-        if len(kept_labels) >= file_cap:
-            break
-        ranked = sorted(pairs, key=lambda item: item[0], reverse=True)
-        file_best = ranked[0][0]
-        if file_best < floor:
-            continue
-        file_aggregate = _group_rerank_aggregate(ranked)
-        if kept_labels:
-            # Supporting files must be near the primary on length-fair score so a
-            # single hot aside cannot ride along as a second "source".
-            if primary_aggregate > 0 and file_aggregate < primary_aggregate * 0.8:
-                continue
-            if primary_score > 0 and file_best < primary_score * 0.55:
-                continue
-        rank_index = len(kept_labels)
-        weight = weights[min(rank_index, len(weights) - 1)]
-        cap = caps[min(rank_index, len(caps) - 1)]
-        sample_meta = getattr(ranked[0][1], "metadata", None) or {}
-        label = sample_meta.get("title") or sample_meta.get("source") or key
-        for _score, doc in ranked[:cap]:
-            meta = getattr(doc, "metadata", None)
-            if isinstance(meta, dict):
-                meta["sermon_weight"] = weight
-                meta["sermon_rank"] = rank_index + 1
-            kept_docs.append(doc)
-        kept_labels.append(str(label))
-        if rank_index == 0:
-            primary_score = file_best
-            primary_aggregate = file_aggregate
-
+    for _score, doc in ranked[:primary_cap]:
+        meta = getattr(doc, "metadata", None)
+        if isinstance(meta, dict):
+            meta["sermon_weight"] = 1.0
+            meta["sermon_rank"] = 1
+        kept_docs.append(doc)
     if not kept_docs:
         return [], COVERAGE_NONE, best_score
     logger.warning(
         "Teaching sermons score=%.3f sources=%s",
-        primary_score,
-        " | ".join(kept_labels),
+        file_best,
+        label,
     )
-    return kept_docs, COVERAGE_FULL, primary_score
+    return kept_docs, COVERAGE_FULL, file_best
 
 
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:

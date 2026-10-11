@@ -388,7 +388,7 @@ class FocusRetrievedNotesTests(unittest.TestCase):
             _group_rerank_aggregate(long_flat),
         )
 
-    def test_topk_keeps_secondary_sermon_with_weights(self):
+    def test_keeps_only_primary_sermon_file(self):
         primary_a = _doc(
             "Hope in God and wait expectantly when the soul is cast down.",
             source="hope.pdf",
@@ -420,18 +420,11 @@ class FocusRetrievedNotesTests(unittest.TestCase):
         self.assertEqual(coverage, "full")
         self.assertAlmostEqual(score, 0.82)
         sources = {doc.metadata["source"] for doc in chosen}
-        self.assertIn("hope.pdf", sources)
-        self.assertIn("prisoners.pdf", sources)
-        self.assertNotIn("noise.pdf", sources)
-        weights = {doc.metadata["source"]: doc.metadata.get("sermon_weight") for doc in chosen}
-        self.assertEqual(weights["hope.pdf"], 1.0)
-        self.assertEqual(weights["prisoners.pdf"], 0.55)
-        self.assertTrue(
-            [doc.metadata["source"] for doc in chosen].index("hope.pdf")
-            < [doc.metadata["source"] for doc in chosen].index("prisoners.pdf")
-        )
+        self.assertEqual(sources, {"hope.pdf"})
+        self.assertTrue(all(doc.metadata.get("sermon_weight") == 1.0 for doc in chosen))
+        self.assertTrue(all(doc.metadata.get("sermon_rank") == 1 for doc in chosen))
 
-    def test_tiny_logit_margin_prefers_stronger_embed(self):
+    def test_tiny_logit_margin_keeps_logit_leader_without_embed_fuse(self):
         low_embed = _doc(
             "A soft aside about compassion in community life.",
             source="aside.pdf",
@@ -452,8 +445,8 @@ class FocusRetrievedNotesTests(unittest.TestCase):
             max_files=1,
         )
         self.assertEqual(coverage, "full")
-        self.assertEqual(chosen[0].metadata["source"], "neighbor.pdf")
-        self.assertAlmostEqual(score, 0.10)
+        self.assertEqual(chosen[0].metadata["source"], "aside.pdf")
+        self.assertAlmostEqual(score, 0.12)
 
     def test_diversify_hits_keeps_multiple_sources(self):
         from core.notes_coverage import diversify_hits_by_source
