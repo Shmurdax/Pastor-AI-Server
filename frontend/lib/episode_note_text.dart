@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Topic chip text. Hashtags are shown exactly as written in the PDF, without
-/// the leading `#`.
+/// Topic chip text. The leading `#` stays, so a hashtag is visibly a hashtag.
 String displayTopicLabel(String topic) {
   var trimmed = topic.trim();
   while (trimmed.startsWith('#')) {
     trimmed = trimmed.substring(1).trimLeft();
   }
-  return trimmed;
+  if (trimmed.isEmpty) return '';
+  return '#$trimmed';
 }
 
 /// Words worth highlighting in a note. The full query comes first so a phrase

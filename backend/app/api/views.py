@@ -151,7 +151,8 @@ class MediaVideoListAPI(APIView):
     """GET /api/media/ — Premium list of published Walk through the Word videos.
 
     Optional ``q`` matches the title, publish month, topics, and note text,
-    in that order. Optional ``topic`` keeps episodes whose notes include that topic.
+    in that order. Repeat ``topic`` to keep episodes whose notes include any
+    of those hashtags.
     """
 
     authentication_classes = [TokenAuthentication]
@@ -162,7 +163,7 @@ class MediaVideoListAPI(APIView):
 
         matches = search_published_media(
             query=request.query_params.get("q") or "",
-            topic=request.query_params.get("topic") or "",
+            topics=request.query_params.getlist("topic"),
         )
         videos = [item["video"] for item in matches]
         rows = MediaVideoSerializer(videos, many=True).data

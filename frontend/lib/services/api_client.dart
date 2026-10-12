@@ -574,16 +574,17 @@ class ApiClient {
 
   Future<List<Map<String, dynamic>>> listMediaVideos({
     String? query,
-    String? topic,
+    List<String> topics = const [],
   }) async {
-    final params = <String, String>{};
+    final parts = <String>[];
     final q = query?.trim() ?? '';
-    final topicLabel = topic?.trim() ?? '';
-    if (q.isNotEmpty) params['q'] = q;
-    if (topicLabel.isNotEmpty) params['topic'] = topicLabel;
-    final uri = Uri.parse(_resolveUrl('/api/media/')).replace(
-      queryParameters: params.isEmpty ? null : params,
-    );
+    if (q.isNotEmpty) parts.add('q=${Uri.encodeQueryComponent(q)}');
+    for (final topic in topics) {
+      final label = topic.trim();
+      if (label.isNotEmpty) parts.add('topic=${Uri.encodeQueryComponent(label)}');
+    }
+    final base = Uri.parse(_resolveUrl('/api/media/'));
+    final uri = parts.isEmpty ? base : base.replace(query: parts.join('&'));
     final res = await _client.get(uri, headers: _headers());
     _ensureOk(res);
     final body = jsonDecode(res.body) as Map<String, dynamic>;
