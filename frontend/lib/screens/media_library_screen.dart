@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/controllers/auth_controller.dart';
 import 'package:flutter_application_1/data/media_catalog.dart';
@@ -12,7 +11,6 @@ import 'package:flutter_application_1/screens/subscriptions_screen.dart';
 import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
-import 'package:flutter_application_1/episode_note_text.dart';
 import 'package:flutter_application_1/widgets/episode_notes_pane.dart';
 import 'package:flutter_application_1/widgets/pdf_viewer_embed.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
@@ -80,8 +78,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   bool _openedInitialVideo = false;
   int _catalogRequest = 0;
   List<MediaItem> _catalogItems = const [];
-  List<String> _topics = const [];
-  List<String> _topicFilters = [];
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   int? _yearFilter;
@@ -96,7 +92,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadCatalog();
-      _loadTopics();
     });
   }
 
@@ -121,26 +116,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     });
   }
 
-  Future<void> _loadTopics() async {
-    final auth = context.read<AuthController>();
-    _apiService.setAccessToken(auth.token);
-    try {
-      final topics = await _apiService.listMediaTopics();
-      if (!mounted) return;
-      setState(() => _topics = topics);
-    } catch (_) {}
-  }
-
   Future<void> _loadCatalog() async {
     final requestId = ++_catalogRequest;
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
     final query = _searchController.text.trim();
-    final topics = List<String>.from(_topicFilters);
     try {
       final items = await _apiService.listMediaVideos(
         query: query.isEmpty ? null : query,
-        topics: topics,
       );
       if (!mounted || requestId != _catalogRequest) return;
       setState(() {
@@ -291,25 +274,15 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   int get _activeFilterCount {
-    var n = _topicFilters.length;
-    if (_yearFilter != null) n++;
-    return n;
+    if (_yearFilter != null) return 1;
+    return 0;
   }
 
   void _clearFilters() {
-    final hadTopic = _topicFilters.isNotEmpty;
-    setState(() {
-      _yearFilter = null;
-      _topicFilters = [];
-    });
-    if (hadTopic) _loadCatalog();
+    setState(() => _yearFilter = null);
   }
 
-  String get _noteHighlightQuery {
-    final query = _searchController.text.trim();
-    if (query.isNotEmpty) return query;
-    return _topicFilters.join(' ');
-  }
+  String get _noteHighlightQuery => _searchController.text.trim();
 
   void _openItem(MediaItem item, {int? seekSeconds}) {
     if (item.isPlayable) {
@@ -354,7 +327,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   Future<void> _openFilterSheet() async {
     var year = _yearFilter;
-    final selected = List<String>.from(_topicFilters);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -416,52 +388,18 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                     ],
                     onChanged: (v) => setSheetState(() => year = v),
                   ),
-                  if (_topics.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Text('Topic', style: _sheetLabelStyle()),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final item in _topics)
-                          _FilterChip(
-                            label: displayTopicLabel(item),
-                            selected: selected.contains(displayTopicLabel(item)),
-                            onTap: () => setSheetState(() {
-                              final label = displayTopicLabel(item);
-                              if (selected.contains(label)) {
-                                selected.remove(label);
-                              } else {
-                                selected.add(label);
-                              }
-                            }),
-                          ),
-                      ],
-                    ),
-                  ],
                   const SizedBox(height: 24),
                   Row(
                     children: [
                       TextButton(
-                        onPressed: () {
-                          setSheetState(() {
-                            year = null;
-                            selected.clear();
-                          });
-                        },
+                        onPressed: () => setSheetState(() => year = null),
                         child: Text('Clear all', style: GoogleFonts.figtree(color: _navy)),
                       ),
                       const Spacer(),
                       FilledButton(
                         onPressed: () {
-                          final topicChanged = !listEquals(_topicFilters, selected);
-                          setState(() {
-                            _yearFilter = year;
-                            _topicFilters = List<String>.from(selected);
-                          });
+                          setState(() => _yearFilter = year);
                           Navigator.pop(ctx);
-                          if (topicChanged) _loadCatalog();
                         },
                         style: FilledButton.styleFrom(
                           backgroundColor: _navy,
@@ -624,17 +562,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                       label: '$_yearFilter',
                                       onRemove: () => setState(() => _yearFilter = null),
                                     ),
-                                  for (final topic in _topicFilters)
-                                    _ActiveFilterPill(
-                                      label: displayTopicLabel(topic),
-                                      onRemove: () {
-                                        setState(() => _topicFilters = [
-                                              for (final item in _topicFilters)
-                                                if (item != topic) item,
-                                            ]);
-                                        _loadCatalog();
-                                      },
-                                    ),
                                   TextButton(
                                     onPressed: _clearFilters,
                                     child: Text(
@@ -703,7 +630,6 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                               onPressed: () {
                                 _searchController.clear();
                                 _searchDebounce?.cancel();
-                                setState(() => _topicFilters = []);
                                 _clearFilters();
                                 _loadCatalog();
                               },
