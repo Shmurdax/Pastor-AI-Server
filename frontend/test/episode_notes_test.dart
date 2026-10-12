@@ -214,27 +214,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Access'), findsNothing);
     expect(find.text('Free preview'), findsNothing);
+    expect(find.text('Topic'), findsNothing);
+    expect(find.text('#TheNameOfTheLord'), findsNothing);
     expect(find.text('Year'), findsOneWidget);
-    await tester.tap(find.text('#TheNameOfTheLord'));
     await tester.tap(find.text('Apply'));
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('June 2'), findsNothing);
-    expect(
-      requests.any((uri) => uri.queryParameters['topic'] == '#TheNameOfTheLord'),
-      isTrue,
-    );
+    expect(find.text('June 2'), findsOneWidget);
+    expect(requests.any((uri) => uri.queryParameters.containsKey('topic')), isFalse);
 
     await tester.enterText(find.byType(TextField), 'sheba');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
 
     expect(
-      requests.any(
-        (uri) =>
-            uri.queryParameters['q'] == 'sheba' && uri.queryParameters['topic'] == '#TheNameOfTheLord',
-      ),
+      requests.any((uri) => uri.queryParameters['q'] == 'sheba' && !uri.queryParameters.containsKey('topic')),
       isTrue,
     );
     expect(find.textContaining('Queen of Sheba'), findsOneWidget);
