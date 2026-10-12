@@ -181,9 +181,9 @@ class ApiService {
 
   Future<List<MediaItem>> listMediaVideos({
     String? query,
-    String? topic,
+    List<String> topics = const [],
   }) async {
-    final rows = await _apiClient.listMediaVideos(query: query, topic: topic);
+    final rows = await _apiClient.listMediaVideos(query: query, topics: topics);
     return rows.map(MediaItem.fromApiJson).toList();
   }
 

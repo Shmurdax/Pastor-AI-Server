@@ -80,7 +80,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   int _catalogRequest = 0;
   List<MediaItem> _catalogItems = const [];
   List<String> _topics = const [];
-  String? _topicFilter;
+  List<String> _topicFilters = [];
 
   MediaSortOption _sort = MediaSortOption.newestFirst;
   int? _yearFilter;
@@ -135,11 +135,11 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     final auth = context.read<AuthController>();
     _apiService.setAccessToken(auth.token);
     final query = _searchController.text.trim();
-    final topic = _topicFilter;
+    final topics = List<String>.from(_topicFilters);
     try {
       final items = await _apiService.listMediaVideos(
         query: query.isEmpty ? null : query,
-        topic: topic,
+        topics: topics,
       );
       if (!mounted || requestId != _catalogRequest) return;
       setState(() {
@@ -290,17 +290,16 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   }
 
   int get _activeFilterCount {
-    var n = 0;
+    var n = _topicFilters.length;
     if (_yearFilter != null) n++;
-    if (_topicFilter != null) n++;
     return n;
   }
 
   void _clearFilters() {
-    final hadTopic = _topicFilter != null;
+    final hadTopic = _topicFilters.isNotEmpty;
     setState(() {
       _yearFilter = null;
-      _topicFilter = null;
+      _topicFilters = [];
     });
     if (hadTopic) _loadCatalog();
   }
@@ -308,7 +307,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   String get _noteHighlightQuery {
     final query = _searchController.text.trim();
     if (query.isNotEmpty) return query;
-    return _topicFilter ?? '';
+    return _topicFilters.join(' ');
   }
 
   void _openItem(MediaItem item, {int? seekSeconds}) {
@@ -354,7 +353,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
 
   Future<void> _openFilterSheet() async {
     var year = _yearFilter;
-    var topic = _topicFilter;
+    final selected = List<String>.from(_topicFilters);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -427,9 +426,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         for (final item in _topics)
                           _FilterChip(
                             label: displayTopicLabel(item),
-                            selected: topic == item,
+                            selected: selected.contains(displayTopicLabel(item)),
                             onTap: () => setSheetState(() {
-                              topic = topic == item ? null : item;
+                              final label = displayTopicLabel(item);
+                              if (selected.contains(label)) {
+                                selected.remove(label);
+                              } else {
+                                selected.add(label);
+                              }
                             }),
                           ),
                       ],
@@ -442,7 +446,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                         onPressed: () {
                           setSheetState(() {
                             year = null;
-                            topic = null;
+                            selected.clear();
                           });
                         },
                         child: Text('Clear all', style: GoogleFonts.figtree(color: _navy)),
@@ -450,10 +454,10 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                       const Spacer(),
                       FilledButton(
                         onPressed: () {
-                          final topicChanged = _topicFilter != topic;
+                          final topicChanged = !listEquals(_topicFilters, selected);
                           setState(() {
                             _yearFilter = year;
-                            _topicFilter = topic;
+                            _topicFilters = List<String>.from(selected);
                           });
                           Navigator.pop(ctx);
                           if (topicChanged) _loadCatalog();
@@ -619,11 +623,14 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                       label: '$_yearFilter',
                                       onRemove: () => setState(() => _yearFilter = null),
                                     ),
-                                  if (_topicFilter != null)
+                                  for (final topic in _topicFilters)
                                     _ActiveFilterPill(
-                                      label: displayTopicLabel(_topicFilter!),
+                                      label: displayTopicLabel(topic),
                                       onRemove: () {
-                                        setState(() => _topicFilter = null);
+                                        setState(() => _topicFilters = [
+                                              for (final item in _topicFilters)
+                                                if (item != topic) item,
+                                            ]);
                                         _loadCatalog();
                                       },
                                     ),
@@ -695,7 +702,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                               onPressed: () {
                                 _searchController.clear();
                                 _searchDebounce?.cancel();
-                                setState(() => _topicFilter = null);
+                                setState(() => _topicFilters = []);
                                 _clearFilters();
                                 _loadCatalog();
                               },

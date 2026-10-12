@@ -93,10 +93,10 @@ class EpisodeDateParseTests(SimpleTestCase):
         topics = hashtags_in_text(text)
         self.assertEqual(
             topics,
-            ["wontHedoIt", "Wont He Do It", "TheNameOfTheLord", "makemeamagnet"],
+            ["#wontHedoIt", "#Wont", "#TheNameOfTheLord", "#makemeamagnet"],
         )
 
-    def test_topics_ignore_outline_lines_and_keep_the_bottom_hashtags(self):
+    def test_topics_are_hashtag_words_and_keep_12years(self):
         from api.episode_notes import hashtags_in_text
 
         text = "\n".join(
@@ -105,18 +105,21 @@ class EpisodeDateParseTests(SimpleTestCase):
                 "1. Ask – Psalm 119:58 I entreated Your favor with my whole heart.",
                 "#12years",
                 "#2",
-                "#wontHedoIt is mentioned here in the lesson, not as the footer.",
+                "#wontHedoIt is mentioned here in the lesson.",
                 "The husbandman prunes the vine so it can bear fruit.",
                 "#2 Believe – Believe that we receive the very moment we pray.",
                 "#Husbandman #Confess",
                 "#walkthroughtheword",
             ]
         )
-        self.assertEqual(hashtags_in_text(text), ["Husbandman", "Confess"])
+        self.assertEqual(
+            hashtags_in_text(text),
+            ["#12years", "#wontHedoIt", "#Husbandman", "#Confess"],
+        )
 
     def test_topics_are_the_hashtags_only(self):
         topics = extract_note_topics(reflow_note_text(_note_text()))
-        self.assertEqual(topics, ["TheNameOfTheLord", "makemeamagnet"])
+        self.assertEqual(topics, ["#TheNameOfTheLord", "#makemeamagnet"])
         self.assertNotIn("sheba", [item.lower() for item in topics])
         self.assertNotIn("walkthroughtheword", [item.lower() for item in topics])
 
@@ -196,7 +199,7 @@ class EpisodeNoteImportTests(TestCase):
             self.assertEqual(linked.media_video_id, self.may_2026.id)
             self.assertNotEqual(linked.media_video_id, self.may_2025.id)
             self.assertIn("Sheba", linked.search_text)
-            self.assertIn("TheNameOfTheLord", linked.topics)
+            self.assertIn("#TheNameOfTheLord", linked.topics)
             stored_pdf = stored / "2026-05-15.pdf"
             self.assertTrue(stored_pdf.is_file())
             self.assertTrue(stored_pdf.read_bytes().startswith(b"%PDF"))
@@ -232,7 +235,7 @@ class EpisodeNoteImportTests(TestCase):
         self.assertIn("Sheba", note.search_text)
         self.assertIn("😀", note.search_text)
         self.assertNotRegex(note.search_text, r"[\ud800-\udfff]")
-        self.assertIn("TheNameOfTheLord", note.topics)
+        self.assertIn("#TheNameOfTheLord", note.topics)
 
     def test_same_day_prefers_the_closer_published_video(self):
         later = MediaVideo.objects.create(
@@ -315,7 +318,7 @@ class EpisodeNoteApiTests(TestCase):
         by_title = {row["title"]: row for row in listing.data["results"]}
         self.assertEqual(by_title["May 15"]["note"]["id"], self.note.id)
         self.assertEqual(by_title["May 15"]["note"]["episode_date"], "2026-05-15")
-        self.assertEqual(by_title["May 15"]["note"]["topics"], ["TheNameOfTheLord"])
+        self.assertEqual(by_title["May 15"]["note"]["topics"], ["#TheNameOfTheLord"])
         self.assertTrue(by_title["May 15"]["note"]["has_notes"])
         self.assertIsNone(by_title["June 2"]["note"])
 
@@ -355,7 +358,7 @@ class EpisodeNoteApiTests(TestCase):
             episode_date=datetime(2020, 3, 16).date(),
             original_filename="Mar 16_2020.pdf",
             stored_filename="2020-03-16.pdf",
-            search_text="We studied this passage again in January.",
+            search_text="We studied this passage again in January.\n#12years",
             topics=["tower"],
             content_hash="c" * 64,
         )
@@ -409,10 +412,15 @@ class EpisodeNoteApiTests(TestCase):
 
         topics = self.client.get("/api/media/topics/")
         self.assertEqual(topics.status_code, 200)
-        self.assertIn("TheNameOfTheLord", topics.data["results"])
+        self.assertIn("#TheNameOfTheLord", topics.data["results"])
         self.assertNotIn("sheba", [item.lower() for item in topics.data["results"]])
         spaced = self.client.get("/api/media/", {"topic": "TheNameOfTheLord"})
         self.assertEqual([row["vimeo_id"] for row in spaced.data["results"]], ["may-api"])
+        both = self.client.get("/api/media/", {"topic": ["#TheNameOfTheLord", "#12years"]})
+        self.assertEqual(
+            [row["vimeo_id"] for row in both.data["results"]],
+            ["may-api", "mar-keyword"],
+        )
 
         detail = self.client.get(f"/api/episode-notes/{self.note.id}/")
         self.assertEqual(detail.status_code, 200)

@@ -21,11 +21,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('topic labels keep the hashtag spelling without the hash mark', () {
-    expect(displayTopicLabel('#wontHedoIt'), 'wontHedoIt');
-    expect(displayTopicLabel('Wont He Do It'), 'Wont He Do It');
-    expect(displayTopicLabel('#TheNameOfTheLord'), 'TheNameOfTheLord');
-    expect(displayTopicLabel('GodsWord'), 'GodsWord');
+  test('topic labels keep the hashtag, including the hash mark', () {
+    expect(displayTopicLabel('#wontHedoIt'), '#wontHedoIt');
+    expect(displayTopicLabel('Wont He Do It'), '#Wont He Do It');
+    expect(displayTopicLabel('#TheNameOfTheLord'), '#TheNameOfTheLord');
+    expect(displayTopicLabel('GodsWord'), '#GodsWord');
+    expect(displayTopicLabel('#12years'), '#12years');
+    expect(displayTopicLabel('##GodsWord'), '#GodsWord');
   });
 
   test('keyword highlights keep the original spelling', () {
@@ -115,8 +117,8 @@ void main() {
 
     expect(find.text('Episode notes'), findsOneWidget);
     expect(find.text('View original PDF'), findsOneWidget);
-    expect(find.text('sheba'), findsOneWidget);
-    expect(find.text('TheNameOfTheLord'), findsOneWidget);
+    expect(find.text('#sheba'), findsOneWidget);
+    expect(find.text('#TheNameOfTheLord'), findsOneWidget);
     final notes = tester.getTopLeft(find.byKey(const Key('episode-notes-pane')));
     final player = tester.getTopLeft(find.byKey(const Key('episode-player')));
     expect(notes.dx, greaterThan(player.dx));
@@ -213,14 +215,14 @@ void main() {
     expect(find.text('Access'), findsNothing);
     expect(find.text('Free preview'), findsNothing);
     expect(find.text('Year'), findsOneWidget);
-    await tester.tap(find.text('TheNameOfTheLord'));
+    await tester.tap(find.text('#TheNameOfTheLord'));
     await tester.tap(find.text('Apply'));
     await tester.pump();
     await tester.pump();
 
     expect(find.text('June 2'), findsNothing);
     expect(
-      requests.any((uri) => uri.queryParameters['topic'] == 'TheNameOfTheLord'),
+      requests.any((uri) => uri.queryParameters['topic'] == '#TheNameOfTheLord'),
       isTrue,
     );
 
@@ -230,7 +232,8 @@ void main() {
 
     expect(
       requests.any(
-        (uri) => uri.queryParameters['q'] == 'sheba' && uri.queryParameters['topic'] == 'TheNameOfTheLord',
+        (uri) =>
+            uri.queryParameters['q'] == 'sheba' && uri.queryParameters['topic'] == '#TheNameOfTheLord',
       ),
       isTrue,
     );
@@ -359,8 +362,9 @@ ApiService _libraryApi(List<Uri> requests) {
           );
         }
         final query = request.url.queryParameters['q'] ?? '';
-        final topic = request.url.queryParameters['topic'] ?? '';
-        final filtered = query == 'sheba' || topic == 'TheNameOfTheLord';
+        final topics = request.url.queryParametersAll['topic'] ?? const <String>[];
+        final filtered = query == 'sheba' ||
+            topics.any((topic) => topic.replaceAll('#', '') == 'TheNameOfTheLord');
         final may = _mayJson(
           snippet: query == 'sheba' ? 'The Queen of Sheba traveled to Solomon.' : null,
         );

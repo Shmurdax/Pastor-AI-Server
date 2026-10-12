@@ -24,11 +24,11 @@ from .models import EpisodeNote, MediaVideo
 logger = logging.getLogger(__name__)
 
 _PAGE_MARKER_RE = re.compile(r"(?i)^--\s*\d+\s+of\s+\d+\s*--$")
-# A bottom hashtag keeps the PDF's spelling. `#wontHedoIt` stays `wontHedoIt`.
-# `#Wont He Do It` stays `Wont He Do It`. A numbered outline line such as
-# `#1 Absence of the Husbandman: ...` is not a hashtag.
-_HASHTAG_LABEL_RE = re.compile(
-    r"^[A-Za-z][A-Za-z0-9_]*(?:\s+[A-Za-z][A-Za-z0-9_]*){0,5}$"
+# A topic is a hashtag that is one word: `#wontHedoIt`. `#1` and `#2` are
+# outline numbers, not topics. `#12years` is the one numbered tag we keep.
+_TOPIC_HASHTAG_RE = re.compile(
+    r"(?<!\w)#(12years|[A-Za-z]{2,})(?![A-Za-z0-9])",
+    re.IGNORECASE,
 )
 
 _BOILERPLATE_HASHTAGS = frozenset({"walkthroughtheword"})
@@ -81,88 +81,28 @@ def reflow_note_text(raw: str) -> str:
     return "\n\n".join(blocks)
 
 
-def _clean_hashtag(label: str) -> str:
-    return re.sub(r"\s+", " ", (label or "").strip().lstrip("#")).strip(" \t.,;:")
+def hashtags_in_text(text: str, *, limit: int = 40) -> list[str]:
+    """Word hashtags from the note, including the leading #.
 
-
-def _labels_on_hashtag_line(line: str) -> Optional[list[str]]:
-    """Labels when the line is only hashtags. None when it is outline prose."""
-    stripped = (line or "").strip()
-    if not stripped.startswith("#"):
-        return None
-    labels: list[str] = []
-    for part in stripped.split("#")[1:]:
-        cleaned = _clean_hashtag(part)
-        if not cleaned:
-            continue
-        if _HASHTAG_LABEL_RE.match(cleaned) is None:
-            return None
-        labels.append(cleaned)
-    if not labels:
-        return None
-    return labels
-
-
-def _footer_hashtag_lines(text: str) -> list[str]:
-    """The closing run of hashtag lines, not # lines earlier in the study."""
-    lines = (text or "").splitlines()
-    index = len(lines) - 1
-    while index >= 0 and not lines[index].strip():
-        index -= 1
-    skipped = 0
-    while index >= 0 and _labels_on_hashtag_line(lines[index]) is None and skipped < 4:
-        stripped = lines[index].strip()
-        if not stripped or _PAGE_MARKER_RE.match(stripped):
-            index -= 1
-            continue
-        if len(stripped) > 80:
-            return []
-        skipped += 1
-        index -= 1
-        while index >= 0 and not lines[index].strip():
-            index -= 1
-    collected: list[str] = []
-    while index >= 0:
-        stripped = lines[index].strip()
-        if not stripped:
-            index -= 1
-            continue
-        if _labels_on_hashtag_line(stripped) is None:
-            break
-        collected.append(stripped)
-        index -= 1
-    collected.reverse()
-    return collected
-
-
-def hashtags_in_text(text: str, *, limit: int = 12) -> list[str]:
-    """Hashtags from the bottom of the note, without the leading #."""
+    `#1` and `#2` are skipped. `#12years` is kept. A plain word with no `#`
+    is not a topic.
+    """
     topics: list[str] = []
     seen: set[str] = set()
-
-    def add(label: str) -> None:
-        cleaned = _clean_hashtag(label)
-        key = cleaned.lower()
-        if (
-            not cleaned
-            or key in seen
-            or key in _BOILERPLATE_HASHTAGS
-            or _HASHTAG_LABEL_RE.match(cleaned) is None
-        ):
-            return
+    for match in _TOPIC_HASHTAG_RE.finditer(text or ""):
+        word = match.group(1)
+        key = word.lower()
+        if key in seen or key in _BOILERPLATE_HASHTAGS:
+            continue
         seen.add(key)
-        topics.append(cleaned)
-
-    for line in _footer_hashtag_lines(text):
-        for label in _labels_on_hashtag_line(line) or []:
-            add(label)
-            if len(topics) >= limit:
-                return topics
+        topics.append(f"#{word}")
+        if len(topics) >= limit:
+            break
     return topics
 
 
-def extract_note_topics(text: str, *, limit: int = 12) -> list[str]:
-    """Topics are the note's hashtags, in PDF order and spelling."""
+def extract_note_topics(text: str, *, limit: int = 40) -> list[str]:
+    """Topics are the note's hashtag words, in PDF order and spelling."""
     return hashtags_in_text(text, limit=limit)
 
 
@@ -311,25 +251,8 @@ def topic_label(value: str) -> str:
 
 
 def note_topic_labels(note: EpisodeNote) -> list[str]:
-    """Bottom hashtags from the note text. Stored topics are a fallback."""
-    found = hashtags_in_text(note.search_text or "")
-    if found:
-        return found
-    labels: list[str] = []
-    seen: set[str] = set()
-    for item in note.topics or []:
-        label = _clean_hashtag(topic_label(str(item)))
-        key = label.lower()
-        if (
-            not label
-            or key in seen
-            or key in _BOILERPLATE_HASHTAGS
-            or _HASHTAG_LABEL_RE.match(label) is None
-        ):
-            continue
-        seen.add(key)
-        labels.append(label)
-    return labels
+    """Hashtag words found in the note text. Stored keywords are not topics."""
+    return hashtags_in_text(note.search_text or "")
 
 
 def display_topics(note: EpisodeNote) -> list[str]:
@@ -474,7 +397,7 @@ def make_snippet(text: str, query: str, *, radius: int = 80) -> str:
     return piece
 
 
-def list_media_topics(*, limit: int = 40) -> list[str]:
+def list_media_topics(*, limit: int = 200) -> list[str]:
     """Hashtags for filter chips, spelled the way the PDF writes them."""
     counts: dict[str, int] = {}
     display: dict[str, str] = {}
@@ -488,15 +411,34 @@ def list_media_topics(*, limit: int = 40) -> list[str]:
     return [display[key] for key in ranked][:limit]
 
 
-def search_published_media(*, query: str = "", topic: str = "") -> list[dict]:
-    """Published videos, optionally filtered by keyword and one topic.
+def _selected_topics(topics: Optional[list[str]], topic: str) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    for item in [*(topics or []), topic]:
+        label = (item or "").strip()
+        key = _compact_label(label)
+        if not label or not key or key in seen:
+            continue
+        seen.add(key)
+        selected.append(label)
+    return selected
 
+
+def search_published_media(
+    *,
+    query: str = "",
+    topic: str = "",
+    topics: Optional[list[str]] = None,
+) -> list[dict]:
+    """Published videos, optionally filtered by keyword and hashtag topics.
+
+    Several topics match a video when its notes include any one of them.
     A search is ordered the way the box is labeled: title, then topic, then
     keyword. ``January`` also matches videos published in January, ahead of
     notes that only mention the word.
     """
     query = (query or "").strip()
-    topic = topic_label(topic)
+    selected = _selected_topics(topics, topic)
     videos = list(MediaVideo.objects.filter(is_published=True).order_by("-published_at", "title"))
     notes_by_video = {
         note.media_video_id: note
@@ -508,7 +450,7 @@ def search_published_media(*, query: str = "", topic: str = "") -> list[dict]:
     results: list[dict] = []
     for video in videos:
         note = notes_by_video.get(video.id)
-        if topic and (note is None or not note_has_topic(note, topic)):
+        if selected and (note is None or not any(note_has_topic(note, item) for item in selected)):
             continue
         snippet = ""
         rank = _TITLE_RANK
