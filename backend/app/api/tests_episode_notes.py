@@ -96,6 +96,24 @@ class EpisodeDateParseTests(SimpleTestCase):
             ["wontHedoIt", "Wont He Do It", "TheNameOfTheLord", "makemeamagnet"],
         )
 
+    def test_topics_ignore_outline_lines_and_keep_the_bottom_hashtags(self):
+        from api.episode_notes import hashtags_in_text
+
+        text = "\n".join(
+            [
+                "#1 Absence of the Husbandman: The husbandman works in the field.",
+                "1. Ask – Psalm 119:58 I entreated Your favor with my whole heart.",
+                "#12years",
+                "#2",
+                "#wontHedoIt is mentioned here in the lesson, not as the footer.",
+                "The husbandman prunes the vine so it can bear fruit.",
+                "#2 Believe – Believe that we receive the very moment we pray.",
+                "#Husbandman #Confess",
+                "#walkthroughtheword",
+            ]
+        )
+        self.assertEqual(hashtags_in_text(text), ["Husbandman", "Confess"])
+
     def test_topics_are_the_hashtags_only(self):
         topics = extract_note_topics(reflow_note_text(_note_text()))
         self.assertEqual(topics, ["TheNameOfTheLord", "makemeamagnet"])
@@ -276,7 +294,7 @@ class EpisodeNoteApiTests(TestCase):
             episode_date=datetime(2026, 5, 15).date(),
             original_filename="May 15_2026.pdf",
             stored_filename="2026-05-15.pdf",
-            search_text="The Queen of Sheba traveled to Solomon. #TheNameOfTheLord",
+            search_text="The Queen of Sheba traveled to Solomon.\n#TheNameOfTheLord",
             topics=["TheNameOfTheLord", "sheba", "solomon"],
             content_hash="a" * 64,
         )
