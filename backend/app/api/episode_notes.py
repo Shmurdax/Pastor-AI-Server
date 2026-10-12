@@ -24,10 +24,12 @@ from .models import EpisodeNote, MediaVideo
 logger = logging.getLogger(__name__)
 
 _PAGE_MARKER_RE = re.compile(r"(?i)^--\s*\d+\s+of\s+\d+\s*--$")
-# A hashtag keeps the PDF's own spelling and spaces. `#Wont He Do It` stays
-# `Wont He Do It`. A token with no spaces, `#wontHedoIt`, stays `wontHedoIt`.
-_HASHTAG_LINE_RE = re.compile(r"#([^\n#]+)")
-_INLINE_HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z][A-Za-z0-9_]+)")
+# A bottom hashtag keeps the PDF's spelling. `#wontHedoIt` stays `wontHedoIt`.
+# `#Wont He Do It` stays `Wont He Do It`. A numbered outline line such as
+# `#1 Absence of the Husbandman: ...` is not a hashtag.
+_HASHTAG_LABEL_RE = re.compile(
+    r"^[A-Za-z][A-Za-z0-9_]*(?:\s+[A-Za-z][A-Za-z0-9_]*){0,5}$"
+)
 
 _BOILERPLATE_HASHTAGS = frozenset({"walkthroughtheword"})
 
@@ -83,29 +85,77 @@ def _clean_hashtag(label: str) -> str:
     return re.sub(r"\s+", " ", (label or "").strip().lstrip("#")).strip(" \t.,;:")
 
 
+def _labels_on_hashtag_line(line: str) -> Optional[list[str]]:
+    """Labels when the line is only hashtags. None when it is outline prose."""
+    stripped = (line or "").strip()
+    if not stripped.startswith("#"):
+        return None
+    labels: list[str] = []
+    for part in stripped.split("#")[1:]:
+        cleaned = _clean_hashtag(part)
+        if not cleaned:
+            continue
+        if _HASHTAG_LABEL_RE.match(cleaned) is None:
+            return None
+        labels.append(cleaned)
+    if not labels:
+        return None
+    return labels
+
+
+def _footer_hashtag_lines(text: str) -> list[str]:
+    """The closing run of hashtag lines, not # lines earlier in the study."""
+    lines = (text or "").splitlines()
+    index = len(lines) - 1
+    while index >= 0 and not lines[index].strip():
+        index -= 1
+    skipped = 0
+    while index >= 0 and _labels_on_hashtag_line(lines[index]) is None and skipped < 4:
+        stripped = lines[index].strip()
+        if not stripped or _PAGE_MARKER_RE.match(stripped):
+            index -= 1
+            continue
+        if len(stripped) > 80:
+            return []
+        skipped += 1
+        index -= 1
+        while index >= 0 and not lines[index].strip():
+            index -= 1
+    collected: list[str] = []
+    while index >= 0:
+        stripped = lines[index].strip()
+        if not stripped:
+            index -= 1
+            continue
+        if _labels_on_hashtag_line(stripped) is None:
+            break
+        collected.append(stripped)
+        index -= 1
+    collected.reverse()
+    return collected
+
+
 def hashtags_in_text(text: str, *, limit: int = 12) -> list[str]:
-    """Hashtag text exactly as written in the note, without the leading #."""
+    """Hashtags from the bottom of the note, without the leading #."""
     topics: list[str] = []
     seen: set[str] = set()
 
     def add(label: str) -> None:
         cleaned = _clean_hashtag(label)
         key = cleaned.lower()
-        if not cleaned or key in seen or key in _BOILERPLATE_HASHTAGS:
+        if (
+            not cleaned
+            or key in seen
+            or key in _BOILERPLATE_HASHTAGS
+            or _HASHTAG_LABEL_RE.match(cleaned) is None
+        ):
             return
         seen.add(key)
         topics.append(cleaned)
 
-    for line in (text or "").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            for match in _HASHTAG_LINE_RE.finditer(stripped):
-                add(match.group(1))
-                if len(topics) >= limit:
-                    return topics
-            continue
-        for match in _INLINE_HASHTAG_RE.finditer(line):
-            add(match.group(1))
+    for line in _footer_hashtag_lines(text):
+        for label in _labels_on_hashtag_line(line) or []:
+            add(label)
             if len(topics) >= limit:
                 return topics
     return topics
@@ -261,16 +311,21 @@ def topic_label(value: str) -> str:
 
 
 def note_topic_labels(note: EpisodeNote) -> list[str]:
-    """Hashtags from the note text. Stored topics are a fallback."""
+    """Bottom hashtags from the note text. Stored topics are a fallback."""
     found = hashtags_in_text(note.search_text or "")
     if found:
         return found
     labels: list[str] = []
     seen: set[str] = set()
     for item in note.topics or []:
-        label = topic_label(str(item))
+        label = _clean_hashtag(topic_label(str(item)))
         key = label.lower()
-        if not label or key in seen or key in _BOILERPLATE_HASHTAGS:
+        if (
+            not label
+            or key in seen
+            or key in _BOILERPLATE_HASHTAGS
+            or _HASHTAG_LABEL_RE.match(label) is None
+        ):
             continue
         seen.add(key)
         labels.append(label)
