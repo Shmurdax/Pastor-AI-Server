@@ -136,7 +136,9 @@ void main() {
     await tester.tap(find.text('View original PDF'));
     await tester.pump();
     await tester.pump();
-    expect(find.textContaining('PDF viewing is available on web'), findsOneWidget);
+    // Opens in a new browser tab; no in-app PDF dialog.
+    expect(find.textContaining('PDF viewing is available on web'), findsNothing);
+    expect(find.byType(Dialog), findsNothing);
   });
 
   testWidgets('narrow watch page keeps the notes under the player', (tester) async {
