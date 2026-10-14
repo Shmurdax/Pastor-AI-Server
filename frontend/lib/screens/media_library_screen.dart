@@ -12,7 +12,7 @@ import 'package:flutter_application_1/services/api_service.dart';
 import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/episode_notes_pane.dart';
-import 'package:flutter_application_1/widgets/pdf_viewer_embed.dart';
+import 'package:flutter_application_1/widgets/new_tab.dart';
 import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -1241,39 +1241,13 @@ class _WatchEpisodeScreenState extends State<WatchEpisodeScreen> {
     final note = widget.item.note;
     final api = widget.apiService;
     if (note == null || api == null) return;
+    // Reserve the tab during the click so mobile browsers do not block it.
+    final tab = openNewTab();
     try {
       final bytes = await api.getEpisodeNoteFile(note.id);
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) {
-          return Dialog(
-            insetPadding: const EdgeInsets.all(24),
-            child: SizedBox(
-              width: 840,
-              height: 640,
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close, color: _navy),
-                    ),
-                  ),
-                  Expanded(
-                    child: PdfViewerEmbed(
-                      bytes: bytes,
-                      viewKey: 'episode-note-${note.id}',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
+      tab.openPdfBytes(bytes);
     } catch (_) {
+      tab.close();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
