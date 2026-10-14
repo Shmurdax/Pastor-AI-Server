@@ -124,6 +124,8 @@ void main() {
     expect(notes.dx, greaterThan(player.dx));
 
     final selectable = tester.widget<SelectableText>(find.byType(SelectableText));
+    expect(selectable.textSpan?.style?.fontSize, 18);
+    expect(selectable.textSpan?.style?.height, 1.75);
     var highlighted = false;
     selectable.textSpan?.visitChildren((span) {
       if (span is TextSpan && span.text == 'Sheba' && span.style?.backgroundColor != null) {

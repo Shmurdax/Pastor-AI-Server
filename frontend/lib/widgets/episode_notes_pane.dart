@@ -86,7 +86,7 @@ class EpisodeNotesPane extends StatelessWidget {
         style: GoogleFonts.figtree(color: Colors.black54, height: 1.4),
       );
     }
-    final style = GoogleFonts.figtree(fontSize: 15, height: 1.5, color: _navy);
+    final style = GoogleFonts.figtree(fontSize: 18, height: 1.75, color: _navy);
     return Scrollbar(
       child: SingleChildScrollView(
         child: SelectableText.rich(
