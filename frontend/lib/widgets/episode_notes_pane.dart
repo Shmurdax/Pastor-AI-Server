@@ -7,11 +7,12 @@ const _navy = Color(0xFF1B264F);
 const _gold = Color(0xFFD4AF37);
 
 /// Reflowed study notes beside the video. The original PDF is a separate action.
+///
+/// Topic hashtags stay on the note for search, but are not shown here.
 class EpisodeNotesPane extends StatelessWidget {
   const EpisodeNotesPane({
     super.key,
     required this.episodeDate,
-    required this.topics,
     required this.body,
     required this.loading,
     required this.highlightQuery,
@@ -20,7 +21,6 @@ class EpisodeNotesPane extends StatelessWidget {
   });
 
   final String episodeDate;
-  final List<String> topics;
   final String body;
   final bool loading;
   final bool error;
@@ -68,22 +68,6 @@ class EpisodeNotesPane extends StatelessWidget {
               formatEpisodeDate(episodeDate),
               style: GoogleFonts.figtree(fontSize: 13, color: Colors.black54),
             ),
-            if (topics.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final topic in topics)
-                    Chip(
-                      label: Text(displayTopicLabel(topic), style: GoogleFonts.figtree(fontSize: 12)),
-                      visualDensity: VisualDensity.compact,
-                      backgroundColor: _gold.withValues(alpha: 0.2),
-                      side: BorderSide(color: _gold.withValues(alpha: 0.45)),
-                    ),
-                ],
-              ),
-            ],
             const SizedBox(height: 12),
             Expanded(child: _body()),
           ],

@@ -1440,7 +1440,6 @@ class _WatchEpisodeScreenState extends State<WatchEpisodeScreen> {
     return EpisodeNotesPane(
       key: const Key('episode-notes-pane'),
       episodeDate: _detail?.episodeDate ?? note.episodeDate,
-      topics: _detail?.topics ?? note.topics,
       body: _detail?.body ?? '',
       loading: _noteLoading,
       error: _noteError,

@@ -180,7 +180,7 @@ class EpisodeNoteDetailAPI(APIView):
     permission_classes = [permissions.IsAuthenticated, HasPremiumAccess]
 
     def get(self, request, note_id: int):
-        from .episode_notes import display_topics, visible_note
+        from .episode_notes import display_topics, note_body_for_display, visible_note
 
         note = visible_note(note_id)
         if note is None:
@@ -190,7 +190,7 @@ class EpisodeNoteDetailAPI(APIView):
                 "id": note.pk,
                 "episode_date": note.episode_date.isoformat(),
                 "topics": display_topics(note),
-                "body": note.search_text,
+                "body": note_body_for_display(note.search_text),
                 "original_filename": note.original_filename,
                 "has_notes": True,
             }
