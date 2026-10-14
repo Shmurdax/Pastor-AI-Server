@@ -172,6 +172,44 @@ void main() {
     final player = tester.getTopLeft(find.byKey(const Key('episode-player')));
     expect(notes.dy, greaterThan(player.dy));
     expect(find.text('Episode notes'), findsOneWidget);
+    // Notes get a near-viewport height, not a short leftover strip.
+    expect(tester.getSize(find.byKey(const Key('episode-notes-pane'))).height, greaterThan(500));
+  });
+
+  testWidgets('tablet watch page keeps notes tall and scrollable past the player', (tester) async {
+    GoogleFonts.config.allowRuntimeFetching = false;
+    tester.view.physicalSize = const Size(768, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WatchEpisodeScreen(
+          item: _video(
+            title: 'May 15',
+            vimeoId: 'may',
+            note: const EpisodeNoteSummary(
+              id: 3,
+              episodeDate: '2026-05-15',
+              topics: ['sheba'],
+            ),
+          ),
+          apiService: _notesApi(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final notesFinder = find.byKey(const Key('episode-notes-pane'));
+    final playerFinder = find.byKey(const Key('episode-player'));
+    expect(tester.getTopLeft(notesFinder).dy, greaterThan(tester.getTopLeft(playerFinder).dy));
+    expect(tester.getSize(notesFinder).height, greaterThan(700));
+
+    final notesTopBefore = tester.getTopLeft(notesFinder).dy;
+    await tester.drag(find.byKey(const Key('episode-stacked-scroll')), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(notesFinder).dy, lessThan(notesTopBefore));
   });
 
   testWidgets('library search sends keyword and topic, then opens that episode', (tester) async {
