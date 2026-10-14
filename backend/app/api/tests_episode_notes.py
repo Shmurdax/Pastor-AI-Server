@@ -132,6 +132,9 @@ class EpisodeDateParseTests(SimpleTestCase):
         self.assertIn("Queen of Sheba", body)
         self.assertNotIn("#TheNameOfTheLord", body)
         self.assertNotIn("#makemeamagnet", body)
+        # Single newlines only — blank paragraph gaps look double-spaced.
+        self.assertNotIn("\n\n", body)
+        self.assertIn("\n", body)
 
         mixed = note_body_for_display(
             "\n".join(
@@ -148,6 +151,22 @@ class EpisodeDateParseTests(SimpleTestCase):
         self.assertNotIn("#Husbandman", mixed)
         self.assertNotIn("#Confess", mixed)
         self.assertNotIn("#12years", mixed)
+
+    def test_display_body_uses_single_newlines_between_blocks(self):
+        from api.episode_notes import note_body_for_display
+
+        body = note_body_for_display(
+            "Day 135 May 15\n\n"
+            "The Queen of Sheba traveled to Solomon.\n\n"
+            "• She came with hard questions.\n\n"
+            "#TheNameOfTheLord"
+        )
+        self.assertEqual(
+            body,
+            "Day 135 May 15\n"
+            "The Queen of Sheba traveled to Solomon.\n"
+            "• She came with hard questions.",
+        )
 
     def test_module_does_not_call_the_knowledge_base(self):
         source = inspect.getsource(__import__("api.episode_notes", fromlist=["episode_notes"]))
