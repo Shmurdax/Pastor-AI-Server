@@ -117,6 +117,9 @@ def note_body_for_display(text: str) -> str:
 
     Hashtags remain in stored ``search_text`` for topics and keyword search.
     They are only omitted from the body shown beside the video.
+
+    Blocks are joined with a single newline so the pane's 1.5 line-height
+    reads normally instead of looking double-spaced from blank lines.
     """
     if not text:
         return ""
@@ -131,7 +134,7 @@ def note_body_for_display(text: str) -> str:
         piece = "\n".join(lines).strip()
         if piece:
             kept.append(piece)
-    return "\n\n".join(kept)
+    return "\n".join(kept)
 
 
 def _text_for_database(value: str) -> str:
