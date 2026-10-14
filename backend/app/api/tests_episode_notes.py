@@ -123,6 +123,32 @@ class EpisodeDateParseTests(SimpleTestCase):
         self.assertNotIn("sheba", [item.lower() for item in topics])
         self.assertNotIn("walkthroughtheword", [item.lower() for item in topics])
 
+    def test_display_body_hides_standalone_hashtags(self):
+        from api.episode_notes import note_body_for_display
+
+        reflowed = reflow_note_text(_note_text())
+        self.assertIn("#TheNameOfTheLord", reflowed)
+        body = note_body_for_display(reflowed)
+        self.assertIn("Queen of Sheba", body)
+        self.assertNotIn("#TheNameOfTheLord", body)
+        self.assertNotIn("#makemeamagnet", body)
+
+        mixed = note_body_for_display(
+            "\n".join(
+                [
+                    "#1 Absence of the Husbandman: The husbandman works.",
+                    "#wontHedoIt is mentioned here in the lesson.",
+                    "#Husbandman #Confess",
+                    "#12years",
+                ]
+            )
+        )
+        self.assertIn("#1 Absence of the Husbandman", mixed)
+        self.assertIn("#wontHedoIt is mentioned here", mixed)
+        self.assertNotIn("#Husbandman", mixed)
+        self.assertNotIn("#Confess", mixed)
+        self.assertNotIn("#12years", mixed)
+
     def test_module_does_not_call_the_knowledge_base(self):
         source = inspect.getsource(__import__("api.episode_notes", fromlist=["episode_notes"]))
         imported: list[str] = []
@@ -425,6 +451,8 @@ class EpisodeNoteApiTests(TestCase):
         detail = self.client.get(f"/api/episode-notes/{self.note.id}/")
         self.assertEqual(detail.status_code, 200)
         self.assertIn("Sheba", detail.data["body"])
+        self.assertNotIn("#TheNameOfTheLord", detail.data["body"])
+        self.assertEqual(detail.data["topics"], ["#TheNameOfTheLord"])
         missing = self.client.get(f"/api/episode-notes/{self.unlinked.id}/")
         self.assertEqual(missing.status_code, 404)
 

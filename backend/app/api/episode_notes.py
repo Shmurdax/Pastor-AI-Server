@@ -32,6 +32,12 @@ _TOPIC_HASHTAG_RE = re.compile(
 )
 
 _BOILERPLATE_HASHTAGS = frozenset({"walkthroughtheword"})
+# Lines that are only topic hashtags (one or more). Outline markers like `#1`
+# are not matched, so numbered study points stay in the notes body.
+_STANDALONE_HASHTAG_LINE_RE = re.compile(
+    r"^(?:\s*#(?:12years|[A-Za-z]{2,})\b)+\s*$",
+    re.IGNORECASE,
+)
 
 
 def reflow_note_text(raw: str) -> str:
@@ -104,6 +110,28 @@ def hashtags_in_text(text: str, *, limit: int = 40) -> list[str]:
 def extract_note_topics(text: str, *, limit: int = 40) -> list[str]:
     """Topics are the note's hashtag words, in PDF order and spelling."""
     return hashtags_in_text(text, limit=limit)
+
+
+def note_body_for_display(text: str) -> str:
+    """Note text for the watch page, without standalone hashtag lines.
+
+    Hashtags remain in stored ``search_text`` for topics and keyword search.
+    They are only omitted from the body shown beside the video.
+    """
+    if not text:
+        return ""
+    kept: list[str] = []
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    for block in normalized.split("\n\n"):
+        lines = [
+            line
+            for line in block.split("\n")
+            if not _STANDALONE_HASHTAG_LINE_RE.match(line.strip())
+        ]
+        piece = "\n".join(lines).strip()
+        if piece:
+            kept.append(piece)
+    return "\n\n".join(kept)
 
 
 def _text_for_database(value: str) -> str:
