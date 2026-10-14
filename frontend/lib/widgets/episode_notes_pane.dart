@@ -89,6 +89,8 @@ class EpisodeNotesPane extends StatelessWidget {
     final style = GoogleFonts.figtree(fontSize: 18, height: 1.75, color: _navy);
     return Scrollbar(
       child: SingleChildScrollView(
+        // Nested under the stacked watch-page scroll view on phone/tablet.
+        primary: false,
         child: SelectableText.rich(
           highlightedNoteSpan(
             body: body,

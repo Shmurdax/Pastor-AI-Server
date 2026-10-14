@@ -1467,18 +1467,31 @@ class _WatchEpisodeScreenState extends State<WatchEpisodeScreen> {
         ),
       );
     }
-    return Padding(
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 16, isMobile ? 16 : 32, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _playerCard(),
-          const SizedBox(height: 16),
-          _heading(isMobile, compactDescription: true),
-          const SizedBox(height: 16),
-          Expanded(child: _notesPane()),
-        ],
-      ),
+    // Stacked phone/tablet: scroll the player away so notes can fill the
+    // viewport instead of being squeezed into the leftover strip.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final notesHeight = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : 640.0;
+        return SingleChildScrollView(
+          key: const Key('episode-stacked-scroll'),
+          padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 16, isMobile ? 16 : 32, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _playerCard(),
+              const SizedBox(height: 16),
+              _heading(isMobile, compactDescription: true),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: notesHeight,
+                child: _notesPane(),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
