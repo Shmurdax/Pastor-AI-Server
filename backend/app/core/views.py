@@ -80,7 +80,7 @@ from .notes_coverage import (
     COVERAGE_FULL,
     choose_sermon_by_rerank,
     diversify_hits_by_source,
-    query_changes_locked_sermon,
+    resolve_topic_thread,
 )
 from .chat_retrieval import (
     chunk_text,
@@ -684,25 +684,11 @@ class ChatAPIView(APIView):
                     .first()
                 )
 
-            db_messages = ChatMessage.objects.filter(session_id=session_id).order_by("-timestamp")
-            if regenerate and target_message:
-                db_messages = db_messages.exclude(id=target_message.id)
-
-            history_rows = list(db_messages[:MAX_HISTORY_TURNS])
-            first_row = (
-                ChatMessage.objects.filter(session_id=session_id)
-                .order_by("timestamp")
-                .first()
+            prior_rows = list(
+                ChatMessage.objects.filter(session_id=session_id).order_by("timestamp", "id")
             )
-            if regenerate and target_message and first_row and first_row.id == target_message.id:
-                first_row = (
-                    ChatMessage.objects.filter(session_id=session_id)
-                    .exclude(id=target_message.id)
-                    .order_by("timestamp")
-                    .first()
-                )
-            if first_row and all(row.id != first_row.id for row in history_rows):
-                history_rows.append(first_row)
+            if regenerate and target_message is not None:
+                prior_rows = [row for row in prior_rows if row.id != target_message.id]
             topic_query = user_query_llm
 
             embeddings = _get_embeddings()
@@ -728,11 +714,27 @@ class ChatAPIView(APIView):
             scripture_lane = ""
             context = ""
             direct_answer = ""
+            topic_thread = None
             if is_greeting_turn(user_query_llm):
                 docs = []
                 notes_coverage = "none"
                 direct_answer = GREETING_REPLY
             else:
+                sermon_docs_cache: dict[str, list] = {}
+
+                def _sermon_docs_for(query: str):
+                    key = " ".join((query or "").split()).lower()
+                    if key not in sermon_docs_cache:
+                        found, _coverage = _focused_sermon_docs(
+                            vectorstore,
+                            client,
+                            collection_name,
+                            retrieval_search_text(query),
+                            rerank_text=query,
+                        )
+                        sermon_docs_cache[key] = found
+                    return sermon_docs_cache[key]
+
                 docs, notes_coverage = _focused_sermon_docs(
                     vectorstore,
                     client,
@@ -740,35 +742,30 @@ class ChatAPIView(APIView):
                     search_text,
                     rerank_text=user_query_llm,
                 )
-                opening = ""
-                if first_row is not None:
-                    opening = (first_row.user_query or "").strip()
-                stayed_on_opening = False
+                sermon_docs_cache[" ".join(user_query_llm.split()).lower()] = docs
+                topic_thread = resolve_topic_thread(
+                    user_query_llm,
+                    [row.user_query or "" for row in prior_rows],
+                    lambda query: "\n".join(
+                        chunk_text(doc) for doc in _sermon_docs_for(query) if chunk_text(doc)
+                    ),
+                )
+                # Follow-ups stay on the latest topic's sermon. A topic switch
+                # keeps this question's own notes and does not inherit the
+                # opening sermon.
+                stayed_on_thread = False
+                anchor_query = (topic_thread.anchor_query or "").strip()
                 if (
-                    opening
-                    and opening.lower() != user_query_stored.lower()
-                    and not is_greeting_turn(opening)
+                    not topic_thread.broke
+                    and anchor_query
+                    and anchor_query.lower() != user_query_llm.lower()
                 ):
-                    opening_search = retrieval_search_text(opening)
-                    locked_docs, _locked_coverage = _focused_sermon_docs(
-                        vectorstore,
-                        client,
-                        collection_name,
-                        opening_search,
-                        rerank_text=opening,
-                    )
-                    locked_text = "\n".join(
-                        chunk_text(doc) for doc in locked_docs if chunk_text(doc)
-                    )
-                    if locked_docs and not query_changes_locked_sermon(
-                        user_query_llm,
-                        opening,
-                        locked_text,
-                    ):
-                        stayed_on_opening = True
-                        docs = locked_docs
+                    anchor_docs = _sermon_docs_for(anchor_query)
+                    if anchor_docs:
+                        stayed_on_thread = True
+                        docs = anchor_docs
                         notes_coverage = COVERAGE_FULL
-                if not stayed_on_opening and notes_coverage != COVERAGE_FULL:
+                if not stayed_on_thread and notes_coverage != COVERAGE_FULL:
                     # Nearest sermons that never name the subject are not a license
                     # to teach from memory or from an unrelated file.
                     docs = []
@@ -777,8 +774,8 @@ class ChatAPIView(APIView):
                     direct_answer = NO_SERMON_REPLY
                 else:
                     line_query = search_text
-                    if stayed_on_opening and opening:
-                        line_query = retrieval_search_text(f"{opening} {user_query_llm}")
+                    if stayed_on_thread and anchor_query:
+                        line_query = retrieval_search_text(f"{anchor_query} {user_query_llm}")
                     scripture_docs, scripture_lane = attach_supporting_scripture(
                         line_query,
                         docs,
@@ -821,8 +818,15 @@ class ChatAPIView(APIView):
                 search_queries,
             )
 
+            if topic_thread is not None and not topic_thread.broke:
+                thread_rows = prior_rows[topic_thread.history_start :]
+            else:
+                # New subject: earlier answers are a different topic. Leaving
+                # them in the prompt makes the model recite that old context.
+                thread_rows = []
+            first_row = thread_rows[0] if thread_rows else None
             selected_rows = select_pinned_history_rows(
-                history_rows,
+                thread_rows,
                 first_row=first_row,
                 max_turns=MAX_HISTORY_TURNS,
                 max_chars=MAX_HISTORY_CHARS,
@@ -836,8 +840,9 @@ class ChatAPIView(APIView):
                 )
                 history_chars += len(f"{msg.user_query} {msg.ai_response or ''}")
             logger.warning(
-                "Chat history pinned opening=%r turns=%s chars=%s session=%s",
+                "Chat history thread anchor=%r broke=%s turns=%s chars=%s session=%s",
                 (selected_rows[0].user_query[:120] if selected_rows else ""),
+                bool(topic_thread and topic_thread.broke),
                 len(selected_rows),
                 history_chars,
                 session_id[:18],
