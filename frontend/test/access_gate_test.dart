@@ -47,7 +47,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('logged-out visitors see the marketing landing page', (tester) async {
+  testWidgets('logged-out visitors see the marketing landing page',
+      (tester) async {
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
@@ -57,11 +58,15 @@ void main() {
     expect(landingVideoSrc, 'videos/landing.mp4');
     expect(find.text('Get started'), findsNothing);
     expect(find.text('Already have an account? Sign in'), findsNothing);
-    expect(find.textContaining("Pastor Don and Susan Nordin's"), findsOneWidget);
+    expect(find.text('Already a Subscriber? Sign In'), findsOneWidget);
+    expect(
+        find.textContaining("Pastor Don and Susan Nordin's"), findsOneWidget);
     expect(find.textContaining("rooted in Pastor Don Nordin's"), findsNothing);
-    expect(find.text('Customized, biblical AI chat experience'), findsOneWidget);
+    expect(
+        find.text('Customized, biblical AI chat experience'), findsOneWidget);
     expect(find.text('Access to Walk through the Word videos'), findsOneWidget);
-    expect(find.text('Over 40 years of study notes and preached on material'), findsOneWidget);
+    expect(find.text('Over 40 years of study notes and preached on material'),
+        findsOneWidget);
     expect(find.text("the Nordin's study notes"), findsNothing);
     expect(find.text('Unlimited Chat history'), findsNothing);
     expect(find.text('Daily Bible reading assignment.'), findsNothing);
@@ -71,7 +76,8 @@ void main() {
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
   });
 
-  testWidgets('landing yearly toggle shows the yearly discount percent', (tester) async {
+  testWidgets('landing yearly toggle shows the yearly discount percent',
+      (tester) async {
     tester.view.physicalSize = const Size(1200, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -88,7 +94,8 @@ void main() {
     expect(find.text(r'$150'), findsWidgets);
     expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
     expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsOneWidget);
-    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'), findsWidgets);
+    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'),
+        findsWidgets);
   });
 
   testWidgets('landing fits a narrow phone viewport', (tester) async {
@@ -105,7 +112,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('landing header logo has equal space above and below', (tester) async {
+  testWidgets('landing header logo has equal space above and below',
+      (tester) async {
     _useWideSurface(tester);
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
@@ -123,7 +131,8 @@ void main() {
     expect((topGap - bottomGap).abs(), lessThan(4));
   });
 
-  testWidgets('compact landing header logo has equal space above and below', (tester) async {
+  testWidgets('compact landing header logo has equal space above and below',
+      (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -145,7 +154,8 @@ void main() {
     expect((topGap - bottomGap).abs(), lessThan(4));
   });
 
-  testWidgets('landing premium card uses the site pink-to-navy gradient', (tester) async {
+  testWidgets('landing premium card uses the site pink-to-navy gradient',
+      (tester) async {
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
@@ -171,6 +181,40 @@ void main() {
     );
   });
 
+  testWidgets('landing scrollbar is on the right edge of the screen',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    final scroll = tester.getRect(find.byType(SingleChildScrollView));
+    expect(scroll.left, 0);
+    expect(scroll.right, 1400);
+  });
+
+  testWidgets('Already a Subscriber opens sign in', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(_readyAuth()));
+    await tester.pump();
+
+    final signIn = find.text('Already a Subscriber? Sign In');
+    await tester.ensureVisible(signIn);
+    await tester.tap(signIn);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Please login to continue'), findsOneWidget);
+    expect(find.text('Create your account'), findsNothing);
+  });
+
   testWidgets('Subscribe opens the create-account screen', (tester) async {
     tester.view.physicalSize = const Size(1200, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -188,7 +232,8 @@ void main() {
 
     expect(find.text('Create your account'), findsOneWidget);
     expect(
-      find.text('Create an account, verify your email, then complete your subscription to get access.'),
+      find.text(
+          'Create an account, verify your email, then complete your subscription to get access.'),
       findsOneWidget,
     );
     expect(find.text('Continue to payment'), findsOneWidget);
@@ -200,7 +245,8 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('back from Subscribe returns to the landing page', (tester) async {
+  testWidgets('back from Subscribe returns to the landing page',
+      (tester) async {
     tester.view.physicalSize = const Size(1200, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -224,7 +270,8 @@ void main() {
     expect(find.text('Please login to continue'), findsNothing);
   });
 
-  testWidgets('signed-in unpaid users see the paywall, not chat', (tester) async {
+  testWidgets('signed-in unpaid users see the paywall, not chat',
+      (tester) async {
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
@@ -242,7 +289,8 @@ void main() {
     expect(find.text("Welcome to the Nordin's AI Assistant"), findsNothing);
   });
 
-  testWidgets('paywall yearly toggle shows the yearly discount percent', (tester) async {
+  testWidgets('paywall yearly toggle shows the yearly discount percent',
+      (tester) async {
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
@@ -259,7 +307,8 @@ void main() {
 
     expect(find.text(yearlyBillingDiscountLabel()), findsOneWidget);
     expect(find.text(yearlyBillingDiscountVsMonthlyLabel()), findsOneWidget);
-    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'), findsWidgets);
+    expect(find.textContaining('Save ${yearlyBillingDiscountPercent()}%'),
+        findsWidgets);
   });
 
   testWidgets('paywall fits a narrow phone viewport', (tester) async {
@@ -311,7 +360,8 @@ void main() {
     expect(find.text('Get started'), findsNothing);
   });
 
-  testWidgets('mobile welcome box mentions the top-left library arrow', (tester) async {
+  testWidgets('mobile welcome box mentions the top-left library arrow',
+      (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -336,7 +386,8 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('The AI may occasionally produce inaccurate information.'),
+      find.textContaining(
+          'The AI may occasionally produce inaccurate information.'),
       findsOneWidget,
     );
     expect(
@@ -386,7 +437,8 @@ void main() {
     expect(find.text('Complete your subscription'), findsNothing);
   });
 
-  testWidgets('staff skip email verification even if the flag is false', (tester) async {
+  testWidgets('staff skip email verification even if the flag is false',
+      (tester) async {
     _useWideSurface(tester);
     final auth = _readyAuth(
       token: 'tok',
@@ -405,7 +457,8 @@ void main() {
     expect(find.text('Verify your email'), findsNothing);
   });
 
-  testWidgets('unpaid unverified members enter a code before the paywall', (tester) async {
+  testWidgets('unpaid unverified members enter a code before the paywall',
+      (tester) async {
     final auth = _readyAuth(
       token: 'tok',
       user: const AuthUser(
@@ -428,6 +481,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Continue as guest'), findsNothing);
-    expect(find.text('Sign in to subscribe and open Nordin\'s AI.'), findsOneWidget);
+    expect(find.text('Sign in to subscribe and open Nordin\'s AI.'),
+        findsOneWidget);
   });
 }

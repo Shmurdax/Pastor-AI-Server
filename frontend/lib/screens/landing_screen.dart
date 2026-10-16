@@ -88,175 +88,222 @@ class LandingScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            isMobile ? 20 : 40,
-            isMobile ? 12 : 24,
-            isMobile ? 20 : 40,
-            48,
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 820),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  "Nordin's AI",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(
-                    fontSize: isMobile ? 32 : 44,
-                    fontWeight: FontWeight.bold,
-                    color: _navy,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Center(child: Container(height: 2, width: 56, color: _gold)),
-                const SizedBox(height: 16),
-                Text(
-                  "Pastoral answers rooted in Pastor Don and Susan Nordin's teaching and Scripture. "
-                  'Subscribe to start chatting, praying, and studying with the ministry library.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(
-                    fontSize: isMobile ? 16 : 18,
-                    color: Colors.black54,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                // "Get started" and "Already have an account?" come back in a later pass.
-                const LandingVideo(),
-                const SizedBox(height: 36),
-                Center(
-                  child: _LandingPeriodToggle(
-                    value: billingPeriod,
-                    onChanged: onBillingPeriodChanged,
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
-                      decoration: BoxDecoration(
-                        gradient: _brandGradient,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _navy.withValues(alpha: 0.18),
-                            blurRadius: 24,
-                            offset: const Offset(0, 10),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 820),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      isMobile ? 20 : 40,
+                      isMobile ? 12 : 24,
+                      isMobile ? 20 : 40,
+                      48,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          "Nordin's AI",
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(
+                            fontSize: isMobile ? 32 : 44,
+                            fontWeight: FontWeight.bold,
+                            color: _navy,
+                            height: 1.1,
                           ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Premium',
-                            style: GoogleFonts.figtree(
-                              color: _gold,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              letterSpacing: 0.6,
-                            ),
+                        ),
+                        const SizedBox(height: 10),
+                        Center(
+                            child:
+                                Container(height: 2, width: 56, color: _gold)),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Pastoral answers rooted in Pastor Don and Susan Nordin's teaching and Scripture. "
+                          'Subscribe to start chatting, praying, and studying with the ministry library.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(
+                            fontSize: isMobile ? 16 : 18,
+                            color: Colors.black54,
+                            height: 1.45,
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _priceLabel,
-                                style: GoogleFonts.figtree(
-                                  color: Colors.white,
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Text(
-                                  _pricePeriod,
-                                  style: GoogleFonts.figtree(
-                                    color: Colors.white70,
-                                    fontSize: 16,
+                        ),
+                        const SizedBox(height: 28),
+                        const LandingVideo(),
+                        const SizedBox(height: 36),
+                        Center(
+                          child: _LandingPeriodToggle(
+                            value: billingPeriod,
+                            onChanged: onBillingPeriodChanged,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 440),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.fromLTRB(24, 28, 24, 28),
+                              decoration: BoxDecoration(
+                                gradient: _brandGradient,
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _navy.withValues(alpha: 0.18),
+                                    blurRadius: 24,
+                                    offset: const Offset(0, 10),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          if (billingPeriod == BillingPeriod.yearly) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              yearlyBillingDiscountVsMonthlyLabel(),
-                              style: GoogleFonts.figtree(
-                                color: _gold,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          ...premiumPerks.map(
-                            (perk) => Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.check_circle, color: _gold, size: 18),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      perk,
+                                  Text(
+                                    'Premium',
+                                    style: GoogleFonts.figtree(
+                                      color: _gold,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _priceLabel,
+                                        style: GoogleFonts.figtree(
+                                          color: Colors.white,
+                                          fontSize: 40,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 6),
+                                        child: Text(
+                                          _pricePeriod,
+                                          style: GoogleFonts.figtree(
+                                            color: Colors.white70,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (billingPeriod ==
+                                      BillingPeriod.yearly) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      yearlyBillingDiscountVsMonthlyLabel(),
                                       style: GoogleFonts.figtree(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        height: 1.35,
+                                        color: _gold,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
                                       ),
                                     ),
+                                  ],
+                                  const SizedBox(height: 20),
+                                  ...premiumPerks.map(
+                                    (perk) => Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 10),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Icon(Icons.check_circle,
+                                              color: _gold, size: 18),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              perk,
+                                              style: GoogleFonts.figtree(
+                                                color: Colors.white,
+                                                fontSize: 15,
+                                                height: 1.35,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _GoldActionButton(
+                                    label:
+                                        'Subscribe · $_priceLabel$_pricePeriod',
+                                    onPressed: () => _openRegister(context),
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton(
-                              onPressed: () => _openRegister(context),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _gold,
-                                foregroundColor: _navy,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: Text(
-                                'Subscribe · $_priceLabel$_pricePeriod',
-                                style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
-                              ),
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 440),
+                            child: _GoldActionButton(
+                              label: 'Already a Subscriber? Sign In',
+                              onPressed: () => _openSignIn(context),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 32),
+                        Text(
+                          'Create an account, verify your email, then complete checkout. '
+                          'You will not have access until your subscription is active.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.figtree(
+                              fontSize: 13, color: Colors.black45, height: 1.4),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
-                Text(
-                  'Create an account, verify your email, then complete checkout. '
-                  'You will not have access until your subscription is active.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.figtree(fontSize: 13, color: Colors.black45, height: 1.4),
-                ),
-              ],
+              ),
             ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _GoldActionButton extends StatelessWidget {
+  const _GoldActionButton({
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: _gold,
+          foregroundColor: _navy,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -284,7 +331,8 @@ class _LandingPeriodToggle extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _chip('Monthly', value == BillingPeriod.monthly, () => onChanged(BillingPeriod.monthly)),
+          _chip('Monthly', value == BillingPeriod.monthly,
+              () => onChanged(BillingPeriod.monthly)),
           _chip(
             'Yearly',
             value == BillingPeriod.yearly,
