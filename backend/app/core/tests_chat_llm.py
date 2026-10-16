@@ -303,6 +303,8 @@ class VllmUrlResolutionTests(unittest.TestCase):
         self.assertIn('identity = f"u:{user.pk}"', source)
         self.assertIn("drop_oldest_history(2)", Path(__file__).with_name("chat_llm.py").read_text(encoding="utf-8"))
         self.assertIn("select_pinned_history_rows", source)
+        self.assertIn("resolve_topic_thread", source)
+        self.assertNotIn("stayed_on_opening", source)
         self.assertNotIn("select_diverse_docs", source)
         self.assertIn("rerank_scored_hits", source)
         self.assertNotIn("pinned_docs=", source)

@@ -11,18 +11,26 @@ import logging
 import math
 import os
 import re
-from typing import Any, Iterable, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Iterable, Optional
 
 from .chat_retrieval import (
     chunk_source_key,
     chunk_text,
     is_bible_source,
     metadata_source_hint,
+    retrieval_bible_names,
 )
 from .quote_chunking import split_sentences
 from .grounding import looks_like_scripture_blob, normalize_grounding_text
 from .note_priority import looks_like_deck_junk, looks_like_kjv_diction
-from .teaching_claims import _WEAK_QUERY_WORDS, distinctive_query_tokens, query_topic_tokens
+from .teaching_claims import (
+    _QUERY_TOPIC_WORDS,
+    _WEAK_QUERY_WORDS,
+    distinctive_query_tokens,
+    is_greeting_turn,
+    query_topic_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +64,29 @@ _FILLER_SUBJECT_TOKENS = frozenset(
         "according",
         "actually",
         "really",
+        # Conversational glue. These are not a new sermon subject, and they
+        # must not dilute a real topic switch ("something else: spiritual gifts").
+        "else",
+        "something",
+        "anything",
+        "talk",
+        "talking",
+        "expand",
+        "expanding",
+        "instead",
+        "rather",
+        "different",
+        "switch",
+        "forget",
+        "further",
+        "deeper",
+        "detail",
+        "details",
+        "continue",
+        "continuing",
+        "clarify",
+        "clarified",
+        "clarification",
     }
 )
 
@@ -267,6 +298,25 @@ def _token_count(words: list[str], token: str) -> int:
     if not token:
         return 0
     return sum(1 for word in words if _tokens_morph_match(word, token))
+
+
+def _tokens_share_stem(left: str, right: str) -> bool:
+    """Suffix stem only. Prefix overlap makes spirit count as spiritual."""
+    a = (left or "").lower()
+    b = (right or "").lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    stem_a = _morph_stem(a)
+    stem_b = _morph_stem(b)
+    return len(stem_a) >= 4 and stem_a == stem_b
+
+
+def _sermon_has_topic_word(words: list[str], token: str) -> bool:
+    if not token:
+        return False
+    return any(_tokens_share_stem(word, token) for word in words)
 
 
 def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
@@ -619,11 +669,17 @@ def choose_sermon_by_rerank(
 def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str) -> bool:
     """True when a later turn names a subject the locked sermon does not teach.
 
-    Short follow-ups stay. A new subject is a majority of the question's topic
-    words, each long enough to be a topic, and absent from both the sermon and
-    the opening question. This is the same rule for every story.
+    Short follow-ups stay ("say more", "the older brother", "what should a
+    husband practice"). A new subject is a majority of the question's topic
+    words and is absent from both the sermon and the anchor question.
+
+    Words shorter than five characters still count when they are the subject:
+    biblical names (Cain, Abel, Job, Ruth) and topic words such as hope or love.
+    Conversational filler is not part of that majority.
     """
-    tokens = coverage_subject_tokens(query)
+    tokens = set(coverage_subject_tokens(query))
+    bible_names = {name.lower() for name in retrieval_bible_names(query)}
+    tokens.update(bible_names)
     if not tokens or not (sermon_text or "").strip():
         return False
     sermon_words = normalize_grounding_text(sermon_text).split()
@@ -631,12 +687,90 @@ def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str
     novel = [
         token
         for token in tokens
-        if not _token_count(sermon_words, token) and not _token_count(opening_words, token)
+        if not _sermon_has_topic_word(sermon_words, token)
+        and not _sermon_has_topic_word(opening_words, token)
     ]
-    topical = [token for token in novel if len(token) >= 5]
+    topical = [
+        token
+        for token in novel
+        if len(token) >= 5 or token in bible_names or token in _QUERY_TOPIC_WORDS
+    ]
     if not topical:
         return False
     return len(topical) / len(tokens) >= 0.6
+
+
+def _question_has_subject(query: str) -> bool:
+    if coverage_subject_tokens(query):
+        return True
+    return bool(retrieval_bible_names(query))
+
+
+@dataclass(frozen=True)
+class TopicThread:
+    """Active sermon thread for this turn.
+
+    `history_start` is an index into the prior questions. When `broke` is true
+    the current question leaves that thread, and `history_start` equals the
+    length of the prior list so no earlier turn is part of the prompt.
+    """
+
+    anchor_query: str
+    broke: bool
+    history_start: int
+
+
+def resolve_topic_thread(
+    current: str,
+    prior_queries: Iterable[str],
+    sermon_text_for: Callable[[str], str],
+) -> TopicThread:
+    """Keep follow-ups on the latest topic, and drop that topic when it changes.
+
+    The first substantive question starts a thread. A later question starts a
+    new thread only when it names a subject that thread's sermon does not teach.
+    The next "say more" stays on the new thread instead of snapping back to the
+    opening sermon and its earlier answers.
+    """
+    priors = [str(item or "").strip() for item in prior_queries]
+    anchor = ""
+    anchor_sermon = ""
+    start = 0
+    for index, query in enumerate(priors):
+        if not query or is_greeting_turn(query):
+            continue
+        if not anchor:
+            anchor = query
+            anchor_sermon = (sermon_text_for(anchor) or "").strip()
+            start = index
+            continue
+        if _moves_topic(query, anchor, anchor_sermon):
+            anchor = query
+            anchor_sermon = (sermon_text_for(anchor) or "").strip()
+            start = index
+    current_q = (current or "").strip()
+    if anchor and _moves_topic(current_q, anchor, anchor_sermon):
+        return TopicThread(
+            anchor_query=current_q,
+            broke=True,
+            history_start=len(priors),
+        )
+    return TopicThread(
+        anchor_query=anchor,
+        broke=False,
+        history_start=start if anchor else 0,
+    )
+
+
+def _moves_topic(query: str, anchor: str, anchor_sermon: str) -> bool:
+    """True when `query` should leave `anchor` and start its own thread."""
+    if query.strip().lower() == (anchor or "").strip().lower():
+        return False
+    if (anchor_sermon or "").strip():
+        return query_changes_locked_sermon(query, anchor, anchor_sermon)
+    # No sermon text to stay inside, so a real subject is its own thread.
+    # "Say more" has no subject and stays put.
+    return _question_has_subject(query)
 
 
 def focus_retrieved_notes(

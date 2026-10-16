@@ -9,6 +9,7 @@ from core.notes_coverage import (
     focus_retrieved_notes,
     choose_sermon_by_rerank,
     query_changes_locked_sermon,
+    resolve_topic_thread,
     select_reference_notes,
     sermon_lines_for_answer,
 )
@@ -225,6 +226,76 @@ class FocusRetrievedNotesTests(unittest.TestCase):
                 sermon,
             )
         )
+        self.assertTrue(
+            query_changes_locked_sermon(
+                "I want to talk about something else: spiritual gifts.",
+                "Now tell me what Pastor Don teaches about Pentecost.",
+                "Pentecost filled the room. They spoke in tongues as the Spirit gave utterance.",
+            )
+        )
+
+    def test_topic_switch_is_not_kept_on_short_or_filler_subjects(self):
+        sermon = (
+            "The older brother stayed outside. The father ran to the younger son. "
+            "A husband who will not love his wife sins against the marriage covenant."
+        )
+        opening = "Explain the parable of the prodigal son from the sermon notes."
+        for question in (
+            "Tell the story of Cain and Abel.",
+            "What about Job?",
+            "What about Ruth?",
+            "What about Noah?",
+            "What about hope?",
+            "I want to talk about something else: spiritual gifts.",
+            "Give me more detail.",
+        ):
+            changed = query_changes_locked_sermon(question, opening, sermon)
+            if question == "Give me more detail.":
+                self.assertFalse(changed, question)
+            else:
+                self.assertTrue(changed, question)
+
+    def test_followup_after_a_switch_stays_on_the_new_topic(self):
+        prodigal = (
+            "The older brother stayed outside. The father ran to the younger son. "
+            "A husband who will not love his wife sins against the marriage covenant."
+        )
+        pentecost = (
+            "Pentecost filled the room. They spoke in tongues as the Spirit gave utterance."
+        )
+
+        def sermon_for(query: str) -> str:
+            text = query.lower()
+            if "pentecost" in text or "tongues" in text:
+                return pentecost
+            if "cain" in text or "abel" in text:
+                return "Cain rose up against Abel his brother in the field."
+            return prodigal
+
+        opening = "Explain the parable of the prodigal son from the sermon notes."
+        switch = "Now tell me what Pastor Don teaches about Pentecost."
+        follow = "Say more about that."
+        thread = resolve_topic_thread(follow, [opening, switch], sermon_for)
+        self.assertFalse(thread.broke)
+        self.assertEqual(thread.anchor_query, switch)
+        self.assertEqual(thread.history_start, 1)
+
+        switched = resolve_topic_thread(
+            "Tell the story of Cain and Abel.",
+            [opening, "What about the older brother?"],
+            sermon_for,
+        )
+        self.assertTrue(switched.broke)
+        self.assertEqual(switched.history_start, 2)
+
+        stayed = resolve_topic_thread(
+            "What about the older brother?",
+            [opening],
+            sermon_for,
+        )
+        self.assertFalse(stayed.broke)
+        self.assertEqual(stayed.anchor_query, opening)
+        self.assertEqual(stayed.history_start, 0)
 
     def test_rerank_score_picks_the_sermon_that_teaches_the_question(self):
         aside = _doc(
