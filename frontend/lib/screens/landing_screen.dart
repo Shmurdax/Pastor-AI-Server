@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/screens/subscriptions_screen.dart';
+import 'package:flutter_application_1/widgets/landing_video.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -124,44 +125,8 @@ class LandingScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
-                Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: _brandGradient,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: FilledButton(
-                      onPressed: () => _openRegister(context),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isMobile ? 28 : 36,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Get started',
-                        style: GoogleFonts.figtree(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => _openSignIn(context),
-                  child: Text(
-                    'Already have an account? Sign in',
-                    style: GoogleFonts.figtree(color: _pink, fontWeight: FontWeight.w700),
-                  ),
-                ),
+                // "Get started" and "Already have an account?" come back in a later pass.
+                const LandingVideo(),
                 const SizedBox(height: 36),
                 Center(
                   child: _LandingPeriodToggle(

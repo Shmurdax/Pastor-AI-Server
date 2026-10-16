@@ -43,3 +43,7 @@ backend/app/staticfiles/
 frontend/build/**
 !frontend/build/web/
 !frontend/build/web/**
+# Landing promo is ~183 MB. Keep it on disk at frontend/web/videos/landing.mp4
+# so `flutter build web` copies it into frontend/build/web/videos/.
+frontend/web/videos/*.mp4
+frontend/build/web/videos/

@@ -126,7 +126,8 @@ void main() {
     await tester.pump();
 
     expect(find.text(message), findsOneWidget);
-    expect(find.text('Get started'), findsOneWidget);
+    expect(find.byKey(const Key('landing-video')), findsOneWidget);
+    expect(find.text('Get started'), findsNothing);
     final box = tester.widget<ColoredBox>(find.byKey(const Key('site-status-banner')));
     expect(box.color, siteBannerHazardYellow);
   });

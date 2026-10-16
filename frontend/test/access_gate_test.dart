@@ -5,6 +5,7 @@ import 'package:flutter_application_1/main.dart';
 import 'package:flutter_application_1/screens/checkout_screen.dart';
 import 'package:flutter_application_1/screens/login_screen.dart';
 import 'package:flutter_application_1/services/auth_service.dart';
+import 'package:flutter_application_1/widgets/landing_video.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -51,7 +52,11 @@ void main() {
     await tester.pump();
 
     expect(find.text("Nordin's AI"), findsOneWidget);
-    expect(find.text('Get started'), findsOneWidget);
+    expect(find.byKey(const Key('landing-video')), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>(landingVideoSrc)), findsOneWidget);
+    expect(landingVideoSrc, 'videos/landing.mp4');
+    expect(find.text('Get started'), findsNothing);
+    expect(find.text('Already have an account? Sign in'), findsNothing);
     expect(find.textContaining("Pastor Don and Susan Nordin's"), findsOneWidget);
     expect(find.textContaining("rooted in Pastor Don Nordin's"), findsNothing);
     expect(find.text('Customized, biblical AI chat experience'), findsOneWidget);
@@ -67,10 +72,17 @@ void main() {
   });
 
   testWidgets('landing yearly toggle shows the yearly discount percent', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
-    await tester.tap(find.text('Yearly'));
+    final yearly = find.text('Yearly');
+    await tester.ensureVisible(yearly);
+    await tester.tap(yearly);
     await tester.pump();
 
     expect(find.text(r'$150'), findsWidgets);
@@ -88,7 +100,8 @@ void main() {
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
-    expect(find.text('Get started'), findsOneWidget);
+    expect(find.byKey(const Key('landing-video')), findsOneWidget);
+    expect(find.text('Get started'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -158,11 +171,18 @@ void main() {
     );
   });
 
-  testWidgets('Get started opens the create-account screen', (tester) async {
+  testWidgets('Subscribe opens the create-account screen', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(_wrap(_readyAuth()));
     await tester.pump();
 
-    await tester.tap(find.text('Get started'));
+    final subscribe = find.text('Subscribe · \$15/ month');
+    await tester.ensureVisible(subscribe);
+    await tester.tap(subscribe);
     await tester.pump();
     await tester.pump();
 
@@ -179,23 +199,6 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
-
-  testWidgets('back from Get started returns to the landing page', (tester) async {
-    await tester.pumpWidget(_wrap(_readyAuth()));
-    await tester.pump();
-
-    await tester.tap(find.text('Get started'));
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('Create your account'), findsOneWidget);
-
-    await _goBackFromRegister(tester);
-
-    expect(find.text("Nordin's AI"), findsOneWidget);
-    expect(find.text('Get started'), findsOneWidget);
-    expect(find.text('Please login to continue'), findsNothing);
-    expect(find.text('Create your account'), findsNothing);
-  });
 
   testWidgets('back from Subscribe returns to the landing page', (tester) async {
     tester.view.physicalSize = const Size(1200, 1600);
@@ -216,6 +219,8 @@ void main() {
     await _goBackFromRegister(tester);
 
     expect(find.text("Nordin's AI"), findsOneWidget);
+    expect(find.byKey(const Key('landing-video')), findsOneWidget);
+    expect(find.text('Get started'), findsNothing);
     expect(find.text('Please login to continue'), findsNothing);
   });
 

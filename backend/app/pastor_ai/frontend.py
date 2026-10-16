@@ -1,4 +1,5 @@
 import mimetypes
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -139,6 +140,135 @@ def serve_vimeo_embed(request):
     return vimeo_embed_response(configured_dir if configured_dir.exists() else None)
 
 
+LANDING_VIDEO_RELATIVE = Path("videos") / "landing.mp4"
+_LANDING_VIDEO_CACHE = "public, max-age=86400"
+_BYTE_RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+class _BoundedReader:
+    """File reader that stops after a fixed number of bytes (HTTP Range)."""
+
+    def __init__(self, raw, remaining: int):
+        self._raw = raw
+        self._remaining = remaining
+
+    def read(self, size: int = -1) -> bytes:
+        if self._remaining <= 0:
+            return b""
+        if size is None or size < 0 or size > self._remaining:
+            size = self._remaining
+        chunk = self._raw.read(size)
+        if not chunk:
+            self._remaining = 0
+            return b""
+        self._remaining -= len(chunk)
+        return chunk
+
+    def close(self) -> None:
+        self._raw.close()
+
+
+def _add_landing_video_candidate(paths: list[Path], seen: set[Path], path: Path) -> None:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return
+    if resolved not in seen:
+        seen.add(resolved)
+        paths.append(resolved)
+
+
+def _permanent_web_video(directory: Path) -> Path | None:
+    """`build/web` -> sibling `web/videos/landing.mp4` (the copy Flutter rebuilds from)."""
+    if directory.name == "web" and directory.parent.name == "build":
+        return directory.parent.parent / "web" / LANDING_VIDEO_RELATIVE
+    return None
+
+
+def landing_video_candidates(configured_dir: Path, build_dir: Path) -> list[Path]:
+    """Build output first, then the permanent `web/videos` source."""
+    paths: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        _add_landing_video_candidate(paths, seen, path)
+
+    add(build_dir / LANDING_VIDEO_RELATIVE)
+    add(configured_dir / LANDING_VIDEO_RELATIVE)
+    add(configured_dir / "web" / LANDING_VIDEO_RELATIVE)
+    for directory in (build_dir, configured_dir):
+        permanent = _permanent_web_video(directory)
+        if permanent is not None:
+            add(permanent)
+    repo_root = Path(settings.BASE_DIR).resolve().parent.parent
+    add(repo_root / "frontend" / "web" / LANDING_VIDEO_RELATIVE)
+    add(repo_root / "frontend" / "build" / "web" / LANDING_VIDEO_RELATIVE)
+    return paths
+
+
+def resolve_landing_video(configured_dir: Path, build_dir: Path) -> Path | None:
+    for path in landing_video_candidates(configured_dir, build_dir):
+        if path.is_file():
+            return path
+    return None
+
+
+def _byte_range(header: str | None, file_size: int) -> tuple[int, int, int]:
+    """Return start, end, and status (200, 206, or 416)."""
+    if file_size <= 0:
+        return 0, -1, 200
+    if not header:
+        return 0, file_size - 1, 200
+    match = _BYTE_RANGE.match(header.strip())
+    if match is None:
+        return 0, file_size - 1, 416
+    start_s, end_s = match.group(1), match.group(2)
+    if start_s == "" and end_s == "":
+        return 0, file_size - 1, 416
+    try:
+        if start_s == "":
+            suffix = int(end_s)
+            if suffix <= 0:
+                return 0, file_size - 1, 416
+            start = max(file_size - suffix, 0)
+            end = file_size - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else file_size - 1
+    except ValueError:
+        return 0, file_size - 1, 416
+    if start < 0 or start >= file_size or end < start:
+        return 0, file_size - 1, 416
+    return start, min(end, file_size - 1), 206
+
+
+def landing_video_response(request, file_path: Path) -> HttpResponse:
+    """Stream landing.mp4 with range requests so the browser can seek a large file."""
+    file_size = file_path.stat().st_size
+    start, end, status = _byte_range(request.META.get("HTTP_RANGE"), file_size)
+    if status == 416:
+        response = HttpResponse(status=416)
+        response["Content-Range"] = f"bytes */{file_size}"
+        response["Accept-Ranges"] = "bytes"
+        return response
+
+    length = 0 if end < start else end - start + 1
+    handle = file_path.open("rb")
+    if start:
+        handle.seek(start)
+    response = FileResponse(
+        _BoundedReader(handle, length),
+        status=status,
+        content_type="video/mp4",
+    )
+    response["Accept-Ranges"] = "bytes"
+    response["Content-Length"] = str(length)
+    response["Cache-Control"] = _LANDING_VIDEO_CACHE
+    if status == 206:
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    return response
+
+
 def _resolve_frontend_dir(configured_dir: Path) -> Path:
     """Accept either a Flutter project root (build/web) or a prebuilt web dir."""
     # Prefer build/web when FRONTEND_BUILD_DIR points at the Flutter project root so
@@ -164,6 +294,11 @@ def serve_frontend(request, path: str = ""):
     normalized_path = (path or "").lstrip("/")
     if Path(normalized_path).name == VIMEO_EMBED_FILENAME:
         return vimeo_embed_response(configured_dir)
+    if normalized_path == LANDING_VIDEO_RELATIVE.as_posix():
+        video_path = resolve_landing_video(configured_dir, build_dir)
+        if video_path is None:
+            raise Http404("Frontend asset not found.")
+        return landing_video_response(request, video_path)
 
     candidate = (build_dir / normalized_path).resolve()
     build_dir_resolved = build_dir.resolve()

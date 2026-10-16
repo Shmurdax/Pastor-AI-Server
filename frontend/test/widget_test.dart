@@ -34,6 +34,7 @@ void main() {
     await tester.pump();
 
     expect(find.text("Nordin's AI"), findsOneWidget);
-    expect(find.text('Get started'), findsOneWidget);
+    expect(find.byKey(const Key('landing-video')), findsOneWidget);
+    expect(find.text('Get started'), findsNothing);
   });
 }
