@@ -300,6 +300,25 @@ def _token_count(words: list[str], token: str) -> int:
     return sum(1 for word in words if _tokens_morph_match(word, token))
 
 
+def _tokens_share_stem(left: str, right: str) -> bool:
+    """Suffix stem only. Prefix overlap makes spirit count as spiritual."""
+    a = (left or "").lower()
+    b = (right or "").lower()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    stem_a = _morph_stem(a)
+    stem_b = _morph_stem(b)
+    return len(stem_a) >= 4 and stem_a == stem_b
+
+
+def _sermon_has_topic_word(words: list[str], token: str) -> bool:
+    if not token:
+        return False
+    return any(_tokens_share_stem(word, token) for word in words)
+
+
 def _subject_hits(text: str, subject: set[str]) -> tuple[int, int]:
     words = normalize_grounding_text(text).split()
     if not words or not subject:
@@ -668,7 +687,8 @@ def query_changes_locked_sermon(query: str, opening_query: str, sermon_text: str
     novel = [
         token
         for token in tokens
-        if not _token_count(sermon_words, token) and not _token_count(opening_words, token)
+        if not _sermon_has_topic_word(sermon_words, token)
+        and not _sermon_has_topic_word(opening_words, token)
     ]
     topical = [
         token

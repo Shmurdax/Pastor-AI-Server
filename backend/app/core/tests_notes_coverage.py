@@ -226,6 +226,13 @@ class FocusRetrievedNotesTests(unittest.TestCase):
                 sermon,
             )
         )
+        self.assertTrue(
+            query_changes_locked_sermon(
+                "I want to talk about something else: spiritual gifts.",
+                "Now tell me what Pastor Don teaches about Pentecost.",
+                "Pentecost filled the room. They spoke in tongues as the Spirit gave utterance.",
+            )
+        )
 
     def test_topic_switch_is_not_kept_on_short_or_filler_subjects(self):
         sermon = (
