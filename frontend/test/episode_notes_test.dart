@@ -117,6 +117,13 @@ void main() {
 
     expect(find.text('Episode notes'), findsOneWidget);
     expect(find.text('View original PDF'), findsOneWidget);
+    expect(find.byKey(const Key('episode-play')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('episode-play')));
+    await tester.pump();
+
+    expect(find.text('Episode notes'), findsOneWidget);
+    expect(find.byKey(const Key('episode-player')), findsOneWidget);
     expect(find.text('#sheba'), findsNothing);
     expect(find.text('#TheNameOfTheLord'), findsNothing);
     final notes = tester.getTopLeft(find.byKey(const Key('episode-notes-pane')));

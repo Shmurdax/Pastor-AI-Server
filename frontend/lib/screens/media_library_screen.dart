@@ -13,7 +13,7 @@ import 'package:flutter_application_1/widgets/chat_nav_actions.dart';
 import 'package:flutter_application_1/widgets/church_events_nav_overlay.dart';
 import 'package:flutter_application_1/widgets/episode_notes_pane.dart';
 import 'package:flutter_application_1/widgets/new_tab.dart';
-import 'package:flutter_application_1/widgets/vimeo_player_embed.dart';
+import 'package:flutter_application_1/widgets/vimeo_player_src.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -1150,6 +1150,48 @@ class _Badge extends StatelessWidget {
   }
 }
 
+/// Play control for a Vimeo episode. The notes stay on this page; the player opens separately.
+class _VimeoNewTabPlayer extends StatelessWidget {
+  const _VimeoNewTabPlayer({
+    required this.onPlay,
+    this.thumbnailUrl,
+  });
+
+  final VoidCallback onPlay;
+  final String? thumbnailUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = thumbnailUrl?.trim() ?? '';
+    return Material(
+      color: Colors.black,
+      child: InkWell(
+        key: const Key('episode-play'),
+        onTap: onPlay,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (thumb.isNotEmpty)
+              Image.network(
+                thumb,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            Container(color: Colors.black.withValues(alpha: thumb.isEmpty ? 0 : 0.35)),
+            Center(
+              child: Icon(
+                Icons.play_circle_filled,
+                size: 72,
+                color: _gold.withValues(alpha: 0.95),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class WatchEpisodeScreen extends StatefulWidget {
   const WatchEpisodeScreen({
     super.key,
@@ -1266,12 +1308,17 @@ class _WatchEpisodeScreenState extends State<WatchEpisodeScreen> {
     return '$m:$s';
   }
 
+  void _openVimeoInNewTab() {
+    final url = mediaItemWatchUrl(widget.item, startSeconds: widget.startSeconds);
+    if (url == null) return;
+    openNewTab().openUrl(url);
+  }
+
   Widget _buildPlayer() {
     if (_useVimeo) {
-      return VimeoPlayerEmbed(
-        vimeoId: widget.item.vimeoId!.trim(),
-        privacyHash: widget.item.vimeoPrivacyHash,
-        startSeconds: widget.startSeconds,
+      return _VimeoNewTabPlayer(
+        thumbnailUrl: widget.item.thumbnailUrl,
+        onPlay: _openVimeoInNewTab,
       );
     }
 
