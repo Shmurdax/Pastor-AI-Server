@@ -5,11 +5,18 @@
 # Sourced by deploy_update.sh and onboot.sh. Safe to source more than once.
 #
 # Env:
-#   PASTOR_SKIP_GIT_SYNC=1     no-op (caller already synced)
-#   PASTOR_GIT_SYNC_TIMEOUT    git fetch timeout seconds (default 90)
+#   PASTOR_SKIP_GIT_SYNC=1         no-op (caller already synced)
+#   PASTOR_GIT_SYNC_TIMEOUT        git fetch timeout seconds (default 90)
+#   PASTOR_PRESERVE_FLUTTER_BUILD=1
+#     When HEAD will not move, keep a local frontend/build/web rebuild.
+#     deploy_update.sh rebuilds that tree itself and must leave this unset.
+#     onboot.sh sets it so a same-SHA reboot does not put the committed
+#     Flutter bundle back on the dev site.
 #
 # Exported after pastor_sync_git_channel:
 #   PASTOR_GIT_CHANGED=0|1     1 if HEAD moved or tracked dirt was discarded
+#   PASTOR_FLUTTER_BUILD_PRESERVED=0|1
+#     1 if a local Flutter web rebuild was put back after reset
 #   PASTOR_GIT_SHA
 #   PASTOR_GIT_CHANNEL
 #   PASTOR_GIT_ORIGIN_SHA
@@ -47,6 +54,16 @@ pastor_git_tracked_dirty() {
   # frontend/build/web files. That is not version drift.
   git -C "$ws" status --porcelain --untracked-files=no 2>/dev/null \
     | grep -v 'frontend/build/' \
+    | grep -q .
+}
+
+pastor_flutter_web_dirty() {
+  # True when the on-disk Flutter bundle differs from the committed snapshot.
+  # That rebuild is what the dev site actually serves. git reset --hard puts
+  # the committed files back unless the caller parks them first.
+  local ws="${1:-}"
+  [[ -d "$ws/.git" && -f "$ws/frontend/build/web/index.html" ]] || return 1
+  git -C "$ws" status --porcelain --untracked-files=no -- frontend/build/web 2>/dev/null \
     | grep -q .
 }
 
@@ -130,12 +147,27 @@ pastor_warn_if_git_drift() {
   fi
 }
 
+_pastor_restore_parked_flutter_web() {
+  local ws="${1:-}" park="${2:-}"
+  [[ -n "$park" && -f "$park/index.html" ]] || return 1
+  rm -rf "$ws/frontend/build/web"
+  mkdir -p "$ws/frontend/build"
+  mv "$park" "$ws/frontend/build/web"
+}
+
+_pastor_discard_parked_flutter_web() {
+  local park="${1:-}"
+  [[ -n "$park" && -d "$park" ]] || return 0
+  rm -rf "$park"
+}
+
 pastor_sync_git_channel() {
   local ws="${1:-${WS:-${WORKSPACE_ROOT:-/workspace/pastor-ai}}}"
   local channel="${2:-}"
-  local before_sha after_sha origin_sha timeout_s fetch_rc
+  local before_sha after_sha origin_sha timeout_s fetch_rc park=""
   PASTOR_GIT_CHANGED=0
-  export PASTOR_GIT_CHANGED
+  PASTOR_FLUTTER_BUILD_PRESERVED=0
+  export PASTOR_GIT_CHANGED PASTOR_FLUTTER_BUILD_PRESERVED
   if [[ "${PASTOR_SKIP_GIT_SYNC:-0}" == "1" ]]; then
     pastor_record_running_git "$ws" || true
     return 0
@@ -180,20 +212,45 @@ pastor_sync_git_channel() {
   fi
 
   origin_sha="$(git -C "$ws" rev-parse FETCH_HEAD)"
+  # frontend/build/web is tracked, but the copy the site serves is whatever
+  # the last deploy_update.sh compiled. A same-SHA reset throws that away
+  # and start.sh will not rebuild it. Park the rebuild and put it back when
+  # HEAD does not move. A new commit still discards it so deploy can rebuild.
+  if [[ "${PASTOR_PRESERVE_FLUTTER_BUILD:-0}" == "1" && "$before_sha" == "$origin_sha" ]] \
+    && pastor_flutter_web_dirty "$ws"; then
+    park="$ws/frontend/build/.web.bootkeep"
+    rm -rf "$park"
+    if mv "$ws/frontend/build/web" "$park"; then
+      _pastor_git_log "Holding Flutter web build aside during reset (HEAD unchanged)"
+    else
+      park=""
+    fi
+  fi
   _pastor_git_log "Resetting to origin/$channel ($(git -C "$ws" rev-parse --short FETCH_HEAD))"
   # -f discards a dirty working tree. Without it, checkout -B is a no-op on
   # pods that have local edits and deploy_update silently stays behind.
   if ! git -C "$ws" checkout -f -B "$channel" FETCH_HEAD; then
     _pastor_git_warn "git checkout $channel failed"
+    _pastor_restore_parked_flutter_web "$ws" "$park" || _pastor_discard_parked_flutter_web "$park"
     pastor_write_deploy_stamp "$ws" "$channel" "$before_sha" "$origin_sha" "1" \
       "git checkout $channel failed"
     return 1
   fi
   if ! git -C "$ws" reset --hard FETCH_HEAD; then
     _pastor_git_warn "git reset --hard $channel failed"
+    _pastor_restore_parked_flutter_web "$ws" "$park" || _pastor_discard_parked_flutter_web "$park"
     pastor_write_deploy_stamp "$ws" "$channel" "$before_sha" "$origin_sha" "1" \
       "git reset --hard $channel failed"
     return 1
+  fi
+  if [[ -n "$park" ]]; then
+    if _pastor_restore_parked_flutter_web "$ws" "$park"; then
+      PASTOR_FLUTTER_BUILD_PRESERVED=1
+      export PASTOR_FLUTTER_BUILD_PRESERVED
+      _pastor_git_log "Restored Flutter web build (HEAD unchanged)"
+    else
+      _pastor_discard_parked_flutter_web "$park"
+    fi
   fi
 
   after_sha="$(git -C "$ws" rev-parse HEAD 2>/dev/null || true)"
