@@ -40,6 +40,10 @@ if grep -q 'CHANNEL=master' "$ROOT/deploy_update.sh"; then
 fi
 grep -q 'pastor_sync_git_channel' "$ROOT/deploy_update.sh" || fail "deploy_update.sh must sync via helper"
 grep -q 'pastor_sync_git_channel' "$ROOT/onboot.sh" || fail "onboot.sh must sync git before start"
+grep -q 'PASTOR_PRESERVE_FLUTTER_BUILD=1' "$ROOT/onboot.sh" \
+  || fail "onboot.sh must keep a same-SHA Flutter rebuild"
+grep -q 'PASTOR_FLUTTER_BUILD_PRESERVED' "$ROOT/onboot.sh" \
+  || fail "onboot.sh must rebuild the dev site when the Flutter bundle was reset"
 grep -q 'checkout -f -B' "$ROOT/scripts/sync_git_channel.sh" || fail "sync helper must force-checkout the fetched channel"
 grep -q 'reset --hard FETCH_HEAD' "$ROOT/scripts/sync_git_channel.sh" || fail "sync helper must hard-reset to fetched channel"
 grep -q 'DEPLOYED_SHA' "$ROOT/scripts/sync_git_channel.sh" || fail "sync helper must write DEPLOYED_SHA"
@@ -102,6 +106,48 @@ pastor_git_tracked_dirty "$CLONE" && fail "flutter web rebuild should not count 
 printf 'overlay\n' > "$CLONE/file"
 pastor_git_tracked_dirty "$CLONE" || fail "tracked overlay should still count as dirty"
 rm -rf "$UPSTREAM" "$CLONE"
+
+# Same-SHA boot sync must keep the Flutter bundle deploy_update compiled.
+# A plain sync (deploy_update) still discards it and rebuilds afterwards.
+PRESERVE_UP="$(mktemp -d)"
+PRESERVE_CLONE="$(mktemp -d)"
+git init -q -b development "$PRESERVE_UP"
+git -C "$PRESERVE_UP" config user.email test@example.com
+git -C "$PRESERVE_UP" config user.name test
+mkdir -p "$PRESERVE_UP/frontend/build/web"
+printf 'committed\n' > "$PRESERVE_UP/frontend/build/web/index.html"
+printf 'src\n' > "$PRESERVE_UP/file"
+git -C "$PRESERVE_UP" add frontend/build/web/index.html file
+git -C "$PRESERVE_UP" commit -qm pinned
+git clone -q "$PRESERVE_UP" "$PRESERVE_CLONE"
+printf 'development\n' > "$PRESERVE_CLONE/.git_channel"
+printf 'rebuilt\n' > "$PRESERVE_CLONE/frontend/build/web/index.html"
+PASTOR_PRESERVE_FLUTTER_BUILD=1
+pastor_sync_git_channel "$PRESERVE_CLONE" development
+[[ "$(cat "$PRESERVE_CLONE/frontend/build/web/index.html")" == "rebuilt" ]] \
+  || fail "same-SHA sync should keep the local Flutter rebuild"
+[[ "${PASTOR_FLUTTER_BUILD_PRESERVED}" == "1" ]] || fail "preserve flag should be set"
+[[ "${PASTOR_GIT_CHANGED}" == "0" ]] || fail "flutter-only rebuild must not force a deploy"
+printf 'rebuilt-again\n' > "$PRESERVE_CLONE/frontend/build/web/index.html"
+PASTOR_PRESERVE_FLUTTER_BUILD=0
+pastor_sync_git_channel "$PRESERVE_CLONE" development
+[[ "$(cat "$PRESERVE_CLONE/frontend/build/web/index.html")" == "committed" ]] \
+  || fail "sync without preserve must restore the committed Flutter bundle"
+[[ "${PASTOR_FLUTTER_BUILD_PRESERVED}" == "0" ]] || fail "preserve flag must stay unset"
+printf 'rebuilt\n' > "$PRESERVE_CLONE/frontend/build/web/index.html"
+printf 'newer\n' > "$PRESERVE_UP/file"
+git -C "$PRESERVE_UP" add file
+git -C "$PRESERVE_UP" commit -qm newer
+PASTOR_PRESERVE_FLUTTER_BUILD=1
+pastor_sync_git_channel "$PRESERVE_CLONE" development
+[[ "$(git -C "$PRESERVE_CLONE" log -1 --pretty=%s)" == "newer" ]] \
+  || fail "new upstream commit should still move HEAD"
+[[ "$(cat "$PRESERVE_CLONE/frontend/build/web/index.html")" == "committed" ]] \
+  || fail "HEAD move must discard the parked Flutter rebuild"
+[[ "${PASTOR_GIT_CHANGED}" == "1" ]] || fail "HEAD move must set PASTOR_GIT_CHANGED"
+[[ "${PASTOR_FLUTTER_BUILD_PRESERVED}" == "0" ]] || fail "HEAD move must not mark the Flutter build preserved"
+unset PASTOR_PRESERVE_FLUTTER_BUILD
+rm -rf "$PRESERVE_UP" "$PRESERVE_CLONE"
 grep -q 'git_channel.sh' "$ROOT/install.sh" || fail "install.sh must copy git_channel.sh"
 grep -q 'git_safe_directory.sh' "$ROOT/install.sh" || fail "install.sh must copy git_safe_directory.sh"
 grep -q 'promote_to_master.sh' "$ROOT/install.sh" || fail "install.sh must copy promote_to_master.sh"

@@ -88,9 +88,13 @@ source "$WS/scripts/sync_git_channel.sh" 2>/dev/null \
   || true
 
 GIT_CHANGED=0
+CHANNEL=""
 if declare -F pastor_sync_git_channel >/dev/null 2>&1; then
   CHANNEL="$(pastor_resolve_git_channel "$WS")"
   pastor_write_git_channel "$WS" "$CHANNEL" || true
+  # Keep a same-SHA Flutter rebuild. Reset would otherwise restore the
+  # committed frontend/build/web, and start.sh serves that bundle as-is.
+  PASTOR_PRESERVE_FLUTTER_BUILD=1
   if pastor_sync_git_channel "$WS" "$CHANNEL"; then
     GIT_CHANGED="${PASTOR_GIT_CHANGED:-0}"
   else
@@ -106,9 +110,24 @@ fi
 # start.sh, which would exec sleep infinity and skip its health checks.
 STARTED=0
 set +e
-if [[ "$GIT_CHANGED" == "1" && -x "$WS/deploy_update.sh" ]]; then
-  log "Checkout moved or discarded overlays — running deploy_update.sh"
-  PASTOR_SKIP_GIT_SYNC=1 PASTOR_KEEP_ALIVE=0 bash "$WS/deploy_update.sh"
+# development's committed Flutter bundle lags the Dart sources (the last
+# pin is what git reset checks out). start.sh never rebuilds it, so a dev
+# boot that did not keep the last deploy_update output has to run that
+# script or the test site stays on the old bundle.
+NEED_DEPLOY=0
+DEPLOY_REASON=""
+if [[ "$GIT_CHANGED" == "1" ]]; then
+  NEED_DEPLOY=1
+  DEPLOY_REASON="Checkout moved or discarded overlays"
+elif [[ "${CHANNEL:-}" == "development" && "${PASTOR_FLUTTER_BUILD_PRESERVED:-0}" != "1" ]]; then
+  NEED_DEPLOY=1
+  DEPLOY_REASON="Development Flutter bundle is the committed snapshot"
+fi
+if [[ "$NEED_DEPLOY" == "1" && -x "$WS/deploy_update.sh" ]]; then
+  log "$DEPLOY_REASON — running deploy_update.sh"
+  # Do not preserve across this sync: deploy_update rebuilds Flutter itself.
+  PASTOR_SKIP_GIT_SYNC=1 PASTOR_KEEP_ALIVE=0 PASTOR_PRESERVE_FLUTTER_BUILD=0 \
+    bash "$WS/deploy_update.sh"
   if [[ $? -eq 0 ]]; then
     STARTED=1
   else
