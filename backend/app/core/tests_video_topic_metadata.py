@@ -6,12 +6,10 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
-from core.chat_retrieval import apply_retrieval_threshold, sources_cited_in_answer
 from core.transcript_normalize import TranscriptSegment
 from core.video_ingestion import build_video_chunks_with_topic_metadata, ingest_video_files
 from core.video_topic_metadata import (
@@ -95,48 +93,6 @@ class VideoTopicMetadataTests(TestCase):
         self.assertEqual(per_chunk[0]["chunk_kind"], "video_topic_overview")
         self.assertIn("Topics:", chunks[0])
         self.assertTrue(any("James" in chunk or "faith" in chunk.lower() for chunk in chunks))
-
-
-class RetrievalThresholdAndCitationTests(TestCase):
-    def test_threshold_0_8_keeps_only_strong_hits(self):
-        docs = [(SimpleNamespace(id=i), score) for i, score in enumerate([0.91, 0.85, 0.72, 0.6])]
-        kept = apply_retrieval_threshold(docs, threshold=0.8, retrieval_k=24)
-        self.assertEqual([s for _d, s in kept], [0.91, 0.85])
-
-    def test_sources_cited_filters_unused_video(self):
-        used = SimpleNamespace(
-            page_content="x",
-            metadata={
-                "title": "Elders Charge",
-                "topic_title": "Elders Charge",
-                "content_type": "document",
-            },
-        )
-        unused = SimpleNamespace(
-            page_content="y",
-            metadata={
-                "title": "May 23",
-                "topic_title": "Weather Talk",
-                "timestamp": "10:45–12:43",
-                "content_type": "video_transcript",
-            },
-        )
-
-        def label(doc):
-            meta = doc.metadata
-            name = meta.get("topic_title") or meta.get("title")
-            ts = meta.get("timestamp")
-            if ts:
-                return f"{name} [{ts}]"
-            return name
-
-        answer = (
-            'As Pastor Don teaches from Elders Charge, "elders must be above reproach." '
-            "Titus 1:6 guides the church."
-        )
-        cited = sources_cited_in_answer([used, unused], answer, label)
-        self.assertEqual(cited, ["Elders Charge"])
-        self.assertFalse(any("May 23" in item or "Weather" in item for item in cited))
 
 
 class VideoIngestTopicMetadataTests(TestCase):

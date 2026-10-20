@@ -55,42 +55,12 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         response = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
-    def test_warmup_route_requires_premium_access(self):
-        from unittest.mock import patch
-
-        from django.contrib.auth.models import User
-        from rest_framework.authtoken.models import Token
-
-        with patch("core.vllm_warmup.warmup_vllm_worker", return_value={
-            "ok": True,
-            "warming": True,
-            "skipped": False,
-        }) as mock_warmup:
-            anon = self.client.post(
-                "/api/chat/warmup/",
-                data={},
-                content_type="application/json",
-            )
-            self.assertIn(anon.status_code, (401, 403))
-            mock_warmup.assert_not_called()
-
-            premium = User.objects.create_user(
-                username="premium@church.org",
-                email="premium@church.org",
-                password="PremiumPass123!",
-            )
-            premium.profile.subscription_status = "active"
-            premium.profile.save(update_fields=["subscription_status"])
-            token = Token.objects.create(user=premium).key
-            response = self.client.post(
-                "/api/chat/warmup/",
-                data={},
-                content_type="application/json",
-                HTTP_AUTHORIZATION=f"Token {token}",
-            )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["warming"])
-        mock_warmup.assert_called_once()
+    def test_chat_generation_routes_are_removed(self):
+        for path in ("/api/chat/", "/api/chat/warmup/", "/api/translate/", "/chat/"):
+            response = self.client.post(path, data={}, content_type="application/json")
+            self.assertEqual(response.status_code, 404, path)
+            if path.startswith("/api/"):
+                self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
     def test_home_does_not_have_noindex_header(self):
         response = self.client.get("/")

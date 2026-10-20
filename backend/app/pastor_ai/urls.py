@@ -48,13 +48,10 @@ from api.views import (
 from core.chat_history_views import ChatHistoryAPIView
 from core.site_banner import SiteBannerAPIView
 from core.views import (
-    ChatAPIView,
-    ChatWarmupAPIView,
     IngestedDocumentsAPIView,
     IngestedDocumentFileAPIView,
     SermonPdfByNameAPIView,
     PrayerRequestAPIView,
-    TranslateAPIView,
     ResponseReportAPIView,
 )
 from .frontend import serve_frontend, serve_vimeo_embed
@@ -111,11 +108,8 @@ urlpatterns = [
     path('api/billing/webhook/', StripeWebhookView.as_view()),
     path("subscription-terms/", subscription_terms_view, name="subscription_terms"),
 
-    # Chat + prayer + ingested docs
-    path('api/chat/warmup/', ChatWarmupAPIView.as_view(), name='chat_warmup_api'),
+    # Prayer, library, and saved chat history. Reply generation is not on this branch.
     path('api/chat/history/', ChatHistoryAPIView.as_view(), name='chat_history_api'),
-    path('api/chat/', ChatAPIView.as_view(), name='chat_api'),
-    path('api/translate/', TranslateAPIView.as_view(), name='translate_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
     path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view(), name='prayer_request_detail_api'),
     path('api/response-reports/', ResponseReportAPIView.as_view(), name='response_reports_api'),
@@ -133,9 +127,6 @@ urlpatterns = [
     path("vimeo_embed.html", serve_vimeo_embed, name="vimeo_embed"),
     # Backward-compatible route for existing Flutter builds that open /sermons/<name>.pdf directly.
     path('sermons/<str:sermon_name>.pdf', SermonPdfByNameAPIView.as_view(), name='sermon_pdf_by_name'),
-    # Legacy alias: older Flutter builds POST to /chat/; route here so CSRF does not hit serve_frontend.
-    path('chat/', ChatAPIView.as_view(), name='chat_api_legacy'),
-
     # Serve Flutter web build and client-side routes from /
     path("", serve_frontend, name="home"),
     re_path(
