@@ -119,9 +119,9 @@ DEPLOY_REASON=""
 if [[ "$GIT_CHANGED" == "1" ]]; then
   NEED_DEPLOY=1
   DEPLOY_REASON="Checkout moved or discarded overlays"
-elif [[ "${CHANNEL:-}" == "development" && "${PASTOR_FLUTTER_BUILD_PRESERVED:-0}" != "1" ]]; then
+elif [[ ( "${CHANNEL:-}" == "development" || "${CHANNEL:-}" == "response_testing" ) && "${PASTOR_FLUTTER_BUILD_PRESERVED:-0}" != "1" ]]; then
   NEED_DEPLOY=1
-  DEPLOY_REASON="Development Flutter bundle is the committed snapshot"
+  DEPLOY_REASON="Flutter bundle is the committed snapshot"
 fi
 if [[ "$NEED_DEPLOY" == "1" && -x "$WS/deploy_update.sh" ]]; then
   log "$DEPLOY_REASON — running deploy_update.sh"

@@ -13,6 +13,7 @@ These are two different GitHub branches. All new work goes on **`development`**.
 | Branch | Use |
 |--------|-----|
 | `development` | All new work. PRs, Cursor agents, and `christian-ai-dev` (see [RUNPOD.md](RUNPOD.md) for the current pod id and public URL) |
+| `response_testing` | Reply-pipeline experiments. `deploy_update.sh` stays on this branch once the checkout is `response_testing` |
 | `master` | Production pin. Promote only after `development` is tested on the dev pod |
 
 ```bash
@@ -32,7 +33,7 @@ bash scripts/arm_prod_deploy.sh
 
 `development` is a copy of production plus new work. The 1:00am cron on the GPU pod runs `scripts/prod_scheduled_deploy.sh` only when that arm file names the current `master` commit. It builds Flutter to a staging directory, migrates, restarts, and returns to the previous commit if health checks fail.
 
-On a RunPod host, `deploy_update.sh` fetches and hard-resets to the pod's `.git_channel` (`development` on christian-ai-dev, `master` on production). Local pod edits are discarded. A checkout with no channel file stays on `master`. `PASTOR_GIT_BRANCH` still overrides the file. `onboot.sh` uses the same rule on every pod start. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch. Dev pods keep test secrets in `tokens.test.env` and a promote-only GitHub token in `tokens.promote.env`.
+On a RunPod host, `deploy_update.sh` fetches and hard-resets to the pod's `.git_channel` (`development` on christian-ai-dev, `master` on production, `response_testing` on the reply-test pod). Local pod edits are discarded. A checkout with no channel file stays on `master`. A checkout whose current branch is `response_testing` keeps that branch even when the copied channel file still says `development`. `PASTOR_GIT_BRANCH` still overrides the file. `onboot.sh` uses the same rule on every pod start. `GET /api/health/` reports `git_sha`, `origin_sha`, `dirty`, and `in_sync`. Set `PASTOR_SKIP_GIT_SYNC=1` only as an emergency escape hatch. Dev pods keep test secrets in `tokens.test.env` and a promote-only GitHub token in `tokens.promote.env`.
 
 ## One-command install (RunPod / Ubuntu GPU host)
 

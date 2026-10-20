@@ -390,9 +390,13 @@ elif [[ -f "$CONFIG_ENV" ]]; then
   fi
 fi
 
-# Development pods rewrite live keys to test values before Django listens.
-if declare -F pastor_git_channel >/dev/null 2>&1 && [[ "$(pastor_git_channel "$WS")" == "development" ]]; then
-  bash "$SCRIPT_DIR/scripts/isolate_dev_env.sh"
+# Development and reply-test pods rewrite live keys to test values before
+# Django listens. Production (master) does not.
+if declare -F pastor_git_channel >/dev/null 2>&1; then
+  _pastor_channel="$(pastor_git_channel "$WS")"
+  if [[ "$_pastor_channel" == "development" || "$_pastor_channel" == "response_testing" ]]; then
+    bash "$SCRIPT_DIR/scripts/isolate_dev_env.sh"
+  fi
 fi
 
 # Django

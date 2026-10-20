@@ -30,6 +30,11 @@ unset PASTOR_GIT_BRANCH
 echo bogus > "$DIR/.git_channel"
 [[ "$(pastor_git_channel "$DIR")" == "development" ]] || fail "unknown channel should fall back to development"
 
+echo response_testing > "$DIR/.git_channel"
+[[ "$(pastor_git_channel "$DIR")" == "response_testing" ]] || fail "response_testing channel should stay response_testing"
+pastor_write_git_channel "$DIR" response_testing
+[[ "$(tr -d '[:space:]' < "$DIR/.git_channel")" == "response_testing" ]] || fail "write should persist response_testing"
+
 pastor_write_git_channel "$DIR" latest
 [[ "$(cat "$DIR/.git_channel")" == "development" ]] || fail "write should persist canonical development"
 
@@ -73,6 +78,21 @@ printf 'master\n' > "$DIR/.git_channel"
 PASTOR_GIT_BRANCH=development
 [[ "$(pastor_resolve_git_channel "$DIR")" == "development" ]] || fail "PASTOR_GIT_BRANCH should override .git_channel at resolve"
 unset PASTOR_GIT_BRANCH
+STICKY="$(mktemp -d)"
+git init -q -b response_testing "$STICKY"
+git -C "$STICKY" config user.email test@example.com
+git -C "$STICKY" config user.name test
+printf 'x\n' > "$STICKY/file"
+git -C "$STICKY" add file
+git -C "$STICKY" commit -qm init
+printf 'development\n' > "$STICKY/.git_channel"
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "response_testing" ]] \
+  || fail "response_testing checkout should ignore a copied development channel file"
+PASTOR_GIT_BRANCH=development
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "development" ]] \
+  || fail "PASTOR_GIT_BRANCH should still force development off response_testing"
+unset PASTOR_GIT_BRANCH
+rm -rf "$STICKY"
 UPSTREAM="$(mktemp -d)"
 CLONE="$(mktemp -d)"
 git init -q -b master "$UPSTREAM"
