@@ -29,8 +29,8 @@ pastor_load_env_file "$CONFIG_ENV"
 # Same channel rule as onboot: PASTOR_GIT_BRANCH / REPO_BRANCH, else
 # .git_channel, else master. christian-ai-dev keeps .git_channel=development,
 # so `bash deploy_update.sh` stays on development. A checkout already on
-# response_testing stays there even if the copied channel file says
-# development. A pod with no channel file stays on master.
+# response_testing stays there even if the copied channel file or
+# PASTOR_GIT_BRANCH says development. A pod with no channel file stays on master.
 # shellcheck source=/dev/null
 source "$WS/scripts/git_channel.sh" 2>/dev/null || source "$(dirname "$0")/scripts/git_channel.sh"
 # shellcheck source=/dev/null

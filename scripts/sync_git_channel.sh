@@ -70,6 +70,17 @@ pastor_flutter_web_dirty() {
 pastor_resolve_git_channel() {
   local ws="${1:-${WS:-${WORKSPACE_ROOT:-/workspace/pastor-ai}}}"
   local channel head
+  if declare -F pastor_allow_git_on_runpod_volume >/dev/null 2>&1; then
+    pastor_allow_git_on_runpod_volume "$ws"
+  fi
+  head="$(git -C "$ws" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  # The reply-test volume was copied from development, including
+  # .git_channel and any PASTOR_GIT_BRANCH / REPO_BRANCH value. Those must
+  # not pull development back while this checkout is response_testing.
+  if [[ "$head" == "response_testing" ]]; then
+    printf '%s\n' "response_testing"
+    return
+  fi
   if [[ -n "${PASTOR_GIT_BRANCH:-}${REPO_BRANCH:-}" ]]; then
     pastor_git_channel "$ws"
     return
@@ -78,15 +89,6 @@ pastor_resolve_git_channel() {
   else
     # Missing channel file: production pin. Dev pods persist .git_channel.
     channel="master"
-  fi
-  # The reply-test volume was copied from development, so its channel file
-  # still says development. Once this checkout is response_testing, keep
-  # fetching that branch instead of restoring the dev reply pipeline.
-  if [[ "$channel" == "development" ]]; then
-    head="$(git -C "$ws" branch --show-current 2>/dev/null || true)"
-    if [[ "$head" == "response_testing" ]]; then
-      channel="response_testing"
-    fi
   fi
   printf '%s\n' "$channel"
 }

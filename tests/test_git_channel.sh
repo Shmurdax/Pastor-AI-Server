@@ -89,9 +89,13 @@ printf 'development\n' > "$STICKY/.git_channel"
 [[ "$(pastor_resolve_git_channel "$STICKY")" == "response_testing" ]] \
   || fail "response_testing checkout should ignore a copied development channel file"
 PASTOR_GIT_BRANCH=development
+REPO_BRANCH=development
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "response_testing" ]] \
+  || fail "copied development env must not pull response_testing off its branch"
+unset PASTOR_GIT_BRANCH REPO_BRANCH
+git -C "$STICKY" checkout -q -b development
 [[ "$(pastor_resolve_git_channel "$STICKY")" == "development" ]] \
-  || fail "PASTOR_GIT_BRANCH should still force development off response_testing"
-unset PASTOR_GIT_BRANCH
+  || fail "development checkout should still follow its channel file"
 rm -rf "$STICKY"
 UPSTREAM="$(mktemp -d)"
 CLONE="$(mktemp -d)"
