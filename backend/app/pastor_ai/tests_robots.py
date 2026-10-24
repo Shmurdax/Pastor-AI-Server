@@ -55,8 +55,12 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         response = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(response["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
 
-    def test_chat_generation_routes_are_removed(self):
-        for path in ("/api/chat/", "/api/chat/warmup/", "/api/translate/", "/chat/"):
+    def test_legacy_generation_routes_stay_removed(self):
+        # /api/chat/ is the basic retrieval stream and requires a Premium token.
+        chat = self.client.post("/api/chat/", data={}, content_type="application/json")
+        self.assertEqual(chat.status_code, 401)
+        self.assertEqual(chat["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
+        for path in ("/api/chat/warmup/", "/api/translate/", "/chat/"):
             response = self.client.post(path, data={}, content_type="application/json")
             self.assertEqual(response.status_code, 404, path)
             if path.startswith("/api/"):

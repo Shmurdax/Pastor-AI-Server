@@ -45,6 +45,7 @@ from api.views import (
     PrayerRequestDetailAPI,
     ResponseReportDetailAPI,
 )
+from core.basic_chat_views import BasicChatAPIView
 from core.chat_history_views import ChatHistoryAPIView
 from core.site_banner import SiteBannerAPIView
 from core.views import (
@@ -108,7 +109,8 @@ urlpatterns = [
     path('api/billing/webhook/', StripeWebhookView.as_view()),
     path("subscription-terms/", subscription_terms_view, name="subscription_terms"),
 
-    # Prayer, library, and saved chat history. Reply generation is not on this branch.
+    # Basic retrieval chat. History stays a separate authenticated backup.
+    path('api/chat/', BasicChatAPIView.as_view(), name='basic_chat_api'),
     path('api/chat/history/', ChatHistoryAPIView.as_view(), name='chat_history_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
     path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view(), name='prayer_request_detail_api'),
