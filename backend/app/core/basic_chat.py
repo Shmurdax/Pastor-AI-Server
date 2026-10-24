@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Iterable, Iterator
@@ -16,6 +17,21 @@ from typing import Iterable, Iterator
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 6
+HYDE_CANDIDATES = 32
+SERMON_CHUNK_KIND = "sermon_quote"
+_LEXICAL_BOOST = 0.12
+_QUERY_TERM_STOP = {
+    "about",
+    "could",
+    "should",
+    "there",
+    "their",
+    "these",
+    "those",
+    "which",
+    "where",
+    "would",
+}
 PASSAGE_PROMPT_CHARS = 1200
 HYDE_MAX_WORDS = 120
 _SSE_FLUSH_PAD = " " * 4096
@@ -233,7 +249,10 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     embeddings = get_embeddings()
     client = QdrantClient(url=_env("QDRANT_URL", "http://127.0.0.1:6333"), timeout=30)
     collection = _env("QDRANT_COLLECTION", "sermon_brain")
-    query_hits = _search_with_vector(client, collection, embeddings.embed_query(query), top_k)
+    candidate_k = max(top_k, HYDE_CANDIDATES)
+    query_hits = _search_with_vector(
+        client, collection, embeddings.embed_query(query), candidate_k
+    )
     hyde_text = ""
     hyde_hits: list[dict] = []
     if hyde_enabled():
@@ -248,11 +267,14 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
                     client,
                     collection,
                     embeddings.embed_query(hyde_text),
-                    top_k,
+                    candidate_k,
                 )
             except Exception:
                 logger.warning("HyDE search failed; using the question search only", exc_info=True)
                 hyde_hits = []
+    terms = _query_terms(query)
+    query_hits = _promote_lexical(query_hits, terms)
+    hyde_hits = _promote_lexical(hyde_hits, terms)
     passages = _merge_ranked(hyde_hits, query_hits, top_k)
     logger.info(
         "Retrieval titles query=%s hyde=%s merged=%s",
@@ -272,11 +294,21 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     return passages
 
 
+def _sermon_filter():
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+    return Filter(
+        must=[FieldCondition(key="chunk_kind", match=MatchValue(value=SERMON_CHUNK_KIND))]
+    )
+
+
 def _search_qdrant(client, collection: str, vector, top_k: int):
+    sermon_filter = _sermon_filter()
     if hasattr(client, "query_points"):
         result = client.query_points(
             collection_name=collection,
             query=vector,
+            query_filter=sermon_filter,
             limit=top_k,
             with_payload=True,
         )
@@ -285,10 +317,42 @@ def _search_qdrant(client, collection: str, vector, top_k: int):
         client.search(
             collection_name=collection,
             query_vector=vector,
+            query_filter=sermon_filter,
             limit=top_k,
             with_payload=True,
         )
     )
+
+
+def _query_terms(query: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9']{6,}", (query or "").lower())
+        if word not in _QUERY_TERM_STOP
+    }
+
+
+def _lexical_boost(text: str, terms: set[str]) -> float:
+    if not terms:
+        return 0.0
+    lowered = (text or "").lower()
+    if any(term in lowered for term in terms):
+        return _LEXICAL_BOOST
+    return 0.0
+
+
+def _promote_lexical(passages: list[dict], terms: set[str]) -> list[dict]:
+    """Raise sermons that use the question's own words.
+
+    Vector neighbors often miss the note that actually says the term.
+    Scores here come from a single query vector, so they can be compared.
+    """
+    decorated = []
+    for index, passage in enumerate(passages):
+        score = float(passage.get("score") or 0.0) + _lexical_boost(passage.get("text") or "", terms)
+        decorated.append((score, -index, passage))
+    decorated.sort(reverse=True)
+    return [passage for _score, _index, passage in decorated]
 
 
 def _truncate_for_prompt(text: str) -> str:

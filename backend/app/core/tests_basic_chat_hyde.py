@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from core.basic_chat import _prompt, retrieve_passages
+from core.basic_chat import _promote_lexical, _prompt, _search_qdrant, retrieve_passages
 
 HYDE_TEXT = (
     "UNIQUE_HYDE_TRINITY_MARKER The Father the Son and the Holy Spirit "
@@ -124,6 +124,38 @@ class HyDERetrievalTests(SimpleTestCase):
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(result["passages"][0]["title"], "Advent")
+
+    def test_question_term_promotes_the_sermon_that_uses_it(self):
+        promoted = _promote_lexical(
+            [
+                {
+                    "title": "The Fear Not's of Christmas",
+                    "text": "Do not be afraid. The child is born.",
+                    "score": 0.66,
+                },
+                {
+                    "title": "Why Receive the Holy Spirit",
+                    "text": "The Holy Spirit is the third person of the Holy Trinity.",
+                    "score": 0.56,
+                },
+            ],
+            {"trinity"},
+        )
+        self.assertEqual(promoted[0]["title"], "Why Receive the Holy Spirit")
+
+    def test_search_keeps_sermon_quotes_only(self):
+        seen = {}
+
+        class Client:
+            def query_points(self, **kwargs):
+                seen.update(kwargs)
+                return SimpleNamespace(points=[])
+
+        _search_qdrant(Client(), "sermon_brain", [0.1], 4)
+        sermon_filter = seen["query_filter"]
+        self.assertEqual(sermon_filter.must[0].key, "chunk_kind")
+        self.assertEqual(sermon_filter.must[0].match.value, "sermon_quote")
+        self.assertEqual(seen["limit"], 4)
 
     def test_prompt_truncates_oversized_excerpts(self):
         huge = ("Nextsteps doctrine " * 400).strip()
