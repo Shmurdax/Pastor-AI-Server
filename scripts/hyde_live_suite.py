@@ -121,6 +121,13 @@ def _run_case(case: dict, *, hyde_on: bool) -> dict:
 
 
 def main() -> int:
+    only = {
+        part.strip()
+        for arg in sys.argv[1:]
+        if arg.startswith("--only=")
+        for part in arg.split("=", 1)[1].split(",")
+        if part.strip()
+    }
     app_dir = Path(__file__).resolve().parents[1] / "backend" / "app"
     if str(app_dir) not in sys.path:
         sys.path.insert(0, str(app_dir))
@@ -137,7 +144,11 @@ def main() -> int:
     django.setup()
 
     rows = []
-    for case in CASES:
+    cases = [case for case in CASES if not only or case["id"] in only]
+    if not cases:
+        print(f"No cases matched --only={sorted(only)}")
+        return 2
+    for case in cases:
         off = _run_case(case, hyde_on=False)
         on = _run_case(case, hyde_on=True)
         improved = on["title_hit"] and (
