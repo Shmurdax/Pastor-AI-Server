@@ -147,7 +147,7 @@ def generate_hyde_document(query: str) -> str:
         "max_tokens": 180,
         "stream": False,
     }
-    timeout = float(_env("CHAT_HYDE_TIMEOUT_S", "60") or "60")
+    timeout = float(_env("CHAT_HYDE_TIMEOUT_S", "180") or "180")
     with _post_llm(body, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8", errors="replace"))
     return _clip_words(_message_text(payload))

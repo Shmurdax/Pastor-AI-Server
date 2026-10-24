@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
+import queue
+import threading
 
 from django.db import close_old_connections
 from django.http import StreamingHttpResponse
@@ -98,16 +101,76 @@ def _json_reply(*, query: str, session_id: str, user):
     )
 
 
+def _keepalive_seconds() -> float:
+    raw = (os.getenv("CHAT_KEEPALIVE_S") or "5").strip()
+    try:
+        return max(0.05, float(raw))
+    except ValueError:
+        return 5.0
+
+
+def _call_with_keepalives(fn):
+    """Run fn off the response thread and yield SSE comments until it returns."""
+    done = threading.Event()
+    box = {}
+
+    def run():
+        try:
+            close_old_connections()
+            box["value"] = fn()
+        except Exception as exc:
+            box["error"] = exc
+        finally:
+            close_old_connections()
+            done.set()
+
+    threading.Thread(target=run, daemon=True).start()
+    while not done.wait(_keepalive_seconds()):
+        yield sse_keepalive()
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
+def _token_stream(query: str, passages):
+    """Yield token strings. Yield None when the model has not spoken yet."""
+    events = queue.Queue()
+
+    def run():
+        try:
+            for text in stream_llm_tokens(query, passages):
+                events.put(("tok", text))
+            events.put(("end", None))
+        except Exception as exc:
+            events.put(("err", exc))
+
+    threading.Thread(target=run, daemon=True).start()
+    while True:
+        try:
+            kind, payload = events.get(timeout=_keepalive_seconds())
+        except queue.Empty:
+            yield None
+            continue
+        if kind == "err":
+            raise payload
+        if kind == "end":
+            return
+        yield payload
+
+
 def _stream_events(*, query: str, session_id: str, user):
     yield sse_keepalive()
     yield sse_pack({"type": "status", "phase": "started"})
     yield sse_pack({"type": "status", "phase": "retrieving"})
     try:
         close_old_connections()
-        passages = retrieve_passages(query)
+        passages = yield from _call_with_keepalives(lambda: retrieve_passages(query))
         yield sse_keepalive()
         parts = []
-        for text in stream_llm_tokens(query, passages):
+        for text in _token_stream(query, passages):
+            if text is None:
+                yield sse_keepalive()
+                continue
             parts.append(text)
             yield sse_pack({"type": "delta", "text": text})
         answer = "".join(parts).strip()

@@ -1,3 +1,5 @@
+import os
+import time
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -99,3 +101,27 @@ class BasicChatAPITests(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["answer"], "Hello.")
         self.assertEqual(res.data["sources"], ["Faith That Moves"])
+
+    def test_sse_keepalives_while_retrieval_is_slow(self):
+        self._auth(self.premium)
+
+        def slow_retrieve(query, **kwargs):
+            time.sleep(0.3)
+            return list(self.passages)
+
+        with patch.dict(os.environ, {"CHAT_KEEPALIVE_S": "0.05"}), patch(
+            "core.basic_chat_views.retrieve_passages", slow_retrieve
+        ), patch(
+            "core.basic_chat_views.stream_llm_tokens",
+            return_value=iter(["Hello."]),
+        ):
+            res = self.client.post(
+                "/api/chat/",
+                {"query": "What is faith?", "stream": True},
+                format="json",
+                HTTP_ACCEPT="text/event-stream",
+            )
+            body = b"".join(res.streaming_content).decode()
+        self.assertEqual(res.status_code, 200)
+        self.assertGreaterEqual(body.count(": keepalive"), 2)
+        self.assertIn("Hello.", body)
