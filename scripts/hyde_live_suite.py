@@ -117,7 +117,17 @@ def _run_case(case: dict, *, hyde_on: bool) -> dict:
 
 
 def main() -> int:
+    app_dir = Path(__file__).resolve().parents[1] / "backend" / "app"
+    if str(app_dir) not in sys.path:
+        sys.path.insert(0, str(app_dir))
+    os.chdir(app_dir)
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pastor_ai.settings")
+    try:
+        from pastor_ai.workspace_env import load_workspace_env
+
+        load_workspace_env()
+    except Exception:
+        pass
     import django
 
     django.setup()
