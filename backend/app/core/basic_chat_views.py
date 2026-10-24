@@ -13,6 +13,16 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+
+class EventStreamRenderer(JSONRenderer):
+    """Lets clients send Accept: text/event-stream without a 406.
+
+    Error responses that happen before the stream still render as JSON.
+    """
+
+    media_type = "text/event-stream"
+    format = "event-stream"
+
 from api.permissions import HasPremiumAccess
 
 from .basic_chat import (
@@ -40,7 +50,7 @@ class BasicChatAPIView(APIView):
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated, HasPremiumAccess]
-    renderer_classes = [JSONRenderer]
+    renderer_classes = [JSONRenderer, EventStreamRenderer]
 
     def get(self, request):
         return Response(status=status.HTTP_404_NOT_FOUND)

@@ -67,7 +67,7 @@ class BasicChatAPITests(APITestCase):
                 "/api/chat/",
                 {"query": "What is faith?", "session_id": "s1", "stream": True},
                 format="json",
-                HTTP_ACCEPT="text/event-stream, application/json",
+                HTTP_ACCEPT="text/event-stream",
             )
             self.assertEqual(res.status_code, 200)
             self.assertIn("text/event-stream", res["Content-Type"])
