@@ -101,6 +101,7 @@ def _json_reply(*, query: str, session_id: str, user):
 def _stream_events(*, query: str, session_id: str, user):
     yield sse_keepalive()
     yield sse_pack({"type": "status", "phase": "started"})
+    yield sse_pack({"type": "status", "phase": "retrieving"})
     try:
         close_old_connections()
         passages = retrieve_passages(query)

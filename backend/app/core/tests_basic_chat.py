@@ -72,6 +72,7 @@ class BasicChatAPITests(APITestCase):
             self.assertEqual(res.status_code, 200)
             self.assertIn("text/event-stream", res["Content-Type"])
             body = b"".join(res.streaming_content).decode()
+        self.assertIn('"phase": "retrieving"', body)
         self.assertIn('"type": "delta"', body)
         self.assertIn("Faith ", body)
         self.assertIn("is trust.", body)
