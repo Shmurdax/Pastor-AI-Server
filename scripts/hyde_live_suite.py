@@ -79,8 +79,12 @@ CASES = [
             "Works, Hope, Faith & Patience",
             "Faith Lift",
             "Body Soul Spirit Saving Grace Devo",
+            "Know Your Why",
+            "Facing the Giants of Life",
+            "Kings and Priests Full",
+            "It Is Time for the Cross",
         ],
-        "expect_any_word": ["faith", "works", "hope", "patience"],
+        "expect_any_word": ["faith", "works", "hope", "patience", "justify", "sanctif"],
     },
 ]
 
