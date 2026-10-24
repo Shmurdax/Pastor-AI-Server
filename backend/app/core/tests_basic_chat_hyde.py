@@ -164,3 +164,11 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertIn("…", excerpt)
         self.assertLess(len(excerpt), len(huge))
         self.assertLessEqual(excerpt.find("…"), 1300)
+
+    def test_prompt_keeps_a_late_question_term(self):
+        filler = "waiting for christmas " * 80
+        text = f"{filler}The Holy Spirit is the third person of the Holy Trinity. {filler}"
+        prompt = _prompt("What is the Trinity?", [{"title": "Why Receive the Holy Spirit", "text": text}])
+        excerpt = prompt[1]["content"]
+        self.assertIn("third person of the Holy Trinity", excerpt)
+        self.assertLess(len(excerpt), len(text))

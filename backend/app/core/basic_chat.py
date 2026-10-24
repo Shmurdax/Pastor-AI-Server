@@ -355,15 +355,37 @@ def _promote_lexical(passages: list[dict], terms: set[str]) -> list[dict]:
     return [passage for _score, _index, passage in decorated]
 
 
-def _truncate_for_prompt(text: str) -> str:
+def _prompt_char_limit() -> int:
     raw = _env("CHAT_PASSAGE_CHARS", str(PASSAGE_PROMPT_CHARS)) or str(PASSAGE_PROMPT_CHARS)
     try:
-        limit = max(200, int(raw))
+        return max(200, int(raw))
     except ValueError:
-        limit = PASSAGE_PROMPT_CHARS
+        return PASSAGE_PROMPT_CHARS
+
+
+def _clip_window(text: str, start: int, limit: int) -> str:
+    if start > 0:
+        space = text.rfind(" ", 0, start + 40)
+        if space > 0:
+            start = space + 1
+    clipped = text[start : start + limit].rstrip()
+    if len(text) > start + limit:
+        clipped = clipped.rsplit(" ", 1)[0].rstrip(" ,;:-") or clipped
+    prefix = "…" if start else ""
+    suffix = "…" if start + limit < len(text) else ""
+    return f"{prefix}{clipped}{suffix}"
+
+
+def _truncate_for_prompt(text: str, focus: str = "") -> str:
+    limit = _prompt_char_limit()
     text = (text or "").strip()
     if len(text) <= limit:
         return text
+    lowered = text.lower()
+    positions = [lowered.find(term) for term in _query_terms(focus) if term in lowered]
+    if positions:
+        start = max(0, min(positions) - limit // 3)
+        return _clip_window(text, start, limit)
     clipped = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-")
     if len(clipped) < limit // 2:
         clipped = text[:limit].rstrip()
@@ -373,7 +395,9 @@ def _truncate_for_prompt(text: str) -> str:
 def _prompt(query: str, passages: list[dict]) -> list[dict]:
     blocks = []
     for index, passage in enumerate(passages, start=1):
-        blocks.append(f"[{index}] {passage['title']}\n{_truncate_for_prompt(passage['text'])}")
+        blocks.append(
+            f"[{index}] {passage['title']}\n{_truncate_for_prompt(passage['text'], query)}"
+        )
     context = "\n\n".join(blocks) if blocks else "(no sermon excerpts found)"
     return [
         {
