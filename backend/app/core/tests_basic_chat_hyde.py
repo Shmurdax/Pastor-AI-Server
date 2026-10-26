@@ -318,6 +318,18 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(result["passages"][0]["text"], "meta body")
         self.assertEqual(result["passages"][1]["text"], "page body")
 
+    def test_answer_system_prompt_asks_for_pastoral_teaching(self):
+        prompt = _prompt(
+            "What is faith?",
+            [{"title": "Faith That Moves", "text": "Faith is trust in God."}],
+        )
+        system = prompt[0]["content"]
+        self.assertIn("Pastor Don's AI teaching assistant", system)
+        self.assertIn("2–4 short paragraphs", system)
+        self.assertIn("Do not invent sermon titles", system)
+        self.assertIn("Do not fill gaps with outside theology", system)
+        self.assertNotIn("say that briefly", system.lower())
+
     def test_prompt_truncates_oversized_excerpts(self):
         huge = ("Nextsteps doctrine " * 400).strip()
         prompt = _prompt("What is the Trinity?", [{"title": "Nextsteps 101", "text": huge}])
