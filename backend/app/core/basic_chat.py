@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Iterable, Iterator
@@ -17,6 +18,7 @@ from typing import Iterable, Iterator
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 6
+_LAST_LLM_WARM = 0.0
 HYDE_CANDIDATES = 32
 SERMON_CHUNK_KIND = "sermon_quote"
 _LEXICAL_BOOST = 0.12
@@ -151,6 +153,35 @@ def _post_llm(body: dict, *, timeout: float | None = None):
         raise RuntimeError(f"LLM request failed ({exc.code}): {detail}") from exc
 
 
+def warm_llm(*, force: bool = False) -> bool:
+    """Ping the same chat endpoint HyDE uses so a cold worker can start.
+
+    A successful warm is remembered for ten minutes so a chat that follows
+    the Flutter warmup call does not pay for a second ping.
+    """
+    global _LAST_LLM_WARM
+    now = time.monotonic()
+    cooldown = float(_env("CHAT_WARM_COOLDOWN_S", "600") or "600")
+    if not force and _LAST_LLM_WARM and now - _LAST_LLM_WARM < cooldown:
+        return True
+    body = {
+        "model": vllm_model(),
+        "messages": [{"role": "user", "content": "ok"}],
+        "temperature": 0,
+        "max_tokens": 1,
+        "stream": False,
+    }
+    timeout = float(_env("CHAT_WARM_TIMEOUT_S", "45") or "45")
+    try:
+        with _post_llm(body, timeout=timeout):
+            pass
+    except Exception:
+        logger.warning("LLM warm failed", exc_info=True)
+        return False
+    _LAST_LLM_WARM = time.monotonic()
+    return True
+
+
 def generate_hyde_document(query: str) -> str:
     """Ask Gemma for a short sermon paragraph to embed as the search query."""
     body = {
@@ -167,6 +198,26 @@ def generate_hyde_document(query: str) -> str:
     with _post_llm(body, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8", errors="replace"))
     return _clip_words(_message_text(payload))
+
+
+def generate_hyde_with_retry(query: str) -> tuple[str, str]:
+    """Return (paragraph, status). Status is ok, retried, empty, or failed."""
+    warm_llm()
+    try:
+        text = generate_hyde_document(query)
+    except Exception:
+        logger.warning("HyDE generation failed; retrying once", exc_info=True)
+        text = None
+    if text:
+        return text, "ok"
+    try:
+        text = generate_hyde_document(query)
+    except Exception:
+        logger.warning("HyDE retry failed; using the question search only", exc_info=True)
+        return "", "failed"
+    if text:
+        return text, "retried"
+    return "", "empty"
 
 
 def _hit_score(hit) -> float:
@@ -253,14 +304,12 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     query_hits = _search_with_vector(
         client, collection, embeddings.embed_query(query), candidate_k
     )
+    started = time.monotonic()
     hyde_text = ""
+    hyde_status = "off"
     hyde_hits: list[dict] = []
     if hyde_enabled():
-        try:
-            hyde_text = generate_hyde_document(query)
-        except Exception:
-            logger.warning("HyDE generation failed; using the question search only", exc_info=True)
-            hyde_text = ""
+        hyde_text, hyde_status = generate_hyde_with_retry(query)
         if hyde_text:
             try:
                 hyde_hits = _search_with_vector(
@@ -272,26 +321,92 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
             except Exception:
                 logger.warning("HyDE search failed; using the question search only", exc_info=True)
                 hyde_hits = []
+                hyde_status = "search_failed"
     terms = _query_terms(query)
     query_hits = _promote_lexical(query_hits, terms)
     hyde_hits = _promote_lexical(hyde_hits, terms)
     passages = _merge_ranked(hyde_hits, query_hits, top_k)
-    logger.info(
-        "Retrieval titles query=%s hyde=%s merged=%s",
-        _titles(query_hits),
-        _titles(hyde_hits),
+    term_fallback = False
+    if terms and not _passages_contain_terms(passages, terms):
+        try:
+            fallback_hits = _scroll_term_matches(client, collection, terms, top_k)
+        except Exception:
+            logger.warning("Term fallback failed", exc_info=True)
+            fallback_hits = []
+        if fallback_hits:
+            term_fallback = True
+            passages = _merge_ranked(fallback_hits, passages, top_k)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    logger.warning(
+        "hyde_request status=%s elapsed_ms=%s terms=%s term_fallback=%s "
+        "query_titles=%s hyde_titles=%s merged=%s hyde_text=%s",
+        hyde_status,
+        elapsed_ms,
+        sorted(terms),
+        term_fallback,
+        _titles(query_hits)[:8],
+        _titles(hyde_hits)[:8],
         _titles(passages),
+        (hyde_text or "")[:240],
     )
-    if hyde_text:
-        logger.info("HyDE document: %s", hyde_text)
     if include_debug:
         return {
             "passages": passages,
             "hyde_text": hyde_text,
+            "hyde_status": hyde_status,
+            "term_fallback": term_fallback,
             "query_titles": _titles(query_hits),
             "hyde_titles": _titles(hyde_hits),
         }
     return passages
+
+
+def _passages_contain_terms(passages: list[dict], terms: set[str]) -> bool:
+    if not terms:
+        return True
+    blob = "\n".join((passage.get("text") or "") for passage in passages).lower()
+    return any(term in blob for term in terms)
+
+
+def _scroll_term_matches(client, collection: str, terms: set[str], top_k: int) -> list[dict]:
+    """Find sermon quotes that contain a rare question term.
+
+    Used only after the vector merge missed every rare term. Stops at top_k
+    matches so a miss does not read the whole collection into the prompt.
+    """
+    matches = []
+    offset = None
+    scanned = 0
+    limit = int(_env("CHAT_TERM_SCAN_MAX", "2500") or "2500")
+    while len(matches) < top_k and scanned < limit:
+        points, offset = client.scroll(
+            collection_name=collection,
+            scroll_filter=_sermon_filter(),
+            limit=128,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not points:
+            break
+        scanned += len(points)
+        for point in points:
+            payload = getattr(point, "payload", None) or {}
+            text = _passage_text(payload)
+            if not text or not any(term in text.lower() for term in terms):
+                continue
+            matches.append(
+                {
+                    "title": _passage_title(payload),
+                    "text": text,
+                    "score": 1.0,
+                }
+            )
+            if len(matches) >= top_k:
+                break
+        if offset is None:
+            break
+    return matches
 
 
 def _sermon_filter():

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase, override_settings
 
@@ -60,7 +62,12 @@ class RobotsAndNoindexIntegrationTests(TestCase):
         chat = self.client.post("/api/chat/", data={}, content_type="application/json")
         self.assertEqual(chat.status_code, 401)
         self.assertEqual(chat["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
-        for path in ("/api/chat/warmup/", "/api/translate/", "/chat/"):
+        with patch("core.basic_chat_views.warm_llm", return_value=True):
+            warmup = self.client.post("/api/chat/warmup/", data={}, content_type="application/json")
+        self.assertEqual(warmup.status_code, 200)
+        self.assertTrue(warmup.json()["ok"])
+        self.assertEqual(warmup["X-Robots-Tag"], NOINDEX_HEADER_VALUE)
+        for path in ("/api/translate/", "/chat/"):
             response = self.client.post(path, data={}, content_type="application/json")
             self.assertEqual(response.status_code, 404, path)
             if path.startswith("/api/"):

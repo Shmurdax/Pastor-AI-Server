@@ -11,7 +11,7 @@ from django.db import close_old_connections
 from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -35,6 +35,7 @@ from .basic_chat import (
     sse_pack,
     stream_llm_tokens,
     wants_chat_stream,
+    warm_llm,
 )
 from .models import ChatMessage
 
@@ -46,6 +47,16 @@ def _sse_response(iterator):
     response["Cache-Control"] = "no-cache, no-transform"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+class ChatWarmupAPIView(APIView):
+    """POST /api/chat/warmup/ — start the chat model before the user sends."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        return Response({"ok": warm_llm(force=True)})
 
 
 class BasicChatAPIView(APIView):

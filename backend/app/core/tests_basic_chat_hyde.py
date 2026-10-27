@@ -70,7 +70,7 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch(
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, hyde_hits),
-        ), patch(
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
             "core.basic_chat.generate_hyde_document", return_value=hyde_text
         ) as hyde:
             result = retrieve_passages("What is the Trinity?", include_debug=True)
@@ -122,10 +122,13 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch(
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, []),
-        ), patch("core.basic_chat.generate_hyde_document", side_effect=explode):
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat.generate_hyde_document", side_effect=explode
+        ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
         self.assertEqual(len(calls), 1)
+        self.assertEqual(result["hyde_status"], "failed")
         self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
         self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
@@ -152,6 +155,8 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch(
             "core.embeddings_utils.get_embeddings", return_value=embeddings
         ), patch("core.basic_chat._search_qdrant", side_effect=search), patch(
+            "core.basic_chat.warm_llm", return_value=True
+        ), patch(
             "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
@@ -175,7 +180,9 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch(
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, []),
-        ), patch("core.basic_chat.generate_hyde_document", side_effect=explode):
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat.generate_hyde_document", side_effect=explode
+        ):
             result = retrieve_passages("What is faith?", include_debug=True)
 
         self.assertEqual(len(calls), 1)
@@ -238,11 +245,107 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch(
             "core.embeddings_utils.get_embeddings", return_value=embeddings
         ), patch("core.basic_chat._search_qdrant", side_effect=search), patch(
+            "core.basic_chat.warm_llm", return_value=True
+        ), patch(
             "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
         ):
             retrieve_passages("What is the Trinity?", top_k=6)
 
         self.assertEqual(seen_limits, [HYDE_CANDIDATES, HYDE_CANDIDATES])
+
+    def test_hyde_retries_once_then_uses_the_second_paragraph(self):
+        embeddings, _calls = self._embeddings()
+        attempts = {"n": 0}
+
+        def flaky(query):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise TimeoutError("cold worker")
+            return HYDE_TEXT
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
+            "qdrant_client.QdrantClient", return_value=object()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("Advent", "We wait for Christmas.", 0.9)],
+                [_hit("Why Receive the Holy Spirit", "The Holy Trinity is one God.", 0.4)],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True) as warm, patch(
+            "core.basic_chat.generate_hyde_document", side_effect=flaky
+        ):
+            result = retrieve_passages("What is the Trinity?", include_debug=True)
+
+        warm.assert_called_once()
+        self.assertEqual(attempts["n"], 2)
+        self.assertEqual(result["hyde_status"], "retried")
+        self.assertFalse(result["term_fallback"])
+        self.assertEqual(result["passages"][0]["title"], "Why Receive the Holy Spirit")
+
+    def test_term_fallback_fills_a_missed_rare_word(self):
+        embeddings, _calls = self._embeddings()
+
+        class Client:
+            def __init__(self):
+                self.scrolled = False
+
+            def scroll(self, **kwargs):
+                self.scrolled = True
+                point = SimpleNamespace(
+                    payload={
+                        "title": "Why Receive the Holy Spirit",
+                        "text": "The Holy Spirit is the third person of the Holy Trinity.",
+                    }
+                )
+                return [point], None
+
+        client = Client()
+        with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
+            "qdrant_client.QdrantClient", return_value=client
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("Advent", "We wait for the coming of Christ.", 0.9)],
+                [_hit("Christmas", "The child is born in Bethlehem.", 0.8)],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat.generate_hyde_document",
+            return_value="A short note about hope and waiting.",
+        ):
+            result = retrieve_passages("What is the Trinity?", include_debug=True)
+
+        self.assertTrue(client.scrolled)
+        self.assertTrue(result["term_fallback"])
+        self.assertEqual(result["passages"][0]["title"], "Why Receive the Holy Spirit")
+
+    def test_term_fallback_skips_when_the_merge_already_has_the_term(self):
+        embeddings, _calls = self._embeddings()
+
+        class Client:
+            def scroll(self, **kwargs):
+                raise AssertionError("term fallback should not scan")
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
+            "qdrant_client.QdrantClient", return_value=Client()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("Advent", "We wait.", 0.9)],
+                [_hit("Why Receive the Holy Spirit", "The Holy Trinity is one God.", 0.5)],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
+        ):
+            result = retrieve_passages("What is the Trinity?", include_debug=True)
+
+        self.assertFalse(result["term_fallback"])
+        self.assertIn("Trinity", result["passages"][0]["text"])
 
     def test_question_term_promotes_the_sermon_that_uses_it(self):
         promoted = _promote_lexical(
