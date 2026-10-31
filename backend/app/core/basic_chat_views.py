@@ -29,11 +29,19 @@ class EventStreamRenderer(JSONRenderer):
 from api.permissions import HasPremiumAccess
 
 from .basic_chat import (
+    build_draft_plan,
+    draft_gap_messages,
+    draft_max_tokens,
+    draft_writer_messages,
+    missing_draft_refs,
+    resolve_chat_route,
+    retrieve_draft_passages,
     retrieve_passages,
     source_titles,
     sse_keepalive,
     sse_pack,
     stream_llm_tokens,
+    stream_message_tokens,
     wants_chat_stream,
     warm_llm,
 )
@@ -89,8 +97,7 @@ class BasicChatAPIView(APIView):
 
 def _json_reply(*, query: str, session_id: str, user):
     try:
-        passages = retrieve_passages(query)
-        answer = "".join(stream_llm_tokens(query, passages)).strip()
+        route, passages, answer = _complete_reply(query)
     except Exception:
         logger.exception("Basic chat failed")
         return Response(
@@ -108,8 +115,36 @@ def _json_reply(*, query: str, session_id: str, user):
             "answer": answer,
             "sources": source_titles(passages),
             "message_id": saved.id,
+            "pipeline": route.pipeline,
         }
     )
+
+
+def _complete_reply(query: str):
+    route = resolve_chat_route(query)
+    if route.is_draft:
+        passages = retrieve_draft_passages(query, route)
+        plan = build_draft_plan(query, route, passages)
+        answer = "".join(
+            stream_message_tokens(
+                draft_writer_messages(query, route, passages, plan),
+                max_tokens=draft_max_tokens(),
+            )
+        ).strip()
+        missing = missing_draft_refs(answer, route)
+        if missing:
+            gap = "".join(
+                stream_message_tokens(
+                    draft_gap_messages(query, route, passages, answer, missing),
+                    max_tokens=240,
+                )
+            ).strip()
+            if gap:
+                answer = f"{answer}\n\n{gap}".strip()
+        return route, passages, answer
+    passages = retrieve_passages(query)
+    answer = "".join(stream_llm_tokens(query, passages)).strip()
+    return route, passages, answer
 
 
 def _keepalive_seconds() -> float:
@@ -143,13 +178,13 @@ def _call_with_keepalives(fn):
     return box.get("value")
 
 
-def _token_stream(query: str, passages):
+def _token_stream_from(source):
     """Yield token strings. Yield None when the model has not spoken yet."""
     events = queue.Queue()
 
     def run():
         try:
-            for text in stream_llm_tokens(query, passages):
+            for text in source():
                 events.put(("tok", text))
             events.put(("end", None))
         except Exception as exc:
@@ -172,19 +207,50 @@ def _token_stream(query: str, passages):
 def _stream_events(*, query: str, session_id: str, user):
     yield sse_keepalive()
     yield sse_pack({"type": "status", "phase": "started"})
-    yield sse_pack({"type": "status", "phase": "retrieving"})
     try:
         close_old_connections()
-        passages = yield from _call_with_keepalives(lambda: retrieve_passages(query))
+        route = yield from _call_with_keepalives(lambda: resolve_chat_route(query))
+        yield sse_pack({"type": "status", "phase": "retrieving", "pipeline": route.pipeline})
+        if route.is_draft:
+            passages = yield from _call_with_keepalives(
+                lambda: retrieve_draft_passages(query, route)
+            )
+            yield sse_pack({"type": "status", "phase": "planning"})
+            plan = yield from _call_with_keepalives(
+                lambda: build_draft_plan(query, route, passages)
+            )
+            messages = draft_writer_messages(query, route, passages, plan)
+            token_source = lambda: stream_message_tokens(messages, max_tokens=draft_max_tokens())
+        else:
+            passages = yield from _call_with_keepalives(lambda: retrieve_passages(query))
+            token_source = lambda: stream_llm_tokens(query, passages)
         yield sse_keepalive()
         parts = []
-        for text in _token_stream(query, passages):
+        for text in _token_stream_from(token_source):
             if text is None:
                 yield sse_keepalive()
                 continue
             parts.append(text)
             yield sse_pack({"type": "delta", "text": text})
         answer = "".join(parts).strip()
+        if route.is_draft:
+            missing = missing_draft_refs(answer, route)
+            if missing:
+                gap_parts = []
+                gap_messages = draft_gap_messages(query, route, passages, answer, missing)
+                if answer:
+                    bridge = "\n\n"
+                    gap_parts.append(bridge)
+                    yield sse_pack({"type": "delta", "text": bridge})
+                for text in _token_stream_from(
+                    lambda: stream_message_tokens(gap_messages, max_tokens=240)
+                ):
+                    if text is None:
+                        yield sse_keepalive()
+                        continue
+                    gap_parts.append(text)
+                    yield sse_pack({"type": "delta", "text": text})
+                answer = f"{answer}{''.join(gap_parts)}".strip()
         if not answer:
             yield sse_pack(
                 {
@@ -201,6 +267,7 @@ def _stream_events(*, query: str, session_id: str, user):
                 "answer": answer,
                 "sources": source_titles(passages),
                 "message_id": saved.id,
+                "pipeline": route.pipeline,
             }
         )
     except Exception:

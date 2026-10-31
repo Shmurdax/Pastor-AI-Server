@@ -15,6 +15,21 @@ import urllib.error
 import urllib.request
 from typing import Iterable, Iterator
 
+from .study_draft import (
+    CLASSIFIER_SYSTEM,
+    DraftRoute,
+    chat_fallback,
+    decision_from_classifier,
+    draft_system_prompt,
+    draft_user_content,
+    gap_messages,
+    missing_scripture_refs,
+    parse_plan_text,
+    plan_messages,
+    render_plan,
+    rule_route,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 6
@@ -42,6 +57,12 @@ _HYDE_SYSTEM = (
     "Use the words a pastor would actually preach: names, doctrines, and phrases. "
     "Do not address the reader. Do not say this is hypothetical. "
     "Do not invent a sermon title. Stay under 120 words."
+)
+_DRAFT_HYDE_SYSTEM = (
+    "Write one short Bible-study or sermon-note paragraph a pastor would preach "
+    "for this request. Include the topic, any named scriptures, and two or three "
+    "teaching points in sermon-note wording. Do not address the reader. "
+    "Do not say this is hypothetical. Do not invent a sermon title. Stay under 140 words."
 )
 
 
@@ -546,11 +567,18 @@ def _prompt(query: str, passages: list[dict]) -> list[dict]:
 
 def stream_llm_tokens(query: str, passages: list[dict]) -> Iterator[str]:
     """Yield text deltas from the OpenAI-compatible vLLM endpoint."""
+    yield from stream_message_tokens(
+        _prompt(query, passages),
+        max_tokens=int(_env("CHAT_MAX_TOKENS", "800") or "800"),
+    )
+
+
+def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
     body = {
         "model": vllm_model(),
-        "messages": _prompt(query, passages),
+        "messages": messages,
         "temperature": 0.2,
-        "max_tokens": int(_env("CHAT_MAX_TOKENS", "800") or "800"),
+        "max_tokens": max_tokens,
         "stream": True,
     }
     with _post_llm(body) as response:
@@ -580,3 +608,294 @@ def source_titles(passages: Iterable[dict]) -> list[str]:
         if title and title not in seen:
             seen.append(title)
     return seen
+
+
+def _flag_enabled(name: str, default: str = "1") -> bool:
+    return _env(name, default).lower() not in {"0", "false", "no", "off"}
+
+
+def draft_pipeline_enabled() -> bool:
+    return _flag_enabled("CHAT_DRAFT", "1")
+
+
+def draft_classifier_enabled() -> bool:
+    return _flag_enabled("CHAT_DRAFT_CLASSIFIER", "1")
+
+
+def draft_verify_enabled() -> bool:
+    return _flag_enabled("CHAT_DRAFT_VERIFY", "1")
+
+
+def draft_max_tokens() -> int:
+    raw = _env("CHAT_DRAFT_MAX_TOKENS", "1600") or "1600"
+    try:
+        return max(400, int(raw))
+    except ValueError:
+        return 1600
+
+
+def _log_route(route: DraftRoute) -> None:
+    logger.warning("chat_route %s", route.log_fields())
+
+
+def resolve_chat_route(query: str) -> DraftRoute:
+    """Pick pastoral chat or a study/sermon draft without a user-facing mode."""
+    if not draft_pipeline_enabled():
+        route = chat_fallback(query, source="disabled", reason="draft pipeline off", confidence=1.0)
+        _log_route(route)
+        return route
+    ruled = rule_route(query)
+    if ruled is not None:
+        _log_route(ruled)
+        return ruled
+    if not draft_classifier_enabled():
+        route = chat_fallback(query, source="classifier_off", reason="classifier off")
+        _log_route(route)
+        return route
+    try:
+        warm_llm()
+        raw = complete_llm_text(
+            [
+                {"role": "system", "content": CLASSIFIER_SYSTEM},
+                {"role": "user", "content": (query or "").strip()},
+            ],
+            max_tokens=320,
+            temperature=0.0,
+            timeout=float(_env("CHAT_DRAFT_CLASSIFIER_TIMEOUT_S", "60") or "60"),
+        )
+        route = decision_from_classifier(query, raw)
+    except Exception:
+        logger.warning("Draft classifier failed; staying on pastoral chat", exc_info=True)
+        route = chat_fallback(query, source="classifier_failed", reason="classifier error")
+    _log_route(route)
+    return route
+
+
+def complete_llm_text(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float = 0.0,
+    timeout: float | None = None,
+) -> str:
+    body = {
+        "model": vllm_model(),
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    with _post_llm(body, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    return _message_text(payload)
+
+
+def generate_draft_hyde_document(query: str) -> str:
+    body = {
+        "model": vllm_model(),
+        "messages": [
+            {"role": "system", "content": _DRAFT_HYDE_SYSTEM},
+            {"role": "user", "content": (query or "").strip()},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 220,
+        "stream": False,
+    }
+    timeout = float(_env("CHAT_HYDE_TIMEOUT_S", "180") or "180")
+    with _post_llm(body, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    return _clip_words(_message_text(payload), limit=140)
+
+
+def generate_draft_hyde_with_retry(query: str) -> tuple[str, str]:
+    warm_llm()
+    try:
+        text = generate_draft_hyde_document(query)
+    except Exception:
+        logger.warning("Draft HyDE generation failed; retrying once", exc_info=True)
+        text = None
+    if text:
+        return text, "ok"
+    try:
+        text = generate_draft_hyde_document(query)
+    except Exception:
+        logger.warning("Draft HyDE retry failed; using the question search only", exc_info=True)
+        return "", "failed"
+    if text:
+        return text, "retried"
+    return "", "empty"
+
+
+def _passage_context(query: str, passages: list[dict]) -> str:
+    blocks = []
+    for index, passage in enumerate(passages, start=1):
+        blocks.append(
+            f"[{index}] {passage['title']}\n{_truncate_for_prompt(passage['text'], query)}"
+        )
+    return "\n\n".join(blocks)
+
+
+def draft_writer_messages(query: str, route: DraftRoute, passages: list[dict], plan: dict | None) -> list[dict]:
+    return [
+        {"role": "system", "content": draft_system_prompt(route)},
+        {
+            "role": "user",
+            "content": draft_user_content(
+                route,
+                _passage_context(query, passages),
+                render_plan(plan),
+                query,
+            ),
+        },
+    ]
+
+
+def build_draft_plan(query: str, route: DraftRoute, passages: list[dict]) -> dict:
+    if not _flag_enabled("CHAT_DRAFT_PLAN", "1"):
+        return {}
+    try:
+        raw = complete_llm_text(
+            plan_messages(query, route, _passage_context(query, passages)),
+            max_tokens=400,
+            temperature=0.1,
+            timeout=float(_env("CHAT_DRAFT_PLAN_TIMEOUT_S", "90") or "90"),
+        )
+    except Exception:
+        logger.warning("Draft plan failed; writing from the excerpts", exc_info=True)
+        return {}
+    return parse_plan_text(raw)
+
+
+def draft_gap_messages(
+    query: str,
+    route: DraftRoute,
+    passages: list[dict],
+    answer: str,
+    missing: list[str],
+) -> list[dict]:
+    return gap_messages(query, route, _passage_context(query, passages), answer, missing)
+
+
+def _draft_top_k(top_k: int | None) -> int:
+    if top_k is not None:
+        return top_k
+    raw = _env("CHAT_DRAFT_TOP_K", "8") or "8"
+    try:
+        return max(DEFAULT_TOP_K, int(raw))
+    except ValueError:
+        return 8
+
+
+def _merge_ranked_many(groups: list[list[dict]], top_k: int) -> list[dict]:
+    merged = []
+    seen = set()
+    indexes = [0] * len(groups)
+    while len(merged) < top_k and any(indexes[i] < len(groups[i]) for i in range(len(groups))):
+        for index, group in enumerate(groups):
+            if len(merged) >= top_k:
+                break
+            while indexes[index] < len(group):
+                passage = group[indexes[index]]
+                indexes[index] += 1
+                text = (passage.get("text") or "").strip()
+                key = _fingerprint(text)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append({"title": passage.get("title") or "Sermon", "text": text})
+                break
+    return merged
+
+
+def _draft_search_texts(query: str, route: DraftRoute, hyde_text: str) -> list[tuple[str, str]]:
+    searches = [("query", query)]
+    if hyde_text:
+        searches.append(("hyde", hyde_text))
+    topic = (route.topic or "").strip()
+    if topic and topic.lower() != query.strip().lower() and len(topic) >= 8:
+        searches.append(("topic", topic))
+    for ref in route.requested_texts[:4]:
+        searches.append(("scripture", f"{ref} {topic}".strip()))
+    return searches
+
+
+def retrieve_draft_passages(
+    query: str,
+    route: DraftRoute,
+    *,
+    top_k: int | None = None,
+    include_debug: bool = False,
+):
+    """Retrieve sermon notes for a study or sermon draft.
+
+    HyDE uses a hypothetical teaching paragraph. Named scriptures and the
+    topic are extra searches so a long drafting prompt does not hide them.
+    """
+    from qdrant_client import QdrantClient
+
+    from .embeddings_utils import get_embeddings
+
+    limit = _draft_top_k(top_k)
+    embeddings = get_embeddings()
+    client = QdrantClient(url=_env("QDRANT_URL", "http://127.0.0.1:6333"), timeout=30)
+    collection = _env("QDRANT_COLLECTION", "sermon_brain")
+    candidate_k = max(limit, HYDE_CANDIDATES)
+    started = time.monotonic()
+    hyde_text = ""
+    hyde_status = "off"
+    if hyde_enabled():
+        hyde_text, hyde_status = generate_draft_hyde_with_retry(query)
+    searches = _draft_search_texts(query, route, hyde_text)
+    groups = []
+    titles_by_kind: dict[str, list[str]] = {}
+    term_source = " ".join([route.topic, hyde_text, " ".join(route.requested_texts)])
+    terms = _query_terms(term_source) or _query_terms(route.topic or query)
+    for kind, text in searches:
+        try:
+            hits = _search_with_vector(client, collection, embeddings.embed_query(text), candidate_k)
+        except Exception:
+            logger.warning("Draft search failed for %s", kind, exc_info=True)
+            hits = []
+            if kind == "hyde":
+                hyde_status = "search_failed"
+        hits = _promote_lexical(hits, terms)
+        titles_by_kind[kind] = _titles(hits)
+        groups.append(hits)
+    passages = _merge_ranked_many(groups, limit)
+    term_fallback = False
+    focus_terms = _query_terms(query) | _query_terms(route.topic)
+    if focus_terms and not _passages_contain_terms(passages, focus_terms):
+        try:
+            fallback_hits = _scroll_term_matches(client, collection, focus_terms, limit)
+        except Exception:
+            logger.warning("Draft term fallback failed", exc_info=True)
+            fallback_hits = []
+        if fallback_hits:
+            term_fallback = True
+            passages = _merge_ranked_many([fallback_hits, passages], limit)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    logger.warning(
+        "draft_retrieval status=%s elapsed_ms=%s term_fallback=%s searches=%s merged=%s hyde_text=%s",
+        hyde_status,
+        elapsed_ms,
+        term_fallback,
+        [kind for kind, _text in searches],
+        _titles(passages),
+        (hyde_text or "")[:240],
+    )
+    if include_debug:
+        return {
+            "passages": passages,
+            "hyde_text": hyde_text,
+            "hyde_status": hyde_status,
+            "term_fallback": term_fallback,
+            "searches": [kind for kind, _text in searches],
+            "titles_by_kind": titles_by_kind,
+        }
+    return passages
+
+
+def missing_draft_refs(answer: str, route: DraftRoute) -> list[str]:
+    if not draft_verify_enabled():
+        return []
+    return missing_scripture_refs(answer, route.requested_texts)
