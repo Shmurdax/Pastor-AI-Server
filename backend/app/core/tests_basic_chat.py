@@ -7,7 +7,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from api.models import Profile
-from core.models import ChatMessage
+from core.models import ChatMessage, UserChatHistory
 
 User = get_user_model()
 
@@ -83,6 +83,17 @@ class BasicChatAPITests(APITestCase):
         saved = ChatMessage.objects.get(session_id="s1")
         self.assertEqual(saved.ai_response, "Faith is trust.")
         self.assertEqual(saved.user, self.premium)
+        history = self.client.get("/api/chat/history/")
+        self.assertEqual(history.status_code, 200)
+        entry = history.data["entries"][0]
+        self.assertEqual(entry["sessionId"], "s1")
+        self.assertEqual(entry["messages"][0]["text"], "What is faith?")
+        self.assertEqual(entry["messages"][1]["text"], "Faith is trust.")
+        self.assertEqual(entry["messages"][1]["sources"], ["Faith That Moves"])
+        self.assertEqual(
+            UserChatHistory.objects.get(user=self.premium).active_session_id,
+            "s1",
+        )
 
     def test_json_reply_without_stream_flag(self):
         self._auth(self.premium)

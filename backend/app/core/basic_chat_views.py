@@ -28,6 +28,7 @@ class EventStreamRenderer(JSONRenderer):
 
 from api.permissions import HasPremiumAccess
 
+from .live_chat_history import upsert_live_chat_turn
 from .basic_chat import (
     build_draft_plan,
     draft_gap_messages,
@@ -109,7 +110,13 @@ def _json_reply(*, query: str, session_id: str, user):
             {"error": "The model returned an empty reply. Please retry."},
             status=status.HTTP_502_BAD_GATEWAY,
         )
-    saved = _save_message(user=user, session_id=session_id, query=query, answer=answer)
+    saved = _save_message(
+        user=user,
+        session_id=session_id,
+        query=query,
+        answer=answer,
+        sources=source_titles(passages),
+    )
     return Response(
         {
             "answer": answer,
@@ -260,7 +267,13 @@ def _stream_events(*, query: str, session_id: str, user):
             )
             return
         close_old_connections()
-        saved = _save_message(user=user, session_id=session_id, query=query, answer=answer)
+        saved = _save_message(
+            user=user,
+            session_id=session_id,
+            query=query,
+            answer=answer,
+            sources=source_titles(passages),
+        )
         yield sse_pack(
             {
                 "type": "done",
@@ -280,10 +293,21 @@ def _stream_events(*, query: str, session_id: str, user):
         )
 
 
-def _save_message(*, user, session_id: str, query: str, answer: str) -> ChatMessage:
-    return ChatMessage.objects.create(
+def _save_message(*, user, session_id: str, query: str, answer: str, sources=None) -> ChatMessage:
+    saved = ChatMessage.objects.create(
         session_id=session_id,
         user=user if getattr(user, "is_authenticated", False) else None,
         user_query=query,
         ai_response=answer,
     )
+    try:
+        upsert_live_chat_turn(
+            user=user,
+            client_session_id=session_id,
+            user_query=query,
+            answer=answer,
+            sources=sources or [],
+        )
+    except Exception:
+        logger.exception("Could not mirror this chat into the sidebar history")
+    return saved
