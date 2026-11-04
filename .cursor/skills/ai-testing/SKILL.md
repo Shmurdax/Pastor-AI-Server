@@ -22,15 +22,12 @@ The suite signs in as `grokbot1@gmail.com` and posts every turn in `scripts/past
 
 On this pod the script uses the local Django user and `http://127.0.0.1:8000`. From another machine set both `PASTOR_TEST_BASE_URL` and `PASTOR_TEST_TOKEN`. Do not invent either value, and do not print the token.
 
-If the script says this checkout cannot reach the chat, stop. Report that the suite has to run on christian-ai-test. Do not invent scores.
+If the script says this checkout cannot reach the chat, put that error in the Cursor reply and stop. Do not invent scores.
 
-## Report
+## Deliver in chat
 
-Read the JSON report and tell the user:
+The command stdout is the scorecard. After the command finishes, paste that entire stdout into the Cursor reply. The reply is the delivery.
 
-- How many turns passed and how many failed.
-- The accuracy score for every turn, including the ones that passed.
-- For each failure, the turn id, the reasons, and the first lines of the answer.
-- The unsupported sentences and scripture references that were not in the retrieved passages.
+Include every turn. Keep each full answer, each accuracy score, each fail reason, the source titles, the passage titles, the unsupported sentences, and the scripture references that were not in the passages. Do not shorten an answer to its first lines. Do not drop passing turns. Do not replace the scorecard with a pointer to the JSON file.
 
-The suite exits 1 when any turn fails. Anaphoric turns are expected to fail while the model sees only the latest prompt. Report that result. Do not weaken a check to make the run pass, and do not change the chat pipeline unless the user asks for a product change.
+Exit code 1 means at least one turn failed. Paste the full scorecard anyway. Anaphoric turns are expected to fail while the model sees only the latest prompt. Do not weaken a check to make the run pass, and do not change the chat pipeline unless the user asks for a product change.

@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from pastor_chat_score import grade_turn, load_cases  # noqa: E402
+from pastor_chat_score import grade_turn, load_cases, render_scorecard  # noqa: E402
 
 
 ACCOUNT = "grokbot1@gmail.com"
@@ -67,18 +67,7 @@ def main() -> int:
         "turns": rows,
     }
     REPORT_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(
-        json.dumps(
-            {"passed": passed, "total": len(rows), "out": str(REPORT_PATH), "session_id": session_id},
-            indent=2,
-        )
-    )
-    for row in rows:
-        mark = "PASS" if row["pass"] else "FAIL"
-        print(
-            f"{mark} {row['id']}: accuracy={row['accuracy']} "
-            f"pipeline={row['pipeline']} reasons={'; '.join(row['reasons']) or 'ok'}"
-        )
+    print(render_scorecard(report), end="")
     return 0 if passed == len(rows) else 1
 
 

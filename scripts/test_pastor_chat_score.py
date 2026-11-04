@@ -14,6 +14,7 @@ from pastor_chat_score import (  # noqa: E402
     ACCURACY_FAIL_BELOW,
     grade_turn,
     load_cases,
+    render_scorecard,
     score_reply,
 )
 
@@ -112,6 +113,58 @@ class GradeTurnTests(unittest.TestCase):
         graded = grade_turn(turn, answer, "pastoral_chat", PASSAGES)
         self.assertLess(graded["accuracy"], ACCURACY_FAIL_BELOW)
         self.assertFalse(graded["pass"])
+
+
+class ScorecardTests(unittest.TestCase):
+    def test_scorecard_includes_full_passing_and_failing_turns(self):
+        passing_answer = "Grace is the full unearned gift in this passing answer."
+        failing_answer = "The congregation should buy a fishing boat. Revelation 22:21."
+        report = {
+            "passed": 1,
+            "total": 2,
+            "session_id": "ai-testing-abc",
+            "restored_active_session": "prior-chat",
+            "turns": [
+                {
+                    "id": "grace_question",
+                    "anaphoric": False,
+                    "pass": True,
+                    "accuracy": 100,
+                    "pipeline": "pastoral_chat",
+                    "query": "What does grace mean?",
+                    "reasons": [],
+                    "sources": ["Grace Notes"],
+                    "passage_titles": ["Grace Notes"],
+                    "unsupported_sentences": [],
+                    "missing_scripture": [],
+                    "answer": passing_answer,
+                },
+                {
+                    "id": "baptism_sermon",
+                    "anaphoric": True,
+                    "pass": False,
+                    "accuracy": 25,
+                    "pipeline": "pastoral_chat",
+                    "query": "Add a discussion question to that study",
+                    "reasons": ["missing James 2"],
+                    "sources": [],
+                    "passage_titles": ["James Study"],
+                    "unsupported_sentences": ["The congregation should buy a fishing boat."],
+                    "missing_scripture": ["Revelation 22:21"],
+                    "answer": failing_answer,
+                },
+            ],
+        }
+        text = render_scorecard(report)
+        self.assertIn("grace_question", text)
+        self.assertIn("baptism_sermon", text)
+        self.assertIn("Accuracy: 100", text)
+        self.assertIn("Accuracy: 25", text)
+        self.assertIn(passing_answer, text)
+        self.assertIn(failing_answer, text)
+        self.assertIn("missing James 2", text)
+        self.assertIn("The congregation should buy a fishing boat.", text)
+        self.assertIn("Passed 1 of 2.", text)
 
 
 class CaseFileTests(unittest.TestCase):

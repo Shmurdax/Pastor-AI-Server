@@ -200,6 +200,61 @@ def score_reply(answer: str, passages: list[dict] | None) -> dict:
     }
 
 
+def render_scorecard(report: dict) -> str:
+    """Markdown the chat reply should contain, one section per turn."""
+    passed = report.get("passed", 0)
+    total = report.get("total", 0)
+    session_id = report.get("session_id") or "unknown"
+    restored = report.get("restored_active_session") or "none"
+    lines = [
+        "# Pastor chat test",
+        "",
+        f"Passed {passed} of {total}.",
+        f"Session: `{session_id}`.",
+        f"Previous active chat restored to: `{restored}`.",
+        "",
+    ]
+    for turn in report.get("turns") or []:
+        lines.extend(_turn_section(turn))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _turn_section(turn: dict) -> list[str]:
+    passed = bool(turn.get("pass"))
+    mark = "PASS" if passed else "FAIL"
+    reasons = [str(item) for item in turn.get("reasons") or [] if str(item).strip()]
+    result = "passed" if passed else "; ".join(reasons) or "failed"
+    return [
+        f"## {mark} {turn.get('id') or 'turn'}",
+        "",
+        f"- Accuracy: {turn.get('accuracy', 0)}",
+        f"- Pipeline: {turn.get('pipeline') or 'none'}",
+        f"- Anaphoric: {'yes' if turn.get('anaphoric') else 'no'}",
+        f"- Prompt: {turn.get('query') or ''}",
+        f"- Result: {result}",
+        f"- Sources: {_joined(turn.get('sources'))}",
+        f"- Passages scored: {_joined(turn.get('passage_titles'))}",
+        f"- Unsupported sentences: {_joined(turn.get('unsupported_sentences'))}",
+        f"- Scripture not in the passages: {_joined(turn.get('missing_scripture'))}",
+        "",
+        "### Answer",
+        "",
+        _fence(str(turn.get("answer") or "")),
+        "",
+    ]
+
+
+def _joined(items) -> str:
+    values = [str(item).strip() for item in items or [] if str(item).strip()]
+    return ", ".join(values) if values else "none"
+
+
+def _fence(text: str) -> str:
+    body = text if text.strip() else "(empty)"
+    marker = "````" if "```" in body else "```"
+    return f"{marker}text\n{body}\n{marker}"
+
+
 def grade_turn(turn: dict, answer: str, pipeline: str, passages: list[dict] | None) -> dict:
     """Hard checks for one turn, including the accuracy bar."""
     reasons = []
