@@ -30,6 +30,7 @@ from api.permissions import HasPremiumAccess
 
 from .live_chat_history import upsert_live_chat_turn
 from .basic_chat import (
+    _truncate_for_prompt,
     build_draft_plan,
     draft_gap_messages,
     draft_max_tokens,
@@ -93,10 +94,38 @@ class BasicChatAPIView(APIView):
                     user=request.user,
                 )
             )
-        return _json_reply(query=query, session_id=session_id, user=request.user)
+        return _json_reply(
+            query=query,
+            session_id=session_id,
+            user=request.user,
+            include_passages=_include_passages(request.data.get("include_passages")),
+        )
 
 
-def _json_reply(*, query: str, session_id: str, user):
+def _include_passages(value) -> bool:
+    """True only when a caller explicitly asks for the prompt excerpts."""
+    if value is True or value == 1:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return False
+
+
+def _passage_rows(query: str, passages) -> list[dict]:
+    rows = []
+    for passage in passages or []:
+        if not isinstance(passage, dict):
+            continue
+        rows.append(
+            {
+                "title": str(passage.get("title") or "").strip(),
+                "text": _truncate_for_prompt(str(passage.get("text") or ""), query),
+            }
+        )
+    return rows
+
+
+def _json_reply(*, query: str, session_id: str, user, include_passages: bool = False):
     try:
         route, passages, answer = _complete_reply(query)
     except Exception:
@@ -117,14 +146,15 @@ def _json_reply(*, query: str, session_id: str, user):
         answer=answer,
         sources=source_titles(passages),
     )
-    return Response(
-        {
-            "answer": answer,
-            "sources": source_titles(passages),
-            "message_id": saved.id,
-            "pipeline": route.pipeline,
-        }
-    )
+    payload = {
+        "answer": answer,
+        "sources": source_titles(passages),
+        "message_id": saved.id,
+        "pipeline": route.pipeline,
+    }
+    if include_passages:
+        payload["passages"] = _passage_rows(query, passages)
+    return Response(payload)
 
 
 def _complete_reply(query: str):

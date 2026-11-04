@@ -1,0 +1,129 @@
+# One sidebar chat on grokbot1@gmail.com. Most turns ask for sermon notes
+# or Bible-study notes. Pastoral questions are placed so the topic changes
+# on purpose. Anaphoric turns name nothing from the previous request, so a
+# model that only sees the latest prompt cannot stay on that topic.
+turns:
+  - id: grace_question
+    kind: pastoral
+    query: What does grace mean when a believer feels they have failed God?
+    expect_pipeline: pastoral_chat
+    must_mention:
+      - grace
+    must_not_mention: []
+
+  - id: baptism_sermon
+    kind: draft
+    query: Please draft sermon notes for Sunday on water baptism
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - baptism
+    must_not_mention:
+      - failed God
+
+  - id: james_study
+    kind: draft
+    query: Write an in-depth Bible study on James 2
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - James 2
+    must_not_mention:
+      - water baptism
+
+  - id: study_followup
+    kind: draft
+    anaphoric: true
+    query: Add a discussion question to that study
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - James 2
+    must_not_mention: []
+
+  - id: holy_spirit_sermon
+    kind: draft
+    query: Please draft sermon notes for Sunday on the Holy Spirit
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - Holy Spirit
+    must_not_mention:
+      - James 2
+
+  - id: living_water_study
+    kind: draft
+    query: Write an in-depth Bible study on living water in John 4
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - living water
+    must_not_mention:
+      - Holy Spirit
+
+  - id: funeral_comfort
+    kind: pastoral
+    query: How do I comfort a family at a funeral?
+    expect_pipeline: pastoral_chat
+    must_mention:
+      - funeral
+    must_not_mention:
+      - living water
+
+  - id: forgiveness_sermon
+    kind: draft
+    query: Please draft sermon notes for Sunday on forgiveness
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - forgiveness
+    must_not_mention:
+      - funeral
+
+  - id: shorten_notes
+    kind: draft
+    anaphoric: true
+    query: Shorten those sermon notes
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - forgiveness
+    must_not_mention: []
+
+  - id: prayer_lesson
+    kind: draft
+    query: Write a lesson on prayer for the small group
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - prayer
+    must_not_mention:
+      - forgiveness
+
+  - id: marriage_question
+    kind: pastoral
+    query: What should I tell a couple who is struggling in their marriage?
+    expect_pipeline: pastoral_chat
+    must_mention:
+      - marriage
+    must_not_mention:
+      - small group
+
+  - id: repentance_study
+    kind: draft
+    query: Write an in-depth Bible study on repentance
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - repentance
+    must_not_mention:
+      - marriage
+
+  - id: communion_sermon
+    kind: draft
+    query: Please draft sermon notes for Sunday on communion
+    expect_pipeline: study_sermon_draft
+    must_mention:
+      - communion
+    must_not_mention:
+      - repentance
+
+  - id: evangelism_question
+    kind: pastoral
+    query: How do I encourage our church to share the gospel with their neighbors?
+    expect_pipeline: pastoral_chat
+    must_mention:
+      - gospel
+    must_not_mention:
+      - communion

@@ -112,6 +112,30 @@ class BasicChatAPITests(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["answer"], "Hello.")
         self.assertEqual(res.data["sources"], ["Faith That Moves"])
+        self.assertNotIn("passages", res.data)
+
+    def test_json_reply_includes_prompt_passages_when_asked(self):
+        self._auth(self.premium)
+        long_text = ("Faith is trust in God. " * 80).strip()
+        passages = [{"title": "Faith That Moves", "text": long_text}]
+
+        with patch(
+            "core.basic_chat_views.retrieve_passages", return_value=passages
+        ), patch(
+            "core.basic_chat_views.stream_llm_tokens",
+            return_value=iter(["Hello."]),
+        ):
+            res = self.client.post(
+                "/api/chat/",
+                {"query": "What is faith?", "include_passages": True},
+                format="json",
+            )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["answer"], "Hello.")
+        self.assertEqual(len(res.data["passages"]), 1)
+        self.assertEqual(res.data["passages"][0]["title"], "Faith That Moves")
+        self.assertLess(len(res.data["passages"][0]["text"]), len(long_text))
+        self.assertIn("Faith is trust in God.", res.data["passages"][0]["text"])
 
     def test_sse_keepalives_while_retrieval_is_slow(self):
         self._auth(self.premium)
