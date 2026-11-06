@@ -59,11 +59,23 @@ if [[ -f "$APP_DIR/requirements.txt" ]]; then
   deploy_pip "$APP_DIR" "$VENV_DIR"
 fi
 
+# A remigrated pod has no Postgres until the package is installed. Migrating
+# first dies with "connection refused" and never reaches the service restart,
+# so port 8000 stays closed.
+export DEV_PIPELINE_SOURCE_ONLY=1
+# shellcheck source=/dev/null
+source "$WS/scripts/dev_pipeline.sh"
+log "Ensuring Postgres is accepting connections"
+dev_pipeline_ensure_postgres \
+  || die "Postgres is not accepting connections. The site was not restarted."
+
 log "Running Django migrations"
 mkdir -p "$LOG_DIR"
 cd "$APP_DIR"
 export FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$FRONTEND_DIR/build/web}"
-python manage.py migrate --noinput 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log"
+if ! python manage.py migrate --noinput 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log"; then
+  die "Django migrations failed. The site was not restarted."
+fi
 python manage.py reset_id_sequences 2>&1 | tee -a "$LOG_DIR/deploy-migrate.log" || true
 
 if [[ -n "${VIMEO_ACCESS_TOKEN:-}" && -n "${VIMEO_FOLDER_ID:-${VIMEO_SHOWCASE_ID:-}}" ]]; then

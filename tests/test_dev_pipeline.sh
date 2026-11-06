@@ -277,6 +277,19 @@ awk '
 grep -q 'pg_ctlcluster' "$pipeline" || fail "dev pipeline must start the local postgres cluster"
 grep -q 'apt-get install -y postgresql postgresql-contrib' "$pipeline" \
   || fail "dev pipeline must install postgresql when pg_ctlcluster is missing"
+grep -q 'PASTOR_KEEP_ALIVE=0 bash "$WS/start.sh"' "$pipeline" \
+  || fail "dev pipeline must start Django when port 8000 is closed"
+grep -q -- '-f -' "$pipeline" || fail "psql must read SQL from stdin"
+if grep -q 'dev_pipeline_psql_as_postgres -c ' "$pipeline"; then
+  fail "psql -c must not be passed as a flag or the SQL becomes the database name"
+fi
+awk '
+  /dev_pipeline_ensure_postgres/ { pg = NR }
+  /manage.py migrate/ { mig = NR }
+  END { if (pg == 0 || mig == 0 || pg > mig) exit 1 }
+' "$ROOT/deploy_update.sh" || fail "deploy_update must ensure postgres before migrate"
+grep -q 'Django migrations failed' "$ROOT/deploy_update.sh" \
+  || fail "deploy_update must stop when migrate fails"
 grep -q 'the rehearsal marker was not written' "$pipeline" \
   || fail "dev pipeline must say when postgres blocks the rehearsal marker"
 
@@ -337,8 +350,57 @@ if dev_pipeline_ensure_postgres; then
 fi
 [[ "$ready_calls" -eq 1 ]] || fail "install failure must not wait out the postgres retry loop, ready_calls=${ready_calls}"
 
-unset DEV_PIPELINE_PG_READY_HOOK DEV_PIPELINE_PG_START_HOOK DEV_PIPELINE_PG_ROLE_HOOK POSTGRES_HOST POSTGRES_PORT
+unset DEV_PIPELINE_PG_READY_HOOK DEV_PIPELINE_PG_START_HOOK DEV_PIPELINE_PG_ROLE_HOOK
 unset DEV_PIPELINE_PG_ATTEMPTS DEV_PIPELINE_PG_PAUSE_S
+
+# Existence checks must see "1" on stdin-driven psql and must not put SQL in argv.
+# A password containing $ and a quote must survive into the CREATE statement.
+psql() { :; }
+export POSTGRES_USER=pastor POSTGRES_DB=ai_db
+export POSTGRES_PASSWORD='p$ass'"'"'w'
+: > "$pg_dir/su.txt"
+: > "$pg_dir/sql.txt"
+su() {
+  printf '%s\n' "$*" >> "$pg_dir/su.txt"
+  cat >> "$pg_dir/sql.txt"
+  printf '\n' >> "$pg_dir/sql.txt"
+  if [[ "$*" == *"-tA"* ]]; then
+    printf '1\n'
+  fi
+}
+dev_pipeline_ensure_app_database || fail "existing role and database should not be recreated"
+grep -q 'psql -v ON_ERROR_STOP=1 -tA -f -' "$pg_dir/su.txt" \
+  || fail "role lookup must be: psql -tA -f -"
+if grep -q 'SELECT' "$pg_dir/su.txt"; then
+  fail "SELECT must be psql stdin, not a connection argument"
+fi
+grep -q "SELECT 1 FROM pg_roles WHERE rolname='pastor'" "$pg_dir/sql.txt" \
+  || fail "role lookup SQL missing from stdin"
+if grep -q 'CREATE USER' "$pg_dir/sql.txt"; then
+  fail "existing role must not be created again"
+fi
+grep -q 'GRANT ALL PRIVILEGES ON DATABASE ai_db TO pastor' "$pg_dir/sql.txt" \
+  || fail "grant SQL missing from stdin"
+if grep -q 'GRANT ALL' "$pg_dir/su.txt"; then
+  fail "GRANT must not be passed as the database name"
+fi
+
+: > "$pg_dir/su.txt"
+: > "$pg_dir/sql.txt"
+su() {
+  printf '%s\n' "$*" >> "$pg_dir/su.txt"
+  cat >> "$pg_dir/sql.txt"
+  printf '\n' >> "$pg_dir/sql.txt"
+}
+dev_pipeline_ensure_app_database || fail "missing role should be created from stdin SQL"
+needle="CREATE USER pastor WITH PASSWORD 'p"'$'"ass''w' CREATEDB;"
+grep -q -F "$needle" "$pg_dir/sql.txt" || {
+  echo "SQL was:" >&2
+  cat "$pg_dir/sql.txt" >&2
+  fail "password with a dollar and a quote was mangled"
+}
+unset -f su psql
+unset POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD POSTGRES_HOST POSTGRES_PORT
 
 export PROMOTE_SOURCE_ONLY=1
 # shellcheck source=/dev/null
