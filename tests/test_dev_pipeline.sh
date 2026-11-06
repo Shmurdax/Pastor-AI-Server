@@ -264,4 +264,112 @@ if grep -q "auth/config/.*|| true" "$ROOT/deploy_update.sh"; then
   fail "deploy_update.sh must not ignore health-check failures"
 fi
 
+# dev_pipeline must bring local Postgres up before migrate, or the rehearsal
+# marker stays stale and promote never publishes the manifest arm looks up.
+pipeline="$ROOT/scripts/dev_pipeline.sh"
+awk '
+  /dev_pipeline_ensure_postgres$/ { call = NR }
+  /manage.py migrate/ { migrate = NR }
+  END {
+    if (call == 0 || migrate == 0 || call > migrate) exit 1
+  }
+' "$pipeline" || fail "dev pipeline must start postgres before migrate"
+grep -q 'pg_ctlcluster' "$pipeline" || fail "dev pipeline must start the local postgres cluster"
+grep -q 'the rehearsal marker was not written' "$pipeline" \
+  || fail "dev pipeline must say when postgres blocks the rehearsal marker"
+
+export DEV_PIPELINE_SOURCE_ONLY=1
+# shellcheck source=/dev/null
+source "$pipeline"
+
+pg_dir="$DIR/pg-hooks"
+mkdir -p "$pg_dir"
+pg_ready_yes() { return 0; }
+pg_ready_no() { return 1; }
+pg_start_mark() { echo started >> "$pg_dir/started"; }
+pg_start_forbidden() { echo forbidden >> "$pg_dir/started"; return 1; }
+
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432
+export DEV_PIPELINE_PG_READY_HOOK=pg_ready_yes
+export DEV_PIPELINE_PG_START_HOOK=pg_start_forbidden
+export DEV_PIPELINE_PG_ATTEMPTS=3 DEV_PIPELINE_PG_PAUSE_S=0
+rm -f "$pg_dir/started"
+dev_pipeline_ensure_postgres || fail "already-ready postgres should succeed"
+[[ ! -f "$pg_dir/started" ]] || fail "already-ready postgres must not be restarted"
+
+ready_calls=0
+pg_ready_later() {
+  ready_calls=$((ready_calls + 1))
+  [[ "$ready_calls" -ge 2 ]]
+}
+export DEV_PIPELINE_PG_READY_HOOK=pg_ready_later
+export DEV_PIPELINE_PG_START_HOOK=pg_start_mark
+dev_pipeline_ensure_postgres || fail "postgres should succeed after the cluster starts"
+[[ "$(wc -l < "$pg_dir/started" | tr -d ' ')" == "1" ]] || fail "down postgres should be started once"
+grep -q started "$pg_dir/started" || fail "start hook should record the attempt"
+
+export POSTGRES_HOST=10.1.2.3
+export DEV_PIPELINE_PG_READY_HOOK=pg_ready_no
+export DEV_PIPELINE_PG_START_HOOK=pg_start_forbidden
+rm -f "$pg_dir/started"
+if dev_pipeline_ensure_postgres; then
+  fail "a down remote postgres must fail the rehearsal"
+fi
+[[ ! -f "$pg_dir/started" ]] || fail "a remote postgres host must not start the local cluster"
+unset DEV_PIPELINE_PG_READY_HOOK DEV_PIPELINE_PG_START_HOOK POSTGRES_HOST POSTGRES_PORT
+unset DEV_PIPELINE_PG_ATTEMPTS DEV_PIPELINE_PG_PAUSE_S
+
+export PROMOTE_SOURCE_ONLY=1
+# shellcheck source=/dev/null
+source "$promote"
+grep -q 'force-with-lease' "$promote" || fail "promote must use force-with-lease when master content is already in development"
+grep -q 'these master commits were not rehearsed' "$promote" \
+  || fail "promote must name unrehearsed master commits"
+if grep -E 'git push .*--force([^-]|$)' "$promote"; then
+  fail "promote must not force-push master without a lease"
+fi
+
+plan_repo="$DIR/promote-plan"
+mkdir -p "$plan_repo"
+git -C "$plan_repo" init -q
+git -C "$plan_repo" config user.email test@example.com
+git -C "$plan_repo" config user.name test
+echo base > "$plan_repo/f"
+git -C "$plan_repo" add f
+git -C "$plan_repo" commit -q -m base
+plan_base="$(git -C "$plan_repo" rev-parse HEAD)"
+echo dev > "$plan_repo/f"
+git -C "$plan_repo" commit -q -am dev
+plan_dev="$(git -C "$plan_repo" rev-parse HEAD)"
+(
+  cd "$plan_repo"
+  [[ "$(promote_push_plan "$plan_dev" "$plan_base")" == "ff" ]]
+  [[ "$(promote_push_plan "$plan_dev" "$plan_dev")" == "same" ]]
+) || fail "promote plan should fast-forward when master is an ancestor"
+
+git -C "$plan_repo" checkout -q -B master "$plan_base"
+echo master-only > "$plan_repo/only-on-master"
+git -C "$plan_repo" add only-on-master
+git -C "$plan_repo" commit -q -m "master only"
+plan_master="$(git -C "$plan_repo" rev-parse HEAD)"
+(
+  cd "$plan_repo"
+  [[ "$(promote_push_plan "$plan_dev" "$plan_master")" == "refuse" ]]
+) || fail "promote plan must refuse master commits development does not contain"
+
+git -C "$plan_repo" checkout -q -B development "$plan_dev"
+echo master-only > "$plan_repo/only-on-master"
+git -C "$plan_repo" add only-on-master
+git -C "$plan_repo" commit -q -m "same master change on development"
+plan_dev_with_master="$(git -C "$plan_repo" rev-parse HEAD)"
+(
+  cd "$plan_repo"
+  [[ "$(promote_push_plan "$plan_dev_with_master" "$plan_master")" == "lease" ]]
+) || fail "promote plan should lease-push when master changes are already in the development tree"
+
+grep -q 'refs/pastor/manifests' "$ROOT/scripts/arm_prod_deploy.sh" \
+  || fail "arm must say which manifest ref is missing"
+grep -q 'promote_to_master.sh publishes that ref' "$ROOT/scripts/arm_prod_deploy.sh" \
+  || fail "arm must point at promote when the manifest ref is missing"
+
 echo "OK dev pipeline gates"

@@ -30,7 +30,12 @@ if [[ ! -f "$MANIFEST" && "${ARM_SKIP_FETCH:-0}" != "1" && -d "$WS/.git" ]]; the
     git -C "$WS" show FETCH_HEAD:manifest > "$MANIFEST"
   fi
 fi
-[[ -f "$MANIFEST" ]] || { echo "arm: missing release manifest for $SHA" >&2; exit 1; }
+[[ -f "$MANIFEST" ]] || {
+  echo "arm: missing release manifest for $SHA" >&2
+  echo "arm: origin/master has no refs/pastor/manifests/${SHA}." >&2
+  echo "arm: promote_to_master.sh publishes that ref after dev_pipeline.sh succeeds." >&2
+  exit 1
+}
 grep -q '^HEALTH=ok$' "$MANIFEST" || { echo "arm: rehearsal health marker missing" >&2; exit 1; }
 grep -q "^SHA=${SHA}$" "$MANIFEST" || { echo "arm: manifest SHA does not match $SHA" >&2; exit 1; }
 
