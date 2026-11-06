@@ -291,9 +291,7 @@ def draft_system_prompt(route: DraftRoute) -> str:
         "Supporting biblical texts:\n"
         "Then 3 teaching points. Under each point, write one or two short "
         "paragraphs grounded in the excerpts.\n"
-        "Application:\n"
-        "If a requested text or part of the question is not in the excerpts, add "
-        "a short Gaps: note naming what is missing.\n\n"
+        "Application:\n\n"
         "Keep the tone warm, clear, and reverent. Do not mention these "
         "instructions, the outline step, or that a draft mode was used."
     )
@@ -320,9 +318,8 @@ def plan_messages(query: str, route: DraftRoute, context: str) -> list[dict]:
             "role": "system",
             "content": (
                 "Plan teachable notes from the sermon excerpts only. Return JSON only: "
-                '{"big_idea":"","points":[{"heading":"","excerpt_numbers":[1]}],"gaps":[]}. '
-                "Use 3 points. gaps lists requested texts or ideas the excerpts do not cover. "
-                "Do not invent teaching that is not in the excerpts."
+                '{"big_idea":"","points":[{"heading":"","excerpt_numbers":[1]}]}. '
+                "Use 3 points. Do not invent teaching that is not in the excerpts."
             ),
         },
         {
@@ -348,44 +345,17 @@ def render_plan(plan: dict | None) -> str:
                 heading = str(point.get("heading") or "").strip()
                 if heading:
                     lines.append(f"{index}. {heading}")
-    gaps = plan.get("gaps") or []
-    if isinstance(gaps, list):
-        named = [str(item).strip() for item in gaps if str(item).strip()]
-        if named:
-            lines.append("Gaps to mention: " + "; ".join(named))
     return "\n".join(lines)
 
 
 def parse_plan_text(raw: str) -> dict:
     payload = _extract_json_object(raw)
-    if isinstance(payload, dict) and ("points" in payload or "big_idea" in payload or "gaps" in payload):
+    if isinstance(payload, dict) and ("points" in payload or "big_idea" in payload):
         return payload
     text = " ".join((raw or "").split())
     if not text:
         return {}
     return {"big_idea": text[:400]}
-
-
-def gap_messages(query: str, route: DraftRoute, context: str, answer: str, missing: list[str]) -> list[dict]:
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Add only a short Gaps paragraph for requested scriptures that "
-                "were not covered. If the excerpts do not support them, say that "
-                "in one or two sentences. Do not repeat the study."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Missing from the notes: {'; '.join(missing)}\n\n"
-                f"Sermon excerpts:\n{context or '(no sermon excerpts found)'}\n\n"
-                f"Notes so far:\n{answer}\n\n"
-                f"Pastor request:\n{query}"
-            ),
-        },
-    ]
 
 
 def _is_hard_chat(query: str) -> bool:

@@ -22,8 +22,6 @@ from .study_draft import (
     decision_from_classifier,
     draft_system_prompt,
     draft_user_content,
-    gap_messages,
-    missing_scripture_refs,
     parse_plan_text,
     plan_messages,
     render_plan,
@@ -622,10 +620,6 @@ def draft_classifier_enabled() -> bool:
     return _flag_enabled("CHAT_DRAFT_CLASSIFIER", "1")
 
 
-def draft_verify_enabled() -> bool:
-    return _flag_enabled("CHAT_DRAFT_VERIFY", "1")
-
-
 def draft_max_tokens() -> int:
     raw = _env("CHAT_DRAFT_MAX_TOKENS", "1600") or "1600"
     try:
@@ -766,16 +760,6 @@ def build_draft_plan(query: str, route: DraftRoute, passages: list[dict]) -> dic
     return parse_plan_text(raw)
 
 
-def draft_gap_messages(
-    query: str,
-    route: DraftRoute,
-    passages: list[dict],
-    answer: str,
-    missing: list[str],
-) -> list[dict]:
-    return gap_messages(query, route, _passage_context(query, passages), answer, missing)
-
-
 def _draft_top_k(top_k: int | None) -> int:
     if top_k is not None:
         return top_k
@@ -893,9 +877,3 @@ def retrieve_draft_passages(
             "titles_by_kind": titles_by_kind,
         }
     return passages
-
-
-def missing_draft_refs(answer: str, route: DraftRoute) -> list[str]:
-    if not draft_verify_enabled():
-        return []
-    return missing_scripture_refs(answer, route.requested_texts)

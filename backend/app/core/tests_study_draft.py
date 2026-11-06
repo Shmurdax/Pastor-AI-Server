@@ -190,12 +190,12 @@ class StudyDraftGenerationTests(SimpleTestCase):
 
     def test_plan_render_and_writer_prompt(self):
         plan = parse_plan_text(
-            '{"big_idea":"Living water","points":[{"heading":"Ask"}],"gaps":["Isaiah 55:1"]}'
+            '{"big_idea":"Living water","points":[{"heading":"Ask"}]}'
         )
         rendered = render_plan(plan)
         self.assertIn("Living water", rendered)
         self.assertIn("1. Ask", rendered)
-        self.assertIn("Isaiah 55:1", rendered)
+        self.assertNotIn("Gaps", rendered)
         route = rule_route(LABELED)
         messages = draft_writer_messages(
             LABELED,
@@ -206,7 +206,7 @@ class StudyDraftGenerationTests(SimpleTestCase):
         system = messages[0]["content"]
         user = messages[1]["content"]
         self.assertIn("Title:", system)
-        self.assertIn("Gaps:", system)
+        self.assertNotIn("Gaps:", system)
         self.assertNotIn("2–4 short paragraphs", system)
         self.assertIn("Thirst and the gift of God", user)
         self.assertIn("John 4:14", user)
@@ -318,13 +318,12 @@ class StudyDraftAPITests(APITestCase):
         saved = ChatMessage.objects.get(session_id="draft-sse")
         self.assertIn("Turn back to God", saved.ai_response)
 
-    def test_missing_requested_text_appends_a_gap_note(self):
+    def test_draft_reply_does_not_append_a_gap_note(self):
         passages = [{"title": "Faith Lift", "text": "Faith trusts God."}]
+        stream_calls = []
 
         def fake_stream(messages, *, max_tokens):
-            if max_tokens == 240:
-                yield "Gaps: James 2:14-26 was not in the sermon excerpts."
-                return
+            stream_calls.append(max_tokens)
             yield "Title: Faith\n\nBig idea: Trust God."
 
         with patch(
@@ -338,12 +337,13 @@ class StudyDraftAPITests(APITestCase):
                 "/api/chat/",
                 {
                     "query": "Write a Bible study on faith\nPrimary Biblical Texts: James 2:14-26",
-                    "session_id": "draft-gap",
+                    "session_id": "draft-no-gap",
                 },
                 format="json",
             )
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["pipeline"], PIPELINE_DRAFT)
-        self.assertIn("Gaps: James 2:14-26", res.data["answer"])
+        self.assertEqual(len(stream_calls), 1)
+        self.assertNotIn("Gaps:", res.data["answer"])
         self.assertIn("Title: Faith", res.data["answer"])
