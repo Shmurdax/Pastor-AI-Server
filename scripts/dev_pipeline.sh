@@ -103,11 +103,12 @@ dev_pipeline_sql_quote() {
   printf "'%s'" "$value"
 }
 
-# Run psql as the postgres superuser. The SQL is shell-quoted so a password
-# containing $ or quotes cannot expand in the su command string.
+# Run psql as the postgres superuser. SQL is fed on stdin.
+# `psql -c -c ...` made the statement the database name ("GRANT ALL ... does not exist")
+# and `psql -tAc -c` treated SELECT as a connection string.
 dev_pipeline_psql_as_postgres() {
-  local flags="$1" sql="$2"
-  su -s /bin/bash postgres -c "$(printf 'psql %s -c %q' "$flags" "$sql")"
+  local flags="${1:-}" sql="$2"
+  printf '%s\n' "$sql" | su -s /bin/bash postgres -c "psql -v ON_ERROR_STOP=1 ${flags} -f -"
 }
 
 # A fresh cluster has the postgres superuser and no app role. Django then fails
@@ -134,19 +135,24 @@ dev_pipeline_ensure_app_database() {
     return 1
   fi
   pass_sql="$(dev_pipeline_sql_quote "$pass")"
-  if ! dev_pipeline_psql_as_postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${user}'" | grep -q 1; then
-    if ! dev_pipeline_psql_as_postgres "-v ON_ERROR_STOP=1" "CREATE USER ${user} WITH PASSWORD ${pass_sql} CREATEDB;"; then
+  # printf %s does not expand $ inside the password a second time.
+  local role_sql db_sql grant_sql
+  printf -v role_sql 'CREATE USER %s WITH PASSWORD %s CREATEDB;' "$user" "$pass_sql"
+  printf -v db_sql 'CREATE DATABASE %s OWNER %s;' "$db" "$user"
+  printf -v grant_sql 'GRANT ALL PRIVILEGES ON DATABASE %s TO %s;' "$db" "$user"
+  if ! dev_pipeline_psql_as_postgres -tA "SELECT 1 FROM pg_roles WHERE rolname='${user}'" | grep -q 1; then
+    if ! dev_pipeline_psql_as_postgres "" "$role_sql"; then
       echo "dev-pipeline: could not create Postgres role ${user}" >&2
       return 1
     fi
   fi
-  if ! dev_pipeline_psql_as_postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${db}'" | grep -q 1; then
-    if ! dev_pipeline_psql_as_postgres "-v ON_ERROR_STOP=1" "CREATE DATABASE ${db} OWNER ${user};"; then
+  if ! dev_pipeline_psql_as_postgres -tA "SELECT 1 FROM pg_database WHERE datname='${db}'" | grep -q 1; then
+    if ! dev_pipeline_psql_as_postgres "" "$db_sql"; then
       echo "dev-pipeline: could not create database ${db}" >&2
       return 1
     fi
   fi
-  dev_pipeline_psql_as_postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${db} TO ${user};" >/dev/null || true
+  dev_pipeline_psql_as_postgres "" "$grant_sql" >/dev/null || true
 }
 
 # A package wipe also removes the local data directory. The network volume still
@@ -160,8 +166,14 @@ dev_pipeline_restore_persistent_postgres() {
   [[ "${DEV_PIPELINE_PG_JUST_INSTALLED:-0}" == "1" ]] || return 0
   local runtime="$ROOT/persist_runtime.sh"
   [[ -f "$runtime" ]] || return 0
-  log() { echo "dev-pipeline: $*"; }
-  warn() { echo "dev-pipeline: $*" >&2; }
+  # persist_runtime.sh calls log/warn. Do not replace a caller's functions
+  # (deploy_update.sh uses those names for its own messages).
+  if ! declare -F log >/dev/null 2>&1; then
+    log() { echo "dev-pipeline: $*"; }
+  fi
+  if ! declare -F warn >/dev/null 2>&1; then
+    warn() { echo "dev-pipeline: $*" >&2; }
+  fi
   # shellcheck source=/dev/null
   source "$runtime"
   echo "dev-pipeline: restoring the persistent database if this container has not restored it yet"
@@ -315,6 +327,25 @@ dev_pipeline_main() {
   fi
 
   PORT="${DJANGO_PORT:-8000}"
+  # deploy_update.sh stops at migrate when Postgres is down, so nothing is left
+  # listening on 8000. The rehearsal cannot write a marker until Django answers.
+  if [[ "${DEV_PIPELINE_SKIP_HEALTH:-0}" != "1" && "${DEV_PIPELINE_SKIP_START:-0}" != "1" ]]; then
+    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/api/auth/config/" || true)"
+    if [[ "$code" != "200" ]]; then
+      if [[ -n "${DEV_PIPELINE_START_HOOK:-}" ]]; then
+        "$DEV_PIPELINE_START_HOOK" "$WS"
+      elif [[ ! -f "$WS/start.sh" ]]; then
+        echo "dev-pipeline: $WS/start.sh is missing, so Django was not started" >&2
+        exit 1
+      else
+        echo "dev-pipeline: Django is not answering on 127.0.0.1:${PORT} (HTTP ${code:-000}); running start.sh"
+        # onboot sets PASTOR_KEEP_ALIVE=1, which would make start.sh never return.
+        PASTOR_KEEP_ALIVE=0 bash "$WS/start.sh"
+      fi
+      DEV_PIPELINE_HEALTH_ATTEMPTS="${DEV_PIPELINE_HEALTH_ATTEMPTS:-30}"
+      DEV_PIPELINE_HEALTH_PAUSE_S="${DEV_PIPELINE_HEALTH_PAUSE_S:-2}"
+    fi
+  fi
   if [[ "${DEV_PIPELINE_SKIP_HEALTH:-0}" != "1" ]]; then
     # auth/config is public. Media and church events are premium routes:
     # 401 means Django is up and the gate is closed.
