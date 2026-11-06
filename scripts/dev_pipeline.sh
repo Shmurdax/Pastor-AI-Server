@@ -57,57 +57,205 @@ finally:
 PY
 }
 
+# RunPod remigration wipes apt packages. pg_ctlcluster and the sysv postgresql
+# service are both absent until the server package is installed. Return 2 when
+# that install cannot be done.
+dev_pipeline_install_postgres() {
+  if [[ -n "${DEV_PIPELINE_PG_INSTALL_HOOK:-}" ]]; then
+    "$DEV_PIPELINE_PG_INSTALL_HOOK"
+    return
+  fi
+  if command -v pg_ctlcluster >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ "$(id -u)" != "0" ]]; then
+    echo "dev-pipeline: pg_ctlcluster is not installed. Re-run as root so apt can install postgresql." >&2
+    return 2
+  fi
+  if ! command -v apt-get >/dev/null 2>&1; then
+    echo "dev-pipeline: pg_ctlcluster is not installed and apt-get is not available." >&2
+    return 2
+  fi
+  echo "dev-pipeline: pg_ctlcluster is not installed; installing postgresql"
+  export DEBIAN_FRONTEND=noninteractive
+  if ! apt-get update -qq; then
+    echo "dev-pipeline: apt-get update failed" >&2
+    return 2
+  fi
+  if ! apt-get install -y postgresql postgresql-contrib \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold; then
+    echo "dev-pipeline: apt-get install postgresql failed" >&2
+    return 2
+  fi
+  hash -r
+  if ! command -v pg_ctlcluster >/dev/null 2>&1; then
+    echo "dev-pipeline: postgresql installed but pg_ctlcluster is still missing" >&2
+    return 2
+  fi
+  DEV_PIPELINE_PG_JUST_INSTALLED=1
+  return 0
+}
+
+dev_pipeline_sql_quote() {
+  local value="$1"
+  value="${value//\'/\'\'}"
+  printf "'%s'" "$value"
+}
+
+# Run psql as the postgres superuser. The SQL is shell-quoted so a password
+# containing $ or quotes cannot expand in the su command string.
+dev_pipeline_psql_as_postgres() {
+  local flags="$1" sql="$2"
+  su -s /bin/bash postgres -c "$(printf 'psql %s -c %q' "$flags" "$sql")"
+}
+
+# A fresh cluster has the postgres superuser and no app role. Django then fails
+# migrate with "role does not exist" instead of connection refused.
+dev_pipeline_ensure_app_database() {
+  if [[ -n "${DEV_PIPELINE_PG_ROLE_HOOK:-}" ]]; then
+    "$DEV_PIPELINE_PG_ROLE_HOOK"
+    return
+  fi
+  local user db pass pass_sql
+  user="${POSTGRES_USER:-pastor}"
+  db="${POSTGRES_DB:-ai_db}"
+  pass="${POSTGRES_PASSWORD:-}"
+  [[ "$user" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+    echo "dev-pipeline: refusing unsafe POSTGRES_USER" >&2
+    return 1
+  }
+  [[ "$db" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+    echo "dev-pipeline: refusing unsafe POSTGRES_DB" >&2
+    return 1
+  }
+  if ! command -v psql >/dev/null 2>&1; then
+    echo "dev-pipeline: psql is missing, so the app database was not created" >&2
+    return 1
+  fi
+  pass_sql="$(dev_pipeline_sql_quote "$pass")"
+  if ! dev_pipeline_psql_as_postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${user}'" | grep -q 1; then
+    if ! dev_pipeline_psql_as_postgres "-v ON_ERROR_STOP=1" "CREATE USER ${user} WITH PASSWORD ${pass_sql} CREATEDB;"; then
+      echo "dev-pipeline: could not create Postgres role ${user}" >&2
+      return 1
+    fi
+  fi
+  if ! dev_pipeline_psql_as_postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${db}'" | grep -q 1; then
+    if ! dev_pipeline_psql_as_postgres "-v ON_ERROR_STOP=1" "CREATE DATABASE ${db} OWNER ${user};"; then
+      echo "dev-pipeline: could not create database ${db}" >&2
+      return 1
+    fi
+  fi
+  dev_pipeline_psql_as_postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${db} TO ${user};" >/dev/null || true
+}
+
+# A package wipe also removes the local data directory. The network volume still
+# has the dump start.sh restores. Only do that after this run installed Postgres,
+# so a cluster that was merely stopped is left as it is.
+dev_pipeline_restore_persistent_postgres() {
+  if [[ -n "${DEV_PIPELINE_PG_RESTORE_HOOK:-}" ]]; then
+    "$DEV_PIPELINE_PG_RESTORE_HOOK"
+    return
+  fi
+  [[ "${DEV_PIPELINE_PG_JUST_INSTALLED:-0}" == "1" ]] || return 0
+  local runtime="$ROOT/persist_runtime.sh"
+  [[ -f "$runtime" ]] || return 0
+  log() { echo "dev-pipeline: $*"; }
+  warn() { echo "dev-pipeline: $*" >&2; }
+  # shellcheck source=/dev/null
+  source "$runtime"
+  echo "dev-pipeline: restoring the persistent database if this container has not restored it yet"
+  _restore_persistent_postgres || true
+}
+
 dev_pipeline_start_local_postgres() {
   if [[ -n "${DEV_PIPELINE_PG_START_HOOK:-}" ]]; then
     "$DEV_PIPELINE_PG_START_HOOK"
     return
   fi
-  local ver
+  local install_rc=0 ver
+  dev_pipeline_install_postgres || install_rc=$?
+  if [[ "$install_rc" -ne 0 ]]; then
+    return "$install_rc"
+  fi
+  hash -r
   ver="$(ls /usr/lib/postgresql 2>/dev/null | sort -V | tail -1 || true)"
   if [[ -n "$ver" ]] && command -v pg_ctlcluster >/dev/null 2>&1; then
     echo "dev-pipeline: pg_ctlcluster ${ver} main start"
     if pg_ctlcluster "$ver" main start; then
       return 0
     fi
+    if pg_ctlcluster "$ver" main status >/dev/null 2>&1; then
+      echo "dev-pipeline: postgres cluster ${ver}/main is already online"
+      return 0
+    fi
   fi
   if command -v service >/dev/null 2>&1; then
     echo "dev-pipeline: service postgresql start"
-    service postgresql start
-    return
+    if service postgresql start; then
+      return 0
+    fi
+    echo "dev-pipeline: service postgresql did not start (unrecognized service means the package is not installed)" >&2
   fi
-  echo "dev-pipeline: neither pg_ctlcluster nor service is available" >&2
+  # The package postinst often starts the cluster before pg_ctlcluster is first used.
+  if [[ "${DEV_PIPELINE_PG_JUST_INSTALLED:-0}" == "1" ]]; then
+    return 0
+  fi
+  echo "dev-pipeline: pg_ctlcluster and service postgresql could not start the cluster" >&2
   return 1
 }
 
 # Start the local cluster when Django's host:port is refusing connections.
 # A remote POSTGRES_HOST is left alone.
+dev_pipeline_marker_blocked() {
+  echo "dev-pipeline: the rehearsal marker was not written, so promote cannot publish a release manifest." >&2
+  return 1
+}
+
+dev_pipeline_postgres_ready() {
+  if ! dev_pipeline_ensure_app_database; then
+    dev_pipeline_marker_blocked
+    return
+  fi
+  dev_pipeline_restore_persistent_postgres || true
+  echo "dev-pipeline: postgres is accepting connections on $(dev_pipeline_pg_host):$(dev_pipeline_pg_port)"
+}
+
 dev_pipeline_ensure_postgres() {
-  local host port attempts pause i
+  local host port attempts pause i start_rc
   host="$(dev_pipeline_pg_host)"
   port="$(dev_pipeline_pg_port)"
+  DEV_PIPELINE_PG_JUST_INSTALLED=0
   if dev_pipeline_pg_accepts; then
-    return 0
+    dev_pipeline_postgres_ready
+    return
   fi
   if ! dev_pipeline_pg_is_local; then
     echo "dev-pipeline: postgres at ${host}:${port} is not accepting connections" >&2
     return 1
   fi
   echo "dev-pipeline: postgres is not accepting connections on ${host}:${port}; starting the local cluster"
-  dev_pipeline_start_local_postgres || true
+  start_rc=0
+  dev_pipeline_start_local_postgres || start_rc=$?
+  if [[ "$start_rc" -eq 2 ]]; then
+    echo "dev-pipeline: postgres did not accept connections on ${host}:${port}" >&2
+    dev_pipeline_marker_blocked
+    return
+  fi
   attempts="${DEV_PIPELINE_PG_ATTEMPTS:-30}"
   pause="${DEV_PIPELINE_PG_PAUSE_S:-1}"
   for ((i = 1; i <= attempts; i++)); do
     if dev_pipeline_pg_accepts; then
-      echo "dev-pipeline: postgres is accepting connections on ${host}:${port}"
-      return 0
+      dev_pipeline_postgres_ready
+      return
     fi
     if [[ "$i" -lt "$attempts" && "$pause" != "0" ]]; then
       sleep "$pause"
     fi
   done
   echo "dev-pipeline: postgres did not accept connections on ${host}:${port}" >&2
-  echo "dev-pipeline: the rehearsal marker was not written, so promote cannot publish a release manifest." >&2
-  return 1
+  dev_pipeline_marker_blocked
+  return
 }
 
 dev_pipeline_main() {
