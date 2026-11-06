@@ -131,6 +131,21 @@ echo "=== Pastor-AI start ==="
 echo "Workspace: $WS"
 echo ""
 
+# Remigration wipes apt packages. Qdrant, Django, and the dump loop are screen
+# sessions; without screen, start.sh exits at the first launch and port 8000
+# never opens.
+if ! command -v screen >/dev/null 2>&1; then
+  log "screen missing — installing (services run in screen sessions)"
+  if [[ "$(id -u)" != "0" ]]; then
+    die "screen is not installed. Re-run as root so apt can install it."
+  fi
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq || die "apt-get update failed while installing screen"
+  apt-get install -y screen || die "apt-get install screen failed"
+  hash -r
+  command -v screen >/dev/null 2>&1 || die "screen is still not on PATH after apt install"
+fi
+
 # Postgres lives on local disk; dump/restore onto the network volume (PGDATA chown fails there).
 if ! command -v psql >/dev/null 2>&1; then
   warn "PostgreSQL missing — installing..."

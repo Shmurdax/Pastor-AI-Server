@@ -290,6 +290,14 @@ awk '
 ' "$ROOT/deploy_update.sh" || fail "deploy_update must ensure postgres before migrate"
 grep -q 'Django migrations failed' "$ROOT/deploy_update.sh" \
   || fail "deploy_update must stop when migrate fails"
+awk '
+  /apt-get install -y screen/ { install = NR }
+  /ensure_persistent_postgres/ { pg = NR }
+  /screen -dmS qdrant/ { qdrant = NR }
+  END { if (install == 0 || pg == 0 || qdrant == 0 || install > pg || install > qdrant) exit 1 }
+' "$ROOT/start.sh" || fail "start.sh must install screen before launching services"
+grep -q 'screen is not installed; skipping the Postgres dump loop' "$ROOT/persist_runtime.sh" \
+  || fail "dump loop must not abort startup when screen is missing"
 grep -q 'the rehearsal marker was not written' "$pipeline" \
   || fail "dev pipeline must say when postgres blocks the rehearsal marker"
 

@@ -335,6 +335,10 @@ dump_persistent_postgres() {
 }
 
 start_postgres_dump_loop() {
+  if ! command -v screen >/dev/null 2>&1; then
+    warn "screen is not installed; skipping the Postgres dump loop"
+    return 0
+  fi
   screen -S pgdump -X quit 2>/dev/null || true
   screen -dmS pgdump bash -c "
     while true; do
