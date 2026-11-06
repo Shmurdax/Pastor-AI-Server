@@ -19,9 +19,11 @@ from .study_draft import (
     CLASSIFIER_SYSTEM,
     DraftRoute,
     chat_fallback,
+    continue_draft_from_history,
     decision_from_classifier,
     draft_system_prompt,
     draft_user_content,
+    is_draft_followup,
     parse_plan_text,
     plan_messages,
     render_plan,
@@ -526,14 +528,81 @@ def _truncate_for_prompt(text: str, focus: str = "") -> str:
     return f"{clipped}…"
 
 
-def _prompt(query: str, passages: list[dict]) -> list[dict]:
+def history_turn_limit() -> int:
+    raw = _env("CHAT_MAX_HISTORY_TURNS", "10") or "10"
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 10
+
+
+def history_char_limit() -> int:
+    raw = _env("CHAT_MAX_HISTORY_CHARS", "20000") or "20000"
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 20000
+
+
+def load_session_history(session_id: str, *, user=None) -> list[dict]:
+    """Return older-to-newer turns for this chat session, capped by env limits."""
+    sid = str(session_id or "").strip()
+    if not sid or history_turn_limit() <= 0 or history_char_limit() <= 0:
+        return []
+    try:
+        from .models import ChatMessage
+    except Exception:
+        logger.warning("Chat history unavailable", exc_info=True)
+        return []
+    qs = ChatMessage.objects.filter(session_id=sid).order_by("-timestamp")
+    if user is not None and getattr(user, "pk", None):
+        qs = qs.filter(user_id=user.pk)
+    rows = list(qs[: history_turn_limit()])
+    rows.reverse()
+    budget = history_char_limit()
+    selected: list[dict] = []
+    used = 0
+    for row in reversed(rows):
+        query = str(getattr(row, "user_query", "") or "").strip()
+        answer = str(getattr(row, "ai_response", "") or "").strip()
+        if not query and not answer:
+            continue
+        # Prefer full user text; trim the prior answer first when over budget.
+        room = max(0, budget - used - len(query) - 2)
+        if room <= 0 and selected:
+            break
+        if len(answer) > room:
+            answer = answer[:room].rsplit(" ", 1)[0].rstrip() + "…"
+        turn = {"user_query": query, "ai_response": answer}
+        cost = len(query) + len(answer)
+        if used + cost > budget and selected:
+            break
+        selected.append(turn)
+        used += cost
+    selected.reverse()
+    return selected
+
+
+def history_as_messages(history: list[dict] | None) -> list[dict]:
+    messages = []
+    for turn in history or []:
+        query = str(turn.get("user_query") or "").strip()
+        answer = str(turn.get("ai_response") or "").strip()
+        if query:
+            messages.append({"role": "user", "content": query})
+        if answer:
+            messages.append({"role": "assistant", "content": answer})
+    return messages
+
+
+def _prompt(query: str, passages: list[dict], history: list[dict] | None = None) -> list[dict]:
     blocks = []
     for index, passage in enumerate(passages, start=1):
         blocks.append(
             f"[{index}] {passage['title']}\n{_truncate_for_prompt(passage['text'], query)}"
         )
     context = "\n\n".join(blocks) if blocks else "(no sermon excerpts found)"
-    return [
+    messages = [
         {
             "role": "system",
             "content": (
@@ -542,6 +611,9 @@ def _prompt(query: str, passages: list[dict]) -> list[dict]:
                 "examples, and scripture references. You may paraphrase and organize them "
                 "into a clear teaching response. Do not invent sermon titles, quotes, or "
                 "claims that are not supported by the excerpts.\n\n"
+                "When earlier chat turns are provided, use them to resolve follow-ups like "
+                "\"that\", \"those notes\", or \"tell me more\". Stay on the prior topic "
+                "unless the pastor clearly changes subjects.\n\n"
                 "Write like a pastor teaching a sincere believer:\n"
                 "- Open with a direct answer to the question.\n"
                 "- Develop the teaching in 2–4 short paragraphs, or short bullets when that "
@@ -555,18 +627,26 @@ def _prompt(query: str, passages: list[dict]) -> list[dict]:
                 "Keep the tone warm, clear, and reverent. Avoid chatbot filler, hedging "
                 "lists of possibilities, and invented personal stories."
             ),
-        },
+        }
+    ]
+    messages.extend(history_as_messages(history))
+    messages.append(
         {
             "role": "user",
             "content": f"Sermon excerpts:\n{context}\n\nQuestion: {query}",
-        },
-    ]
+        }
+    )
+    return messages
 
 
-def stream_llm_tokens(query: str, passages: list[dict]) -> Iterator[str]:
+def stream_llm_tokens(
+    query: str,
+    passages: list[dict],
+    history: list[dict] | None = None,
+) -> Iterator[str]:
     """Yield text deltas from the OpenAI-compatible vLLM endpoint."""
     yield from stream_message_tokens(
-        _prompt(query, passages),
+        _prompt(query, passages, history=history),
         max_tokens=int(_env("CHAT_MAX_TOKENS", "800") or "800"),
     )
 
@@ -632,13 +712,19 @@ def _log_route(route: DraftRoute) -> None:
     logger.warning("chat_route %s", route.log_fields())
 
 
-def resolve_chat_route(query: str) -> DraftRoute:
+def resolve_chat_route(query: str, history: list[dict] | None = None) -> DraftRoute:
     """Pick pastoral chat or a study/sermon draft without a user-facing mode."""
     if not draft_pipeline_enabled():
         route = chat_fallback(query, source="disabled", reason="draft pipeline off", confidence=1.0)
         _log_route(route)
         return route
     ruled = rule_route(query)
+    continued = continue_draft_from_history(query, history)
+    # Prefer prior-draft context for "shorten those notes" even when the wording
+    # also matches a generic sermon-notes document rule.
+    if continued is not None and (ruled is None or is_draft_followup(query)):
+        _log_route(continued)
+        return continued
     if ruled is not None:
         _log_route(ruled)
         return ruled
@@ -648,10 +734,19 @@ def resolve_chat_route(query: str) -> DraftRoute:
         return route
     try:
         warm_llm()
+        classifier_user = (query or "").strip()
+        if history:
+            prior = history[-1]
+            prior_query = str(prior.get("user_query") or "").strip()
+            if prior_query:
+                classifier_user = (
+                    f"Prior pastor request: {prior_query}\n"
+                    f"Current pastor request: {classifier_user}"
+                )
         raw = complete_llm_text(
             [
                 {"role": "system", "content": CLASSIFIER_SYSTEM},
-                {"role": "user", "content": (query or "").strip()},
+                {"role": "user", "content": classifier_user},
             ],
             max_tokens=320,
             temperature=0.0,
@@ -729,9 +824,16 @@ def _passage_context(query: str, passages: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def draft_writer_messages(query: str, route: DraftRoute, passages: list[dict], plan: dict | None) -> list[dict]:
-    return [
-        {"role": "system", "content": draft_system_prompt(route)},
+def draft_writer_messages(
+    query: str,
+    route: DraftRoute,
+    passages: list[dict],
+    plan: dict | None,
+    history: list[dict] | None = None,
+) -> list[dict]:
+    messages = [{"role": "system", "content": draft_system_prompt(route)}]
+    messages.extend(history_as_messages(history))
+    messages.append(
         {
             "role": "user",
             "content": draft_user_content(
@@ -740,16 +842,26 @@ def draft_writer_messages(query: str, route: DraftRoute, passages: list[dict], p
                 render_plan(plan),
                 query,
             ),
-        },
-    ]
+        }
+    )
+    return messages
 
 
-def build_draft_plan(query: str, route: DraftRoute, passages: list[dict]) -> dict:
+def build_draft_plan(
+    query: str,
+    route: DraftRoute,
+    passages: list[dict],
+    history: list[dict] | None = None,
+) -> dict:
     if not _flag_enabled("CHAT_DRAFT_PLAN", "1"):
         return {}
     try:
+        messages = plan_messages(query, route, _passage_context(query, passages))
+        if history:
+            # Keep system instruction first; insert prior turns before the plan user blob.
+            messages = [messages[0], *history_as_messages(history), *messages[1:]]
         raw = complete_llm_text(
-            plan_messages(query, route, _passage_context(query, passages)),
+            messages,
             max_tokens=400,
             temperature=0.1,
             timeout=float(_env("CHAT_DRAFT_PLAN_TIMEOUT_S", "90") or "90"),
@@ -791,12 +903,26 @@ def _merge_ranked_many(groups: list[list[dict]], top_k: int) -> list[dict]:
     return merged
 
 
+def _draft_focus_query(query: str, route: DraftRoute) -> str:
+    """Prefer topic + follow-up wording when the pastor refers to prior notes."""
+    topic = (route.topic or "").strip()
+    text = (query or "").strip()
+    if not topic:
+        return text
+    if topic.lower() in text.lower():
+        return text
+    if len(text.split()) <= 14 or route.source == "history_followup":
+        return f"{topic}\n{text}".strip()
+    return text
+
+
 def _draft_search_texts(query: str, route: DraftRoute, hyde_text: str) -> list[tuple[str, str]]:
-    searches = [("query", query)]
+    focus = _draft_focus_query(query, route)
+    searches = [("query", focus)]
     if hyde_text:
         searches.append(("hyde", hyde_text))
     topic = (route.topic or "").strip()
-    if topic and topic.lower() != query.strip().lower() and len(topic) >= 8:
+    if topic and topic.lower() != focus.strip().lower() and len(topic) >= 8:
         searches.append(("topic", topic))
     for ref in route.requested_texts[:4]:
         searches.append(("scripture", f"{ref} {topic}".strip()))
@@ -827,8 +953,9 @@ def retrieve_draft_passages(
     started = time.monotonic()
     hyde_text = ""
     hyde_status = "off"
+    focus = _draft_focus_query(query, route)
     if hyde_enabled():
-        hyde_text, hyde_status = generate_draft_hyde_with_retry(query)
+        hyde_text, hyde_status = generate_draft_hyde_with_retry(focus)
     searches = _draft_search_texts(query, route, hyde_text)
     groups = []
     titles_by_kind: dict[str, list[str]] = {}

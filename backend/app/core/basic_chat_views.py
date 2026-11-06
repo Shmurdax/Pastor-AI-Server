@@ -34,6 +34,7 @@ from .basic_chat import (
     build_draft_plan,
     draft_max_tokens,
     draft_writer_messages,
+    load_session_history,
     resolve_chat_route,
     retrieve_draft_passages,
     retrieve_passages,
@@ -125,7 +126,8 @@ def _passage_rows(query: str, passages) -> list[dict]:
 
 def _json_reply(*, query: str, session_id: str, user, include_passages: bool = False):
     try:
-        route, passages, answer = _complete_reply(query)
+        history = load_session_history(session_id, user=user)
+        route, passages, answer = _complete_reply(query, history=history)
     except Exception:
         logger.exception("Basic chat failed")
         return Response(
@@ -155,20 +157,20 @@ def _json_reply(*, query: str, session_id: str, user, include_passages: bool = F
     return Response(payload)
 
 
-def _complete_reply(query: str):
-    route = resolve_chat_route(query)
+def _complete_reply(query: str, history: list | None = None):
+    route = resolve_chat_route(query, history=history)
     if route.is_draft:
         passages = retrieve_draft_passages(query, route)
-        plan = build_draft_plan(query, route, passages)
+        plan = build_draft_plan(query, route, passages, history=history)
         answer = "".join(
             stream_message_tokens(
-                draft_writer_messages(query, route, passages, plan),
+                draft_writer_messages(query, route, passages, plan, history=history),
                 max_tokens=draft_max_tokens(),
             )
         ).strip()
         return route, passages, answer
     passages = retrieve_passages(query)
-    answer = "".join(stream_llm_tokens(query, passages)).strip()
+    answer = "".join(stream_llm_tokens(query, passages, history=history)).strip()
     return route, passages, answer
 
 
@@ -234,7 +236,12 @@ def _stream_events(*, query: str, session_id: str, user):
     yield sse_pack({"type": "status", "phase": "started"})
     try:
         close_old_connections()
-        route = yield from _call_with_keepalives(lambda: resolve_chat_route(query))
+        history = yield from _call_with_keepalives(
+            lambda: load_session_history(session_id, user=user)
+        )
+        route = yield from _call_with_keepalives(
+            lambda: resolve_chat_route(query, history=history)
+        )
         yield sse_pack({"type": "status", "phase": "retrieving", "pipeline": route.pipeline})
         if route.is_draft:
             passages = yield from _call_with_keepalives(
@@ -242,13 +249,15 @@ def _stream_events(*, query: str, session_id: str, user):
             )
             yield sse_pack({"type": "status", "phase": "planning"})
             plan = yield from _call_with_keepalives(
-                lambda: build_draft_plan(query, route, passages)
+                lambda: build_draft_plan(query, route, passages, history=history)
             )
-            messages = draft_writer_messages(query, route, passages, plan)
+            messages = draft_writer_messages(
+                query, route, passages, plan, history=history
+            )
             token_source = lambda: stream_message_tokens(messages, max_tokens=draft_max_tokens())
         else:
             passages = yield from _call_with_keepalives(lambda: retrieve_passages(query))
-            token_source = lambda: stream_llm_tokens(query, passages)
+            token_source = lambda: stream_llm_tokens(query, passages, history=history)
         yield sse_keepalive()
         parts = []
         for text in _token_stream_from(token_source):

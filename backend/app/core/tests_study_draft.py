@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 
 from api.models import Profile
 from core.basic_chat import (
+    _prompt,
     build_draft_plan,
     draft_writer_messages,
     resolve_chat_route,
@@ -20,6 +21,7 @@ from core.study_draft import (
     CLASSIFIER_SYSTEM,
     PIPELINE_CHAT,
     PIPELINE_DRAFT,
+    continue_draft_from_history,
     decision_from_classifier,
     draft_system_prompt,
     missing_scripture_refs,
@@ -257,6 +259,73 @@ class StudyDraftGenerationTests(SimpleTestCase):
         with patch("core.basic_chat.complete_llm_text", side_effect=RuntimeError("down")):
             plan = build_draft_plan("Write a Bible study on repentance", route, [])
         self.assertEqual(plan, {})
+
+    def test_followup_keeps_prior_draft_pipeline(self):
+        history = [
+            {
+                "user_query": "Write an in-depth Bible study on James 2",
+                "ai_response": (
+                    "Title: Faith That Works\n"
+                    "Big idea: Faith without works is dead.\n"
+                    "Primary biblical texts: James 2\n"
+                    "Application:\nLive the Word."
+                ),
+            }
+        ]
+        route = continue_draft_from_history("Add a discussion question to that study", history)
+        self.assertIsNotNone(route)
+        self.assertTrue(route.is_draft)
+        self.assertEqual(route.source, "history_followup")
+        self.assertIn("James", route.topic)
+        resolved = resolve_chat_route("Add a discussion question to that study", history=history)
+        self.assertEqual(resolved.source, "history_followup")
+        self.assertTrue(resolved.is_draft)
+        shortened = resolve_chat_route(
+            "Shorten those sermon notes",
+            history=[
+                {
+                    "user_query": "Please draft sermon notes for Sunday on forgiveness",
+                    "ai_response": (
+                        "Title: Forgiveness\nBig idea: Release the debt.\n"
+                        "Primary biblical texts: Matthew 6:14\nApplication:\nForgive."
+                    ),
+                }
+            ],
+        )
+        self.assertEqual(shortened.source, "history_followup")
+        self.assertIn("Forgiveness", shortened.topic)
+
+    def test_prompt_includes_prior_turns(self):
+        history = [
+            {
+                "user_query": "What is grace?",
+                "ai_response": "Grace is God's favor.",
+            }
+        ]
+        messages = _prompt(
+            "Tell me more about that",
+            [{"title": "Grace Notes", "text": "Grace meets us in failure."}],
+            history=history,
+        )
+        roles = [item["role"] for item in messages]
+        self.assertEqual(roles[:3], ["system", "user", "assistant"])
+        self.assertIn("What is grace?", messages[1]["content"])
+        self.assertIn("Grace is God's favor.", messages[2]["content"])
+        self.assertIn("Tell me more about that", messages[-1]["content"])
+        draft_messages = draft_writer_messages(
+            "Shorten those sermon notes",
+            rule_route("Please draft sermon notes for Sunday on forgiveness"),
+            [{"title": "Forgiveness", "text": "Forgive as Christ forgave."}],
+            {"big_idea": "Forgive", "points": [{"heading": "Release"}]},
+            history=[
+                {
+                    "user_query": "Please draft sermon notes for Sunday on forgiveness",
+                    "ai_response": "Title: Forgiveness\nBig idea: Release the debt.\nApplication:\nForgive.",
+                }
+            ],
+        )
+        self.assertEqual(draft_messages[1]["role"], "user")
+        self.assertIn("forgiveness", draft_messages[1]["content"].lower())
 
 
 class StudyDraftAPITests(APITestCase):

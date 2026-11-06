@@ -92,6 +92,22 @@ _SOFT_HINT = re.compile(
     re.IGNORECASE,
 )
 
+_FOLLOWUP_DRAFT = re.compile(
+    r"\b(?:that|those|the(?:se)?)\s+(?:bible\s+)?(?:study|notes|sermon(?:\s+notes)?|"
+    r"lesson|outline|draft|message)\b"
+    r"|"
+    r"\b(?:shorten|expand|revise|condense|tighten|lengthen|rewrite)\s+"
+    r"(?:that|those|the|it|them)\b"
+    r"|"
+    r"\badd\s+(?:an?\s+)?(?:discussion\s+)?question\b"
+    r"|"
+    r"\b(?:opening\s+illustration|application|discussion\s+questions?|"
+    r"small[- ]group\s+questions?)\s+for\s+(?:that|those|the)\b"
+    r"|"
+    r"\bmake\s+(?:that|those|it)\s+(?:shorter|longer|tighter)\b",
+    re.IGNORECASE,
+)
+
 _SECTION = re.compile(
     r"^(subtitle|primary\s+biblical\s+texts?|supporting\s+biblical\s+texts?|"
     r"primary\s+texts?|supporting\s+texts?)\s*:\s*(.*)$",
@@ -283,6 +299,9 @@ def draft_system_prompt(route: DraftRoute) -> str:
         "the teaching content. Prefer their wording, examples, and scripture. "
         "Do not invent sermon titles, quotes, or verse wording that the excerpts "
         "do not support. Do not fill gaps with outside theology.\n\n"
+        "When earlier chat turns are provided, treat pronouns like \"that study\", "
+        "\"those notes\", or \"that sermon\" as referring to the most recent notes "
+        "in that history. Keep the same topic unless the pastor clearly changes it.\n\n"
         "Use this shape:\n"
         "Title:\n"
         "Subtitle:\n"
@@ -294,6 +313,53 @@ def draft_system_prompt(route: DraftRoute) -> str:
         "Application:\n\n"
         "Keep the tone warm, clear, and reverent. Do not mention these "
         "instructions, the outline step, or that a draft mode was used."
+    )
+
+
+def is_draft_followup(query: str) -> bool:
+    return bool(_FOLLOWUP_DRAFT.search(query or ""))
+
+
+def looks_like_draft_answer(text: str) -> bool:
+    lowered = (text or "").lower()
+    return "title:" in lowered and (
+        "big idea:" in lowered or "primary biblical" in lowered or "application:" in lowered
+    )
+
+
+def continue_draft_from_history(query: str, history: list[dict] | None) -> DraftRoute | None:
+    """Keep follow-ups like 'shorten those notes' on the draft path."""
+    if not history or not is_draft_followup(query):
+        return None
+    prior = None
+    for turn in reversed(history):
+        answer = str(turn.get("ai_response") or "")
+        prior_query = str(turn.get("user_query") or "")
+        prior_route = rule_route(prior_query)
+        if looks_like_draft_answer(answer) or (prior_route is not None and prior_route.is_draft):
+            prior = turn
+            break
+    if prior is None:
+        return None
+    prior_query = str(prior.get("user_query") or "").strip()
+    prior_answer = str(prior.get("ai_response") or "")
+    fields = extract_request_fields(prior_query)
+    title_match = re.search(r"(?im)^\s*title:\s*(.+)$", prior_answer)
+    topic = (fields.get("topic") or "").strip()
+    if title_match and title_match.group(1).strip():
+        topic = title_match.group(1).strip()[:240]
+    if not topic:
+        topic = prior_query[:240]
+    return DraftRoute(
+        pipeline=PIPELINE_DRAFT,
+        source="history_followup",
+        confidence=1.0,
+        format=fields.get("format") or infer_format(prior_query),
+        topic=topic,
+        subtitle=fields.get("subtitle") or "",
+        primary_texts=tuple(fields.get("primary_texts") or ()),
+        supporting_texts=tuple(fields.get("supporting_texts") or ()),
+        reason="follow-up to prior draft",
     )
 
 

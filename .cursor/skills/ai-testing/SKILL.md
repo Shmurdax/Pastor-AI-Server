@@ -30,4 +30,4 @@ The command stdout is the scorecard. After the command finishes, paste that enti
 
 Include every turn. Keep each full answer, each accuracy score, each fail reason, the source titles, the passage titles, the unsupported sentences, and the scripture references that were not in the passages. Do not shorten an answer to its first lines. Do not drop passing turns. Do not replace the scorecard with a pointer to the JSON file.
 
-Exit code 1 means at least one turn failed. Paste the full scorecard anyway. Anaphoric turns are expected to fail while the model sees only the latest prompt. Do not weaken a check to make the run pass, and do not change the chat pipeline unless the user asks for a product change.
+Exit code 1 means at least one turn failed. Paste the full scorecard anyway. Anaphoric follow-ups should keep the prior topic once session history is in the prompt. Do not weaken a check to make the run pass, and do not change the chat pipeline unless the user asks for a product change.

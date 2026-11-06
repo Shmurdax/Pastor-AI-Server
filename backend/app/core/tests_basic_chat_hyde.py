@@ -534,9 +534,9 @@ class HyDEChatAPITests(APITestCase):
                 }
             ]
 
-        def fake_stream(query, passages):
-            prompt = _prompt(query, passages)
-            rendered = prompt[0]["content"] + prompt[1]["content"]
+        def fake_stream(query, passages, history=None):
+            prompt = _prompt(query, passages, history=history)
+            rendered = "".join(item["content"] for item in prompt)
             self.assertNotIn(hyde_marker, rendered)
             self.assertIn("third person of the Holy Trinity", rendered)
             yield "The Spirit is the third person of the Trinity."

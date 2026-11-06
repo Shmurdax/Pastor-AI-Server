@@ -170,11 +170,11 @@ class ScorecardTests(unittest.TestCase):
 class CaseFileTests(unittest.TestCase):
     def test_case_file_is_one_conversation(self):
         turns = load_cases(CASES)
-        self.assertGreaterEqual(len(turns), 12)
+        self.assertGreaterEqual(len(turns), 16)
         ids = [turn["id"] for turn in turns]
         self.assertEqual(len(ids), len(set(ids)))
         anaphoric = [turn for turn in turns if turn["anaphoric"]]
-        self.assertEqual(len(anaphoric), 2)
+        self.assertGreaterEqual(len(anaphoric), 8)
         drafts = [turn for turn in turns if turn["kind"] == "draft"]
         self.assertGreater(len(drafts), len(turns) // 2)
         self.assertIn("James 2", anaphoric[0]["must_mention"])
