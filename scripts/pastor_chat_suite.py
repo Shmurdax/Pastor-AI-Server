@@ -32,6 +32,7 @@ ACCOUNT = "grokbot1@gmail.com"
 CASES_PATH = Path(__file__).resolve().parent / "pastor_chat_cases.yaml"
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 REPORT_PATH = Path(os.environ.get("PASTOR_CHAT_SUITE_OUT", "/tmp/pastor_chat_suite.json"))
+REQUEST_TIMEOUT_S = float(os.environ.get("PASTOR_CHAT_TIMEOUT_S", "600") or "600")
 
 
 def main() -> int:
@@ -258,7 +259,7 @@ def request_json(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=180) as response:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_S) as response:
             raw = response.read().decode("utf-8", errors="replace")
             status = response.status
     except urllib.error.HTTPError as exc:

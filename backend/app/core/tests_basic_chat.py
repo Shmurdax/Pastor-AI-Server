@@ -58,7 +58,7 @@ class BasicChatAPITests(APITestCase):
             self.assertIn("faith", query.lower())
             return list(self.passages)
 
-        def fake_stream(query, passages):
+        def fake_stream(query, passages, history=None):
             self.assertEqual(passages[0]["title"], "Faith That Moves")
             yield from tokens
 
@@ -160,3 +160,35 @@ class BasicChatAPITests(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertGreaterEqual(body.count(": keepalive"), 2)
         self.assertIn("Hello.", body)
+
+    def test_followup_prompt_receives_prior_turn(self):
+        self._auth(self.premium)
+        ChatMessage.objects.create(
+            user=self.premium,
+            session_id="memory-1",
+            user_query="What is grace?",
+            ai_response="Grace is God's unearned favor.",
+        )
+        seen = {}
+
+        def fake_stream(query, passages, history=None):
+            seen["history"] = history or []
+            seen["query"] = query
+            yield "Grace covers shame too."
+
+        with patch(
+            "core.basic_chat_views.retrieve_passages", return_value=self.passages
+        ), patch("core.basic_chat_views.stream_llm_tokens", fake_stream):
+            res = self.client.post(
+                "/api/chat/",
+                {
+                    "query": "Can you say more about that for someone in shame?",
+                    "session_id": "memory-1",
+                },
+                format="json",
+            )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(seen["history"]), 1)
+        self.assertEqual(seen["history"][0]["user_query"], "What is grace?")
+        self.assertIn("Grace covers shame too.", res.data["answer"])
+        self.assertEqual(ChatMessage.objects.filter(session_id="memory-1").count(), 2)

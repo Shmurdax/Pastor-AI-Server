@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 
 from api.models import Profile
 from core.basic_chat import (
+    _prompt,
     build_draft_plan,
     draft_writer_messages,
     resolve_chat_route,
@@ -20,6 +21,7 @@ from core.study_draft import (
     CLASSIFIER_SYSTEM,
     PIPELINE_CHAT,
     PIPELINE_DRAFT,
+    continue_draft_from_history,
     decision_from_classifier,
     draft_system_prompt,
     missing_scripture_refs,
@@ -190,12 +192,12 @@ class StudyDraftGenerationTests(SimpleTestCase):
 
     def test_plan_render_and_writer_prompt(self):
         plan = parse_plan_text(
-            '{"big_idea":"Living water","points":[{"heading":"Ask"}],"gaps":["Isaiah 55:1"]}'
+            '{"big_idea":"Living water","points":[{"heading":"Ask"}]}'
         )
         rendered = render_plan(plan)
         self.assertIn("Living water", rendered)
         self.assertIn("1. Ask", rendered)
-        self.assertIn("Isaiah 55:1", rendered)
+        self.assertNotIn("Gaps", rendered)
         route = rule_route(LABELED)
         messages = draft_writer_messages(
             LABELED,
@@ -206,7 +208,7 @@ class StudyDraftGenerationTests(SimpleTestCase):
         system = messages[0]["content"]
         user = messages[1]["content"]
         self.assertIn("Title:", system)
-        self.assertIn("Gaps:", system)
+        self.assertNotIn("Gaps:", system)
         self.assertNotIn("2–4 short paragraphs", system)
         self.assertIn("Thirst and the gift of God", user)
         self.assertIn("John 4:14", user)
@@ -257,6 +259,73 @@ class StudyDraftGenerationTests(SimpleTestCase):
         with patch("core.basic_chat.complete_llm_text", side_effect=RuntimeError("down")):
             plan = build_draft_plan("Write a Bible study on repentance", route, [])
         self.assertEqual(plan, {})
+
+    def test_followup_keeps_prior_draft_pipeline(self):
+        history = [
+            {
+                "user_query": "Write an in-depth Bible study on James 2",
+                "ai_response": (
+                    "Title: Faith That Works\n"
+                    "Big idea: Faith without works is dead.\n"
+                    "Primary biblical texts: James 2\n"
+                    "Application:\nLive the Word."
+                ),
+            }
+        ]
+        route = continue_draft_from_history("Add a discussion question to that study", history)
+        self.assertIsNotNone(route)
+        self.assertTrue(route.is_draft)
+        self.assertEqual(route.source, "history_followup")
+        self.assertIn("James", route.topic)
+        resolved = resolve_chat_route("Add a discussion question to that study", history=history)
+        self.assertEqual(resolved.source, "history_followup")
+        self.assertTrue(resolved.is_draft)
+        shortened = resolve_chat_route(
+            "Shorten those sermon notes",
+            history=[
+                {
+                    "user_query": "Please draft sermon notes for Sunday on forgiveness",
+                    "ai_response": (
+                        "Title: Forgiveness\nBig idea: Release the debt.\n"
+                        "Primary biblical texts: Matthew 6:14\nApplication:\nForgive."
+                    ),
+                }
+            ],
+        )
+        self.assertEqual(shortened.source, "history_followup")
+        self.assertIn("Forgiveness", shortened.topic)
+
+    def test_prompt_includes_prior_turns(self):
+        history = [
+            {
+                "user_query": "What is grace?",
+                "ai_response": "Grace is God's favor.",
+            }
+        ]
+        messages = _prompt(
+            "Tell me more about that",
+            [{"title": "Grace Notes", "text": "Grace meets us in failure."}],
+            history=history,
+        )
+        roles = [item["role"] for item in messages]
+        self.assertEqual(roles[:3], ["system", "user", "assistant"])
+        self.assertIn("What is grace?", messages[1]["content"])
+        self.assertIn("Grace is God's favor.", messages[2]["content"])
+        self.assertIn("Tell me more about that", messages[-1]["content"])
+        draft_messages = draft_writer_messages(
+            "Shorten those sermon notes",
+            rule_route("Please draft sermon notes for Sunday on forgiveness"),
+            [{"title": "Forgiveness", "text": "Forgive as Christ forgave."}],
+            {"big_idea": "Forgive", "points": [{"heading": "Release"}]},
+            history=[
+                {
+                    "user_query": "Please draft sermon notes for Sunday on forgiveness",
+                    "ai_response": "Title: Forgiveness\nBig idea: Release the debt.\nApplication:\nForgive.",
+                }
+            ],
+        )
+        self.assertEqual(draft_messages[1]["role"], "user")
+        self.assertIn("forgiveness", draft_messages[1]["content"].lower())
 
 
 class StudyDraftAPITests(APITestCase):
@@ -318,13 +387,12 @@ class StudyDraftAPITests(APITestCase):
         saved = ChatMessage.objects.get(session_id="draft-sse")
         self.assertIn("Turn back to God", saved.ai_response)
 
-    def test_missing_requested_text_appends_a_gap_note(self):
+    def test_draft_reply_does_not_append_a_gap_note(self):
         passages = [{"title": "Faith Lift", "text": "Faith trusts God."}]
+        stream_calls = []
 
         def fake_stream(messages, *, max_tokens):
-            if max_tokens == 240:
-                yield "Gaps: James 2:14-26 was not in the sermon excerpts."
-                return
+            stream_calls.append(max_tokens)
             yield "Title: Faith\n\nBig idea: Trust God."
 
         with patch(
@@ -338,12 +406,13 @@ class StudyDraftAPITests(APITestCase):
                 "/api/chat/",
                 {
                     "query": "Write a Bible study on faith\nPrimary Biblical Texts: James 2:14-26",
-                    "session_id": "draft-gap",
+                    "session_id": "draft-no-gap",
                 },
                 format="json",
             )
 
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["pipeline"], PIPELINE_DRAFT)
-        self.assertIn("Gaps: James 2:14-26", res.data["answer"])
+        self.assertEqual(len(stream_calls), 1)
+        self.assertNotIn("Gaps:", res.data["answer"])
         self.assertIn("Title: Faith", res.data["answer"])
