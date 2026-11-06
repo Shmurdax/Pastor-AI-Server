@@ -32,10 +32,8 @@ from .live_chat_history import upsert_live_chat_turn
 from .basic_chat import (
     _truncate_for_prompt,
     build_draft_plan,
-    draft_gap_messages,
     draft_max_tokens,
     draft_writer_messages,
-    missing_draft_refs,
     resolve_chat_route,
     retrieve_draft_passages,
     retrieve_passages,
@@ -168,16 +166,6 @@ def _complete_reply(query: str):
                 max_tokens=draft_max_tokens(),
             )
         ).strip()
-        missing = missing_draft_refs(answer, route)
-        if missing:
-            gap = "".join(
-                stream_message_tokens(
-                    draft_gap_messages(query, route, passages, answer, missing),
-                    max_tokens=240,
-                )
-            ).strip()
-            if gap:
-                answer = f"{answer}\n\n{gap}".strip()
         return route, passages, answer
     passages = retrieve_passages(query)
     answer = "".join(stream_llm_tokens(query, passages)).strip()
@@ -270,24 +258,6 @@ def _stream_events(*, query: str, session_id: str, user):
             parts.append(text)
             yield sse_pack({"type": "delta", "text": text})
         answer = "".join(parts).strip()
-        if route.is_draft:
-            missing = missing_draft_refs(answer, route)
-            if missing:
-                gap_parts = []
-                gap_messages = draft_gap_messages(query, route, passages, answer, missing)
-                if answer:
-                    bridge = "\n\n"
-                    gap_parts.append(bridge)
-                    yield sse_pack({"type": "delta", "text": bridge})
-                for text in _token_stream_from(
-                    lambda: stream_message_tokens(gap_messages, max_tokens=240)
-                ):
-                    if text is None:
-                        yield sse_keepalive()
-                        continue
-                    gap_parts.append(text)
-                    yield sse_pack({"type": "delta", "text": text})
-                answer = f"{answer}{''.join(gap_parts)}".strip()
         if not answer:
             yield sse_pack(
                 {
