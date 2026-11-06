@@ -275,12 +275,15 @@ awk '
   }
 ' "$pipeline" || fail "dev pipeline must start postgres before migrate"
 grep -q 'pg_ctlcluster' "$pipeline" || fail "dev pipeline must start the local postgres cluster"
+grep -q 'apt-get install -y postgresql postgresql-contrib' "$pipeline" \
+  || fail "dev pipeline must install postgresql when pg_ctlcluster is missing"
 grep -q 'the rehearsal marker was not written' "$pipeline" \
   || fail "dev pipeline must say when postgres blocks the rehearsal marker"
 
 export DEV_PIPELINE_SOURCE_ONLY=1
 # shellcheck source=/dev/null
 source "$pipeline"
+[[ "$(dev_pipeline_sql_quote "a'b")" == "'a''b'" ]] || fail "sql quote must escape single quotes"
 
 pg_dir="$DIR/pg-hooks"
 mkdir -p "$pg_dir"
@@ -288,8 +291,11 @@ pg_ready_yes() { return 0; }
 pg_ready_no() { return 1; }
 pg_start_mark() { echo started >> "$pg_dir/started"; }
 pg_start_forbidden() { echo forbidden >> "$pg_dir/started"; return 1; }
+pg_start_no_package() { return 2; }
+pg_role_ok() { return 0; }
 
 export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432
+export DEV_PIPELINE_PG_ROLE_HOOK=pg_role_ok
 export DEV_PIPELINE_PG_READY_HOOK=pg_ready_yes
 export DEV_PIPELINE_PG_START_HOOK=pg_start_forbidden
 export DEV_PIPELINE_PG_ATTEMPTS=3 DEV_PIPELINE_PG_PAUSE_S=0
@@ -316,7 +322,22 @@ if dev_pipeline_ensure_postgres; then
   fail "a down remote postgres must fail the rehearsal"
 fi
 [[ ! -f "$pg_dir/started" ]] || fail "a remote postgres host must not start the local cluster"
-unset DEV_PIPELINE_PG_READY_HOOK DEV_PIPELINE_PG_START_HOOK POSTGRES_HOST POSTGRES_PORT
+
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5432
+ready_calls=0
+pg_ready_count() {
+  ready_calls=$((ready_calls + 1))
+  return 1
+}
+export DEV_PIPELINE_PG_READY_HOOK=pg_ready_count
+export DEV_PIPELINE_PG_START_HOOK=pg_start_no_package
+export DEV_PIPELINE_PG_ATTEMPTS=10 DEV_PIPELINE_PG_PAUSE_S=5
+if dev_pipeline_ensure_postgres; then
+  fail "a missing postgresql package must fail the rehearsal"
+fi
+[[ "$ready_calls" -eq 1 ]] || fail "install failure must not wait out the postgres retry loop, ready_calls=${ready_calls}"
+
+unset DEV_PIPELINE_PG_READY_HOOK DEV_PIPELINE_PG_START_HOOK DEV_PIPELINE_PG_ROLE_HOOK POSTGRES_HOST POSTGRES_PORT
 unset DEV_PIPELINE_PG_ATTEMPTS DEV_PIPELINE_PG_PAUSE_S
 
 export PROMOTE_SOURCE_ONLY=1
