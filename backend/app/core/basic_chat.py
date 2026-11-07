@@ -595,6 +595,150 @@ def history_as_messages(history: list[dict] | None) -> list[dict]:
     return messages
 
 
+def max_model_len() -> int:
+    """Remote vLLM context window. Oversize prompts return empty streams (HTTP 200)."""
+    raw = _env("CHAT_MAX_MODEL_LEN", "8192") or "8192"
+    try:
+        return max(1024, int(raw))
+    except ValueError:
+        return 8192
+
+
+def chars_per_token() -> float:
+    """Conservative chars→token estimate for Gemma/vLLM (log-calibrated ~4)."""
+    raw = _env("CHAT_CHARS_PER_TOKEN", "4") or "4"
+    try:
+        return max(2.0, float(raw))
+    except ValueError:
+        return 4.0
+
+
+def _message_chars(messages: list[dict]) -> int:
+    total = 0
+    for item in messages:
+        if isinstance(item, dict):
+            total += len(str(item.get("content") or ""))
+    return total
+
+
+def estimate_message_tokens(messages: list[dict]) -> int:
+    """Approx prompt tokens: content chars / chars_per_token plus small role overhead."""
+    content = _message_chars(messages)
+    overhead = 4 * len(messages)
+    return max(1, int(content / chars_per_token()) + overhead)
+
+
+def _truncate_message_content(text: str, char_budget: int) -> str:
+    text = str(text or "")
+    if char_budget <= 0:
+        return ""
+    if len(text) <= char_budget:
+        return text
+    if char_budget < 80:
+        return text[:char_budget]
+    # Keep the head (instructions/excerpts) and the tail (current question).
+    head = max(24, char_budget // 3)
+    tail = max(24, char_budget - head - 5)
+    return f"{text[:head]}\n…\n{text[-tail:]}"
+
+
+def fit_messages_for_context(
+    messages: list[dict],
+    max_tokens: int,
+    *,
+    aggressive: bool = False,
+) -> tuple[list[dict], int, dict]:
+    """Trim history / last user blob and clamp max_tokens to fit max_model_len.
+
+    Drop oldest history first (keep system + final user), then truncate the final
+    user content, then clamp completion tokens. Returns (messages, max_tokens, meta).
+    """
+    original_chars = _message_chars(messages)
+    original_count = len(messages)
+    try:
+        desired = max(1, int(max_tokens))
+    except (TypeError, ValueError):
+        desired = 800
+    min_completion = 128 if aggressive else 256
+    reserve = 96 if aggressive else 64
+    budget = max(512, max_model_len() - reserve)
+    fitted = [
+        {"role": str(m.get("role") or "user"), "content": str(m.get("content") or "")}
+        for m in messages
+        if isinstance(m, dict)
+    ]
+    if not fitted:
+        return [], min(desired, budget), {
+            "trimmed": False,
+            "dropped_messages": 0,
+            "truncated_final": False,
+            "original_chars": original_chars,
+            "fitted_chars": 0,
+            "original_max_tokens": desired,
+            "fitted_max_tokens": min(desired, budget),
+            "aggressive": aggressive,
+        }
+
+    dropped = 0
+    # Prefer keeping system at [0] and the latest user message at the end.
+    while len(fitted) > 2 and estimate_message_tokens(fitted) + desired > budget:
+        del fitted[1]
+        dropped += 1
+
+    def _clamp_tokens() -> int:
+        prompt = estimate_message_tokens(fitted)
+        available = budget - prompt
+        if available < min_completion:
+            return max(1, available)
+        return max(min_completion, min(desired, available))
+
+    truncated_final = False
+    fitted_max = _clamp_tokens()
+    # If prompt alone leaves too little room, shrink the final user/system content.
+    while estimate_message_tokens(fitted) + min_completion > budget and fitted:
+        target = fitted[-1]
+        content = str(target.get("content") or "")
+        prompt = estimate_message_tokens(fitted)
+        # How many content chars we must remove (approx).
+        overflow_tokens = prompt + min_completion - budget
+        remove_chars = int(overflow_tokens * chars_per_token()) + 64
+        new_budget = max(0, len(content) - remove_chars)
+        if new_budget >= len(content):
+            new_budget = max(0, len(content) - 64)
+        if new_budget <= 0 and len(fitted) > 1 and fitted[-1].get("role") != "system":
+            # Drop the final message only if something else remains (should not happen).
+            fitted.pop()
+            dropped += 1
+            truncated_final = True
+            continue
+        shortened = _truncate_message_content(content, new_budget)
+        if shortened == content:
+            # Cannot shrink further; break to avoid infinite loop.
+            break
+        target["content"] = shortened
+        truncated_final = True
+        fitted_max = _clamp_tokens()
+
+    fitted_max = _clamp_tokens()
+    # Last resort: never request more tokens than the window.
+    fitted_max = max(1, min(fitted_max, budget - 1))
+    meta = {
+        "trimmed": dropped > 0 or truncated_final or fitted_max < desired,
+        "dropped_messages": dropped,
+        "truncated_final": truncated_final,
+        "original_chars": original_chars,
+        "fitted_chars": _message_chars(fitted),
+        "original_count": original_count,
+        "fitted_count": len(fitted),
+        "original_max_tokens": desired,
+        "fitted_max_tokens": fitted_max,
+        "prompt_tokens_est": estimate_message_tokens(fitted),
+        "max_model_len": max_model_len(),
+        "aggressive": aggressive,
+    }
+    return fitted, fitted_max, meta
+
+
 def _prompt(query: str, passages: list[dict], history: list[dict] | None = None) -> list[dict]:
     blocks = []
     for index, passage in enumerate(passages, start=1):
@@ -651,7 +795,7 @@ def stream_llm_tokens(
     )
 
 
-def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
+def _stream_message_tokens_once(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
     body = {
         "model": vllm_model(),
         "messages": messages,
@@ -677,6 +821,32 @@ def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[
             text = delta.get("content") or ""
             if text:
                 yield text
+
+
+def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
+    """Yield text deltas, fitting the prompt into the model context window first.
+
+    Oversized multi-turn draft prompts previously opened HTTP 200 then returned
+    zero content deltas (~500ms). Trim history / clamp max_tokens before the
+    request; if the stream is still empty, retry once with an aggressive trim.
+    """
+    fitted, fitted_max, _meta = fit_messages_for_context(messages, max_tokens)
+    parts: list[str] = []
+    for text in _stream_message_tokens_once(fitted, max_tokens=fitted_max):
+        parts.append(text)
+        yield text
+    if parts:
+        return
+    retry_messages, retry_max, retry_meta = fit_messages_for_context(
+        messages, max_tokens, aggressive=True
+    )
+    if (
+        retry_messages == fitted
+        and retry_max == fitted_max
+        and not retry_meta.get("trimmed")
+    ):
+        return
+    yield from _stream_message_tokens_once(retry_messages, max_tokens=retry_max)
 
 
 def source_titles(passages: Iterable[dict]) -> list[str]:
@@ -767,11 +937,12 @@ def complete_llm_text(
     temperature: float = 0.0,
     timeout: float | None = None,
 ) -> str:
+    fitted, fitted_max, _meta = fit_messages_for_context(messages, max_tokens)
     body = {
         "model": vllm_model(),
-        "messages": messages,
+        "messages": fitted,
         "temperature": temperature,
-        "max_tokens": max_tokens,
+        "max_tokens": fitted_max,
         "stream": False,
     }
     with _post_llm(body, timeout=timeout) as response:
