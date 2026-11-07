@@ -30,6 +30,7 @@ from api.permissions import HasPremiumAccess
 
 from .live_chat_history import upsert_live_chat_turn
 from .basic_chat import (
+    _agent_debug_log,
     _truncate_for_prompt,
     build_draft_plan,
     draft_max_tokens,
@@ -125,16 +126,49 @@ def _passage_rows(query: str, passages) -> list[dict]:
 
 
 def _json_reply(*, query: str, session_id: str, user, include_passages: bool = False):
+    # region agent log
+    _agent_debug_log(
+        "A,E",
+        "basic_chat_views.py:_json_reply:entry",
+        "JSON chat request",
+        {
+            "query_chars": len(query or ""),
+            "session_id_len": len(session_id or ""),
+            "include_passages": bool(include_passages),
+        },
+    )
+    # endregion
     try:
         history = load_session_history(session_id, user=user)
         route, passages, answer = _complete_reply(query, history=history)
-    except Exception:
+    except Exception as exc:
+        # region agent log
+        _agent_debug_log(
+            "C,D",
+            "basic_chat_views.py:_json_reply:exception",
+            "JSON chat exception path",
+            {"exc_type": type(exc).__name__, "exc": str(exc)[:180]},
+        )
+        # endregion
         logger.exception("Basic chat failed")
         return Response(
             {"error": "I could not generate a reply. Please retry."},
             status=status.HTTP_502_BAD_GATEWAY,
         )
     if not answer:
+        # region agent log
+        _agent_debug_log(
+            "A,B,E",
+            "basic_chat_views.py:_json_reply:empty",
+            "Empty answer → 502 empty reply",
+            {
+                "pipeline": getattr(route, "pipeline", None),
+                "passage_count": len(passages or []),
+                "history_turns": len(history or []),
+                "query_chars": len(query or ""),
+            },
+        )
+        # endregion
         return Response(
             {"error": "The model returned an empty reply. Please retry."},
             status=status.HTTP_502_BAD_GATEWAY,
@@ -159,18 +193,61 @@ def _json_reply(*, query: str, session_id: str, user, include_passages: bool = F
 
 def _complete_reply(query: str, history: list | None = None):
     route = resolve_chat_route(query, history=history)
+    # region agent log
+    _agent_debug_log(
+        "A,E",
+        "basic_chat_views.py:_complete_reply:route",
+        "Route resolved",
+        {
+            "pipeline": getattr(route, "pipeline", None),
+            "is_draft": bool(getattr(route, "is_draft", False)),
+            "history_turns": len(history or []),
+            "history_chars": sum(
+                len(str(t.get("user_query") or "")) + len(str(t.get("ai_response") or ""))
+                for t in (history or [])
+                if isinstance(t, dict)
+            ),
+            "query_chars": len(query or ""),
+        },
+    )
+    # endregion
     if route.is_draft:
         passages = retrieve_draft_passages(query, route)
         plan = build_draft_plan(query, route, passages, history=history)
+        messages = draft_writer_messages(query, route, passages, plan, history=history)
         answer = "".join(
             stream_message_tokens(
-                draft_writer_messages(query, route, passages, plan, history=history),
+                messages,
                 max_tokens=draft_max_tokens(),
             )
         ).strip()
+        # region agent log
+        _agent_debug_log(
+            "A,B",
+            "basic_chat_views.py:_complete_reply:draft_done",
+            "Draft writer assembled",
+            {
+                "answer_chars": len(answer),
+                "passage_count": len(passages or []),
+                "plan_keys": sorted(list(plan.keys()))[:12] if isinstance(plan, dict) else [],
+                "message_count": len(messages),
+            },
+        )
+        # endregion
         return route, passages, answer
     passages = retrieve_passages(query)
     answer = "".join(stream_llm_tokens(query, passages, history=history)).strip()
+    # region agent log
+    _agent_debug_log(
+        "A,B",
+        "basic_chat_views.py:_complete_reply:pastoral_done",
+        "Pastoral writer assembled",
+        {
+            "answer_chars": len(answer),
+            "passage_count": len(passages or []),
+        },
+    )
+    # endregion
     return route, passages, answer
 
 
@@ -268,6 +345,19 @@ def _stream_events(*, query: str, session_id: str, user):
             yield sse_pack({"type": "delta", "text": text})
         answer = "".join(parts).strip()
         if not answer:
+            # region agent log
+            _agent_debug_log(
+                "A,B",
+                "basic_chat_views.py:_stream_events:empty",
+                "SSE empty answer",
+                {
+                    "pipeline": getattr(route, "pipeline", None),
+                    "passage_count": len(passages or []),
+                    "history_turns": len(history or []),
+                    "parts": len(parts),
+                },
+            )
+            # endregion
             yield sse_pack(
                 {
                     "type": "error",

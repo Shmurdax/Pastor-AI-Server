@@ -37,6 +37,46 @@ _LAST_LLM_WARM = 0.0
 HYDE_CANDIDATES = 32
 SERMON_CHUNK_KIND = "sermon_quote"
 _LEXICAL_BOOST = 0.12
+# region agent log
+_AGENT_DEBUG_LOG_CANDIDATES = (
+    "/opt/cursor/logs/debug.log",
+    "/tmp/pastor_chat_debug.ndjson",
+)
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict | None = None,
+) -> None:
+    """Append one NDJSON debug line for empty-502 investigation (no secrets)."""
+    payload = {
+        "id": f"log_{int(time.time() * 1000)}_{os.getpid()}",
+        "timestamp": int(time.time() * 1000),
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+    }
+    line = json.dumps(payload, ensure_ascii=False) + "\n"
+    override = _env("PASTOR_DEBUG_LOG")
+    paths = [override] if override else list(_AGENT_DEBUG_LOG_CANDIDATES)
+    for path in paths:
+        if not path:
+            continue
+        try:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(line)
+            return
+        except Exception:
+            continue
+
+
+# endregion
 _QUERY_TERM_STOP = {
     "about",
     "could",
@@ -159,19 +199,84 @@ def _post_llm(body: dict, *, timeout: float | None = None):
     key = vllm_api_key()
     if key:
         headers["Authorization"] = f"Bearer {key}"
+    messages = body.get("messages") or []
+    msg_chars = 0
+    for item in messages:
+        if isinstance(item, dict):
+            msg_chars += len(str(item.get("content") or ""))
+    if timeout is None:
+        timeout = float(_env("CHAT_TIMEOUT_S", "180") or "180")
+    # region agent log
+    _agent_debug_log(
+        "A,C,D",
+        "basic_chat.py:_post_llm:entry",
+        "LLM request start",
+        {
+            "stream": bool(body.get("stream")),
+            "max_tokens": body.get("max_tokens"),
+            "timeout_s": timeout,
+            "message_count": len(messages),
+            "message_chars": msg_chars,
+            "temperature": body.get("temperature"),
+        },
+    )
+    # endregion
     request = urllib.request.Request(
         f"{vllm_base_url()}/chat/completions",
         data=json.dumps(body).encode(),
         headers=headers,
         method="POST",
     )
-    if timeout is None:
-        timeout = float(_env("CHAT_TIMEOUT_S", "180") or "180")
+    started = time.monotonic()
     try:
-        return urllib.request.urlopen(request, timeout=timeout)
+        response = urllib.request.urlopen(request, timeout=timeout)
+        # region agent log
+        _agent_debug_log(
+            "B,C,D",
+            "basic_chat.py:_post_llm:opened",
+            "LLM HTTP opened",
+            {
+                "stream": bool(body.get("stream")),
+                "status": getattr(response, "status", None),
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+                "message_chars": msg_chars,
+            },
+        )
+        # endregion
+        return response
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:300]
+        # region agent log
+        _agent_debug_log(
+            "B,C,D",
+            "basic_chat.py:_post_llm:http_error",
+            "LLM HTTPError",
+            {
+                "stream": bool(body.get("stream")),
+                "code": exc.code,
+                "detail_prefix": detail[:180],
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+                "message_chars": msg_chars,
+            },
+        )
+        # endregion
         raise RuntimeError(f"LLM request failed ({exc.code}): {detail}") from exc
+    except Exception as exc:
+        # region agent log
+        _agent_debug_log(
+            "C,D",
+            "basic_chat.py:_post_llm:error",
+            "LLM request exception",
+            {
+                "stream": bool(body.get("stream")),
+                "exc_type": type(exc).__name__,
+                "exc": str(exc)[:180],
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+                "message_chars": msg_chars,
+            },
+        )
+        # endregion
+        raise
 
 
 def warm_llm(*, force: bool = False) -> bool:
@@ -580,6 +685,21 @@ def load_session_history(session_id: str, *, user=None) -> list[dict]:
         selected.append(turn)
         used += cost
     selected.reverse()
+    # region agent log
+    _agent_debug_log(
+        "A,E",
+        "basic_chat.py:load_session_history",
+        "Loaded session history",
+        {
+            "session_id_len": len(sid),
+            "turn_count": len(selected),
+            "chars_used": used,
+            "turn_limit": history_turn_limit(),
+            "char_limit": history_char_limit(),
+            "answer_chars": [len(str(t.get("ai_response") or "")) for t in selected],
+        },
+    )
+    # endregion
     return selected
 
 
@@ -659,24 +779,96 @@ def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[
         "max_tokens": max_tokens,
         "stream": True,
     }
-    with _post_llm(body) as response:
-        for raw in response:
-            line = raw.decode("utf-8", errors="replace").strip()
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if not data or data == "[DONE]":
-                if data == "[DONE]":
-                    break
-                continue
-            payload = json.loads(data)
-            choices = payload.get("choices") or []
-            if not choices:
-                continue
-            delta = choices[0].get("delta") or {}
-            text = delta.get("content") or ""
-            if text:
-                yield text
+    msg_chars = sum(len(str(m.get("content") or "")) for m in messages if isinstance(m, dict))
+    # region agent log
+    _agent_debug_log(
+        "A,B",
+        "basic_chat.py:stream_message_tokens:entry",
+        "Writer stream start",
+        {
+            "max_tokens": max_tokens,
+            "message_count": len(messages),
+            "message_chars": msg_chars,
+            "roles": [str(m.get("role") or "") for m in messages if isinstance(m, dict)],
+        },
+    )
+    # endregion
+    chunk_count = 0
+    text_chars = 0
+    finish_reasons: list[str] = []
+    saw_done = False
+    non_data_lines = 0
+    error_prefix = ""
+    started = time.monotonic()
+    try:
+        with _post_llm(body) as response:
+            for raw in response:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data:"):
+                    if line:
+                        non_data_lines += 1
+                        if not error_prefix and ("error" in line.lower() or line.startswith("{")):
+                            error_prefix = line[:180]
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    if data == "[DONE]":
+                        saw_done = True
+                        break
+                    continue
+                payload = json.loads(data)
+                if isinstance(payload, dict) and payload.get("error") and not error_prefix:
+                    error_prefix = str(payload.get("error"))[:180]
+                choices = payload.get("choices") or []
+                if not choices:
+                    continue
+                choice0 = choices[0] if isinstance(choices[0], dict) else {}
+                reason = choice0.get("finish_reason")
+                if reason:
+                    finish_reasons.append(str(reason))
+                delta = choice0.get("delta") or {}
+                text = delta.get("content") or ""
+                if text:
+                    chunk_count += 1
+                    text_chars += len(text)
+                    yield text
+    except Exception as exc:
+        # region agent log
+        _agent_debug_log(
+            "B,C,D",
+            "basic_chat.py:stream_message_tokens:error",
+            "Writer stream exception",
+            {
+                "exc_type": type(exc).__name__,
+                "exc": str(exc)[:180],
+                "chunk_count": chunk_count,
+                "text_chars": text_chars,
+                "finish_reasons": finish_reasons[-3:],
+                "message_chars": msg_chars,
+                "elapsed_ms": int((time.monotonic() - started) * 1000),
+            },
+        )
+        # endregion
+        raise
+    # region agent log
+    _agent_debug_log(
+        "A,B,D",
+        "basic_chat.py:stream_message_tokens:exit",
+        "Writer stream finished",
+        {
+            "chunk_count": chunk_count,
+            "text_chars": text_chars,
+            "empty": text_chars == 0,
+            "saw_done": saw_done,
+            "finish_reasons": finish_reasons[-5:],
+            "non_data_lines": non_data_lines,
+            "error_prefix": error_prefix,
+            "message_chars": msg_chars,
+            "max_tokens": max_tokens,
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        },
+    )
+    # endregion
 
 
 def source_titles(passages: Iterable[dict]) -> list[str]:
