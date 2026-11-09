@@ -518,10 +518,10 @@ final bibleRefRegex = RegExp(
     }
   }
 
-  /// Guest + free users keep only the most recent chat; Premium is unlimited (capped).
+  /// Every saved chat stays in the sidebar. The server matches this cap.
   static const _guestHistoryId = 'guest';
-  static const _premiumHistoryCap = 40;
-  static const _freeHistoryCap = 1;
+  static const _premiumHistoryCap = 1000;
+  static const _freeHistoryCap = 1000;
 
   String get _historyStorageId {
     final auth = context.read<AuthController>();
@@ -711,7 +711,6 @@ final bibleRefRegex = RegExp(
       }
     }
 
-    // Free / guest: keep only the most recent chat history entry.
     final maxEntries = auth.hasPremiumAccess ? _premiumHistoryCap : _freeHistoryCap;
     if (history.length > maxEntries) {
       history = history.take(maxEntries).toList();
@@ -934,7 +933,6 @@ final bibleRefRegex = RegExp(
       ),
     ]..sort((a, b) => (b['updatedAt'] as int? ?? 0).compareTo(a['updatedAt'] as int? ?? 0));
 
-    // Free/guest: only the most recent chat is kept; Premium keeps many.
     final trimmed = updated.take(_maxHistoryEntries).toList();
     await _tokenStorage.saveChatHistory(storageId, trimmed);
     if (mounted) {
@@ -2041,20 +2039,9 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!auth.hasPremiumAccess) ...[
-          Text(
-            auth.isAuthenticated
-                ? _s.historyHintFree
-                : _s.historyHintGuest,
-            style: GoogleFonts.figtree(color: _gold, fontSize: 12, height: 1.35),
-          ),
-          const SizedBox(height: 10),
-        ],
         Expanded(
           child: ListView(
-            physics: _eventsNavPanelOpen
-                ? const NeverScrollableScrollPhysics()
-                : const ClampingScrollPhysics(),
+            physics: const ClampingScrollPhysics(),
             children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
           ),
         ),

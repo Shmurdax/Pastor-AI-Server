@@ -13,7 +13,9 @@ from .models import UserChatHistory
 
 logger = logging.getLogger(__name__)
 
-MAX_HISTORY_ENTRIES = 40
+# The sidebar used to keep 40 chats and drop the rest. Saved turns still
+# live on ChatMessage, so the list can show every session for an account.
+MAX_HISTORY_ENTRIES = 1000
 _LIBRARY_SOURCE_LIMIT = 5
 _PREVIOUS_SERMON_LIMIT = 25
 
@@ -33,6 +35,56 @@ _VIDEO_EXTENSIONS = (
     ".3gp",
     ".ogv",
 )
+
+
+def entries_from_saved_messages(user) -> list[dict[str, Any]]:
+    """One sidebar chat for every session stored on ChatMessage.
+
+    The JSON history copy is capped and can miss older threads. The message
+    rows are the full record the Chats list should show.
+    """
+    from .models import ChatMessage
+
+    if user is None or not getattr(user, "is_authenticated", False):
+        return []
+    grouped: dict[str, dict[str, Any]] = {}
+    messages = ChatMessage.objects.filter(user=user).order_by("timestamp", "id")
+    for message in messages:
+        sid = str(message.session_id or "").strip()[:64]
+        query = str(message.user_query or "").strip()
+        if not sid or not query:
+            continue
+        updated_ms = int(message.timestamp.timestamp() * 1000) if message.timestamp else 0
+        entry = grouped.get(sid)
+        if entry is None:
+            entry = {
+                "sessionId": sid,
+                "title": _title_for(query),
+                "updatedAt": updated_ms,
+                "messages": [],
+                "librarySermons": [],
+                "previousSermons": [],
+            }
+            grouped[sid] = entry
+        entry["messages"].extend(
+            [
+                {"role": "user", "text": query},
+                {
+                    "role": "ai",
+                    "text": message.ai_response or "",
+                    "sources": [],
+                    "reported": False,
+                },
+            ]
+        )
+        if updated_ms >= int(entry.get("updatedAt") or 0):
+            entry["updatedAt"] = updated_ms
+    return list(grouped.values())
+
+
+def visible_history_entries(user, stored) -> list[dict[str, Any]]:
+    """Sidebar list: saved history plus any chat that only exists as messages."""
+    return merge_history_entries(stored or [], entries_from_saved_messages(user))
 
 
 def sanitize_history_entries(raw) -> list[dict[str, Any]]:
