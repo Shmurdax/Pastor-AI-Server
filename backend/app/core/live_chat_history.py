@@ -37,6 +37,22 @@ _VIDEO_EXTENSIONS = (
 )
 
 
+def _same_session(left: str, right: str) -> bool:
+    """Match a 64-character history id to the full id stored on ChatMessage.
+
+    Sidebar writes trim the client id to 64 characters. Message rows keep the
+    full id, so the same chat would otherwise show up twice.
+    """
+    a = str(left or "").strip()
+    b = str(right or "").strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) == 64 and long.startswith(short)
+
+
 def entries_from_saved_messages(user) -> list[dict[str, Any]]:
     """One sidebar chat for every session stored on ChatMessage.
 
@@ -50,7 +66,7 @@ def entries_from_saved_messages(user) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, Any]] = {}
     messages = ChatMessage.objects.filter(user=user).order_by("timestamp", "id")
     for message in messages:
-        sid = str(message.session_id or "").strip()[:64]
+        sid = str(message.session_id or "").strip()[:200]
         query = str(message.user_query or "").strip()
         if not sid or not query:
             continue
@@ -82,9 +98,44 @@ def entries_from_saved_messages(user) -> list[dict[str, Any]]:
     return list(grouped.values())
 
 
+def _with_sources(winner: dict[str, Any], other: dict[str, Any]) -> dict[str, Any]:
+    """Keep sermon titles when the longer transcript never recorded them."""
+    sources = _last_ai(other).get("sources") or []
+    if not sources or _last_ai(winner).get("sources"):
+        return winner
+    merged = dict(winner)
+    messages = [dict(item) if isinstance(item, dict) else item for item in (winner.get("messages") or [])]
+    for message in reversed(messages):
+        if isinstance(message, dict) and message.get("role") == "ai" and not message.get("sources"):
+            message["sources"] = list(sources)
+            break
+    merged["messages"] = messages
+    return merged
+
+
 def visible_history_entries(user, stored) -> list[dict[str, Any]]:
     """Sidebar list: saved history plus any chat that only exists as messages."""
-    return merge_history_entries(stored or [], entries_from_saved_messages(user))
+    by_id: dict[str, dict[str, Any]] = {}
+    for entry in sanitize_history_entries(stored or []):
+        sid = str(entry.get("sessionId") or "").strip()
+        if sid:
+            by_id[sid] = dict(entry)
+    for fresh in entries_from_saved_messages(user):
+        sid = str(fresh.get("sessionId") or "").strip()
+        match_id = next((key for key in by_id if _same_session(key, sid)), "")
+        if not match_id:
+            by_id[sid] = fresh
+            continue
+        existing = by_id.pop(match_id)
+        merged = _with_sources(richer_history_entry(existing, fresh), existing)
+        merged = _with_sources(merged, fresh)
+        # Keep the id the app sends on the next message when we have it.
+        if len(sid) >= len(match_id):
+            merged["sessionId"] = sid
+        by_id[str(merged.get("sessionId") or sid)] = merged
+    merged_entries = list(by_id.values())
+    merged_entries.sort(key=lambda item: int(item.get("updatedAt") or 0), reverse=True)
+    return merged_entries[:MAX_HISTORY_ENTRIES]
 
 
 def sanitize_history_entries(raw) -> list[dict[str, Any]]:

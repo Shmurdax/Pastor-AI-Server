@@ -302,6 +302,34 @@ class LiveChatHistoryTests(TestCase):
             ai_response="short",
         )
         ChatMessage.objects.create(
+            session_id="s:" + ("a" * 64),
+            user=self.user,
+            user_query="trimmed id question",
+            ai_response="trimmed id answer",
+        )
+        UserChatHistory.objects.filter(user=self.user).update(
+            entries=[
+                {
+                    "sessionId": "kept",
+                    "title": "Kept",
+                    "updatedAt": 50,
+                    "messages": [
+                        {"role": "user", "text": "kept question"},
+                        {"role": "ai", "text": "kept answer from the sidebar copy", "sources": ["Faith"]},
+                    ],
+                },
+                {
+                    "sessionId": ("s:" + ("a" * 64))[:64],
+                    "title": "Trimmed",
+                    "updatedAt": 40,
+                    "messages": [
+                        {"role": "user", "text": "trimmed id question"},
+                        {"role": "ai", "text": "trimmed id answer", "sources": ["Notes"]},
+                    ],
+                },
+            ]
+        )
+        ChatMessage.objects.create(
             session_id="older",
             user=self.user,
             user_query="What is grace?",
@@ -313,10 +341,12 @@ class LiveChatHistoryTests(TestCase):
             user_query="Say more about grace",
             ai_response="It is unearned.",
         )
+        full_sid = "s:" + ("a" * 64)
         got = self.client.get("/api/chat/history/")
         by_id = {entry["sessionId"]: entry for entry in got.data["entries"]}
-        self.assertEqual(set(by_id), {"kept", "older"})
+        self.assertEqual(set(by_id), {"kept", "older", full_sid})
         self.assertEqual(by_id["kept"]["messages"][1]["sources"], ["Faith"])
+        self.assertEqual(by_id[full_sid]["messages"][1]["sources"], ["Notes"])
         self.assertEqual(
             [item["text"] for item in by_id["older"]["messages"]],
             ["What is grace?", "Grace is a gift.", "Say more about grace", "It is unearned."],
@@ -334,7 +364,7 @@ class LiveChatHistoryTests(TestCase):
             format="json",
         )
         self.assertEqual(
-            [entry["sessionId"] for entry in deleted.data["entries"]],
-            ["kept"],
+            {entry["sessionId"] for entry in deleted.data["entries"]},
+            {"kept", full_sid},
         )
         self.assertFalse(ChatMessage.objects.filter(session_id="older").exists())

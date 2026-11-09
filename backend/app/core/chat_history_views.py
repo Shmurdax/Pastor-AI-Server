@@ -1,6 +1,7 @@
 """Authenticated backup of Flutter sidebar chat history."""
 
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import permissions, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
@@ -99,9 +100,12 @@ class ChatHistoryAPIView(APIView):
                         "updated_at",
                     ]
                 )
-            if deleted_ids:
-                ChatMessage.objects.filter(
-                    user=request.user,
-                    session_id__in=normalize_deleted_session_ids(deleted_ids),
-                ).delete()
+            removed = normalize_deleted_session_ids(deleted_ids)
+            if removed:
+                query = Q()
+                for sid in removed:
+                    query |= Q(session_id=sid)
+                    if len(sid) == 64:
+                        query |= Q(session_id__startswith=sid)
+                ChatMessage.objects.filter(user=request.user).filter(query).delete()
         return _history_response(_history_payload(request.user, row))
