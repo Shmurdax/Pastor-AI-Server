@@ -125,6 +125,22 @@ pastor_write_deploy_stamp() {
   fi
 }
 
+_pastor_sha40() {
+  local value="${1:-}"
+  value="$(printf '%s' "$value" | tr -d '[:space:]')"
+  if [[ "$value" =~ ^[0-9a-f]{40}$ ]]; then
+    printf '%s\n' "$value"
+  fi
+}
+
+_pastor_origin_sha() {
+  # git rev-parse without --verify prints the missing ref name on stdout and
+  # exits 128. Command substitution would store that name as a commit id.
+  local ws="${1:-}" channel="${2:-}" sha
+  sha="$(git -C "$ws" rev-parse --verify --quiet "refs/remotes/origin/${channel}" 2>/dev/null || true)"
+  _pastor_sha40 "$sha"
+}
+
 pastor_record_running_git() {
   # Refresh stamps from the live tree without fetching. Used by start.sh so
   # DEPLOYED_MASTER_SHA cannot stay on a previous overlay SHA.
@@ -132,10 +148,10 @@ pastor_record_running_git() {
   local channel sha origin_sha dirty=0
   [[ -d "$ws/.git" ]] || return 1
   channel="$(pastor_resolve_git_channel "$ws")"
-  sha="$(git -C "$ws" rev-parse HEAD 2>/dev/null || true)"
-  origin_sha="$(git -C "$ws" rev-parse "refs/remotes/origin/${channel}" 2>/dev/null || true)"
+  sha="$(_pastor_sha40 "$(git -C "$ws" rev-parse --verify --quiet HEAD 2>/dev/null || true)")"
+  origin_sha="$(_pastor_origin_sha "$ws" "$channel")"
   if [[ -z "$origin_sha" && -f "$ws/DEPLOYED_ORIGIN_SHA" ]]; then
-    origin_sha="$(tr -d '[:space:]' < "$ws/DEPLOYED_ORIGIN_SHA")"
+    origin_sha="$(_pastor_sha40 "$(cat "$ws/DEPLOYED_ORIGIN_SHA")")"
   fi
   pastor_git_tracked_dirty "$ws" && dirty=1
   pastor_write_deploy_stamp "$ws" "$channel" "$sha" "$origin_sha" "$dirty" ""
@@ -150,8 +166,8 @@ pastor_warn_if_git_drift() {
   local ws="${1:-${WS:-${WORKSPACE_ROOT:-/workspace/pastor-ai}}}"
   local sha origin_sha dirty=0
   [[ -d "$ws/.git" ]] || return 0
-  sha="$(git -C "$ws" rev-parse --short HEAD 2>/dev/null || true)"
-  origin_sha="$(git -C "$ws" rev-parse --short "refs/remotes/origin/$(pastor_resolve_git_channel "$ws")" 2>/dev/null || true)"
+  sha="$(git -C "$ws" rev-parse --short --verify --quiet HEAD 2>/dev/null || true)"
+  origin_sha="$(git -C "$ws" rev-parse --short --verify --quiet "refs/remotes/origin/$(pastor_resolve_git_channel "$ws")" 2>/dev/null || true)"
   pastor_git_tracked_dirty "$ws" && dirty=1
   if [[ "$dirty" -eq 1 ]]; then
     _pastor_git_warn "Working tree has tracked edits — production is not a clean origin/$(pastor_resolve_git_channel "$ws") checkout (HEAD $sha)"
@@ -210,10 +226,14 @@ pastor_sync_git_channel() {
   timeout_s="${PASTOR_GIT_SYNC_TIMEOUT:-90}"
   _pastor_git_log "Fetching origin/$channel"
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$timeout_s" git -C "$ws" fetch origin "$channel"
+    # Store the branch under refs/remotes/origin. A bare
+    # "git fetch origin <branch>" only fills FETCH_HEAD when the pod's
+    # remote.origin.fetch lines do not include that branch, which is how
+    # response_testing lost its remote-tracking ref.
+    timeout "$timeout_s" git -C "$ws" fetch origin "+refs/heads/${channel}:refs/remotes/origin/${channel}"
     fetch_rc=$?
   else
-    git -C "$ws" fetch origin "$channel"
+    git -C "$ws" fetch origin "+refs/heads/${channel}:refs/remotes/origin/${channel}"
     fetch_rc=$?
   fi
   if [[ "$fetch_rc" -ne 0 ]]; then
