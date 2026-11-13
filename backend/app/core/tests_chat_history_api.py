@@ -3,7 +3,7 @@ from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from .models import UserChatHistory
+from .models import ChatMessage, UserChatHistory
 
 User = get_user_model()
 
@@ -275,3 +275,96 @@ class LiveChatHistoryTests(TestCase):
         got = client.get("/api/chat/history/")
         self.assertEqual(got["Cache-Control"], "private, no-store")
         self.assertEqual(got.data["entries"][0]["messages"][1]["text"], "Faith is trust in God.")
+
+    def test_get_includes_chats_missing_from_the_sidebar_copy(self):
+        token = Token.objects.create(user=self.user)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        UserChatHistory.objects.create(
+            user=self.user,
+            entries=[
+                {
+                    "sessionId": "kept",
+                    "title": "Kept",
+                    "updatedAt": 50,
+                    "messages": [
+                        {"role": "user", "text": "kept question"},
+                        {"role": "ai", "text": "kept answer from the sidebar copy", "sources": ["Faith"]},
+                    ],
+                }
+            ],
+            active_session_id="kept",
+        )
+        ChatMessage.objects.create(
+            session_id="kept",
+            user=self.user,
+            user_query="kept question",
+            ai_response="short",
+        )
+        ChatMessage.objects.create(
+            session_id="s:" + ("a" * 64),
+            user=self.user,
+            user_query="trimmed id question",
+            ai_response="trimmed id answer",
+        )
+        UserChatHistory.objects.filter(user=self.user).update(
+            entries=[
+                {
+                    "sessionId": "kept",
+                    "title": "Kept",
+                    "updatedAt": 50,
+                    "messages": [
+                        {"role": "user", "text": "kept question"},
+                        {"role": "ai", "text": "kept answer from the sidebar copy", "sources": ["Faith"]},
+                    ],
+                },
+                {
+                    "sessionId": ("s:" + ("a" * 64))[:64],
+                    "title": "Trimmed",
+                    "updatedAt": 40,
+                    "messages": [
+                        {"role": "user", "text": "trimmed id question"},
+                        {"role": "ai", "text": "trimmed id answer", "sources": ["Notes"]},
+                    ],
+                },
+            ]
+        )
+        ChatMessage.objects.create(
+            session_id="older",
+            user=self.user,
+            user_query="What is grace?",
+            ai_response="Grace is a gift.",
+        )
+        ChatMessage.objects.create(
+            session_id="older",
+            user=self.user,
+            user_query="Say more about grace",
+            ai_response="It is unearned.",
+        )
+        full_sid = "s:" + ("a" * 64)
+        got = self.client.get("/api/chat/history/")
+        by_id = {entry["sessionId"]: entry for entry in got.data["entries"]}
+        self.assertEqual(set(by_id), {"kept", "older", full_sid})
+        self.assertEqual(by_id["kept"]["messages"][1]["sources"], ["Faith"])
+        self.assertEqual(by_id[full_sid]["messages"][1]["sources"], ["Notes"])
+        self.assertEqual(
+            [item["text"] for item in by_id["older"]["messages"]],
+            ["What is grace?", "Grace is a gift.", "Say more about grace", "It is unearned."],
+        )
+        self.assertEqual(by_id["older"]["title"], "What is grace?")
+
+        deleted = self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [by_id["kept"]],
+                "active_session_id": "kept",
+                "deleted_session_ids": ["older"],
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(
+            {entry["sessionId"] for entry in deleted.data["entries"]},
+            {"kept", full_sid},
+        )
+        self.assertFalse(ChatMessage.objects.filter(session_id="older").exists())

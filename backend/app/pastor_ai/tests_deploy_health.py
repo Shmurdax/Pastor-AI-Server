@@ -75,3 +75,20 @@ class ReadDeployStatusTests(unittest.TestCase):
             self.assertFalse(status["dirty"])
             self.assertTrue(status["in_sync"])
             self.assertEqual(status["git_sha"], sha)
+
+    def test_missing_origin_ref_is_not_stored_as_its_name(self):
+        with TemporaryDirectory() as raw:
+            ws = Path(raw)
+            _git(ws, "init", "-b", "response_testing")
+            _git(ws, "config", "user.email", "test@example.com")
+            _git(ws, "config", "user.name", "test")
+            (ws / "file").write_text("one\n", encoding="utf-8")
+            _git(ws, "add", "file")
+            _git(ws, "commit", "-m", "one")
+            (ws / ".git_channel").write_text("response_testing\n", encoding="utf-8")
+            (ws / "DEPLOYED_ORIGIN_SHA").write_text(
+                "refs/remotes/origin/response_testing\n", encoding="utf-8"
+            )
+            status = read_deploy_status(ws)
+            self.assertEqual(status["origin_sha"], "")
+            self.assertFalse(status["in_sync"])

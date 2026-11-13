@@ -7,8 +7,11 @@ master while HEAD, origin, or a dirty overlay disagree.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
+
+_SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 def workspace_root() -> Path:
@@ -41,6 +44,13 @@ def _git(ws: Path, *args: str) -> str:
     return (completed.stdout or "").strip()
 
 
+def _sha40(value: str) -> str:
+    text = (value or "").strip()
+    if _SHA40.fullmatch(text):
+        return text
+    return ""
+
+
 def _tracked_dirty(ws: Path) -> bool:
     porcelain = _git(ws, "status", "--porcelain", "--untracked-files=no")
     for line in porcelain.splitlines():
@@ -55,13 +65,15 @@ def read_deploy_status(ws: Path | None = None) -> dict[str, object]:
     root = ws if ws is not None else workspace_root()
     git_dir = root / ".git"
     channel = _read_text(root / ".git_channel") or _read_text(root / "DEPLOYED_CHANNEL") or "master"
-    sha = _git(root, "rev-parse", "HEAD") if git_dir.is_dir() else ""
+    sha = _sha40(_git(root, "rev-parse", "--verify", "--quiet", "HEAD")) if git_dir.is_dir() else ""
     oneline = _git(root, "log", "-1", "--oneline") if git_dir.is_dir() else ""
     origin_sha = ""
     if git_dir.is_dir() and channel:
-        origin_sha = _git(root, "rev-parse", f"refs/remotes/origin/{channel}")
+        origin_sha = _sha40(
+            _git(root, "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{channel}")
+        )
     if not origin_sha:
-        origin_sha = _read_text(root / "DEPLOYED_ORIGIN_SHA")
+        origin_sha = _sha40(_read_text(root / "DEPLOYED_ORIGIN_SHA"))
     dirty = _tracked_dirty(root) if git_dir.is_dir() else False
     stamp_sha = _read_text(root / "DEPLOYED_SHA") or _read_text(root / "DEPLOYED_MASTER_SHA")
     deployed_at = _read_text(root / "DEPLOYED_AT")

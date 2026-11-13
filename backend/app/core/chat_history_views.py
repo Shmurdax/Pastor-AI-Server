@@ -1,6 +1,7 @@
 """Authenticated backup of Flutter sidebar chat history."""
 
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import permissions, status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.response import Response
@@ -9,10 +10,12 @@ from rest_framework.views import APIView
 from .live_chat_history import (
     MAX_HISTORY_ENTRIES,
     merge_history_entries,
+    normalize_deleted_session_ids,
     pick_active_session_id,
     sanitize_history_entries,
+    visible_history_entries,
 )
-from .models import UserChatHistory
+from .models import ChatMessage, UserChatHistory
 
 _MAX_ENTRIES = MAX_HISTORY_ENTRIES
 _MAX_SCHEMA = 1
@@ -22,19 +25,13 @@ def _sanitize_entries(raw):
     return sanitize_history_entries(raw)
 
 
-def _history_payload(row=None):
-    if row is None:
-        return {
-            "entries": [],
-            "active_session_id": "",
-            "schema_version": _MAX_SCHEMA,
-            "updated_at": None,
-        }
+def _history_payload(user, row=None):
+    stored = [] if row is None else (row.entries or [])
     return {
-        "entries": row.entries or [],
-        "active_session_id": row.active_session_id or "",
-        "schema_version": row.schema_version,
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "entries": visible_history_entries(user, stored),
+        "active_session_id": "" if row is None else (row.active_session_id or ""),
+        "schema_version": _MAX_SCHEMA if row is None else row.schema_version,
+        "updated_at": None if row is None or not row.updated_at else row.updated_at.isoformat(),
     }
 
 
@@ -53,7 +50,7 @@ class ChatHistoryAPIView(APIView):
 
     def get(self, request):
         row = UserChatHistory.objects.filter(user=request.user).first()
-        return _history_response(_history_payload(row))
+        return _history_response(_history_payload(request.user, row))
 
     def put(self, request):
         incoming = sanitize_history_entries(request.data.get("entries"))
@@ -103,4 +100,12 @@ class ChatHistoryAPIView(APIView):
                         "updated_at",
                     ]
                 )
-        return _history_response(_history_payload(row))
+            removed = normalize_deleted_session_ids(deleted_ids)
+            if removed:
+                query = Q()
+                for sid in removed:
+                    query |= Q(session_id=sid)
+                    if len(sid) == 64:
+                        query |= Q(session_id__startswith=sid)
+                ChatMessage.objects.filter(user=request.user).filter(query).delete()
+        return _history_response(_history_payload(request.user, row))
