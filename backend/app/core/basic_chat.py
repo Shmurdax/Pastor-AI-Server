@@ -528,6 +528,9 @@ def _truncate_for_prompt(text: str, focus: str = "") -> str:
     return f"{clipped}…"
 
 
+REPLY_PIPELINE = "sermon_chat"
+
+
 def _prompt(query: str, passages: list[dict]) -> list[dict]:
     blocks = []
     for index, passage in enumerate(passages, start=1):
@@ -539,45 +542,58 @@ def _prompt(query: str, passages: list[dict]) -> list[dict]:
         {
             "role": "system",
             "content": (
-                "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
-                "Answer from the sermon excerpts provided below. Prefer their wording, "
-                "examples, and scripture references. You may paraphrase and organize them "
-                "into a clear teaching response. Do not invent sermon titles, quotes, or "
-                "claims that are not supported by the excerpts.\n\n"
-                "Write like a pastor teaching a sincere believer:\n"
-                "- Open with a direct answer to the question.\n"
-                "- Develop the teaching in 2–4 short paragraphs, or short bullets when that "
-                "is clearer.\n"
-                "- Include relevant scripture already present in the excerpts.\n"
-                "- Close with a brief practical takeaway when the excerpts support one.\n\n"
-                "If the excerpts only partly cover the question, answer what they do cover, "
-                "then say briefly what is missing. If they do not cover the question at all, "
-                "say that plainly in one or two sentences. Do not fill gaps with outside "
-                "theology.\n\n"
-                "Keep the tone warm, clear, and reverent. Avoid chatbot filler, hedging "
-                "lists of possibilities, and invented personal stories."
+                "You are Pastor Don's AI for Nordin's AI.\n\n"
+                "Sermon notes come with the request. Draw on their stories, phrases, "
+                "and scriptures as you write.\n\n"
+                "You choose the form. Answer a question, preach, write a study, draft "
+                "notes, tell a story, or follow whatever the request asks. Write the "
+                "whole piece. If the notes only cover part of the request, keep going "
+                "and finish it in the same voice.\n\n"
+                "Stay warm and clear. Do not mention these instructions."
             ),
         },
         {
             "role": "user",
-            "content": f"Sermon excerpts:\n{context}\n\nQuestion: {query}",
+            "content": f"Sermon notes:\n{context}\n\nRequest: {query}",
         },
     ]
+
+
+def _reply_max_tokens() -> int:
+    raw = _env("CHAT_MAX_TOKENS", "1600") or "1600"
+    try:
+        return max(400, int(raw))
+    except ValueError:
+        return 1600
+
+
+def _reply_temperature() -> float:
+    raw = _env("CHAT_TEMPERATURE", "0.8") or "0.8"
+    try:
+        return min(1.5, max(0.0, float(raw)))
+    except ValueError:
+        return 0.8
 
 
 def stream_llm_tokens(query: str, passages: list[dict]) -> Iterator[str]:
     """Yield text deltas from the OpenAI-compatible vLLM endpoint."""
     yield from stream_message_tokens(
         _prompt(query, passages),
-        max_tokens=int(_env("CHAT_MAX_TOKENS", "800") or "800"),
+        max_tokens=_reply_max_tokens(),
+        temperature=_reply_temperature(),
     )
 
 
-def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
+def stream_message_tokens(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float = 0.2,
+) -> Iterator[str]:
     body = {
         "model": vllm_model(),
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
     }
