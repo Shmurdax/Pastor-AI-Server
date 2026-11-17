@@ -11,9 +11,14 @@ const siteBannerSlateGrey = Color(0xFF475569);
 
 /// Hazard-yellow notice pinned to the top of every website page.
 class SiteStatusBanner extends StatelessWidget {
-  const SiteStatusBanner({super.key, required this.message});
+  const SiteStatusBanner({
+    super.key,
+    required this.message,
+    this.onDismiss,
+  });
 
   final String message;
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -26,16 +31,49 @@ class SiteStatusBanner extends StatelessWidget {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Text(
-              message,
-              textAlign: TextAlign.center,
-              style: base.copyWith(
-                color: siteBannerSlateGrey,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
+            padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: base.copyWith(
+                        color: siteBannerSlateGrey,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+                if (onDismiss != null)
+                  // Avoid IconButton: tooltips need Overlay, and this banner
+                  // lives in MaterialApp.builder above the navigator overlay.
+                  Semantics(
+                    button: true,
+                    label: 'Dismiss',
+                    child: GestureDetector(
+                      key: const Key('site-status-banner-dismiss'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onDismiss,
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.close,
+                          color: siteBannerSlateGrey,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -45,6 +83,9 @@ class SiteStatusBanner extends StatelessWidget {
 }
 
 /// Places [child] under the site banner and keeps the banner above every route.
+///
+/// Closing the banner hides it for the rest of this visit (including route
+/// changes). A fresh page load / app start shows it again when enabled.
 class SiteBannerFrame extends StatefulWidget {
   const SiteBannerFrame({
     super.key,
@@ -61,6 +102,7 @@ class SiteBannerFrame extends StatefulWidget {
 
 class _SiteBannerFrameState extends State<SiteBannerFrame> {
   SiteBannerNotice _notice = SiteBannerNotice.hidden;
+  bool _dismissed = false;
 
   @override
   void initState() {
@@ -79,13 +121,22 @@ class _SiteBannerFrameState extends State<SiteBannerFrame> {
     setState(() => _notice = notice);
   }
 
+  void _dismiss() {
+    if (_dismissed) return;
+    setState(() => _dismissed = true);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final visible = _notice.isVisible;
+    final visible = _notice.isVisible && !_dismissed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (visible) SiteStatusBanner(message: _notice.message),
+        if (visible)
+          SiteStatusBanner(
+            message: _notice.message,
+            onDismiss: _dismiss,
+          ),
         Expanded(
           child: visible
               ? LayoutBuilder(

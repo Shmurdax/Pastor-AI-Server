@@ -88,11 +88,63 @@ void main() {
     );
 
     expect(find.text(message), findsOneWidget);
+    expect(find.byKey(const Key('site-status-banner-dismiss')), findsOneWidget);
     await tester.tap(find.text('Open second'));
     await tester.pumpAndSettle();
     expect(find.text('Second page'), findsOneWidget);
     expect(find.text(message), findsOneWidget);
     expect(tester.getTopLeft(find.byKey(const Key('site-status-banner'))).dy, 0);
+  });
+
+  testWidgets('dismiss hides the banner for the rest of this visit', (tester) async {
+    const message = 'Scheduled maintenance starts at 2:00 PM.';
+    await pumpBanner(
+      tester,
+      load: () async => const SiteBannerNotice(enabled: true, message: message),
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('Second page')),
+              ),
+            );
+          },
+          child: const Text('Open second'),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('site-status-banner')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('site-status-banner-dismiss')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('site-status-banner')), findsNothing);
+    expect(find.text(message), findsNothing);
+    expect(find.text('Home page'), findsNothing);
+    expect(find.text('Open second'), findsOneWidget);
+
+    await tester.tap(find.text('Open second'));
+    await tester.pumpAndSettle();
+    expect(find.text('Second page'), findsOneWidget);
+    expect(find.byKey(const Key('site-status-banner')), findsNothing);
+  });
+
+  testWidgets('a fresh visit shows the banner again after dismiss', (tester) async {
+    const message = 'The office is closed Friday.';
+    Future<SiteBannerNotice> load() async =>
+        const SiteBannerNotice(enabled: true, message: message);
+
+    await pumpBanner(tester, load: load);
+    await tester.tap(find.byKey(const Key('site-status-banner-dismiss')));
+    await tester.pump();
+    expect(find.byKey(const Key('site-status-banner')), findsNothing);
+
+    // Clear the tree first so the frame State is new (models a full revisit).
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pumpBanner(tester, load: load);
+    expect(find.byKey(const Key('site-status-banner')), findsOneWidget);
+    expect(find.text(message), findsOneWidget);
   });
 
   testWidgets('a failed load leaves the site without a banner', (tester) async {
