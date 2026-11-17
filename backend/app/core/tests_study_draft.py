@@ -20,6 +20,7 @@ from core.study_draft import (
     CLASSIFIER_SYSTEM,
     PIPELINE_CHAT,
     PIPELINE_DRAFT,
+    continued_draft_route,
     decision_from_classifier,
     draft_system_prompt,
     missing_scripture_refs,
@@ -274,58 +275,47 @@ class StudyDraftAPITests(APITestCase):
         token = Token.objects.get(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
-    def test_every_request_uses_sermon_retrieval_and_one_writer(self):
+    def test_a_study_returns_the_draft_pipeline_and_passages(self):
         passages = [{"title": "It Is Time for the Cross", "text": "Repentance turns the heart."}]
 
-        def fake_stream(query, found):
-            self.assertIn("repentance", query.lower())
-            self.assertEqual(found[0]["title"], "It Is Time for the Cross")
-            yield "A study on turning back, written from the notes."
+        def fake_stream(messages, *, max_tokens, temperature):
+            blob = messages[1]["content"]
+            self.assertIn("Repentance turns the heart.", blob)
+            yield "Title: Repentance\n\nBig idea: Turn back.\n\nPrimary biblical texts: Acts 2:38"
 
         with patch(
-            "core.basic_chat_views.retrieve_passages", return_value=passages
-        ) as retrieve, patch(
-            "core.basic_chat_views.stream_llm_tokens", side_effect=fake_stream
+            "core.basic_chat_views.retrieve_draft_passages", return_value=passages
+        ), patch(
+            "core.basic_chat_views.stream_message_tokens", side_effect=fake_stream
         ):
             res = self.client.post(
                 "/api/chat/",
                 {
                     "query": "Write a Bible study on repentance",
                     "session_id": "draft-sse",
-                    "stream": True,
-                },
-                format="json",
-                HTTP_ACCEPT="text/event-stream",
-            )
-            body = b"".join(res.streaming_content).decode()
-
-        self.assertEqual(res.status_code, 200)
-        retrieve.assert_called_once()
-        self.assertNotIn('"phase": "planning"', body)
-        self.assertIn("turning back", body)
-        self.assertIn('"pipeline": "sermon_chat"', body)
-        saved = ChatMessage.objects.get(session_id="draft-sse")
-        self.assertIn("turning back", saved.ai_response)
-
-    def test_a_study_request_is_one_reply(self):
-        passages = [{"title": "Faith Lift", "text": "Faith trusts God."}]
-
-        with patch(
-            "core.basic_chat_views.retrieve_passages", return_value=passages
-        ), patch(
-            "core.basic_chat_views.stream_llm_tokens",
-            return_value=iter(["Faith holds, and the notes say why."]),
-        ):
-            res = self.client.post(
-                "/api/chat/",
-                {
-                    "query": "Write a Bible study on faith\nPrimary Biblical Texts: James 2:14-26",
-                    "session_id": "draft-gap",
+                    "include_passages": True,
                 },
                 format="json",
             )
 
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data["pipeline"], "sermon_chat")
-        self.assertEqual(res.data["answer"], "Faith holds, and the notes say why.")
-        self.assertNotIn("Gaps:", res.data["answer"])
+        self.assertEqual(res.data["pipeline"], PIPELINE_DRAFT)
+        self.assertEqual(res.data["passages"][0]["text"], "Repentance turns the heart.")
+        self.assertIn("Title:", res.data["answer"])
+
+    def test_a_followup_edit_stays_on_the_draft(self):
+        route = continued_draft_route(
+            "Add a discussion question to that study",
+            "Write an in-depth Bible study on James 2",
+        )
+        self.assertIsNotNone(route)
+        self.assertTrue(route.is_draft)
+        self.assertIn("James 2", route.topic)
+
+    def test_a_followup_question_is_not_forced_onto_the_draft(self):
+        self.assertIsNone(
+            continued_draft_route(
+                "Which scripture should I emphasize when I teach that?",
+                "Write an in-depth Bible study on James 2",
+            )
+        )

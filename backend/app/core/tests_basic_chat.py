@@ -58,7 +58,7 @@ class BasicChatAPITests(APITestCase):
             self.assertIn("faith", query.lower())
             return list(self.passages)
 
-        def fake_stream(query, passages):
+        def fake_stream(query, passages, history=""):
             self.assertEqual(passages[0]["title"], "Faith That Moves")
             yield from tokens
 

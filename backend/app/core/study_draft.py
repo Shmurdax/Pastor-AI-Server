@@ -143,6 +143,35 @@ def chat_fallback(query: str, *, source: str, reason: str, confidence: float = 0
     return _chat_route(query, source=source, reason=reason, confidence=confidence)
 
 
+def continued_draft_route(query: str, prior_query: str) -> DraftRoute | None:
+    """Keep editing the previous study when this turn points back at it.
+
+    A follow-up question stays unresolved here so it can be a short pastoral reply.
+    """
+    text = (query or "").strip()
+    prior = (prior_query or "").strip()
+    if not prior or not text or _is_hard_chat(text):
+        return None
+    if not _ANAPHORA.search(text):
+        return None
+    earlier = rule_route(prior)
+    if earlier is None or not earlier.is_draft:
+        return None
+    fields = extract_request_fields(prior)
+    if not fields.get("topic"):
+        fields["topic"] = earlier.topic
+    return _draft_route(
+        fields,
+        source="rules",
+        confidence=1.0,
+        reason="continue the previous draft",
+        format_hint=earlier.format,
+    )
+
+
+_ANAPHORA = re.compile(r"\b(?:that|those|this|these)\b", re.IGNORECASE)
+
+
 def rule_route(query: str) -> DraftRoute | None:
     """Return a decisive route, or None when a classifier should look."""
     text = (query or "").strip()

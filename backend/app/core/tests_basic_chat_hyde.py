@@ -536,7 +536,7 @@ class HyDEChatAPITests(APITestCase):
                 }
             ]
 
-        def fake_stream(query, passages):
+        def fake_stream(query, passages, history=""):
             prompt = _prompt(query, passages)
             rendered = prompt[0]["content"] + prompt[1]["content"]
             self.assertNotIn(hyde_marker, rendered)

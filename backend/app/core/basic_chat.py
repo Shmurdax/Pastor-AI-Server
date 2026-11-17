@@ -19,6 +19,7 @@ from .study_draft import (
     CLASSIFIER_SYSTEM,
     DraftRoute,
     chat_fallback,
+    continued_draft_route,
     decision_from_classifier,
     draft_system_prompt,
     draft_user_content,
@@ -575,12 +576,85 @@ def _reply_temperature() -> float:
         return 0.8
 
 
-def stream_llm_tokens(query: str, passages: list[dict]) -> Iterator[str]:
-    """Yield text deltas from the OpenAI-compatible vLLM endpoint."""
+def route_with_history(query: str, prior_query: str = "") -> DraftRoute:
+    """Pick pastoral chat or a study draft, including edits to the last draft."""
+    continued = continued_draft_route(query, prior_query)
+    if continued is not None:
+        _log_route(continued)
+        return continued
+    return resolve_chat_route(query)
+
+
+def search_text(query: str, prior_query: str = "") -> str:
+    """Search the prior topic when the pastor says "that study" or "those notes"."""
+    prior = (prior_query or "").strip()
+    if prior and re.search(r"\b(?:that|those|this|these)\b", query or "", re.IGNORECASE):
+        return f"{prior}\n{query}"
+    return query
+
+
+def history_block(turns: list[tuple[str, str]]) -> str:
+    parts = []
+    for query, answer in turns[-2:]:
+        clipped = (answer or "").strip()
+        if len(clipped) > 1800:
+            clipped = clipped[:1800].rsplit(" ", 1)[0]
+        parts.append(f"Pastor: {query}\nAssistant: {clipped}")
+    return "\n\n".join(parts)
+
+
+def pastoral_messages(query: str, passages: list[dict], history: str = "") -> list[dict]:
+    context = _passage_context(query, passages) or "(no sermon excerpts found)"
+    prior = f"Earlier in this chat:\n{history}\n\n" if history else ""
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
+                "Answer from the sermon excerpts. Prefer their wording and scripture. "
+                "Do not invent quotes or verses the excerpts do not contain.\n\n"
+                "Write one short answer, under 900 characters. "
+                "Include one scripture reference from the excerpts when one is there. "
+                "If this continues an earlier reply, name that same topic in the answer.\n\n"
+                "Keep the tone warm and clear."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"{prior}Sermon excerpts:\n{context}\n\nQuestion: {query}",
+        },
+    ]
+
+
+def fit_pastoral_length(answer: str, limit: int = 1100) -> str:
+    """Keep a pastoral reply inside the short-answer limit."""
+    text = (answer or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    dot = max(cut.rfind(". "), cut.rfind(".\n"), cut.rfind("?"))
+    if dot >= 200:
+        return cut[: dot + 1].strip()
+    return cut.strip()
+
+
+def public_passages(passages: Iterable[dict]) -> list[dict]:
+    return [
+        {"title": item.get("title") or "", "text": item.get("text") or ""}
+        for item in passages
+    ]
+
+
+def stream_llm_tokens(
+    query: str,
+    passages: list[dict],
+    history: str = "",
+) -> Iterator[str]:
+    """Yield a short pastoral reply from the sermon excerpts."""
     yield from stream_message_tokens(
-        _prompt(query, passages),
-        max_tokens=_reply_max_tokens(),
-        temperature=_reply_temperature(),
+        pastoral_messages(query, passages, history),
+        max_tokens=260,
+        temperature=0.2,
     )
 
 
@@ -751,18 +825,24 @@ def _passage_context(query: str, passages: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def draft_writer_messages(query: str, route: DraftRoute, passages: list[dict], plan: dict | None) -> list[dict]:
+def draft_writer_messages(
+    query: str,
+    route: DraftRoute,
+    passages: list[dict],
+    plan: dict | None,
+    history: str = "",
+) -> list[dict]:
+    content = draft_user_content(
+        route,
+        _passage_context(query, passages),
+        render_plan(plan),
+        query,
+    )
+    if history:
+        content = f"Earlier in this chat:\n{history}\n\n{content}"
     return [
         {"role": "system", "content": draft_system_prompt(route)},
-        {
-            "role": "user",
-            "content": draft_user_content(
-                route,
-                _passage_context(query, passages),
-                render_plan(plan),
-                query,
-            ),
-        },
+        {"role": "user", "content": content},
     ]
 
 
