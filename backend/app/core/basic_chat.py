@@ -50,6 +50,74 @@ _QUERY_TERM_STOP = {
     "where",
     "would",
 }
+# Words that show up in almost every sermon. They must not count as the subject
+# of a whole-collection text search, or the first hits are unrelated notes.
+_GENERIC_TERMS = _QUERY_TERM_STOP | {
+    "already",
+    "answer",
+    "answers",
+    "assisted",
+    "believe",
+    "believes",
+    "believer",
+    "believers",
+    "bible",
+    "biblical",
+    "calls",
+    "carrying",
+    "choose",
+    "chosen",
+    "choice",
+    "christian",
+    "christians",
+    "church",
+    "congregation",
+    "considering",
+    "culture",
+    "follow",
+    "follows",
+    "gospel",
+    "jesus",
+    "kindness",
+    "living",
+    "member",
+    "members",
+    "outside",
+    "pastor",
+    "pastors",
+    "people",
+    "permitted",
+    "respond",
+    "person",
+    "persons",
+    "practice",
+    "explain",
+    "question",
+    "questions",
+    "scripture",
+    "scriptures",
+    "shame",
+    "someone",
+    "something",
+    "teach",
+    "teaching",
+    "teachings",
+    "together",
+    "trapped",
+    "woman",
+    "still",
+    "other",
+    "every",
+    "after",
+    "under",
+    "again",
+    "being",
+    "while",
+    "first",
+    "before",
+}
+SEARCH_CHUNK_KINDS = ("sermon_quote", "video_transcript", "video_topic_overview")
+_TEXT_INDEXED: set[str] = set()
 PASSAGE_PROMPT_CHARS = 1200
 HYDE_MAX_WORDS = 120
 _SSE_FLUSH_PAD = " " * 4096
@@ -270,6 +338,7 @@ def _passages_from_hits(hits) -> list[dict]:
                 "title": _passage_title(payload),
                 "text": text,
                 "score": _hit_score(hit),
+                "file_hash": str(payload.get("file_hash") or "").strip(),
             }
         )
     return passages
@@ -293,7 +362,7 @@ def _merge_ranked(hyde_hits: list[dict], query_hits: list[dict], top_k: int) -> 
         if not key or key in seen:
             return
         seen.add(key)
-        merged.append({"title": passage.get("title") or "Sermon", "text": text})
+        merged.append(_passage_record(passage, text))
 
     hyde_i = 0
     query_i = 0
@@ -344,20 +413,13 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
                 logger.warning("HyDE search failed; using the question search only", exc_info=True)
                 hyde_hits = []
                 hyde_status = "search_failed"
-    terms = _query_terms(query)
+    terms = _anchor_terms(query)
     query_hits = _promote_lexical(query_hits, terms)
     hyde_hits = _promote_lexical(hyde_hits, terms)
-    passages = _merge_ranked(hyde_hits, query_hits, top_k)
-    term_fallback = False
-    if terms and not _passages_contain_terms(passages, terms):
-        try:
-            fallback_hits = _scroll_term_matches(client, collection, terms, top_k)
-        except Exception:
-            logger.warning("Term fallback failed", exc_info=True)
-            fallback_hits = []
-        if fallback_hits:
-            term_fallback = True
-            passages = _merge_ranked(fallback_hits, passages, top_k)
+    vector_passages = _merge_ranked(query_hits, hyde_hits, candidate_k)
+    term_hits = _subject_windows(client, collection, query, terms)
+    term_fallback = bool(term_hits)
+    passages = _order_passages(query, _dedupe_passages(term_hits + vector_passages), top_k, terms)
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "hyde_request status=%s elapsed_ms=%s terms=%s term_fallback=%s "
@@ -383,6 +445,236 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     return passages
 
 
+def _passage_record(passage: dict, text: str) -> dict:
+    return {
+        "title": passage.get("title") or "Sermon",
+        "text": text,
+        "score": float(passage.get("score") or 0.0),
+        "file_hash": str(passage.get("file_hash") or "").strip(),
+    }
+
+
+def _anchor_terms(query: str) -> set[str]:
+    """Subject words for a whole-collection search.
+
+    Alias lists supply "homosexuality" when the pastor says "gay". Generic
+    sermon words such as "christian" are left out so they cannot crowd out
+    the note that names the subject.
+    """
+    from .sermon_catalog import TOPIC_ALIASES
+
+    anchors: set[str] = set()
+    words = []
+    for word in re.findall(r"[a-z0-9']{3,}", (query or "").lower()):
+        word = word.strip("'")
+        if word.endswith("'s"):
+            word = word[:-2]
+        if word:
+            words.append(word)
+    for word in words:
+        linked = False
+        for key, aliases in TOPIC_ALIASES.items():
+            if word == key or word in aliases:
+                anchors.update(
+                    alias.lower() for alias in aliases if alias.lower() not in _GENERIC_TERMS
+                )
+                linked = True
+        if not linked and len(word) >= 5 and word not in _GENERIC_TERMS:
+            anchors.add(word)
+    return anchors
+
+
+def _dedupe_passages(passages: list[dict]) -> list[dict]:
+    merged = []
+    seen = set()
+    for passage in passages:
+        text = (passage.get("text") or "").strip()
+        key = _fingerprint(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(_passage_record(passage, text))
+    return merged
+
+
+def _ensure_text_index(client, collection: str) -> None:
+    if collection in _TEXT_INDEXED:
+        return
+    try:
+        from .qdrant_utils import ensure_payload_indexes
+
+        ensure_payload_indexes(client, collection)
+    except Exception:
+        logger.warning("Sermon text index was not created", exc_info=True)
+    _TEXT_INDEXED.add(collection)
+
+
+def _chunk_kind_filter():
+    from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+    return Filter(
+        must=[FieldCondition(key="chunk_kind", match=MatchAny(any=list(SEARCH_CHUNK_KINDS)))]
+    )
+
+
+def _subject_windows(client, collection: str, query: str, terms: set[str]) -> list[dict]:
+    """Every indexed note that states a subject word, then the best window of that file."""
+    if not terms:
+        return []
+    try:
+        matches = _match_text_terms(client, collection, terms)
+    except Exception as exc:
+        logger.warning("Text match failed (%s); scanning sermon notes", exc)
+        try:
+            matches = _scroll_term_matches(client, collection, terms, 24)
+        except Exception:
+            logger.warning("Subject scan failed", exc_info=True)
+            return []
+    hashed = []
+    ranked_matches = sorted(
+        matches,
+        key=lambda item: max(
+            (len(term) for term in terms if term in (item.get("text") or "").lower()),
+            default=0,
+        ),
+        reverse=True,
+    )
+    for item in ranked_matches:
+        file_hash = item.get("file_hash")
+        if file_hash and file_hash not in hashed:
+            hashed.append(file_hash)
+    if not hashed:
+        return matches
+    try:
+        from .sermon_catalog import lookup_chunks_by_file_hashes
+
+        docs = lookup_chunks_by_file_hashes(
+            client, collection, hashed, query=query, limit_per_file=2
+        )
+    except Exception:
+        logger.warning("File window lookup failed", exc_info=True)
+        return matches
+    windows = []
+    for doc in docs:
+        meta = doc.metadata or {}
+        text = str(getattr(doc, "page_content", "") or "").strip()
+        if not text:
+            continue
+        windows.append(
+            {
+                "title": str(meta.get("title") or "Sermon"),
+                "text": text,
+                "score": 1.0,
+                "file_hash": str(meta.get("file_hash") or "").strip(),
+            }
+        )
+    return windows or matches
+
+
+def _match_text_terms(client, collection: str, terms: set[str]) -> list[dict]:
+    from qdrant_client.models import FieldCondition, Filter, MatchText
+
+    _ensure_text_index(client, collection)
+    kind_filter = _chunk_kind_filter()
+    found = []
+    seen = set()
+    for term in sorted(terms):
+        text_filter = Filter(
+            must=[
+                kind_filter.must[0],
+                FieldCondition(key="text", match=MatchText(text=term)),
+            ]
+        )
+        points = _scroll_filtered(client, collection, text_filter, limit=8)
+        for point in points:
+            payload = getattr(point, "payload", None) or {}
+            text = _passage_text(payload)
+            if not text or term not in text.lower():
+                continue
+            key = _fingerprint(text)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(
+                {
+                    "title": _passage_title(payload),
+                    "text": text,
+                    "score": 1.0,
+                    "file_hash": str(payload.get("file_hash") or "").strip(),
+                }
+            )
+    if not found:
+        raise RuntimeError("text match returned nothing")
+    return found
+
+
+def _scroll_filtered(client, collection: str, query_filter, limit: int) -> list:
+    points = []
+    offset = None
+    while len(points) < limit:
+        batch, offset = client.scroll(
+            collection_name=collection,
+            scroll_filter=query_filter,
+            limit=min(64, limit - len(points)),
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not batch:
+            break
+        points.extend(batch)
+        if offset is None:
+            break
+    return points
+
+
+def _order_passages(query: str, passages: list[dict], top_k: int, terms: set[str]) -> list[dict]:
+    """Prefer notes that state the subject, then a cross-encoder when one is running."""
+    from .note_priority import chunk_thesis_score
+
+    rerank_scores = _rerank_scores(query, passages)
+    decorated = []
+    for index, passage in enumerate(passages):
+        text = passage.get("text") or ""
+        lowered = text.lower()
+        hits = sum(1 for term in terms if term in lowered)
+        thesis = chunk_thesis_score(text)
+        vector = float(passage.get("score") or 0.0)
+        rerank = rerank_scores[index] if rerank_scores is not None else 0.0
+        if rerank_scores is not None:
+            key = (rerank, hits, thesis, vector, -index)
+        else:
+            key = (hits, thesis, vector, -index)
+        decorated.append((key, passage))
+    decorated.sort(key=lambda item: item[0], reverse=True)
+    return [passage for _key, passage in decorated[:top_k]]
+
+
+def _rerank_scores(query: str, passages: list[dict]) -> list[float] | None:
+    if not passages or not _flag_enabled("CHAT_RERANK", "1"):
+        return None
+    try:
+        from .search_sidecar import SidecarReranker, sidecar_url
+    except Exception:
+        return None
+    url = sidecar_url()
+    if not url:
+        return None
+    try:
+        reranker = SidecarReranker(url, timeout=30.0)
+        scores: list[float] = []
+        for start in range(0, len(passages), 32):
+            batch = passages[start : start + 32]
+            pairs = [(query, (item.get("text") or "")[:1500]) for item in batch]
+            scores.extend(float(score) for score in reranker.predict(pairs))
+        if len(scores) != len(passages):
+            return None
+        return scores
+    except Exception:
+        logger.warning("Cross-encoder rerank failed; keeping subject order", exc_info=True)
+        return None
+
+
 def _passages_contain_terms(passages: list[dict], terms: set[str]) -> bool:
     if not terms:
         return True
@@ -391,19 +683,27 @@ def _passages_contain_terms(passages: list[dict], terms: set[str]) -> bool:
 
 
 def _scroll_term_matches(client, collection: str, terms: set[str], top_k: int) -> list[dict]:
-    """Find sermon quotes that contain a rare question term.
+    """Find notes that contain a subject word, including ones past the first pages.
 
-    Used only after the vector merge missed every rare term. Stops at top_k
-    matches so a miss does not read the whole collection into the prompt.
+    ``CHAT_TERM_SCAN_MAX`` defaults to a full scan. Set it to a positive
+    number to stop early.
     """
     matches = []
     offset = None
     scanned = 0
-    limit = int(_env("CHAT_TERM_SCAN_MAX", "2500") or "2500")
-    while len(matches) < top_k and scanned < limit:
+    try:
+        raw_cap = int(_env("CHAT_TERM_SCAN_MAX", "0") or "0")
+    except ValueError:
+        raw_cap = 0
+    hard_cap = raw_cap if raw_cap > 0 else 100000
+    try:
+        query_filter = _chunk_kind_filter()
+    except Exception:
+        query_filter = _sermon_filter()
+    while len(matches) < top_k and scanned < hard_cap:
         points, offset = client.scroll(
             collection_name=collection,
-            scroll_filter=_sermon_filter(),
+            scroll_filter=query_filter,
             limit=128,
             offset=offset,
             with_payload=True,
@@ -422,6 +722,7 @@ def _scroll_term_matches(client, collection: str, terms: set[str], top_k: int) -
                     "title": _passage_title(payload),
                     "text": text,
                     "score": 1.0,
+                    "file_hash": str(payload.get("file_hash") or "").strip(),
                 }
             )
             if len(matches) >= top_k:
@@ -898,7 +1199,7 @@ def _merge_ranked_many(groups: list[list[dict]], top_k: int) -> list[dict]:
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                merged.append({"title": passage.get("title") or "Sermon", "text": text})
+                merged.append(_passage_record(passage, text))
                 break
     return merged
 
@@ -957,18 +1258,13 @@ def retrieve_draft_passages(
         hits = _promote_lexical(hits, terms)
         titles_by_kind[kind] = _titles(hits)
         groups.append(hits)
-    passages = _merge_ranked_many(groups, limit)
-    term_fallback = False
-    focus_terms = _query_terms(query) | _query_terms(route.topic)
-    if focus_terms and not _passages_contain_terms(passages, focus_terms):
-        try:
-            fallback_hits = _scroll_term_matches(client, collection, focus_terms, limit)
-        except Exception:
-            logger.warning("Draft term fallback failed", exc_info=True)
-            fallback_hits = []
-        if fallback_hits:
-            term_fallback = True
-            passages = _merge_ranked_many([fallback_hits, passages], limit)
+    vector_passages = _merge_ranked_many(groups, candidate_k)
+    focus_terms = _anchor_terms(" ".join(part for part in (query, route.topic) if part))
+    term_hits = _subject_windows(client, collection, query, focus_terms)
+    term_fallback = bool(term_hits)
+    passages = _order_passages(
+        query, _dedupe_passages(term_hits + vector_passages), limit, focus_terms
+    )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "draft_retrieval status=%s elapsed_ms=%s term_fallback=%s searches=%s merged=%s hyde_text=%s",

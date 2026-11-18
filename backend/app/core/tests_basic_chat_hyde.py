@@ -99,8 +99,8 @@ class HyDERetrievalTests(SimpleTestCase):
             [
                 "Nextsteps 101",
                 "Advent",
-                "Why Receive the Holy Spirit",
                 "Christmas",
+                "Why Receive the Holy Spirit",
             ],
         )
         prompt = _prompt("What is the Trinity?", result["passages"])
@@ -206,16 +206,10 @@ class HyDERetrievalTests(SimpleTestCase):
         result, _, _ = self._retrieve(query_hits=query_hits, hyde_hits=hyde_hits)
         titles = [item["title"] for item in result["passages"]]
         self.assertEqual(titles.count("Why Receive the Holy Spirit"), 1)
-        # HyDE slot first, then the next HyDE hit fills the odd slot after the
-        # duplicate query hit is skipped.
-        self.assertEqual(
-            titles,
-            [
-                "Why Receive the Holy Spirit",
-                "Nextsteps 101",
-                "Advent",
-            ],
-        )
+        # The note that says Trinity outranks a higher vector score that does not.
+        self.assertEqual(titles[0], "Nextsteps 101")
+        self.assertEqual(titles[-1], "Advent")
+        self.assertIn("Why Receive the Holy Spirit", titles)
 
     def test_merge_caps_at_top_k_and_prefers_hyde_slots(self):
         hyde_hits = [
@@ -322,15 +316,20 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertTrue(result["term_fallback"])
         self.assertEqual(result["passages"][0]["title"], "Why Receive the Holy Spirit")
 
-    def test_term_fallback_skips_when_the_merge_already_has_the_term(self):
+    def test_subject_search_still_runs_when_a_neighbor_already_has_the_word(self):
         embeddings, _calls = self._embeddings()
 
         class Client:
-            def scroll(self, **kwargs):
-                raise AssertionError("term fallback should not scan")
+            def __init__(self):
+                self.scrolled = False
 
+            def scroll(self, **kwargs):
+                self.scrolled = True
+                return [], None
+
+        client = Client()
         with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
-            "qdrant_client.QdrantClient", return_value=Client()
+            "qdrant_client.QdrantClient", return_value=client
         ), patch(
             "core.embeddings_utils.get_embeddings", return_value=embeddings
         ), patch(
@@ -344,8 +343,48 @@ class HyDERetrievalTests(SimpleTestCase):
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
+        self.assertTrue(client.scrolled)
         self.assertFalse(result["term_fallback"])
         self.assertIn("Trinity", result["passages"][0]["text"])
+
+    def test_subject_word_outranks_a_nearby_sermon(self):
+        embeddings, _calls = self._embeddings()
+
+        class Client:
+            def scroll(self, **kwargs):
+                point = SimpleNamespace(
+                    payload={
+                        "title": "Christian Boundaries",
+                        "text": (
+                            "We must love the homosexual and stand firmly against the lifestyle. "
+                            "Homosexuality is not an acceptable lifestyle."
+                        ),
+                        "file_hash": "",
+                    }
+                )
+                return [point], None
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
+            "qdrant_client.QdrantClient", return_value=Client()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("The Giver and His Gifts Full", "Be full of grace and truth.", 0.95)],
+                [_hit("Working at God's Altar Full", "Pray for the person at the altar.", 0.9)],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat.generate_hyde_document",
+            return_value="Handle people with grace and speak the truth in love.",
+        ):
+            result = retrieve_passages(
+                "What does the Bible teach about homosexual practice?",
+                include_debug=True,
+            )
+
+        self.assertEqual(result["passages"][0]["title"], "Christian Boundaries")
+        self.assertIn("homosexual", result["passages"][0]["text"].lower())
 
     def test_question_term_promotes_the_sermon_that_uses_it(self):
         promoted = _promote_lexical(
@@ -416,10 +455,10 @@ class HyDERetrievalTests(SimpleTestCase):
         )
         self.assertEqual(
             [item["title"] for item in result["passages"]],
-            ["From Metadata", "From Source Key"],
+            ["From Source Key", "From Metadata"],
         )
-        self.assertEqual(result["passages"][0]["text"], "meta body")
-        self.assertEqual(result["passages"][1]["text"], "page body")
+        self.assertEqual(result["passages"][0]["text"], "page body")
+        self.assertEqual(result["passages"][1]["text"], "meta body")
 
     def test_answer_system_prompt_leaves_the_form_open(self):
         prompt = _prompt(
