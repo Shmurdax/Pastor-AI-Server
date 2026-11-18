@@ -568,7 +568,9 @@ def _subject_windows(client, collection: str, query: str, terms: set[str]) -> li
                 "file_hash": str(meta.get("file_hash") or "").strip(),
             }
         )
-    return windows or matches
+    # Keep the chunk that actually contained the subject word. The file lookup
+    # adds the teaching window; it must not replace the matching chunk.
+    return _dedupe_passages(matches + windows)
 
 
 def _match_text_terms(client, collection: str, terms: set[str]) -> list[dict]:
