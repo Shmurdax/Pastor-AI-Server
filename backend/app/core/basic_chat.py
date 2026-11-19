@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import re
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -855,8 +854,6 @@ def _cpu_reranker():
         return None
     if _CPU_RERANKER is not None:
         return _CPU_RERANKER
-    if "unittest" in sys.modules and not _flag_enabled("CHAT_RERANK_CPU", "0"):
-        return None
     try:
         from sentence_transformers import CrossEncoder
 
