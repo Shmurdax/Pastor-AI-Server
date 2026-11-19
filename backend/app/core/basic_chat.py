@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -778,20 +779,28 @@ def _scroll_filtered(client, collection: str, query_filter, limit: int) -> list:
 
 
 def _order_passages(query: str, passages: list[dict], top_k: int, terms: set[str]) -> list[dict]:
-    """Prefer notes that state the subject, then a cross-encoder when one is running."""
+    """Put the window that answers the question first."""
     from .note_priority import chunk_thesis_score
 
-    rerank_scores = _rerank_scores(query, passages)
+    pool = list(passages)
+    if len(pool) > 32:
+        pool.sort(
+            key=lambda passage: sum(
+                1 for term in terms if term in (passage.get("text") or "").lower()
+            ),
+            reverse=True,
+        )
+        pool = pool[:32]
+    rerank_scores = _rerank_scores(query, pool)
     decorated = []
-    for index, passage in enumerate(passages):
+    for index, passage in enumerate(pool):
         text = passage.get("text") or ""
         lowered = text.lower()
         hits = sum(1 for term in terms if term in lowered)
         thesis = chunk_thesis_score(text)
         vector = float(passage.get("score") or 0.0)
-        rerank = rerank_scores[index] if rerank_scores is not None else 0.0
         if rerank_scores is not None:
-            key = (rerank, hits, thesis, vector, -index)
+            key = (rerank_scores[index], -index)
         else:
             key = (hits, thesis, vector, -index)
         decorated.append((key, passage))
@@ -807,20 +816,57 @@ def _rerank_scores(query: str, passages: list[dict]) -> list[float] | None:
     except Exception:
         return None
     url = sidecar_url()
-    if not url:
-        return None
     try:
-        reranker = SidecarReranker(url, timeout=30.0)
+        if url:
+            reranker = SidecarReranker(url, timeout=30.0)
+
+            def predict(pairs):
+                return reranker.predict(pairs)
+        else:
+            reranker = _cpu_reranker()
+            if reranker is None:
+                return None
+
+            def predict(pairs):
+                return reranker.predict(pairs, batch_size=8, show_progress_bar=False)
         scores: list[float] = []
         for start in range(0, len(passages), 32):
             batch = passages[start : start + 32]
             pairs = [(query, (item.get("text") or "")[:1500]) for item in batch]
-            scores.extend(float(score) for score in reranker.predict(pairs))
+            raw = predict(pairs)
+            if hasattr(raw, "tolist"):
+                raw = raw.tolist()
+            scores.extend(float(score) for score in raw)
         if len(scores) != len(passages):
             return None
         return scores
     except Exception:
         logger.warning("Cross-encoder rerank failed; keeping subject order", exc_info=True)
+        return None
+
+
+_CPU_RERANKER = None
+
+
+def _cpu_reranker():
+    """Load the cross-encoder on CPU when this pod has no GPU search sidecar."""
+    global _CPU_RERANKER
+    if _CPU_RERANKER is False:
+        return None
+    if _CPU_RERANKER is not None:
+        return _CPU_RERANKER
+    if "unittest" in sys.modules and not _flag_enabled("CHAT_RERANK_CPU", "0"):
+        return None
+    try:
+        from sentence_transformers import CrossEncoder
+
+        name = _env("RERANK_MODEL", "BAAI/bge-reranker-v2-m3") or "BAAI/bge-reranker-v2-m3"
+        logger.warning("Loading CPU cross-encoder %s", name)
+        _CPU_RERANKER = CrossEncoder(name, device="cpu")
+        return _CPU_RERANKER
+    except Exception:
+        logger.warning("CPU cross-encoder is not available", exc_info=True)
+        _CPU_RERANKER = False
         return None
 
 
@@ -1063,6 +1109,9 @@ def pastoral_messages(query: str, passages: list[dict], history: str = "") -> li
                 "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
                 "Answer from the sermon excerpts. Prefer their wording and scripture. "
                 "Do not invent quotes or verses the excerpts do not contain.\n\n"
+                "Excerpt [1] is the direct answer. State what it says first, in its own words. "
+                "Use the other excerpts only to support that answer. "
+                "Do not replace excerpt [1] with a softer line that is repeated in the other excerpts.\n\n"
                 "Write one short answer, under 900 characters. "
                 "Include one scripture reference from the excerpts when one is there. "
                 "If this continues an earlier reply, name that same topic in the answer.\n\n"
