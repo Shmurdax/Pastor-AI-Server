@@ -127,6 +127,39 @@ _HYDE_SYSTEM = (
     "Do not address the reader. Do not say this is hypothetical. "
     "Do not invent a sermon title. Stay under 120 words."
 )
+_PHRASE_SYSTEM = (
+    "List up to 6 short search phrases a sermon note would use for this question. "
+    "Include the pastor's own wording and the biblical terms for that same subject. "
+    "One phrase per line. No sentences. No sermon titles. Each phrase is 1 to 5 words."
+)
+_FUNCTION_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "about",
+    "be",
+    "can",
+    "do",
+    "does",
+    "for",
+    "from",
+    "how",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "should",
+    "that",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "who",
+    "with",
+}
 _DRAFT_HYDE_SYSTEM = (
     "Write one short Bible-study or sermon-note paragraph a pastor would preach "
     "for this request. Include the topic, any named scriptures, and two or three "
@@ -290,6 +323,62 @@ def generate_hyde_document(query: str) -> str:
     return _clip_words(_message_text(payload))
 
 
+def _parse_search_phrases(raw: str) -> list[str]:
+    phrases = []
+    seen = set()
+    for line in (raw or "").splitlines():
+        cleaned = line.strip().lstrip("-*0123456789.) ").strip(" \"'`")
+        words = cleaned.split()
+        if not cleaned or not 1 <= len(words) <= 5:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        phrases.append(key)
+        if len(phrases) >= 6:
+            break
+    return phrases
+
+
+def generate_search_phrases(query: str) -> list[str]:
+    """Ask for sermon search phrases. A paragraph would widen the search."""
+    body = {
+        "model": vllm_model(),
+        "messages": [
+            {"role": "system", "content": _PHRASE_SYSTEM},
+            {"role": "user", "content": (query or "").strip()},
+        ],
+        "temperature": 0,
+        "max_tokens": 80,
+        "stream": False,
+    }
+    timeout = float(_env("CHAT_HYDE_TIMEOUT_S", "180") or "180")
+    with _post_llm(body, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    return _parse_search_phrases(_message_text(payload))
+
+
+def generate_search_phrases_with_retry(query: str) -> tuple[list[str], str]:
+    """Return (phrases, status). Status is ok, retried, empty, or failed."""
+    warm_llm()
+    try:
+        phrases = generate_search_phrases(query)
+    except Exception:
+        logger.warning("Search phrase generation failed; retrying once", exc_info=True)
+        phrases = None
+    if phrases:
+        return phrases, "ok"
+    try:
+        phrases = generate_search_phrases(query)
+    except Exception:
+        logger.warning("Search phrase retry failed; using the question phrases only", exc_info=True)
+        return [], "failed"
+    if phrases:
+        return phrases, "retried"
+    return [], "empty"
+
+
 def generate_hyde_with_retry(query: str) -> tuple[str, str]:
     """Return (paragraph, status). Status is ok, retried, empty, or failed."""
     warm_llm()
@@ -383,7 +472,7 @@ def _search_with_vector(client, collection: str, vector, top_k: int) -> list[dic
 
 
 def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: bool = False):
-    """Search sermons with the question and, when enabled, a HyDE paragraph."""
+    """Search sermons by the question's narrow phrases, then rerank against the question."""
     from qdrant_client import QdrantClient
 
     from .embeddings_utils import get_embeddings
@@ -392,34 +481,46 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     client = QdrantClient(url=_env("QDRANT_URL", "http://127.0.0.1:6333"), timeout=30)
     collection = _env("QDRANT_COLLECTION", "sermon_brain")
     candidate_k = max(top_k, HYDE_CANDIDATES)
-    query_hits = _search_with_vector(
-        client, collection, embeddings.embed_query(query), candidate_k
-    )
     started = time.monotonic()
-    hyde_text = ""
+    local_phrases = _query_phrases(query)
+    model_phrases: list[str] = []
     hyde_status = "off"
-    hyde_hits: list[dict] = []
     if hyde_enabled():
-        hyde_text, hyde_status = generate_hyde_with_retry(query)
-        if hyde_text:
-            try:
-                hyde_hits = _search_with_vector(
-                    client,
-                    collection,
-                    embeddings.embed_query(hyde_text),
-                    candidate_k,
-                )
-            except Exception:
-                logger.warning("HyDE search failed; using the question search only", exc_info=True)
-                hyde_hits = []
-                hyde_status = "search_failed"
-    terms = _anchor_terms(query)
+        model_phrases, hyde_status = generate_search_phrases_with_retry(query)
+    phrases = _dedupe_phrases(local_phrases + model_phrases)
+    terms = _anchor_terms(query) | set(phrases)
+    try:
+        query_hits = _search_with_vector(
+            client, collection, embeddings.embed_query(query), candidate_k
+        )
+    except Exception:
+        logger.warning("Question search failed", exc_info=True)
+        query_hits = []
     query_hits = _promote_lexical(query_hits, terms)
-    hyde_hits = _promote_lexical(hyde_hits, terms)
-    vector_passages = _merge_ranked(query_hits, hyde_hits, candidate_k)
     term_hits = _subject_windows(client, collection, query, terms)
+    matched_phrases = [
+        phrase
+        for phrase in phrases
+        if any(phrase in (item.get("text") or "").lower() for item in term_hits)
+    ]
+    phrase_hits: list[dict] = []
+    for phrase in matched_phrases[:4]:
+        try:
+            phrase_hits.extend(
+                _search_with_vector(
+                    client, collection, embeddings.embed_query(phrase), min(8, candidate_k)
+                )
+            )
+        except Exception:
+            logger.warning("Phrase search failed for %s", phrase, exc_info=True)
+    hyde_text = " | ".join(phrases)
     term_fallback = bool(term_hits)
-    passages = _order_passages(query, _dedupe_passages(term_hits + vector_passages), top_k, terms)
+    passages = _order_passages(
+        query,
+        _dedupe_passages(term_hits + query_hits + phrase_hits),
+        top_k,
+        terms,
+    )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "hyde_request status=%s elapsed_ms=%s terms=%s term_fallback=%s "
@@ -429,7 +530,7 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
         sorted(terms),
         term_fallback,
         _titles(query_hits)[:8],
-        _titles(hyde_hits)[:8],
+        _titles(phrase_hits)[:8],
         _titles(passages),
         (hyde_text or "")[:240],
     )
@@ -440,7 +541,7 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
             "hyde_status": hyde_status,
             "term_fallback": term_fallback,
             "query_titles": _titles(query_hits),
-            "hyde_titles": _titles(hyde_hits),
+            "hyde_titles": _titles(phrase_hits),
         }
     return passages
 
@@ -452,6 +553,52 @@ def _passage_record(passage: dict, text: str) -> dict:
         "score": float(passage.get("score") or 0.0),
         "file_hash": str(passage.get("file_hash") or "").strip(),
     }
+
+
+def _question_words(query: str) -> list[str]:
+    words = []
+    for word in re.findall(r"[a-z0-9']{2,}", (query or "").lower()):
+        word = word.strip("'")
+        if word.endswith("'s"):
+            word = word[:-2]
+        if word:
+            words.append(word)
+    return words
+
+
+def _query_phrases(query: str) -> list[str]:
+    """Two- and three-word stretches, including a short or generic word beside a subject."""
+    words = _question_words(query)
+    phrases = []
+    for size in (2, 3):
+        for start in range(0, len(words) - size + 1):
+            window = words[start : start + size]
+            if all(word in _FUNCTION_WORDS for word in window):
+                continue
+            trimmed = list(window)
+            while trimmed and trimmed[0] in _FUNCTION_WORDS:
+                trimmed = trimmed[1:]
+            while trimmed and trimmed[-1] in _FUNCTION_WORDS:
+                trimmed = trimmed[:-1]
+            if len(trimmed) < 2:
+                continue
+            dropped = any(len(word) < 5 or word in _GENERIC_TERMS for word in trimmed)
+            if not dropped:
+                continue
+            phrases.append(" ".join(trimmed))
+    return _dedupe_phrases(phrases)[:8]
+
+
+def _dedupe_phrases(phrases: list[str]) -> list[str]:
+    kept = []
+    seen = set()
+    for phrase in phrases:
+        key = " ".join((phrase or "").lower().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kept.append(key)
+    return kept
 
 
 def _anchor_terms(query: str) -> set[str]:

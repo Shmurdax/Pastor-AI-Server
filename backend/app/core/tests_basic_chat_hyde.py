@@ -71,7 +71,7 @@ class HyDERetrievalTests(SimpleTestCase):
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, hyde_hits),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document", return_value=hyde_text
+            "core.basic_chat.generate_search_phrases", return_value=[]
         ) as hyde:
             result = retrieve_passages("What is the Trinity?", include_debug=True)
         return result, calls, hyde
@@ -87,26 +87,11 @@ class HyDERetrievalTests(SimpleTestCase):
         ]
         result, calls, _ = self._retrieve(query_hits=query_hits, hyde_hits=hyde_hits)
 
-        self.assertEqual(calls[0], "What is the Trinity?")
-        self.assertEqual(calls[1], HYDE_TEXT)
-        self.assertEqual(
-            result["hyde_titles"],
-            ["Nextsteps 101", "Why Receive the Holy Spirit"],
-        )
+        self.assertEqual(calls, ["What is the Trinity?"])
+        self.assertEqual(result["hyde_titles"], [])
         self.assertEqual(result["query_titles"], ["Advent", "Christmas"])
-        self.assertEqual(
-            [item["title"] for item in result["passages"]],
-            [
-                "Nextsteps 101",
-                "Advent",
-                "Christmas",
-                "Why Receive the Holy Spirit",
-            ],
-        )
-        prompt = _prompt("What is the Trinity?", result["passages"])
-        rendered = prompt[0]["content"] + prompt[1]["content"]
-        self.assertNotIn("UNIQUE_HYDE_TRINITY_MARKER", rendered)
-        self.assertIn("The Trinity is Father Son and Spirit.", rendered)
+        self.assertEqual(result["hyde_text"], "")
+        self.assertEqual(result["passages"][0]["title"], "Advent")
 
     def test_hyde_failure_keeps_the_question_hits(self):
         embeddings, calls = self._embeddings()
@@ -123,7 +108,7 @@ class HyDERetrievalTests(SimpleTestCase):
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, []),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document", side_effect=explode
+            "core.basic_chat.generate_search_phrases", side_effect=explode
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
@@ -136,7 +121,7 @@ class HyDERetrievalTests(SimpleTestCase):
     def test_empty_hyde_text_skips_the_second_search(self):
         query_hits = [_hit("Advent", "We wait for the coming of Christ.")]
         result, calls, _ = self._retrieve(query_hits=query_hits, hyde_hits=[], hyde_text="")
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls, ["What is the Trinity?"])
         self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
         self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
@@ -157,12 +142,12 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch("core.basic_chat._search_qdrant", side_effect=search), patch(
             "core.basic_chat.warm_llm", return_value=True
         ), patch(
-            "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
+            "core.basic_chat.generate_search_phrases", return_value=[]
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
-        self.assertEqual(calls, ["What is the Trinity?", HYDE_TEXT])
-        self.assertEqual(result["hyde_text"], HYDE_TEXT)
+        self.assertEqual(calls, ["What is the Trinity?"])
+        self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
         self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
 
@@ -181,7 +166,7 @@ class HyDERetrievalTests(SimpleTestCase):
             "core.basic_chat._search_qdrant",
             side_effect=self._search(query_hits, []),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document", side_effect=explode
+            "core.basic_chat.generate_search_phrases", side_effect=explode
         ):
             result = retrieve_passages("What is faith?", include_debug=True)
 
@@ -206,10 +191,8 @@ class HyDERetrievalTests(SimpleTestCase):
         result, _, _ = self._retrieve(query_hits=query_hits, hyde_hits=hyde_hits)
         titles = [item["title"] for item in result["passages"]]
         self.assertEqual(titles.count("Why Receive the Holy Spirit"), 1)
-        # The note that says Trinity outranks a higher vector score that does not.
-        self.assertEqual(titles[0], "Nextsteps 101")
+        self.assertEqual(titles[0], "Why Receive the Holy Spirit")
         self.assertEqual(titles[-1], "Advent")
-        self.assertIn("Why Receive the Holy Spirit", titles)
 
     def test_merge_caps_at_top_k_and_prefers_hyde_slots(self):
         hyde_hits = [
@@ -241,11 +224,11 @@ class HyDERetrievalTests(SimpleTestCase):
         ), patch("core.basic_chat._search_qdrant", side_effect=search), patch(
             "core.basic_chat.warm_llm", return_value=True
         ), patch(
-            "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
+            "core.basic_chat.generate_search_phrases", return_value=[]
         ):
             retrieve_passages("What is the Trinity?", top_k=6)
 
-        self.assertEqual(seen_limits, [HYDE_CANDIDATES, HYDE_CANDIDATES])
+        self.assertEqual(seen_limits, [HYDE_CANDIDATES])
 
     def test_hyde_retries_once_then_uses_the_second_paragraph(self):
         embeddings, _calls = self._embeddings()
@@ -255,7 +238,7 @@ class HyDERetrievalTests(SimpleTestCase):
             attempts["n"] += 1
             if attempts["n"] == 1:
                 raise TimeoutError("cold worker")
-            return HYDE_TEXT
+            return ["holy trinity"]
 
         with patch.dict(os.environ, {"CHAT_HYDE": "1"}), patch(
             "qdrant_client.QdrantClient", return_value=object()
@@ -268,15 +251,14 @@ class HyDERetrievalTests(SimpleTestCase):
                 [_hit("Why Receive the Holy Spirit", "The Holy Trinity is one God.", 0.4)],
             ),
         ), patch("core.basic_chat.warm_llm", return_value=True) as warm, patch(
-            "core.basic_chat.generate_hyde_document", side_effect=flaky
+            "core.basic_chat.generate_search_phrases", side_effect=flaky
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
         warm.assert_called_once()
         self.assertEqual(attempts["n"], 2)
         self.assertEqual(result["hyde_status"], "retried")
-        self.assertFalse(result["term_fallback"])
-        self.assertEqual(result["passages"][0]["title"], "Why Receive the Holy Spirit")
+        self.assertIn("holy trinity", result["hyde_text"])
 
     def test_term_fallback_fills_a_missed_rare_word(self):
         embeddings, _calls = self._embeddings()
@@ -307,8 +289,8 @@ class HyDERetrievalTests(SimpleTestCase):
                 [_hit("Christmas", "The child is born in Bethlehem.", 0.8)],
             ),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document",
-            return_value="A short note about hope and waiting.",
+            "core.basic_chat.generate_search_phrases",
+            return_value=[],
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
@@ -339,7 +321,7 @@ class HyDERetrievalTests(SimpleTestCase):
                 [_hit("Why Receive the Holy Spirit", "The Holy Trinity is one God.", 0.5)],
             ),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document", return_value=HYDE_TEXT
+            "core.basic_chat.generate_search_phrases", return_value=[]
         ):
             result = retrieve_passages("What is the Trinity?", include_debug=True)
 
@@ -375,8 +357,8 @@ class HyDERetrievalTests(SimpleTestCase):
                 [_hit("Working at God's Altar Full", "Pray for the person at the altar.", 0.9)],
             ),
         ), patch("core.basic_chat.warm_llm", return_value=True), patch(
-            "core.basic_chat.generate_hyde_document",
-            return_value="Handle people with grace and speak the truth in love.",
+            "core.basic_chat.generate_search_phrases",
+            return_value=[],
         ):
             result = retrieve_passages(
                 "What does the Bible teach about homosexual practice?",
@@ -403,6 +385,52 @@ class HyDERetrievalTests(SimpleTestCase):
             {"trinity"},
         )
         self.assertEqual(promoted[0]["title"], "Why Receive the Holy Spirit")
+
+    def test_phrases_keep_sex_outside_and_living_together(self):
+        from core.basic_chat import _query_phrases
+
+        phrases = _query_phrases(
+            "What should the church teach about sex outside of marriage "
+            "and about couples living together before marriage?"
+        )
+        self.assertIn("sex outside", phrases)
+        self.assertIn("living together", phrases)
+
+    def test_phrase_hit_outranks_a_generic_marriage_sermon(self):
+        embeddings, _calls = self._embeddings()
+
+        class Client:
+            def scroll(self, **kwargs):
+                point = SimpleNamespace(
+                    payload={
+                        "title": "Christian Boundaries",
+                        "text": (
+                            "All sex outside of a heterosexual marriage relationship is sin. "
+                            "If it is not between a man and a woman inside a marriage covenant, then it is sin."
+                        ),
+                        "file_hash": "",
+                    }
+                )
+                return [point], None
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "0"}), patch(
+            "qdrant_client.QdrantClient", return_value=Client()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("Courtship and Marriage", "A man shall leave his father and mother and be joined to his wife.", 0.95)],
+                [],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True):
+            result = retrieve_passages(
+                "What should the church teach about sex outside of marriage?",
+                include_debug=True,
+            )
+
+        self.assertEqual(result["passages"][0]["title"], "Christian Boundaries")
+        self.assertIn("sex outside", result["hyde_text"])
 
     def test_query_terms_skip_short_and_stop_words(self):
         self.assertEqual(_query_terms("What is the Trinity about there?"), {"trinity"})
