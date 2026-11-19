@@ -19,6 +19,7 @@ from .study_draft import (
     CLASSIFIER_SYSTEM,
     DraftRoute,
     chat_fallback,
+    continued_draft_route,
     decision_from_classifier,
     draft_system_prompt,
     draft_user_content,
@@ -49,6 +50,74 @@ _QUERY_TERM_STOP = {
     "where",
     "would",
 }
+# Words that show up in almost every sermon. They must not count as the subject
+# of a whole-collection text search, or the first hits are unrelated notes.
+_GENERIC_TERMS = _QUERY_TERM_STOP | {
+    "already",
+    "answer",
+    "answers",
+    "assisted",
+    "believe",
+    "believes",
+    "believer",
+    "believers",
+    "bible",
+    "biblical",
+    "calls",
+    "carrying",
+    "choose",
+    "chosen",
+    "choice",
+    "christian",
+    "christians",
+    "church",
+    "congregation",
+    "considering",
+    "culture",
+    "follow",
+    "follows",
+    "gospel",
+    "jesus",
+    "kindness",
+    "living",
+    "member",
+    "members",
+    "outside",
+    "pastor",
+    "pastors",
+    "people",
+    "permitted",
+    "respond",
+    "person",
+    "persons",
+    "practice",
+    "explain",
+    "question",
+    "questions",
+    "scripture",
+    "scriptures",
+    "shame",
+    "someone",
+    "something",
+    "teach",
+    "teaching",
+    "teachings",
+    "together",
+    "trapped",
+    "woman",
+    "still",
+    "other",
+    "every",
+    "after",
+    "under",
+    "again",
+    "being",
+    "while",
+    "first",
+    "before",
+}
+SEARCH_CHUNK_KINDS = ("sermon_quote", "video_transcript", "video_topic_overview")
+_TEXT_INDEXED: set[str] = set()
 PASSAGE_PROMPT_CHARS = 1200
 HYDE_MAX_WORDS = 120
 _SSE_FLUSH_PAD = " " * 4096
@@ -58,6 +127,39 @@ _HYDE_SYSTEM = (
     "Do not address the reader. Do not say this is hypothetical. "
     "Do not invent a sermon title. Stay under 120 words."
 )
+_PHRASE_SYSTEM = (
+    "List up to 6 short search phrases a sermon note would use for this question. "
+    "Include the pastor's own wording and the biblical terms for that same subject. "
+    "One phrase per line. No sentences. No sermon titles. Each phrase is 1 to 5 words."
+)
+_FUNCTION_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "about",
+    "be",
+    "can",
+    "do",
+    "does",
+    "for",
+    "from",
+    "how",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "should",
+    "that",
+    "the",
+    "this",
+    "to",
+    "what",
+    "when",
+    "who",
+    "with",
+}
 _DRAFT_HYDE_SYSTEM = (
     "Write one short Bible-study or sermon-note paragraph a pastor would preach "
     "for this request. Include the topic, any named scriptures, and two or three "
@@ -221,6 +323,62 @@ def generate_hyde_document(query: str) -> str:
     return _clip_words(_message_text(payload))
 
 
+def _parse_search_phrases(raw: str) -> list[str]:
+    phrases = []
+    seen = set()
+    for line in (raw or "").splitlines():
+        cleaned = line.strip().lstrip("-*0123456789.) ").strip(" \"'`")
+        words = cleaned.split()
+        if not cleaned or not 1 <= len(words) <= 5:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        phrases.append(key)
+        if len(phrases) >= 6:
+            break
+    return phrases
+
+
+def generate_search_phrases(query: str) -> list[str]:
+    """Ask for sermon search phrases. A paragraph would widen the search."""
+    body = {
+        "model": vllm_model(),
+        "messages": [
+            {"role": "system", "content": _PHRASE_SYSTEM},
+            {"role": "user", "content": (query or "").strip()},
+        ],
+        "temperature": 0,
+        "max_tokens": 80,
+        "stream": False,
+    }
+    timeout = float(_env("CHAT_HYDE_TIMEOUT_S", "180") or "180")
+    with _post_llm(body, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    return _parse_search_phrases(_message_text(payload))
+
+
+def generate_search_phrases_with_retry(query: str) -> tuple[list[str], str]:
+    """Return (phrases, status). Status is ok, retried, empty, or failed."""
+    warm_llm()
+    try:
+        phrases = generate_search_phrases(query)
+    except Exception:
+        logger.warning("Search phrase generation failed; retrying once", exc_info=True)
+        phrases = None
+    if phrases:
+        return phrases, "ok"
+    try:
+        phrases = generate_search_phrases(query)
+    except Exception:
+        logger.warning("Search phrase retry failed; using the question phrases only", exc_info=True)
+        return [], "failed"
+    if phrases:
+        return phrases, "retried"
+    return [], "empty"
+
+
 def generate_hyde_with_retry(query: str) -> tuple[str, str]:
     """Return (paragraph, status). Status is ok, retried, empty, or failed."""
     warm_llm()
@@ -269,6 +427,7 @@ def _passages_from_hits(hits) -> list[dict]:
                 "title": _passage_title(payload),
                 "text": text,
                 "score": _hit_score(hit),
+                "file_hash": str(payload.get("file_hash") or "").strip(),
             }
         )
     return passages
@@ -292,7 +451,7 @@ def _merge_ranked(hyde_hits: list[dict], query_hits: list[dict], top_k: int) -> 
         if not key or key in seen:
             return
         seen.add(key)
-        merged.append({"title": passage.get("title") or "Sermon", "text": text})
+        merged.append(_passage_record(passage, text))
 
     hyde_i = 0
     query_i = 0
@@ -313,7 +472,7 @@ def _search_with_vector(client, collection: str, vector, top_k: int) -> list[dic
 
 
 def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: bool = False):
-    """Search sermons with the question and, when enabled, a HyDE paragraph."""
+    """Search sermons by the question's narrow phrases, then rerank against the question."""
     from qdrant_client import QdrantClient
 
     from .embeddings_utils import get_embeddings
@@ -322,41 +481,46 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     client = QdrantClient(url=_env("QDRANT_URL", "http://127.0.0.1:6333"), timeout=30)
     collection = _env("QDRANT_COLLECTION", "sermon_brain")
     candidate_k = max(top_k, HYDE_CANDIDATES)
-    query_hits = _search_with_vector(
-        client, collection, embeddings.embed_query(query), candidate_k
-    )
     started = time.monotonic()
-    hyde_text = ""
+    local_phrases = _query_phrases(query)
+    model_phrases: list[str] = []
     hyde_status = "off"
-    hyde_hits: list[dict] = []
     if hyde_enabled():
-        hyde_text, hyde_status = generate_hyde_with_retry(query)
-        if hyde_text:
-            try:
-                hyde_hits = _search_with_vector(
-                    client,
-                    collection,
-                    embeddings.embed_query(hyde_text),
-                    candidate_k,
-                )
-            except Exception:
-                logger.warning("HyDE search failed; using the question search only", exc_info=True)
-                hyde_hits = []
-                hyde_status = "search_failed"
-    terms = _query_terms(query)
+        model_phrases, hyde_status = generate_search_phrases_with_retry(query)
+    phrases = _dedupe_phrases(local_phrases + model_phrases)
+    terms = _anchor_terms(query) | set(phrases)
+    try:
+        query_hits = _search_with_vector(
+            client, collection, embeddings.embed_query(query), candidate_k
+        )
+    except Exception:
+        logger.warning("Question search failed", exc_info=True)
+        query_hits = []
     query_hits = _promote_lexical(query_hits, terms)
-    hyde_hits = _promote_lexical(hyde_hits, terms)
-    passages = _merge_ranked(hyde_hits, query_hits, top_k)
-    term_fallback = False
-    if terms and not _passages_contain_terms(passages, terms):
+    term_hits = _subject_windows(client, collection, query, terms)
+    matched_phrases = [
+        phrase
+        for phrase in phrases
+        if any(phrase in (item.get("text") or "").lower() for item in term_hits)
+    ]
+    phrase_hits: list[dict] = []
+    for phrase in matched_phrases[:4]:
         try:
-            fallback_hits = _scroll_term_matches(client, collection, terms, top_k)
+            phrase_hits.extend(
+                _search_with_vector(
+                    client, collection, embeddings.embed_query(phrase), min(8, candidate_k)
+                )
+            )
         except Exception:
-            logger.warning("Term fallback failed", exc_info=True)
-            fallback_hits = []
-        if fallback_hits:
-            term_fallback = True
-            passages = _merge_ranked(fallback_hits, passages, top_k)
+            logger.warning("Phrase search failed for %s", phrase, exc_info=True)
+    hyde_text = " | ".join(phrases)
+    term_fallback = bool(term_hits)
+    passages = _order_passages(
+        query,
+        _dedupe_passages(term_hits + query_hits + phrase_hits),
+        top_k,
+        terms,
+    )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "hyde_request status=%s elapsed_ms=%s terms=%s term_fallback=%s "
@@ -366,7 +530,7 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
         sorted(terms),
         term_fallback,
         _titles(query_hits)[:8],
-        _titles(hyde_hits)[:8],
+        _titles(phrase_hits)[:8],
         _titles(passages),
         (hyde_text or "")[:240],
     )
@@ -377,9 +541,330 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
             "hyde_status": hyde_status,
             "term_fallback": term_fallback,
             "query_titles": _titles(query_hits),
-            "hyde_titles": _titles(hyde_hits),
+            "hyde_titles": _titles(phrase_hits),
         }
     return passages
+
+
+def _passage_record(passage: dict, text: str) -> dict:
+    return {
+        "title": passage.get("title") or "Sermon",
+        "text": text,
+        "score": float(passage.get("score") or 0.0),
+        "file_hash": str(passage.get("file_hash") or "").strip(),
+    }
+
+
+def _question_words(query: str) -> list[str]:
+    words = []
+    for word in re.findall(r"[a-z0-9']{2,}", (query or "").lower()):
+        word = word.strip("'")
+        if word.endswith("'s"):
+            word = word[:-2]
+        if word:
+            words.append(word)
+    return words
+
+
+def _query_phrases(query: str) -> list[str]:
+    """Two- and three-word stretches, including a short or generic word beside a subject."""
+    words = _question_words(query)
+    phrases = []
+    for size in (2, 3):
+        for start in range(0, len(words) - size + 1):
+            window = words[start : start + size]
+            if all(word in _FUNCTION_WORDS for word in window):
+                continue
+            trimmed = list(window)
+            while trimmed and trimmed[0] in _FUNCTION_WORDS:
+                trimmed = trimmed[1:]
+            while trimmed and trimmed[-1] in _FUNCTION_WORDS:
+                trimmed = trimmed[:-1]
+            if len(trimmed) < 2:
+                continue
+            dropped = any(len(word) < 5 or word in _GENERIC_TERMS for word in trimmed)
+            if not dropped:
+                continue
+            phrases.append(" ".join(trimmed))
+    return _dedupe_phrases(phrases)[:8]
+
+
+def _dedupe_phrases(phrases: list[str]) -> list[str]:
+    kept = []
+    seen = set()
+    for phrase in phrases:
+        key = " ".join((phrase or "").lower().split())
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kept.append(key)
+    return kept
+
+
+def _anchor_terms(query: str) -> set[str]:
+    """Subject words for a whole-collection search.
+
+    Alias lists supply "homosexuality" when the pastor says "gay". Generic
+    sermon words such as "christian" are left out so they cannot crowd out
+    the note that names the subject.
+    """
+    from .sermon_catalog import TOPIC_ALIASES
+
+    anchors: set[str] = set()
+    words = []
+    for word in re.findall(r"[a-z0-9']{3,}", (query or "").lower()):
+        word = word.strip("'")
+        if word.endswith("'s"):
+            word = word[:-2]
+        if word:
+            words.append(word)
+    for word in words:
+        linked = False
+        for key, aliases in TOPIC_ALIASES.items():
+            if word == key or word in aliases:
+                anchors.update(
+                    alias.lower() for alias in aliases if alias.lower() not in _GENERIC_TERMS
+                )
+                linked = True
+        if not linked and len(word) >= 5 and word not in _GENERIC_TERMS:
+            anchors.add(word)
+    return anchors
+
+
+def _dedupe_passages(passages: list[dict]) -> list[dict]:
+    merged = []
+    seen = set()
+    for passage in passages:
+        text = (passage.get("text") or "").strip()
+        key = _fingerprint(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(_passage_record(passage, text))
+    return merged
+
+
+def _ensure_text_index(client, collection: str) -> None:
+    if collection in _TEXT_INDEXED:
+        return
+    try:
+        from .qdrant_utils import ensure_payload_indexes
+
+        ensure_payload_indexes(client, collection)
+    except Exception:
+        logger.warning("Sermon text index was not created", exc_info=True)
+    _TEXT_INDEXED.add(collection)
+
+
+def _chunk_kind_filter():
+    from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+    return Filter(
+        must=[FieldCondition(key="chunk_kind", match=MatchAny(any=list(SEARCH_CHUNK_KINDS)))]
+    )
+
+
+def _subject_windows(client, collection: str, query: str, terms: set[str]) -> list[dict]:
+    """Every indexed note that states a subject word, then the best window of that file."""
+    if not terms:
+        return []
+    try:
+        matches = _match_text_terms(client, collection, terms)
+    except Exception as exc:
+        logger.warning("Text match failed (%s); scanning sermon notes", exc)
+        try:
+            matches = _scroll_term_matches(client, collection, terms, 24)
+        except Exception:
+            logger.warning("Subject scan failed", exc_info=True)
+            return []
+    hashed = []
+    ranked_matches = sorted(
+        matches,
+        key=lambda item: max(
+            (len(term) for term in terms if term in (item.get("text") or "").lower()),
+            default=0,
+        ),
+        reverse=True,
+    )
+    for item in ranked_matches:
+        file_hash = item.get("file_hash")
+        if file_hash and file_hash not in hashed:
+            hashed.append(file_hash)
+    if not hashed:
+        return matches
+    try:
+        from .sermon_catalog import lookup_chunks_by_file_hashes
+
+        docs = lookup_chunks_by_file_hashes(
+            client, collection, hashed, query=query, limit_per_file=2
+        )
+    except Exception:
+        logger.warning("File window lookup failed", exc_info=True)
+        return matches
+    windows = []
+    for doc in docs:
+        meta = doc.metadata or {}
+        text = str(getattr(doc, "page_content", "") or "").strip()
+        if not text:
+            continue
+        windows.append(
+            {
+                "title": str(meta.get("title") or "Sermon"),
+                "text": text,
+                "score": 1.0,
+                "file_hash": str(meta.get("file_hash") or "").strip(),
+            }
+        )
+    # Keep the chunk that actually contained the subject word. The file lookup
+    # adds the teaching window; it must not replace the matching chunk.
+    return _dedupe_passages(matches + windows)
+
+
+def _match_text_terms(client, collection: str, terms: set[str]) -> list[dict]:
+    from qdrant_client.models import FieldCondition, Filter, MatchText
+
+    _ensure_text_index(client, collection)
+    kind_filter = _chunk_kind_filter()
+    found = []
+    seen = set()
+    for term in sorted(terms):
+        text_filter = Filter(
+            must=[
+                kind_filter.must[0],
+                FieldCondition(key="text", match=MatchText(text=term)),
+            ]
+        )
+        points = _scroll_filtered(client, collection, text_filter, limit=8)
+        for point in points:
+            payload = getattr(point, "payload", None) or {}
+            text = _passage_text(payload)
+            if not text or term not in text.lower():
+                continue
+            key = _fingerprint(text)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(
+                {
+                    "title": _passage_title(payload),
+                    "text": text,
+                    "score": 1.0,
+                    "file_hash": str(payload.get("file_hash") or "").strip(),
+                }
+            )
+    if not found:
+        raise RuntimeError("text match returned nothing")
+    return found
+
+
+def _scroll_filtered(client, collection: str, query_filter, limit: int) -> list:
+    points = []
+    offset = None
+    while len(points) < limit:
+        batch, offset = client.scroll(
+            collection_name=collection,
+            scroll_filter=query_filter,
+            limit=min(64, limit - len(points)),
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not batch:
+            break
+        points.extend(batch)
+        if offset is None:
+            break
+    return points
+
+
+def _order_passages(query: str, passages: list[dict], top_k: int, terms: set[str]) -> list[dict]:
+    """Put the window that answers the question first."""
+    from .note_priority import chunk_thesis_score
+
+    pool = list(passages)
+    if len(pool) > 32:
+        pool.sort(
+            key=lambda passage: sum(
+                1 for term in terms if term in (passage.get("text") or "").lower()
+            ),
+            reverse=True,
+        )
+        pool = pool[:32]
+    rerank_scores = _rerank_scores(query, pool)
+    decorated = []
+    for index, passage in enumerate(pool):
+        text = passage.get("text") or ""
+        lowered = text.lower()
+        hits = sum(1 for term in terms if term in lowered)
+        thesis = chunk_thesis_score(text)
+        vector = float(passage.get("score") or 0.0)
+        if rerank_scores is not None:
+            key = (rerank_scores[index], -index)
+        else:
+            key = (hits, thesis, vector, -index)
+        decorated.append((key, passage))
+    decorated.sort(key=lambda item: item[0], reverse=True)
+    return [passage for _key, passage in decorated[:top_k]]
+
+
+def _rerank_scores(query: str, passages: list[dict]) -> list[float] | None:
+    if not passages or not _flag_enabled("CHAT_RERANK", "1"):
+        return None
+    try:
+        from .search_sidecar import SidecarReranker, sidecar_url
+    except Exception:
+        return None
+    url = sidecar_url()
+    try:
+        if url:
+            reranker = SidecarReranker(url, timeout=30.0)
+
+            def predict(pairs):
+                return reranker.predict(pairs)
+        else:
+            reranker = _cpu_reranker()
+            if reranker is None:
+                return None
+
+            def predict(pairs):
+                return reranker.predict(pairs, batch_size=8, show_progress_bar=False)
+        scores: list[float] = []
+        for start in range(0, len(passages), 32):
+            batch = passages[start : start + 32]
+            pairs = [(query, (item.get("text") or "")[:1500]) for item in batch]
+            raw = predict(pairs)
+            if hasattr(raw, "tolist"):
+                raw = raw.tolist()
+            scores.extend(float(score) for score in raw)
+        if len(scores) != len(passages):
+            return None
+        return scores
+    except Exception:
+        logger.warning("Cross-encoder rerank failed; keeping subject order", exc_info=True)
+        return None
+
+
+_CPU_RERANKER = None
+
+
+def _cpu_reranker():
+    """Load the cross-encoder on CPU when this pod has no GPU search sidecar."""
+    global _CPU_RERANKER
+    if _CPU_RERANKER is False:
+        return None
+    if _CPU_RERANKER is not None:
+        return _CPU_RERANKER
+    try:
+        from sentence_transformers import CrossEncoder
+
+        name = _env("RERANK_MODEL", "BAAI/bge-reranker-v2-m3") or "BAAI/bge-reranker-v2-m3"
+        logger.warning("Loading CPU cross-encoder %s", name)
+        _CPU_RERANKER = CrossEncoder(name, device="cpu")
+        return _CPU_RERANKER
+    except Exception:
+        logger.warning("CPU cross-encoder is not available", exc_info=True)
+        _CPU_RERANKER = False
+        return None
 
 
 def _passages_contain_terms(passages: list[dict], terms: set[str]) -> bool:
@@ -390,19 +875,27 @@ def _passages_contain_terms(passages: list[dict], terms: set[str]) -> bool:
 
 
 def _scroll_term_matches(client, collection: str, terms: set[str], top_k: int) -> list[dict]:
-    """Find sermon quotes that contain a rare question term.
+    """Find notes that contain a subject word, including ones past the first pages.
 
-    Used only after the vector merge missed every rare term. Stops at top_k
-    matches so a miss does not read the whole collection into the prompt.
+    ``CHAT_TERM_SCAN_MAX`` defaults to a full scan. Set it to a positive
+    number to stop early.
     """
     matches = []
     offset = None
     scanned = 0
-    limit = int(_env("CHAT_TERM_SCAN_MAX", "2500") or "2500")
-    while len(matches) < top_k and scanned < limit:
+    try:
+        raw_cap = int(_env("CHAT_TERM_SCAN_MAX", "0") or "0")
+    except ValueError:
+        raw_cap = 0
+    hard_cap = raw_cap if raw_cap > 0 else 100000
+    try:
+        query_filter = _chunk_kind_filter()
+    except Exception:
+        query_filter = _sermon_filter()
+    while len(matches) < top_k and scanned < hard_cap:
         points, offset = client.scroll(
             collection_name=collection,
-            scroll_filter=_sermon_filter(),
+            scroll_filter=query_filter,
             limit=128,
             offset=offset,
             with_payload=True,
@@ -421,6 +914,7 @@ def _scroll_term_matches(client, collection: str, terms: set[str], top_k: int) -
                     "title": _passage_title(payload),
                     "text": text,
                     "score": 1.0,
+                    "file_hash": str(payload.get("file_hash") or "").strip(),
                 }
             )
             if len(matches) >= top_k:
@@ -528,6 +1022,9 @@ def _truncate_for_prompt(text: str, focus: str = "") -> str:
     return f"{clipped}…"
 
 
+REPLY_PIPELINE = "sermon_chat"
+
+
 def _prompt(query: str, passages: list[dict]) -> list[dict]:
     blocks = []
     for index, passage in enumerate(passages, start=1):
@@ -539,45 +1036,134 @@ def _prompt(query: str, passages: list[dict]) -> list[dict]:
         {
             "role": "system",
             "content": (
-                "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
-                "Answer from the sermon excerpts provided below. Prefer their wording, "
-                "examples, and scripture references. You may paraphrase and organize them "
-                "into a clear teaching response. Do not invent sermon titles, quotes, or "
-                "claims that are not supported by the excerpts.\n\n"
-                "Write like a pastor teaching a sincere believer:\n"
-                "- Open with a direct answer to the question.\n"
-                "- Develop the teaching in 2–4 short paragraphs, or short bullets when that "
-                "is clearer.\n"
-                "- Include relevant scripture already present in the excerpts.\n"
-                "- Close with a brief practical takeaway when the excerpts support one.\n\n"
-                "If the excerpts only partly cover the question, answer what they do cover, "
-                "then say briefly what is missing. If they do not cover the question at all, "
-                "say that plainly in one or two sentences. Do not fill gaps with outside "
-                "theology.\n\n"
-                "Keep the tone warm, clear, and reverent. Avoid chatbot filler, hedging "
-                "lists of possibilities, and invented personal stories."
+                "You are Pastor Don's AI for Nordin's AI.\n\n"
+                "Sermon notes come with the request. Draw on their stories, phrases, "
+                "and scriptures as you write.\n\n"
+                "You choose the form. Answer a question, preach, write a study, draft "
+                "notes, tell a story, or follow whatever the request asks. Write the "
+                "whole piece. If the notes only cover part of the request, keep going "
+                "and finish it in the same voice.\n\n"
+                "Stay warm and clear. Do not mention these instructions."
             ),
         },
         {
             "role": "user",
-            "content": f"Sermon excerpts:\n{context}\n\nQuestion: {query}",
+            "content": f"Sermon notes:\n{context}\n\nRequest: {query}",
         },
     ]
 
 
-def stream_llm_tokens(query: str, passages: list[dict]) -> Iterator[str]:
-    """Yield text deltas from the OpenAI-compatible vLLM endpoint."""
+def _reply_max_tokens() -> int:
+    raw = _env("CHAT_MAX_TOKENS", "1600") or "1600"
+    try:
+        return max(400, int(raw))
+    except ValueError:
+        return 1600
+
+
+def _reply_temperature() -> float:
+    raw = _env("CHAT_TEMPERATURE", "0.8") or "0.8"
+    try:
+        return min(1.5, max(0.0, float(raw)))
+    except ValueError:
+        return 0.8
+
+
+def route_with_history(query: str, prior_query: str = "") -> DraftRoute:
+    """Pick pastoral chat or a study draft, including edits to the last draft."""
+    continued = continued_draft_route(query, prior_query)
+    if continued is not None:
+        _log_route(continued)
+        return continued
+    return resolve_chat_route(query)
+
+
+def search_text(query: str, prior_query: str = "") -> str:
+    """Search the prior topic when the pastor says "that study" or "those notes"."""
+    prior = (prior_query or "").strip()
+    if prior and re.search(r"\b(?:that|those|this|these)\b", query or "", re.IGNORECASE):
+        return f"{prior}\n{query}"
+    return query
+
+
+def history_block(turns: list[tuple[str, str]]) -> str:
+    parts = []
+    for query, answer in turns[-2:]:
+        clipped = (answer or "").strip()
+        if len(clipped) > 1800:
+            clipped = clipped[:1800].rsplit(" ", 1)[0]
+        parts.append(f"Pastor: {query}\nAssistant: {clipped}")
+    return "\n\n".join(parts)
+
+
+def pastoral_messages(query: str, passages: list[dict], history: str = "") -> list[dict]:
+    context = _passage_context(query, passages) or "(no sermon excerpts found)"
+    prior = f"Earlier in this chat:\n{history}\n\n" if history else ""
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
+                "Answer from the sermon excerpts. Prefer their wording and scripture. "
+                "Do not invent quotes or verses the excerpts do not contain.\n\n"
+                "Excerpt [1] is the direct answer. State what it says first, in its own words. "
+                "Use the other excerpts only to support that answer. "
+                "Do not replace excerpt [1] with a softer line that is repeated in the other excerpts.\n\n"
+                "Write one short answer, under 900 characters. "
+                "Include one scripture reference from the excerpts when one is there. "
+                "If this continues an earlier reply, name that same topic in the answer.\n\n"
+                "Keep the tone warm and clear."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"{prior}Sermon excerpts:\n{context}\n\nQuestion: {query}",
+        },
+    ]
+
+
+def fit_pastoral_length(answer: str, limit: int = 1100) -> str:
+    """Keep a pastoral reply inside the short-answer limit."""
+    text = (answer or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    dot = max(cut.rfind(". "), cut.rfind(".\n"), cut.rfind("?"))
+    if dot >= 200:
+        return cut[: dot + 1].strip()
+    return cut.strip()
+
+
+def public_passages(passages: Iterable[dict]) -> list[dict]:
+    return [
+        {"title": item.get("title") or "", "text": item.get("text") or ""}
+        for item in passages
+    ]
+
+
+def stream_llm_tokens(
+    query: str,
+    passages: list[dict],
+    history: str = "",
+) -> Iterator[str]:
+    """Yield a short pastoral reply from the sermon excerpts."""
     yield from stream_message_tokens(
-        _prompt(query, passages),
-        max_tokens=int(_env("CHAT_MAX_TOKENS", "800") or "800"),
+        pastoral_messages(query, passages, history),
+        max_tokens=260,
+        temperature=0.2,
     )
 
 
-def stream_message_tokens(messages: list[dict], *, max_tokens: int) -> Iterator[str]:
+def stream_message_tokens(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    temperature: float = 0.2,
+) -> Iterator[str]:
     body = {
         "model": vllm_model(),
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True,
     }
@@ -735,18 +1321,24 @@ def _passage_context(query: str, passages: list[dict]) -> str:
     return "\n\n".join(blocks)
 
 
-def draft_writer_messages(query: str, route: DraftRoute, passages: list[dict], plan: dict | None) -> list[dict]:
+def draft_writer_messages(
+    query: str,
+    route: DraftRoute,
+    passages: list[dict],
+    plan: dict | None,
+    history: str = "",
+) -> list[dict]:
+    content = draft_user_content(
+        route,
+        _passage_context(query, passages),
+        render_plan(plan),
+        query,
+    )
+    if history:
+        content = f"Earlier in this chat:\n{history}\n\n{content}"
     return [
         {"role": "system", "content": draft_system_prompt(route)},
-        {
-            "role": "user",
-            "content": draft_user_content(
-                route,
-                _passage_context(query, passages),
-                render_plan(plan),
-                query,
-            ),
-        },
+        {"role": "user", "content": content},
     ]
 
 
@@ -802,7 +1394,7 @@ def _merge_ranked_many(groups: list[list[dict]], top_k: int) -> list[dict]:
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                merged.append({"title": passage.get("title") or "Sermon", "text": text})
+                merged.append(_passage_record(passage, text))
                 break
     return merged
 
@@ -861,18 +1453,13 @@ def retrieve_draft_passages(
         hits = _promote_lexical(hits, terms)
         titles_by_kind[kind] = _titles(hits)
         groups.append(hits)
-    passages = _merge_ranked_many(groups, limit)
-    term_fallback = False
-    focus_terms = _query_terms(query) | _query_terms(route.topic)
-    if focus_terms and not _passages_contain_terms(passages, focus_terms):
-        try:
-            fallback_hits = _scroll_term_matches(client, collection, focus_terms, limit)
-        except Exception:
-            logger.warning("Draft term fallback failed", exc_info=True)
-            fallback_hits = []
-        if fallback_hits:
-            term_fallback = True
-            passages = _merge_ranked_many([fallback_hits, passages], limit)
+    vector_passages = _merge_ranked_many(groups, candidate_k)
+    focus_terms = _anchor_terms(" ".join(part for part in (query, route.topic) if part))
+    term_hits = _subject_windows(client, collection, query, focus_terms)
+    term_fallback = bool(term_hits)
+    passages = _order_passages(
+        query, _dedupe_passages(term_hits + vector_passages), limit, focus_terms
+    )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "draft_retrieval status=%s elapsed_ms=%s term_fallback=%s searches=%s merged=%s hyde_text=%s",

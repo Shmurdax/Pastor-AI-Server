@@ -30,14 +30,15 @@ from api.permissions import HasPremiumAccess
 
 from .live_chat_history import upsert_live_chat_turn
 from .basic_chat import (
-    build_draft_plan,
-    draft_gap_messages,
     draft_max_tokens,
     draft_writer_messages,
-    missing_draft_refs,
-    resolve_chat_route,
+    fit_pastoral_length,
+    history_block,
+    public_passages,
     retrieve_draft_passages,
     retrieve_passages,
+    route_with_history,
+    search_text,
     source_titles,
     sse_keepalive,
     sse_pack,
@@ -93,12 +94,30 @@ class BasicChatAPIView(APIView):
                     user=request.user,
                 )
             )
-        return _json_reply(query=query, session_id=session_id, user=request.user)
+        return _json_reply(
+            query=query,
+            session_id=session_id,
+            user=request.user,
+            include_passages=_wants_passages(request.data.get("include_passages")),
+        )
 
 
-def _json_reply(*, query: str, session_id: str, user):
+def _wants_passages(flag) -> bool:
+    return str(flag).lower() in {"1", "true", "yes"}
+
+
+def _recent_turns(session_id: str, user):
+    rows = ChatMessage.objects.filter(session_id=session_id)
+    if getattr(user, "is_authenticated", False):
+        rows = rows.filter(user=user)
+    found = list(rows.order_by("-id")[:2])
+    found.reverse()
+    return found
+
+
+def _json_reply(*, query: str, session_id: str, user, include_passages: bool = False):
     try:
-        route, passages, answer = _complete_reply(query)
+        route, passages, answer = _complete_reply(query, session_id, user)
     except Exception:
         logger.exception("Basic chat failed")
         return Response(
@@ -117,40 +136,37 @@ def _json_reply(*, query: str, session_id: str, user):
         answer=answer,
         sources=source_titles(passages),
     )
-    return Response(
-        {
-            "answer": answer,
-            "sources": source_titles(passages),
-            "message_id": saved.id,
-            "pipeline": route.pipeline,
-        }
-    )
+    payload = {
+        "answer": answer,
+        "sources": source_titles(passages),
+        "message_id": saved.id,
+        "pipeline": route.pipeline,
+    }
+    if include_passages:
+        payload["passages"] = public_passages(passages)
+    return Response(payload)
 
 
-def _complete_reply(query: str):
-    route = resolve_chat_route(query)
+def _complete_reply(query: str, session_id: str, user):
+    prior = _recent_turns(session_id, user)
+    prior_query = prior[-1].user_query if prior else ""
+    history = history_block([(row.user_query, row.ai_response) for row in prior])
+    route = route_with_history(query, prior_query)
+    looked_up = search_text(query, prior_query)
     if route.is_draft:
-        passages = retrieve_draft_passages(query, route)
-        plan = build_draft_plan(query, route, passages)
+        passages = retrieve_draft_passages(looked_up, route)
         answer = "".join(
             stream_message_tokens(
-                draft_writer_messages(query, route, passages, plan),
+                draft_writer_messages(query, route, passages, None, history),
                 max_tokens=draft_max_tokens(),
+                temperature=0.2,
             )
         ).strip()
-        missing = missing_draft_refs(answer, route)
-        if missing:
-            gap = "".join(
-                stream_message_tokens(
-                    draft_gap_messages(query, route, passages, answer, missing),
-                    max_tokens=240,
-                )
-            ).strip()
-            if gap:
-                answer = f"{answer}\n\n{gap}".strip()
-        return route, passages, answer
-    passages = retrieve_passages(query)
-    answer = "".join(stream_llm_tokens(query, passages)).strip()
+    else:
+        passages = retrieve_passages(looked_up)
+        answer = fit_pastoral_length(
+            "".join(stream_llm_tokens(query, passages, history)).strip()
+        )
     return route, passages, answer
 
 
@@ -216,21 +232,25 @@ def _stream_events(*, query: str, session_id: str, user):
     yield sse_pack({"type": "status", "phase": "started"})
     try:
         close_old_connections()
-        route = yield from _call_with_keepalives(lambda: resolve_chat_route(query))
+        prior = _recent_turns(session_id, user)
+        prior_query = prior[-1].user_query if prior else ""
+        history = history_block([(row.user_query, row.ai_response) for row in prior])
+        route = yield from _call_with_keepalives(lambda: route_with_history(query, prior_query))
+        looked_up = search_text(query, prior_query)
         yield sse_pack({"type": "status", "phase": "retrieving", "pipeline": route.pipeline})
         if route.is_draft:
             passages = yield from _call_with_keepalives(
-                lambda: retrieve_draft_passages(query, route)
+                lambda: retrieve_draft_passages(looked_up, route)
             )
-            yield sse_pack({"type": "status", "phase": "planning"})
-            plan = yield from _call_with_keepalives(
-                lambda: build_draft_plan(query, route, passages)
+            messages = draft_writer_messages(query, route, passages, None, history)
+            token_source = lambda: stream_message_tokens(
+                messages,
+                max_tokens=draft_max_tokens(),
+                temperature=0.2,
             )
-            messages = draft_writer_messages(query, route, passages, plan)
-            token_source = lambda: stream_message_tokens(messages, max_tokens=draft_max_tokens())
         else:
-            passages = yield from _call_with_keepalives(lambda: retrieve_passages(query))
-            token_source = lambda: stream_llm_tokens(query, passages)
+            passages = yield from _call_with_keepalives(lambda: retrieve_passages(looked_up))
+            token_source = lambda: stream_llm_tokens(query, passages, history)
         yield sse_keepalive()
         parts = []
         for text in _token_stream_from(token_source):
@@ -240,24 +260,8 @@ def _stream_events(*, query: str, session_id: str, user):
             parts.append(text)
             yield sse_pack({"type": "delta", "text": text})
         answer = "".join(parts).strip()
-        if route.is_draft:
-            missing = missing_draft_refs(answer, route)
-            if missing:
-                gap_parts = []
-                gap_messages = draft_gap_messages(query, route, passages, answer, missing)
-                if answer:
-                    bridge = "\n\n"
-                    gap_parts.append(bridge)
-                    yield sse_pack({"type": "delta", "text": bridge})
-                for text in _token_stream_from(
-                    lambda: stream_message_tokens(gap_messages, max_tokens=240)
-                ):
-                    if text is None:
-                        yield sse_keepalive()
-                        continue
-                    gap_parts.append(text)
-                    yield sse_pack({"type": "delta", "text": text})
-                answer = f"{answer}{''.join(gap_parts)}".strip()
+        if not route.is_draft:
+            answer = fit_pastoral_length(answer)
         if not answer:
             yield sse_pack(
                 {
