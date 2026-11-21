@@ -804,7 +804,37 @@ def _order_passages(query: str, passages: list[dict], top_k: int, terms: set[str
             key = (hits, thesis, vector, -index)
         decorated.append((key, passage))
     decorated.sort(key=lambda item: item[0], reverse=True)
-    return [passage for _key, passage in decorated[:top_k]]
+    chosen = [passage for _key, passage in decorated[:top_k]]
+    mode = "rerank" if rerank_scores is not None else "term-hits"
+    _order_passages.last_rows = []
+    for rank, (key, passage) in enumerate(decorated[:top_k], start=1):
+        text = (passage.get("text") or "").replace("\n", " ")
+        if rerank_scores is not None:
+            rerank_value, _ = key
+            hits = sum(1 for term in terms if term in text.lower())
+        else:
+            rerank_value = None
+            hits = key[0]
+        _order_passages.last_rows.append(
+            {
+                "rank": rank,
+                "title": passage.get("title") or "",
+                "mode": mode,
+                "rerank": None if rerank_value is None else round(float(rerank_value), 3),
+                "hits": hits,
+                "snippet": text[:220],
+            }
+        )
+    logger.warning(
+        "window_rank mode=%s query=%s %s",
+        mode,
+        " ".join((query or "").split())[:120],
+        " || ".join(
+            f"#{row['rank']} {row['title']} rerank={row['rerank']} hits={row['hits']} {row['snippet']}"
+            for row in _order_passages.last_rows
+        ),
+    )
+    return chosen
 
 
 def _rerank_scores(query: str, passages: list[dict]) -> list[float] | None:
