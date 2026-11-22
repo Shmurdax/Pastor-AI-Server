@@ -119,6 +119,8 @@ _GENERIC_TERMS = _QUERY_TERM_STOP | {
 SEARCH_CHUNK_KINDS = ("sermon_quote", "video_transcript", "video_topic_overview")
 _TEXT_INDEXED: set[str] = set()
 PASSAGE_PROMPT_CHARS = 1200
+# Observed noise winners scored at or below 0.006. A real sentence win started at 0.062.
+_NOISE_RERANK = 0.01
 HYDE_MAX_WORDS = 120
 _SSE_FLUSH_PAD = " " * 4096
 _HYDE_SYSTEM = (
@@ -128,9 +130,10 @@ _HYDE_SYSTEM = (
     "Do not invent a sermon title. Stay under 120 words."
 )
 _PHRASE_SYSTEM = (
-    "List up to 6 short search phrases a sermon note would use for this question. "
-    "Include the pastor's own wording and the biblical terms for that same subject. "
-    "One phrase per line. No sentences. No sermon titles. Each phrase is 1 to 5 words."
+    "List up to 6 short search phrases copied from the question. "
+    "You may replace a word with its biblical name when it is the same subject, "
+    "such as gay with homosexual. Do not add a new subject. "
+    "One phrase per line. No sentences. Each phrase is 1 to 5 words."
 )
 _FUNCTION_WORDS = {
     "a",
@@ -487,7 +490,7 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
     hyde_status = "off"
     if hyde_enabled():
         model_phrases, hyde_status = generate_search_phrases_with_retry(query)
-    phrases = _dedupe_phrases(local_phrases + model_phrases)
+    phrases = _narrow_phrases(query, _dedupe_phrases(local_phrases + model_phrases))
     terms = _anchor_terms(query) | set(phrases)
     try:
         query_hits = _search_with_vector(
@@ -521,6 +524,12 @@ def retrieve_passages(query: str, *, top_k: int = DEFAULT_TOP_K, include_debug: 
         top_k,
         terms,
     )
+    if _rerank_is_noise(query, passages):
+        logger.warning(
+            "window_rank dropped noise excerpts query=%s",
+            " ".join((query or "").split())[:120],
+        )
+        passages = []
     elapsed_ms = int((time.monotonic() - started) * 1000)
     logger.warning(
         "hyde_request status=%s elapsed_ms=%s terms=%s term_fallback=%s "
@@ -598,6 +607,46 @@ def _dedupe_phrases(phrases: list[str]) -> list[str]:
             continue
         seen.add(key)
         kept.append(key)
+    return kept
+
+
+def _content_words(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9']{5,}", (text or "").lower())
+        if word not in _GENERIC_TERMS
+    }
+
+
+def _allowed_content_words(query: str) -> set[str]:
+    """Words the question already used, plus a same-subject alias such as gay/homosexual."""
+    from .sermon_catalog import TOPIC_ALIASES
+
+    allowed = set(_content_words(query))
+    question_words = set(re.findall(r"[a-z0-9']{3,}", (query or "").lower()))
+    for word in question_words:
+        for key, aliases in TOPIC_ALIASES.items():
+            names = {key.lower(), *(alias.lower() for alias in aliases)}
+            if word not in names:
+                continue
+            allowed.update(
+                name for name in names if len(name) >= 5 and name not in _GENERIC_TERMS
+            )
+    return allowed
+
+
+def _narrow_phrases(query: str, phrases: list[str]) -> list[str]:
+    """Drop a phrase that brings in a subject the question did not ask about."""
+    allowed = _allowed_content_words(query)
+    question = " ".join(re.findall(r"[a-z0-9']+", (query or "").lower()))
+    kept = []
+    for phrase in phrases:
+        content = _content_words(phrase)
+        if content and not content <= allowed:
+            continue
+        if not content and phrase not in question:
+            continue
+        kept.append(phrase)
     return kept
 
 
@@ -777,11 +826,84 @@ def _scroll_filtered(client, collection: str, query_filter, limit: int) -> list:
     return points
 
 
+def _focus_text(text: str, terms: set[str], limit: int | None = None) -> str:
+    """Keep the sentences around the phrase that matched, not the opening slide."""
+    limit = limit or _prompt_char_limit()
+    raw = (text or "").strip()
+    if len(raw) <= limit:
+        return raw
+    lowered = raw.lower()
+    needles = []
+    for term in terms:
+        cleaned = " ".join((term or "").lower().split())
+        if len(cleaned) < 3 or cleaned in _GENERIC_TERMS:
+            continue
+        needles.append(cleaned)
+    needles.sort(key=len, reverse=True)
+    spans: list[int] = []
+    for needle in needles:
+        start = 0
+        found = 0
+        while found < 8:
+            pos = lowered.find(needle, start)
+            if pos < 0:
+                break
+            spans.append(pos)
+            start = pos + max(1, len(needle))
+            found += 1
+    if not spans:
+        return _truncate_for_prompt(raw)
+    best_start = 0
+    best_key = None
+    seen_starts: set[int] = set()
+    for pos in spans:
+        win_start = max(0, pos - limit // 3)
+        if win_start in seen_starts:
+            continue
+        seen_starts.add(win_start)
+        window = lowered[win_start : win_start + limit]
+        covered = 0
+        seen_terms: set[str] = set()
+        for needle in needles:
+            if needle in window and needle not in seen_terms:
+                seen_terms.add(needle)
+                covered += len(needle)
+        key = (covered, -win_start)
+        if best_key is None or key > best_key:
+            best_key = key
+            best_start = win_start
+    return _clip_window(raw, best_start, limit)
+
+
+def _focused_passage(passage: dict, terms: set[str]) -> dict:
+    text = _focus_text(passage.get("text") or "", terms)
+    if text == (passage.get("text") or ""):
+        return passage
+    updated = dict(passage)
+    updated["text"] = text
+    return updated
+
+
+def _rerank_is_noise(query: str, passages: list[dict]) -> bool:
+    """A near-zero score on windows that never name the subject is not an answer."""
+    rows = getattr(_order_passages, "last_rows", None) or []
+    if not rows or any(row.get("mode") != "rerank" for row in rows):
+        return False
+    best = max(float(row.get("rerank") or 0.0) for row in rows)
+    if best >= _NOISE_RERANK:
+        return False
+    subjects = _anchor_terms(query)
+    if not subjects:
+        return False
+    blob = "\n".join((passage.get("text") or "").lower() for passage in passages)
+    return not any(term in blob for term in subjects)
+
+
 def _order_passages(query: str, passages: list[dict], top_k: int, terms: set[str]) -> list[dict]:
     """Put the window that answers the question first."""
     from .note_priority import chunk_thesis_score
 
-    pool = list(passages)
+    pool = [_focused_passage(passage, terms) for passage in passages]
     if len(pool) > 32:
         pool.sort(
             key=lambda passage: sum(
@@ -1129,20 +1251,30 @@ def history_block(turns: list[tuple[str, str]]) -> str:
 def pastoral_messages(query: str, passages: list[dict], history: str = "") -> list[dict]:
     context = _passage_context(query, passages) or "(no sermon excerpts found)"
     prior = f"Earlier in this chat:\n{history}\n\n" if history else ""
+    if passages:
+        guidance = (
+            "Answer from the sermon excerpts. Prefer their wording and scripture. "
+            "Do not invent quotes or verses the excerpts do not contain.\n\n"
+            "Excerpt [1] is the direct answer. State what it says first, in its own words. "
+            "Use the other excerpts only to support that answer. "
+            "Do not replace excerpt [1] with a softer line that is repeated in the other excerpts.\n\n"
+            "Write one short answer, under 900 characters. "
+            "Include one scripture reference from the excerpts when one is there. "
+            "If this continues an earlier reply, name that same topic in the answer.\n\n"
+            "Keep the tone warm and clear."
+        )
+    else:
+        guidance = (
+            "The sermon notes do not contain an excerpt that answers this question. "
+            "Say that in one or two sentences. Do not answer from a neighboring topic, "
+            "and do not invent a quote or a verse."
+        )
     return [
         {
             "role": "system",
             "content": (
                 "You are Pastor Don's AI teaching assistant for Nordin's AI.\n\n"
-                "Answer from the sermon excerpts. Prefer their wording and scripture. "
-                "Do not invent quotes or verses the excerpts do not contain.\n\n"
-                "Excerpt [1] is the direct answer. State what it says first, in its own words. "
-                "Use the other excerpts only to support that answer. "
-                "Do not replace excerpt [1] with a softer line that is repeated in the other excerpts.\n\n"
-                "Write one short answer, under 900 characters. "
-                "Include one scripture reference from the excerpts when one is there. "
-                "If this continues an earlier reply, name that same topic in the answer.\n\n"
-                "Keep the tone warm and clear."
+                f"{guidance}"
             ),
         },
         {

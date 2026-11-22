@@ -79,24 +79,78 @@ def _paragraphs(text: str) -> list[str]:
     return [block for block in blocks if block]
 
 
+def _wrap_words(text: str, target: int) -> list[str]:
+    words = (text or "").split()
+    if not words:
+        return []
+    pieces: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip() if current else word
+        if current and len(candidate) > target:
+            pieces.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        pieces.append(current)
+    return pieces
+
+
+def _split_long_paragraph(para: str, target: int) -> list[str]:
+    """Break one block that has no blank lines into quote-sized pieces.
+
+    A sermon file that never leaves a blank line is one paragraph. Packing
+    that paragraph whole stores the entire note as a single retrieval point.
+    """
+    text = (para or "").strip()
+    if not text:
+        return []
+    if len(text) <= target:
+        return [text]
+    sentences = split_sentences(text)
+    if len(sentences) <= 1:
+        return _wrap_words(text, target)
+    pieces: list[str] = []
+    current = ""
+    for sentence in sentences:
+        if len(sentence) > target:
+            if current:
+                pieces.append(current.strip())
+                current = ""
+            pieces.extend(_wrap_words(sentence, target))
+            continue
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if current and len(candidate) > target:
+            pieces.append(current.strip())
+            current = sentence
+        else:
+            current = candidate
+    if current.strip():
+        pieces.append(current.strip())
+    return pieces
+
+
 def _pack_windows(paragraphs: list[str], *, target: int, overlap: int) -> list[str]:
     if not paragraphs:
         return []
     windows: list[str] = []
     current = ""
     for para in paragraphs:
-        candidate = f"{current} {para}".strip() if current else para
-        if current and len(candidate) > target:
-            windows.append(current.strip())
-            if overlap > 0 and len(current) > overlap:
-                current = current[-overlap:].lstrip()
-                candidate = f"{current} {para}".strip()
-            else:
-                candidate = para
-        current = candidate
-        if len(current) >= target:
-            windows.append(current.strip())
-            current = current[-overlap:].lstrip() if overlap else ""
+        for piece in _split_long_paragraph(para, target):
+            candidate = f"{current} {piece}".strip() if current else piece
+            if current and len(candidate) > target:
+                windows.append(current.strip())
+                if overlap > 0 and len(current) > overlap:
+                    current = current[-overlap:].lstrip()
+                    candidate = f"{current} {piece}".strip()
+                else:
+                    current = ""
+                    candidate = piece
+            current = candidate
+            if len(current) >= target:
+                windows.append(current.strip())
+                current = current[-overlap:].lstrip() if overlap else ""
     if current.strip():
         windows.append(current.strip())
     deduped: list[str] = []

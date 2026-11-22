@@ -27,6 +27,16 @@ class QuoteChunkingTests(unittest.TestCase):
         self.assertTrue(all(meta["chunk_kind"] == "sermon_quote" for meta in metas))
         self.assertTrue(all(len(chunk) < 900 for chunk in chunks))
 
+    def test_one_long_paragraph_is_split_on_sentences(self):
+        sentences = [
+            f"Sentence number {index} teaches the church to keep an ancient landmark in place."
+            for index in range(24)
+        ]
+        chunks, _metas = split_sermon_quote_chunks(" ".join(sentences), target_size=500, overlap=40)
+        self.assertGreaterEqual(len(chunks), 2)
+        self.assertTrue(all(len(chunk) < 900 for chunk in chunks))
+        self.assertIn("Sentence number 20", " ".join(chunks))
+
     def test_strips_video_timestamps_for_quote_text(self):
         text = "[08:50–09:12] I tell parents to sit with their child and weep together."
         self.assertEqual(

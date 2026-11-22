@@ -91,7 +91,7 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(result["hyde_titles"], [])
         self.assertEqual(result["query_titles"], ["Advent", "Christmas"])
         self.assertEqual(result["hyde_text"], "")
-        self.assertEqual(result["passages"][0]["title"], "Advent")
+        self.assertEqual(result["passages"], [])
 
     def test_hyde_failure_keeps_the_question_hits(self):
         embeddings, calls = self._embeddings()
@@ -116,7 +116,8 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(result["hyde_status"], "failed")
         self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
-        self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
+        self.assertEqual(result["query_titles"], ["Advent"])
+        self.assertEqual(result["passages"], [])
 
     def test_empty_hyde_text_skips_the_second_search(self):
         query_hits = [_hit("Advent", "We wait for the coming of Christ.")]
@@ -124,7 +125,7 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(calls, ["What is the Trinity?"])
         self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
-        self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
+        self.assertEqual(result["passages"], [])
 
     def test_hyde_search_failure_keeps_the_question_hits(self):
         embeddings, calls = self._embeddings()
@@ -149,7 +150,8 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(calls, ["What is the Trinity?"])
         self.assertEqual(result["hyde_text"], "")
         self.assertEqual(result["hyde_titles"], [])
-        self.assertEqual([item["title"] for item in result["passages"]], ["Advent"])
+        self.assertEqual(result["query_titles"], ["Advent"])
+        self.assertEqual(result["passages"], [])
 
     def test_hyde_can_be_turned_off(self):
         embeddings, calls = self._embeddings()
@@ -171,7 +173,7 @@ class HyDERetrievalTests(SimpleTestCase):
             result = retrieve_passages("What is faith?", include_debug=True)
 
         self.assertEqual(len(calls), 1)
-        self.assertEqual(result["passages"][0]["title"], "Advent")
+        self.assertEqual(result["passages"], [])
 
     def test_hyde_env_aliases_turn_it_off(self):
         for value in ("false", "no", "off", "FALSE"):
@@ -327,7 +329,7 @@ class HyDERetrievalTests(SimpleTestCase):
 
         self.assertTrue(client.scrolled)
         self.assertFalse(result["term_fallback"])
-        self.assertIn("Trinity", result["passages"][0]["text"])
+        self.assertEqual(result["passages"], [])
 
     def test_subject_word_outranks_a_nearby_sermon(self):
         embeddings, _calls = self._embeddings()
@@ -468,25 +470,24 @@ class HyDERetrievalTests(SimpleTestCase):
                 _hit(
                     "",
                     "",
-                    payload={"source": "From Source Key", "page_content": "page body"},
-                )
-            ],
-            hyde_hits=[
+                    payload={"source": "From Source Key", "page_content": "The Trinity is one God."},
+                ),
                 _hit(
                     "",
                     "",
                     payload={
-                        "metadata": {"title": "From Metadata", "content": "meta body"},
+                        "metadata": {"title": "From Metadata", "content": "The Trinity is Father Son and Spirit."},
                     },
-                )
+                ),
             ],
         )
         self.assertEqual(
-            [item["title"] for item in result["passages"]],
-            ["From Source Key", "From Metadata"],
+            {item["title"] for item in result["passages"]},
+            {"From Source Key", "From Metadata"},
         )
-        self.assertEqual(result["passages"][0]["text"], "page body")
-        self.assertEqual(result["passages"][1]["text"], "meta body")
+        texts = {item["text"] for item in result["passages"]}
+        self.assertIn("The Trinity is one God.", texts)
+        self.assertIn("The Trinity is Father Son and Spirit.", texts)
 
     def test_answer_system_prompt_leaves_the_form_open(self):
         prompt = _prompt(
@@ -575,6 +576,129 @@ class HyDERetrievalTests(SimpleTestCase):
         self.assertEqual(captured["body"]["max_tokens"], 180)
         self.assertIn("sermon-note paragraph", captured["body"]["messages"][0]["content"])
         self.assertEqual(captured["body"]["messages"][1]["content"], "What is the Trinity?")
+
+    def test_model_phrases_cannot_add_a_new_subject(self):
+        from core.basic_chat import _narrow_phrases
+
+        euthanasia = (
+            "Is assisted suicide or euthanasia something a Christian can choose at the end of life?"
+        )
+        phrases = _narrow_phrases(
+            euthanasia,
+            [
+                "assisted suicide",
+                "sanctity of life",
+                "biblical truth and grace",
+                "god's sovereignty over death",
+                "sex outside",
+            ],
+        )
+        self.assertIn("assisted suicide", phrases)
+        self.assertNotIn("sanctity of life", phrases)
+        self.assertNotIn("biblical truth and grace", phrases)
+        self.assertNotIn("god's sovereignty over death", phrases)
+        self.assertNotIn("sex outside", phrases)
+
+        marriage = (
+            "What should the church teach about sex outside of marriage "
+            "and about couples living together before marriage?"
+        )
+        kept = _narrow_phrases(
+            marriage, ["sex outside", "living together", "spiritual warfare"]
+        )
+        self.assertEqual(kept, ["sex outside", "living together"])
+
+        gay = _narrow_phrases(
+            "A church member says they are gay and asks if they can still follow Jesus.",
+            ["homosexual", "sin and grace"],
+        )
+        self.assertEqual(gay, ["homosexual"])
+
+    def test_long_sermon_is_cut_around_the_matching_sentence(self):
+        embeddings, _calls = self._embeddings()
+        filler = "God only gave us ten rules for living inside the camp. "
+        sentence = "All sex outside of a heterosexual marriage relationship is sin."
+        giant = (filler * 80) + sentence + " " + (filler * 40)
+
+        class Client:
+            def scroll(self, **kwargs):
+                point = SimpleNamespace(
+                    payload={
+                        "title": "Christian Boundaries",
+                        "text": giant,
+                        "file_hash": "",
+                    }
+                )
+                return [point], None
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "0"}), patch(
+            "qdrant_client.QdrantClient", return_value=Client()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [
+                    _hit(
+                        "Defining Marriage",
+                        "DEFINING MARRIAGE The supreme Court changed the definition of marriage. "
+                        "full of grace and truth.",
+                        0.99,
+                    )
+                ],
+                [],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat._rerank_scores", return_value=None
+        ):
+            result = retrieve_passages(
+                "What should the church teach about sex outside of marriage?",
+                include_debug=True,
+            )
+
+        window = result["passages"][0]
+        self.assertEqual(window["title"], "Christian Boundaries")
+        self.assertIn(sentence, window["text"])
+        self.assertLess(len(window["text"]), len(giant))
+        self.assertLess(len(window["text"]), 1600)
+
+    def test_noise_rerank_drops_excerpts_that_miss_the_subject(self):
+        embeddings, _calls = self._embeddings()
+
+        class Client:
+            def scroll(self, **kwargs):
+                return [], None
+
+        with patch.dict(os.environ, {"CHAT_HYDE": "0"}), patch(
+            "qdrant_client.QdrantClient", return_value=Client()
+        ), patch(
+            "core.embeddings_utils.get_embeddings", return_value=embeddings
+        ), patch(
+            "core.basic_chat._search_qdrant",
+            side_effect=self._search(
+                [_hit("Working at God's Altar Full", "Command the enemy not to speak.", 0.4)],
+                [],
+            ),
+        ), patch("core.basic_chat.warm_llm", return_value=True), patch(
+            "core.basic_chat._rerank_scores", return_value=[0.002]
+        ):
+            result = retrieve_passages(
+                "Should the church use a transgender person's chosen pronouns?",
+                include_debug=True,
+            )
+
+        self.assertEqual(result["passages"], [])
+
+    def test_pastoral_prompt_says_when_no_excerpt_answers(self):
+        from core.basic_chat import pastoral_messages
+
+        empty = pastoral_messages("Should the church use chosen pronouns?", [])
+        self.assertIn("do not contain an excerpt", empty[0]["content"].lower())
+        filled = pastoral_messages(
+            "What about abortion?",
+            [{"title": "Christian Boundaries", "text": "Life is a gift from God."}],
+        )
+        self.assertIn("Excerpt [1] is the direct answer", filled[0]["content"])
 
 
 class HyDEChatAPITests(APITestCase):
