@@ -1253,11 +1253,13 @@ def pastoral_messages(query: str, passages: list[dict], history: str = "") -> li
     prior = f"Earlier in this chat:\n{history}\n\n" if history else ""
     if passages:
         guidance = (
-            "Answer from the sermon excerpts. Prefer their wording and scripture. "
-            "Do not invent quotes or verses the excerpts do not contain.\n\n"
-            "Excerpt [1] is the direct answer. State what it says first, in its own words. "
-            "Use the other excerpts only to support that answer. "
-            "Do not replace excerpt [1] with a softer line that is repeated in the other excerpts.\n\n"
+            "The first sentences answer the question that was asked. "
+            "Then support that answer with Pastor Don's wording from the excerpts. "
+            "Do not open with the sermon title. "
+            "Do not retell an excerpt that answers a different question. "
+            "Do not attribute a quote or a verse to the excerpts unless it appears in them.\n\n"
+            "If the excerpts do not decide the question, still answer it, "
+            "then say which part the notes do not cover.\n\n"
             "Write one short answer, under 900 characters. "
             "Include one scripture reference from the excerpts when one is there. "
             "If this continues an earlier reply, name that same topic in the answer.\n\n"
@@ -1265,9 +1267,11 @@ def pastoral_messages(query: str, passages: list[dict], history: str = "") -> li
         )
     else:
         guidance = (
-            "The sermon notes do not contain an excerpt that answers this question. "
-            "Say that in one or two sentences. Do not answer from a neighboring topic, "
-            "and do not invent a quote or a verse."
+            "The first sentences answer the question that was asked. "
+            "Then say that the sermon notes do not cover this question. "
+            "Do not invent a quote or a verse and attribute it to the notes.\n\n"
+            "Write one short answer, under 900 characters. "
+            "Keep the tone warm and clear."
         )
     return [
         {

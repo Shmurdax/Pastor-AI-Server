@@ -693,12 +693,15 @@ class HyDERetrievalTests(SimpleTestCase):
         from core.basic_chat import pastoral_messages
 
         empty = pastoral_messages("Should the church use chosen pronouns?", [])
-        self.assertIn("do not contain an excerpt", empty[0]["content"].lower())
+        self.assertIn("answer the question that was asked", empty[0]["content"].lower())
+        self.assertIn("notes do not cover", empty[0]["content"].lower())
         filled = pastoral_messages(
             "What about abortion?",
             [{"title": "Christian Boundaries", "text": "Life is a gift from God."}],
         )
-        self.assertIn("Excerpt [1] is the direct answer", filled[0]["content"])
+        self.assertIn("first sentences answer the question", filled[0]["content"].lower())
+        self.assertIn("which part the notes do not cover", filled[0]["content"].lower())
+        self.assertNotIn("Excerpt [1] is the direct answer", filled[0]["content"])
 
 
 class HyDEChatAPITests(APITestCase):
