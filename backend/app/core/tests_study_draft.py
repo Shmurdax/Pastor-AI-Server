@@ -253,9 +253,18 @@ class StudyDraftGenerationTests(SimpleTestCase):
         self.assertGreaterEqual(len(result["passages"]), 1)
         self.assertNotIn("UNIQUE", result["hyde_text"])
 
+    def test_plan_is_skipped_by_default(self):
+        route = rule_route("Write a Bible study on repentance")
+        with patch("core.basic_chat.complete_llm_text") as complete:
+            plan = build_draft_plan("Write a Bible study on repentance", route, [])
+        complete.assert_not_called()
+        self.assertEqual(plan, {})
+
     def test_plan_failure_returns_an_empty_plan(self):
         route = rule_route("Write a Bible study on repentance")
-        with patch("core.basic_chat.complete_llm_text", side_effect=RuntimeError("down")):
+        with patch.dict(os.environ, {"CHAT_DRAFT_PLAN": "1"}), patch(
+            "core.basic_chat.complete_llm_text", side_effect=RuntimeError("down")
+        ):
             plan = build_draft_plan("Write a Bible study on repentance", route, [])
         self.assertEqual(plan, {})
 

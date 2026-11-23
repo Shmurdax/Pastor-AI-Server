@@ -1509,7 +1509,7 @@ def draft_writer_messages(
 
 
 def build_draft_plan(query: str, route: DraftRoute, passages: list[dict]) -> dict:
-    if not _flag_enabled("CHAT_DRAFT_PLAN", "1"):
+    if not _flag_enabled("CHAT_DRAFT_PLAN", "0"):
         return {}
     try:
         raw = complete_llm_text(
