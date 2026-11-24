@@ -405,9 +405,13 @@ elif [[ -f "$CONFIG_ENV" ]]; then
   fi
 fi
 
-# Development pods rewrite live keys to test values before Django listens.
-if declare -F pastor_git_channel >/dev/null 2>&1 && [[ "$(pastor_git_channel "$WS")" == "development" ]]; then
-  bash "$SCRIPT_DIR/scripts/isolate_dev_env.sh"
+# Development and reply-test pods rewrite live keys to test values before
+# Django listens. Production (master) does not.
+if declare -F pastor_git_channel >/dev/null 2>&1; then
+  _pastor_channel="$(pastor_git_channel "$WS")"
+  if [[ "$_pastor_channel" == "development" || "$_pastor_channel" == "response_testing" ]]; then
+    bash "$SCRIPT_DIR/scripts/isolate_dev_env.sh"
+  fi
 fi
 
 # Django
@@ -512,6 +516,9 @@ screen -dmS django bash -c "
   export CHAT_CONTEXT_WINDOW='${CHAT_CONTEXT_WINDOW:-32768}' &&
   export VLLM_MAX_MODEL_LEN='${VLLM_MAX_MODEL_LEN:-32768}' &&
   export CHAT_TIMEOUT_S='${CHAT_TIMEOUT_S:-360}' &&
+  export CHAT_HYDE='${CHAT_HYDE:-1}' &&
+  export CHAT_HYDE_TIMEOUT_S='${CHAT_HYDE_TIMEOUT_S:-180}' &&
+  export CHAT_PASSAGE_CHARS='${CHAT_PASSAGE_CHARS:-1200}' &&
   export RETRIEVAL_K='${RETRIEVAL_K:-24}' &&
   export RETRIEVAL_THRESHOLD='${RETRIEVAL_THRESHOLD:-0.8}' &&
   export RETRIEVAL_CANDIDATE_MULTIPLIER='${RETRIEVAL_CANDIDATE_MULTIPLIER:-8}' &&

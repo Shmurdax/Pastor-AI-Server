@@ -33,7 +33,55 @@ def sidecar_url(env: Optional[dict] = None) -> str:
     return str(source.get("SEARCH_SIDECAR_URL") or "").strip().rstrip("/")
 
 
+def _runpod_api_key() -> str:
+    for name in ("RUNPOD_API_KEY", "VLLM_API_KEY"):
+        value = (os.getenv(name) or "").strip()
+        if value and value.lower() not in {"not-needed", "empty", "paste_here"}:
+            return value
+    return ""
+
+
+def _runpod_runsync(url: str, payload: dict, timeout: float) -> dict:
+    """Call a queue-based RunPod endpoint that serves embed and rerank."""
+    base = url.split("/rerank")[0].split("/embed")[0].split("/health")[0].rstrip("/")
+    key = _runpod_api_key()
+    if not key:
+        raise RuntimeError("RUNPOD_API_KEY is required for the GPU search endpoint")
+    data = json.dumps({"input": payload}).encode("utf-8")
+    req = urlrequest.Request(
+        f"{base}/runsync",
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {key}",
+        },
+        method="POST",
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=max(timeout, 180.0)) as resp:
+            body = resp.read().decode("utf-8")
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"search endpoint {exc.code}: {detail}") from exc
+    except urlerror.URLError as exc:
+        raise RuntimeError(f"search endpoint unavailable: {exc.reason}") from exc
+    parsed = json.loads(body or "{}")
+    if not isinstance(parsed, dict):
+        raise RuntimeError("search endpoint returned a non-object")
+    status = str(parsed.get("status") or "")
+    if status not in {"COMPLETED", "SUCCESS"}:
+        detail = parsed.get("error") or parsed.get("output") or status or "no status"
+        raise RuntimeError(f"search endpoint {status or 'failed'}: {detail}")
+    output = parsed.get("output")
+    if not isinstance(output, dict):
+        raise RuntimeError("search endpoint returned no output")
+    return output
+
+
 def _post_json(url: str, payload: dict, timeout: float) -> dict:
+    if "api.runpod.ai/v2/" in url:
+        return _runpod_runsync(url, payload, timeout)
     data = json.dumps(payload).encode("utf-8")
     req = urlrequest.Request(
         url,

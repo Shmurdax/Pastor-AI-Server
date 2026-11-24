@@ -10,7 +10,6 @@ from http.server import ThreadingHTTPServer
 from unittest import mock
 
 from core.embeddings_utils import QueryPrefixedEmbeddings, get_embeddings
-from core.rerank import get_reranker
 from core.search_sidecar import (
     SidecarEmbeddings,
     SidecarReranker,
@@ -65,27 +64,54 @@ class SearchSidecarContractTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
 
-    def test_chat_uses_sidecar_without_hiding_cuda(self):
+    def test_runpod_endpoint_uses_runsync(self):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {"status": "COMPLETED", "output": {"scores": [0.5]}}
+                ).encode()
+
+        def fake_urlopen(req, timeout=None):
+            captured["url"] = req.full_url
+            captured["timeout"] = timeout
+            captured["auth"] = req.headers.get("Authorization")
+            captured["body"] = json.loads(req.data.decode())
+            return FakeResponse()
+
+        with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "test-key"}, clear=False):
+            with mock.patch("core.search_sidecar.urlrequest.urlopen", fake_urlopen):
+                scores = SidecarReranker("https://api.runpod.ai/v2/abc123").predict(
+                    [["question", "sermon"]]
+                )
+        self.assertEqual(scores, [0.5])
+        self.assertEqual(captured["url"], "https://api.runpod.ai/v2/abc123/runsync")
+        self.assertEqual(captured["auth"], "Bearer test-key")
+        self.assertEqual(captured["body"]["input"]["pairs"], [["question", "sermon"]])
+        self.assertGreaterEqual(captured["timeout"], 180)
+
+    def test_embeddings_use_sidecar_without_hiding_cuda(self):
         import core.embeddings_utils as embeddings
-        import core.rerank as rerank
 
         embeddings._EMBEDDINGS = None
-        rerank._RERANKER = None
-        rerank._RERANKER_FAILED = False
         env = {
             "SEARCH_SIDECAR_URL": "http://127.0.0.1:8012",
             "CUDA_VISIBLE_DEVICES": "0",
         }
         with mock.patch.dict(os.environ, env, clear=False):
             client = get_embeddings(force_new=True)
-            model = get_reranker(force_new=True)
             self.assertEqual(os.environ.get("CUDA_VISIBLE_DEVICES"), "0")
         self.assertIsInstance(client, QueryPrefixedEmbeddings)
         self.assertIsInstance(client._inner, SidecarEmbeddings)
-        self.assertIsInstance(model, SidecarReranker)
         self.assertEqual(sidecar_url(env), "http://127.0.0.1:8012")
         embeddings._EMBEDDINGS = None
-        rerank._RERANKER = None
 
     def test_query_prefix_is_applied_before_the_sidecar(self):
         import core.embeddings_utils as embeddings

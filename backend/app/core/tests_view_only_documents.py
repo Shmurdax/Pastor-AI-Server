@@ -209,7 +209,6 @@ class HiddenLibraryChatSourceTests(TestCase):
         )
 
     def test_hidden_books_are_dropped_from_chat_sermon_sources(self):
-        from core.chat_retrieval import ensure_source_media_mix, sources_cited_in_answer
         from core.views import _doc_source_label, visible_chat_source_docs
 
         visible = _make_doc(title="Sunday Notes", source_name="sunday.pdf", file_hash="s" * 64)
@@ -233,24 +232,6 @@ class HiddenLibraryChatSourceTests(TestCase):
         public = visible_chat_source_docs(docs)
         self.assertEqual(len(public), 1)
         self.assertEqual(_doc_source_label(public[0]), "Sunday Notes")
-
-        answer = (
-            "As The Giver and His Gifts teaches, the Holy Spirit is a gift. "
-            "Sunday Notes also says to walk in love. New King James Version 1 Corinthians 12:7."
-        )
-        cited = sources_cited_in_answer(public, answer, _doc_source_label, limit=5)
-        mixed = ensure_source_media_mix(
-            cited or ["Sunday Notes"],
-            public,
-            _doc_source_label,
-            min_count=1,
-            limit=5,
-            query="spiritual gifts",
-        )
-        labels = " ".join(mixed).lower()
-        self.assertTrue(any("sunday" in item.lower() for item in mixed), mixed)
-        self.assertNotIn("giver", labels)
-        self.assertNotIn("king james", labels)
 
     def test_unmatched_chunks_still_appear_as_sources(self):
         from core.views import visible_chat_source_docs

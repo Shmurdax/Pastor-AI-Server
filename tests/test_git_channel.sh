@@ -30,6 +30,11 @@ unset PASTOR_GIT_BRANCH
 echo bogus > "$DIR/.git_channel"
 [[ "$(pastor_git_channel "$DIR")" == "development" ]] || fail "unknown channel should fall back to development"
 
+echo response_testing > "$DIR/.git_channel"
+[[ "$(pastor_git_channel "$DIR")" == "response_testing" ]] || fail "response_testing channel should stay response_testing"
+pastor_write_git_channel "$DIR" response_testing
+[[ "$(tr -d '[:space:]' < "$DIR/.git_channel")" == "response_testing" ]] || fail "write should persist response_testing"
+
 pastor_write_git_channel "$DIR" latest
 [[ "$(cat "$DIR/.git_channel")" == "development" ]] || fail "write should persist canonical development"
 
@@ -73,6 +78,25 @@ printf 'master\n' > "$DIR/.git_channel"
 PASTOR_GIT_BRANCH=development
 [[ "$(pastor_resolve_git_channel "$DIR")" == "development" ]] || fail "PASTOR_GIT_BRANCH should override .git_channel at resolve"
 unset PASTOR_GIT_BRANCH
+STICKY="$(mktemp -d)"
+git init -q -b response_testing "$STICKY"
+git -C "$STICKY" config user.email test@example.com
+git -C "$STICKY" config user.name test
+printf 'x\n' > "$STICKY/file"
+git -C "$STICKY" add file
+git -C "$STICKY" commit -qm init
+printf 'development\n' > "$STICKY/.git_channel"
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "response_testing" ]] \
+  || fail "response_testing checkout should ignore a copied development channel file"
+PASTOR_GIT_BRANCH=development
+REPO_BRANCH=development
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "response_testing" ]] \
+  || fail "copied development env must not pull response_testing off its branch"
+unset PASTOR_GIT_BRANCH REPO_BRANCH
+git -C "$STICKY" checkout -q -b development
+[[ "$(pastor_resolve_git_channel "$STICKY")" == "development" ]] \
+  || fail "development checkout should still follow its channel file"
+rm -rf "$STICKY"
 UPSTREAM="$(mktemp -d)"
 CLONE="$(mktemp -d)"
 git init -q -b master "$UPSTREAM"
@@ -148,6 +172,38 @@ pastor_sync_git_channel "$PRESERVE_CLONE" development
 [[ "${PASTOR_FLUTTER_BUILD_PRESERVED}" == "0" ]] || fail "HEAD move must not mark the Flutter build preserved"
 unset PASTOR_PRESERVE_FLUTTER_BUILD
 rm -rf "$PRESERVE_UP" "$PRESERVE_CLONE"
+
+# response_testing pods fetch with a refspec that only tracks master and
+# development. A missing remote-tracking ref must not be stamped as a SHA,
+# and a successful sync must create refs/remotes/origin/response_testing.
+NARROW_UP="$(mktemp -d)"
+NARROW="$(mktemp -d)"
+git init -q -b response_testing "$NARROW_UP"
+git -C "$NARROW_UP" config user.email test@example.com
+git -C "$NARROW_UP" config user.name test
+printf 'live\n' > "$NARROW_UP/file"
+git -C "$NARROW_UP" add file
+git -C "$NARROW_UP" commit -qm live
+git clone -q -b response_testing "$NARROW_UP" "$NARROW"
+git -C "$NARROW" config --unset-all remote.origin.fetch
+git -C "$NARROW" config --add remote.origin.fetch '+refs/heads/master:refs/remotes/origin/master'
+git -C "$NARROW" config --add remote.origin.fetch '+refs/heads/development:refs/remotes/origin/development'
+git -C "$NARROW" update-ref -d refs/remotes/origin/response_testing
+printf 'refs/remotes/origin/response_testing\n' > "$NARROW/DEPLOYED_ORIGIN_SHA"
+printf 'response_testing\n' > "$NARROW/.git_channel"
+pastor_record_running_git "$NARROW"
+[[ "$(tr -d '[:space:]' < "$NARROW/DEPLOYED_ORIGIN_SHA")" != "refs/remotes/origin/response_testing" ]] \
+  || fail "missing origin ref must not be stamped as a commit id"
+pastor_sync_git_channel "$NARROW" response_testing
+NARROW_SHA="$(git -C "$NARROW" rev-parse HEAD)"
+[[ "$(git -C "$NARROW" rev-parse --verify --quiet refs/remotes/origin/response_testing)" == "$NARROW_SHA" ]] \
+  || fail "sync should store origin/response_testing even with a narrow fetch refspec"
+[[ "$(tr -d '[:space:]' < "$NARROW/DEPLOYED_ORIGIN_SHA")" == "$NARROW_SHA" ]] \
+  || fail "DEPLOYED_ORIGIN_SHA must be the fetched commit"
+pastor_record_running_git "$NARROW"
+[[ "$(tr -d '[:space:]' < "$NARROW/DEPLOYED_ORIGIN_SHA")" == "$NARROW_SHA" ]] \
+  || fail "start.sh restamp must keep the fetched origin SHA"
+rm -rf "$NARROW_UP" "$NARROW"
 grep -q 'git_channel.sh' "$ROOT/install.sh" || fail "install.sh must copy git_channel.sh"
 grep -q 'git_safe_directory.sh' "$ROOT/install.sh" || fail "install.sh must copy git_safe_directory.sh"
 grep -q 'promote_to_master.sh' "$ROOT/install.sh" || fail "install.sh must copy promote_to_master.sh"

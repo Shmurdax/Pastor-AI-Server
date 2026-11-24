@@ -100,6 +100,15 @@ TOPIC_ALIASES: dict[str, tuple[str, ...]] = {
     "drinking": ("alcohol", "wine", "sippin", "drink", "drinking"),
     "homosexuality": ("homosexuality", "homosexual", "gay"),
     "gay": ("homosexuality", "homosexual", "gay"),
+    "abortion": ("abortion", "abort"),
+    "transgender": ("transgender", "transsexual"),
+    "divorce": ("divorce", "divorced"),
+    "pornography": ("pornography", "porn"),
+    "euthanasia": ("euthanasia", "suicide"),
+    "suicide": ("euthanasia", "suicide"),
+    "pronoun": ("pronoun", "pronouns"),
+    "pronouns": ("pronoun", "pronouns"),
+    "sexuality": ("sexuality", "sexual"),
 }
 
 _BIBLE_TITLE_MARKERS = (

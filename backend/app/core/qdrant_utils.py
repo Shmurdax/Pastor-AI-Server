@@ -83,6 +83,21 @@ def ensure_payload_indexes(client: QdrantClient, collection_name: Optional[str] 
             )
         except Exception:
             logger.debug("Payload index %s on %s already present or skipped", field_name, name)
+    try:
+        client.create_payload_index(
+            collection_name=name,
+            field_name="text",
+            field_schema=qdrant_models.TextIndexParams(
+                type="text",
+                tokenizer=qdrant_models.TokenizerType.WORD,
+                min_token_len=2,
+                max_token_len=20,
+                lowercase=True,
+            ),
+            wait=False,
+        )
+    except Exception:
+        logger.debug("Text index on %s already present or skipped", name)
 
 
 def delete_sermon_collection(client: QdrantClient, collection_name: Optional[str] = None) -> bool:

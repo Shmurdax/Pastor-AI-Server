@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Resolve which Git branch this Pastor-AI checkout should track.
 #
-#   development — all new work (christian-ai-dev)
-#   master      — production pin (christian-ai-prd)
+#   development      — all new work (christian-ai-dev)
+#   master           — production pin (christian-ai-prd)
+#   response_testing — reply-pipeline pod; does not follow development
 #
 # Override order:
 #   1. PASTOR_GIT_BRANCH env
@@ -11,10 +12,12 @@
 #   4. default: development
 #
 # Legacy names latest→development and stable→master still resolve.
+# Any other name still falls back to development.
 pastor_git_canonicalize() {
   case "${1:-}" in
     development|latest) printf '%s\n' "development" ;;
     master|stable) printf '%s\n' "master" ;;
+    response_testing) printf '%s\n' "response_testing" ;;
     *) printf '%s\n' "development" ;;
   esac
 }

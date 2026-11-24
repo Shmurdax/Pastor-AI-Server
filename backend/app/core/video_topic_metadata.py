@@ -374,9 +374,9 @@ def extract_llm_metadata(
     try:
         client = llm
         if client is None and invoke_fn is None:
-            from .chat_llm import get_chat_llm
-
-            client = get_chat_llm(temperature=0.1, max_tokens=512, timeout=90)
+            # Reply generation is rebuilt on this branch. Topic titles stay on
+            # the heuristic path unless the caller passes its own client.
+            return None
         runner = invoke_fn or (lambda c, t: _default_invoke(c, t))
         raw = runner(client, prompt)
         parsed = _parse_llm_json(raw)

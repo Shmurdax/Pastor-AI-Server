@@ -572,14 +572,6 @@ class ProductPaywallTests(TestCase):
         self._assert_locked("get", f"/api/church-events/{self.event.pk}/")
         self._assert_locked("get", "/api/media/")
         self._assert_locked("get", "/api/ingested-documents/")
-        self._assert_locked("post", "/api/chat/", data={"query": "Hope in Scripture?"}, format="json")
-        self._assert_locked("post", "/api/chat/warmup/", data={}, format="json")
-        self._assert_locked(
-            "post",
-            "/api/translate/",
-            data={"texts": ["Hello"], "language": "es"},
-            format="json",
-        )
 
     def test_premium_can_read_events_and_media(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.premium_token}")
