@@ -64,6 +64,39 @@ class SearchSidecarContractTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=5)
 
+    def test_runpod_endpoint_uses_runsync(self):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {"status": "COMPLETED", "output": {"scores": [0.5]}}
+                ).encode()
+
+        def fake_urlopen(req, timeout=None):
+            captured["url"] = req.full_url
+            captured["timeout"] = timeout
+            captured["auth"] = req.headers.get("Authorization")
+            captured["body"] = json.loads(req.data.decode())
+            return FakeResponse()
+
+        with mock.patch.dict(os.environ, {"RUNPOD_API_KEY": "test-key"}, clear=False):
+            with mock.patch("core.search_sidecar.urlrequest.urlopen", fake_urlopen):
+                scores = SidecarReranker("https://api.runpod.ai/v2/abc123").predict(
+                    [["question", "sermon"]]
+                )
+        self.assertEqual(scores, [0.5])
+        self.assertEqual(captured["url"], "https://api.runpod.ai/v2/abc123/runsync")
+        self.assertEqual(captured["auth"], "Bearer test-key")
+        self.assertEqual(captured["body"]["input"]["pairs"], [["question", "sermon"]])
+        self.assertGreaterEqual(captured["timeout"], 180)
+
     def test_embeddings_use_sidecar_without_hiding_cuda(self):
         import core.embeddings_utils as embeddings
 
