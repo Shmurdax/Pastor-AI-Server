@@ -319,6 +319,7 @@ if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
     export HF_TOKEN='${HF_TOK}' &&
     export HF_HUB_ENABLE_HF_TRANSFER=0 &&
     export FLASHINFER_DISABLE_VERSION_CHECK=1 &&
+    unset VLLM_USE_V2_MODEL_RUNNER &&
     python -m vllm.entrypoints.openai.api_server \
       --model '${BASE_MODEL}' \
       --served-model-name '${SERVED_NAME}' \
