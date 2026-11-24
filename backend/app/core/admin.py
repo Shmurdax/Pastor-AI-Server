@@ -109,7 +109,7 @@ class ChatMessageAdmin(admin.ModelAdmin):
 
 @admin.register(UserChatHistory)
 class UserChatHistoryAdmin(admin.ModelAdmin):
-    list_display = ('user', 'entry_count', 'active_session_id', 'schema_version', 'updated_at')
+    list_display = ('user', 'entry_count', 'deleted_count', 'active_session_id', 'schema_version', 'updated_at')
     search_fields = ('user__email', 'user__username', 'active_session_id')
     readonly_fields = ('updated_at',)
     raw_id_fields = ('user',)
@@ -117,6 +117,10 @@ class UserChatHistoryAdmin(admin.ModelAdmin):
     @admin.display(description='Chats')
     def entry_count(self, obj):
         return len(obj.entries or [])
+
+    @admin.display(description='Deleted')
+    def deleted_count(self, obj):
+        return len(obj.deleted_session_ids or [])
 
 
 @admin.register(IngestedDocument)

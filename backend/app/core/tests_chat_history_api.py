@@ -368,3 +368,135 @@ class LiveChatHistoryTests(TestCase):
             {"kept", full_sid},
         )
         self.assertFalse(ChatMessage.objects.filter(session_id="older").exists())
+
+    def _entry(self, session_id, text, updated_at):
+        return {
+            "sessionId": session_id,
+            "title": text,
+            "updatedAt": updated_at,
+            "messages": [{"role": "user", "text": text}],
+        }
+
+    def _authed_client(self):
+        token = Token.objects.create(user=self.user)
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        return client
+
+    def test_put_deletes_several_sessions_and_keeps_the_tombstone(self):
+        self.client = self._authed_client()
+        for sid in ("keep", "one", "two"):
+            ChatMessage.objects.create(
+                session_id=sid,
+                user=self.user,
+                user_query=sid,
+                ai_response="answer",
+            )
+        self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [
+                    self._entry("keep", "keep", 3),
+                    self._entry("one", "one", 2),
+                    self._entry("two", "two", 1),
+                ],
+                "active_session_id": "keep",
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        put = self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [self._entry("keep", "keep", 4)],
+                "active_session_id": "keep",
+                "deleted_session_ids": ["one", "two"],
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(put.status_code, 200)
+        self.assertEqual(
+            [entry["sessionId"] for entry in put.data["entries"]],
+            ["keep"],
+        )
+        self.assertEqual(set(put.data["deleted_session_ids"]), {"one", "two"})
+        self.assertFalse(ChatMessage.objects.filter(session_id="one").exists())
+        self.assertFalse(ChatMessage.objects.filter(session_id="two").exists())
+
+    def test_stale_put_cannot_restore_a_deleted_chat(self):
+        self.client = self._authed_client()
+        self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [
+                    self._entry("keep", "keep", 2),
+                    self._entry("gone", "gone", 1),
+                ],
+                "active_session_id": "keep",
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [self._entry("keep", "keep", 3)],
+                "active_session_id": "gone",
+                "deleted_session_ids": ["gone"],
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        ChatMessage.objects.create(
+            session_id="gone",
+            user=self.user,
+            user_query="gone",
+            ai_response="resurrected",
+        )
+        restored = self.client.put(
+            "/api/chat/history/",
+            {
+                "entries": [
+                    self._entry("keep", "keep", 4),
+                    self._entry("gone", "gone", 9),
+                ],
+                "active_session_id": "gone",
+                "schema_version": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(
+            [entry["sessionId"] for entry in restored.data["entries"]],
+            ["keep"],
+        )
+        self.assertEqual(restored.data["active_session_id"], "keep")
+        self.assertIn("gone", restored.data["deleted_session_ids"])
+        self.assertFalse(ChatMessage.objects.filter(session_id="gone").exists())
+        got = self.client.get("/api/chat/history/")
+        self.assertEqual(
+            [entry["sessionId"] for entry in got.data["entries"]],
+            ["keep"],
+        )
+
+    def test_live_upsert_does_not_restore_a_deleted_chat(self):
+        from .live_chat_history import upsert_live_chat_turn
+
+        UserChatHistory.objects.create(
+            user=self.user,
+            entries=[self._entry("faith-live", "What is faith?", 10)],
+            deleted_session_ids=["faith-live"],
+            active_session_id="faith-live",
+        )
+        upsert_live_chat_turn(
+            user=self.user,
+            client_session_id="faith-live",
+            user_query="What is faith?",
+            answer="Still here",
+            streaming=False,
+        )
+        row = UserChatHistory.objects.get(user=self.user)
+        self.assertEqual(row.entries[0]["messages"][0]["text"], "What is faith?")
+        got = self._authed_client().get("/api/chat/history/")
+        self.assertEqual(got.data["entries"], [])
+        self.assertEqual(got.data["active_session_id"], "")

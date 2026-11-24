@@ -13,7 +13,9 @@ class TokenStorage {
   static const _userKey = 'auth_user';
   static const _sessionPrefix = 'chat_session_';
   static const _historyPrefix = 'chat_history_';
+  static const _deletedPrefix = 'chat_history_deleted_';
   static const chatHistorySchemaVersion = 1;
+  static const maxDeletedChatSessions = 2000;
 
   const TokenStorage();
 
@@ -82,6 +84,34 @@ class TokenStorage {
   Future<void> saveChatHistory(String userId, List<Map<String, dynamic>> entries) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_historyPrefix$userId', jsonEncode(entries));
+  }
+
+  Future<List<String>> loadDeletedChatSessionIds(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_deletedPrefix$userId');
+    if (raw == null || raw.isEmpty) return [];
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return [];
+    return [
+      for (final item in decoded)
+        if (item is String && item.trim().isNotEmpty) item.trim(),
+    ];
+  }
+
+  Future<void> saveDeletedChatSessionIds(
+    String userId,
+    Iterable<String> ids,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final unique = <String>[];
+    final seen = <String>{};
+    for (final id in ids) {
+      final trimmed = id.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) continue;
+      unique.add(trimmed);
+      if (unique.length >= maxDeletedChatSessions) break;
+    }
+    await prefs.setString('$_deletedPrefix$userId', jsonEncode(unique));
   }
 }
 

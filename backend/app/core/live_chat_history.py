@@ -8,6 +8,7 @@ import time
 from typing import Any, Optional
 
 from django.db import close_old_connections, transaction
+from django.db.models import Q
 
 from .models import UserChatHistory
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 # The sidebar used to keep 40 chats and drop the rest. Saved turns still
 # live on ChatMessage, so the list can show every session for an account.
 MAX_HISTORY_ENTRIES = 1000
+MAX_DELETED_SESSION_IDS = 2000
 _LIBRARY_SOURCE_LIMIT = 5
 _PREVIOUS_SERMON_LIMIT = 25
 
@@ -113,15 +115,18 @@ def _with_sources(winner: dict[str, Any], other: dict[str, Any]) -> dict[str, An
     return merged
 
 
-def visible_history_entries(user, stored) -> list[dict[str, Any]]:
+def visible_history_entries(user, stored, deleted_ids=None) -> list[dict[str, Any]]:
     """Sidebar list: saved history plus any chat that only exists as messages."""
+    deleted = normalize_deleted_session_ids(deleted_ids)
     by_id: dict[str, dict[str, Any]] = {}
     for entry in sanitize_history_entries(stored or []):
         sid = str(entry.get("sessionId") or "").strip()
-        if sid:
+        if sid and not session_is_deleted(sid, deleted):
             by_id[sid] = dict(entry)
     for fresh in entries_from_saved_messages(user):
         sid = str(fresh.get("sessionId") or "").strip()
+        if not sid or session_is_deleted(sid, deleted):
+            continue
         match_id = next((key for key in by_id if _same_session(key, sid)), "")
         if not match_id:
             by_id[sid] = fresh
@@ -133,7 +138,11 @@ def visible_history_entries(user, stored) -> list[dict[str, Any]]:
         if len(sid) >= len(match_id):
             merged["sessionId"] = sid
         by_id[str(merged.get("sessionId") or sid)] = merged
-    merged_entries = list(by_id.values())
+    merged_entries = [
+        entry
+        for entry in by_id.values()
+        if not session_is_deleted(str(entry.get("sessionId") or ""), deleted)
+    ]
     merged_entries.sort(key=lambda item: int(item.get("updatedAt") or 0), reverse=True)
     return merged_entries[:MAX_HISTORY_ENTRIES]
 
@@ -309,7 +318,7 @@ def _choose_richer_history_entry(
 
 
 def normalize_deleted_session_ids(raw) -> set[str]:
-    if not isinstance(raw, list):
+    if isinstance(raw, str) or raw is None or not isinstance(raw, (list, tuple, set)):
         return set()
     deleted: set[str] = set()
     for item in raw:
@@ -317,6 +326,49 @@ def normalize_deleted_session_ids(raw) -> set[str]:
         if sid:
             deleted.add(sid)
     return deleted
+
+
+def remember_deleted_session_ids(existing, incoming) -> list[str]:
+    """Union tombstones, newest deletes first, capped so the row stays small."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in (incoming, existing):
+        if isinstance(raw, str) or raw is None or not isinstance(raw, (list, tuple, set)):
+            continue
+        for item in raw:
+            sid = str(item or "").strip()[:64]
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            ordered.append(sid)
+            if len(ordered) >= MAX_DELETED_SESSION_IDS:
+                return ordered
+    return ordered
+
+
+def session_is_deleted(session_id: str, deleted: set[str]) -> bool:
+    sid = str(session_id or "").strip()
+    if not sid or not deleted:
+        return False
+    if sid in deleted or sid[:64] in deleted:
+        return True
+    return any(_same_session(sid, item) for item in deleted)
+
+
+def delete_chat_messages_for_sessions(user, session_ids) -> int:
+    """Remove saved turns for sessions the account deleted."""
+    removed = normalize_deleted_session_ids(session_ids)
+    if not removed or user is None or not getattr(user, "is_authenticated", False):
+        return 0
+    from .models import ChatMessage
+
+    query = Q()
+    for sid in removed:
+        query |= Q(session_id=sid)
+        if len(sid) == 64:
+            query |= Q(session_id__startswith=sid)
+    deleted_count, _ = ChatMessage.objects.filter(user=user).filter(query).delete()
+    return deleted_count
 
 
 def merge_history_entries(existing, incoming, deleted_ids=None) -> list[dict[str, Any]]:
@@ -327,7 +379,7 @@ def merge_history_entries(existing, incoming, deleted_ids=None) -> list[dict[str
         if not isinstance(entry, dict):
             return
         sid = str(entry.get("sessionId") or "").strip()
-        if not sid or sid in deleted:
+        if not sid or session_is_deleted(sid, deleted):
             return
         current = by_id.get(sid)
         if current is None:
@@ -409,8 +461,11 @@ def upsert_live_chat_turn(
                 "entries": [],
                 "active_session_id": sid,
                 "schema_version": 1,
+                "deleted_session_ids": [],
             },
         )
+        if session_is_deleted(sid, normalize_deleted_session_ids(row.deleted_session_ids)):
+            return
         entries = sanitize_history_entries(list(row.entries or []))
         match_idx = next(
             (i for i, item in enumerate(entries) if str(item.get("sessionId") or "") == sid),

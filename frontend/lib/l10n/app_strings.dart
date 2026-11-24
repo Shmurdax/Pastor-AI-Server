@@ -80,6 +80,16 @@ class AppStrings {
   String get cancel => _t('cancel');
   String get delete => _t('delete');
   String get chatDeleted => _t('chatDeleted');
+  String get selectChats => _t('selectChats');
+  String get doneSelecting => _t('doneSelecting');
+  String get selectAll => _t('selectAll');
+  String deleteSelected(int count) =>
+      _t('deleteSelected').replaceAll('{n}', '$count');
+  String deleteSelectedTitle(int count) =>
+      _t('deleteSelectedTitle').replaceAll('{n}', '$count');
+  String get deleteSelectedBody => _t('deleteSelectedBody');
+  String get chatsDeleted => _t('chatsDeleted');
+  String get chatDeleteSyncFailed => _t('chatDeleteSyncFailed');
 
   String get welcomeTitle => _t('welcomeTitle');
   String get welcomeBody => _t('welcomeBody');
@@ -212,6 +222,16 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': 'Cancel',
     'delete': 'Delete',
     'chatDeleted': 'Chat deleted',
+    'selectChats': 'Select',
+    'doneSelecting': 'Done',
+    'selectAll': 'Select all',
+    'deleteSelected': 'Delete selected ({n})',
+    'deleteSelectedTitle': 'Delete {n} chats?',
+    'deleteSelectedBody':
+        'Remove the selected chats from your history? This cannot be undone.',
+    'chatsDeleted': 'Chats deleted',
+    'chatDeleteSyncFailed':
+        'Removed on this device. The server did not confirm, so this delete will retry on the next sync.',
     'welcomeTitle': "Welcome to the Nordin's AI Assistant",
     'welcomeBody':
         "This tool is trained on Pastor Don's sermon notes and resources. The AI may occasionally produce inaccurate information.",
@@ -337,6 +357,16 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': 'Cancelar',
     'delete': 'Eliminar',
     'chatDeleted': 'Chat eliminado',
+    'selectChats': 'Seleccionar',
+    'doneSelecting': 'Listo',
+    'selectAll': 'Seleccionar todo',
+    'deleteSelected': 'Eliminar seleccionados ({n})',
+    'deleteSelectedTitle': '¿Eliminar {n} chats?',
+    'deleteSelectedBody':
+        '¿Quitar los chats seleccionados de tu historial? Esto no se puede deshacer.',
+    'chatsDeleted': 'Chats eliminados',
+    'chatDeleteSyncFailed':
+        'Se quitaron en este dispositivo. El servidor no confirmó, así que se reintentará en la próxima sincronización.',
     'welcomeTitle': 'Bienvenido al Asistente de IA de Nordin',
     'welcomeBody':
         'Esta herramienta está entrenada con las notas de sermones y recursos del Pastor Don. La IA puede producir información inexacta ocasionalmente.',
@@ -428,6 +458,16 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': 'Annuler',
     'delete': 'Supprimer',
     'chatDeleted': 'Discussion supprimée',
+    'selectChats': 'Sélectionner',
+    'doneSelecting': 'Terminé',
+    'selectAll': 'Tout sélectionner',
+    'deleteSelected': 'Supprimer la sélection ({n})',
+    'deleteSelectedTitle': 'Supprimer {n} discussions ?',
+    'deleteSelectedBody':
+        'Retirer les discussions sélectionnées de votre historique ? Cette action est irréversible.',
+    'chatsDeleted': 'Discussions supprimées',
+    'chatDeleteSyncFailed':
+        'Retirées sur cet appareil. Le serveur n\'a pas confirmé, la suppression sera réessayée à la prochaine synchronisation.',
     'welcomeTitle': "Bienvenue sur l'assistant IA de Nordin",
     'welcomeBody':
         "Cet outil est formé sur les notes de sermon et ressources du pasteur Don. L'IA peut parfois produire des informations inexactes.",
@@ -519,6 +559,16 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': 'Cancelar',
     'delete': 'Excluir',
     'chatDeleted': 'Chat excluído',
+    'selectChats': 'Selecionar',
+    'doneSelecting': 'Concluir',
+    'selectAll': 'Selecionar tudo',
+    'deleteSelected': 'Excluir selecionados ({n})',
+    'deleteSelectedTitle': 'Excluir {n} chats?',
+    'deleteSelectedBody':
+        'Remover os chats selecionados do seu histórico? Isso não pode ser desfeito.',
+    'chatsDeleted': 'Chats excluídos',
+    'chatDeleteSyncFailed':
+        'Removidos neste dispositivo. O servidor não confirmou, então a exclusão será tentada de novo na próxima sincronização.',
     'welcomeTitle': 'Bem-vindo ao Assistente de IA da Nordin',
     'welcomeBody':
         'Esta ferramenta é treinada com as anotações de sermão e recursos do Pastor Don. A IA pode ocasionalmente produzir informações imprecisas.',
@@ -610,6 +660,16 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': 'Abbrechen',
     'delete': 'Löschen',
     'chatDeleted': 'Chat gelöscht',
+    'selectChats': 'Auswählen',
+    'doneSelecting': 'Fertig',
+    'selectAll': 'Alle auswählen',
+    'deleteSelected': 'Ausgewählte löschen ({n})',
+    'deleteSelectedTitle': '{n} Chats löschen?',
+    'deleteSelectedBody':
+        'Die ausgewählten Chats aus Ihrem Verlauf entfernen? Dies kann nicht rückgängig gemacht werden.',
+    'chatsDeleted': 'Chats gelöscht',
+    'chatDeleteSyncFailed':
+        'Auf diesem Gerät entfernt. Der Server hat nicht bestätigt, der Löschvorgang wird bei der nächsten Synchronisierung wiederholt.',
     'welcomeTitle': 'Willkommen beim Nordin KI-Assistenten',
     'welcomeBody':
         'Dieses Tool ist auf Predigtnotizen und Ressourcen von Pastor Don trainiert. Die KI kann gelegentlich ungenaue Informationen erzeugen.',
@@ -695,6 +755,15 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': '취소',
     'delete': '삭제',
     'chatDeleted': '채팅이 삭제되었습니다',
+    'selectChats': '선택',
+    'doneSelecting': '완료',
+    'selectAll': '모두 선택',
+    'deleteSelected': '선택 항목 삭제 ({n})',
+    'deleteSelectedTitle': '채팅 {n}개를 삭제할까요?',
+    'deleteSelectedBody': '선택한 채팅을 기록에서 삭제할까요? 이 작업은 되돌릴 수 없습니다.',
+    'chatsDeleted': '채팅이 삭제되었습니다',
+    'chatDeleteSyncFailed':
+        '이 기기에서 삭제했습니다. 서버가 확인하지 않아 다음 동기화 때 다시 시도합니다.',
     'welcomeTitle': "Nordin's AI 어시스턴트에 오신 것을 환영합니다",
     'welcomeBody':
         '이 도구는 Pastor Don의 설교 노트와 자료로 학습되었습니다. AI가 가끔 부정확한 정보를 제공할 수 있습니다.',
@@ -777,6 +846,14 @@ const Map<String, Map<String, String>> _tables = {
     'cancel': '取消',
     'delete': '删除',
     'chatDeleted': '对话已删除',
+    'selectChats': '选择',
+    'doneSelecting': '完成',
+    'selectAll': '全选',
+    'deleteSelected': '删除所选 ({n})',
+    'deleteSelectedTitle': '删除 {n} 个对话？',
+    'deleteSelectedBody': '从历史记录中移除所选对话？此操作无法撤销。',
+    'chatsDeleted': '对话已删除',
+    'chatDeleteSyncFailed': '已在此设备上移除。服务器未确认，下次同步时会重试。',
     'welcomeTitle': '欢迎使用 Nordin AI 助手',
     'welcomeBody':
         '本工具基于 Pastor Don 的讲道笔记与资源训练。AI 偶尔可能产生不准确的信息。',
