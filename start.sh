@@ -201,7 +201,15 @@ GPU_SEARCH_SIDECAR=0
 if gpu_search_sidecar_wanted; then
   GPU_SEARCH_SIDECAR=1
 fi
+# A CPU pod can still call a remote GPU search endpoint. Keep that https URL.
+# A local GPU sidecar, when this machine has one, replaces it below.
 SEARCH_SIDECAR_URL=""
+if [[ -f "$CONFIG_ENV" ]]; then
+  _remote_sidecar="$(grep -E '^SEARCH_SIDECAR_URL=' "$CONFIG_ENV" | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+  if [[ "$_remote_sidecar" == https://* ]]; then
+    SEARCH_SIDECAR_URL="$_remote_sidecar"
+  fi
+fi
 
 if ! vllm_use_local_server; then
   stop_screen vllm
