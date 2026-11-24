@@ -1,40 +1,54 @@
 """RunPod serverless worker for sermon embed and rerank.
 
 The chat pod posts {"input": {"texts": [...]}} or {"input": {"pairs": [[query, passage], ...]}}
-to /runsync. This process loads the same BGE models the CPU pod was scoring locally.
+to /runsync. Models load on the first job so the worker can register before
+the BGE weights finish downloading.
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 
 import runpod
-import torch
-from sentence_transformers import CrossEncoder, SentenceTransformer
 
 EMBED_MODEL = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-base-en-v1.5")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
 MAX_ITEMS = 64
 MAX_CHARS = 8000
+EMBEDDER = None
+RERANKER = None
 
 
-def _load(cls, name: str):
+def _load_models():
+    global EMBEDDER, RERANKER
+    if EMBEDDER is not None and RERANKER is not None:
+        return
     try:
-        return cls(name, device="cuda", model_kwargs={"torch_dtype": torch.float16})
-    except TypeError:
-        return cls(name, device="cuda")
+        from sentence_transformers import CrossEncoder, SentenceTransformer
+    except ImportError:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q", "sentence-transformers"]
+        )
+        from sentence_transformers import CrossEncoder, SentenceTransformer
+    import torch
 
+    def _load(cls, name: str):
+        try:
+            return cls(name, device="cuda", model_kwargs={"torch_dtype": torch.float16})
+        except TypeError:
+            return cls(name, device="cuda")
 
-print(f"Loading embedder {EMBED_MODEL}", flush=True)
-EMBEDDER = _load(SentenceTransformer, EMBED_MODEL)
-print(f"Loading reranker {RERANK_MODEL}", flush=True)
-RERANKER = _load(CrossEncoder, RERANK_MODEL)
-EMBEDDER.encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)
-RERANKER.predict([["warmup", "warmup passage"]], show_progress_bar=False)
-print("Sermon search models ready", flush=True)
+    print(f"Loading embedder {EMBED_MODEL}", flush=True)
+    EMBEDDER = _load(SentenceTransformer, EMBED_MODEL)
+    print(f"Loading reranker {RERANK_MODEL}", flush=True)
+    RERANKER = _load(CrossEncoder, RERANK_MODEL)
+    print("Sermon search models ready", flush=True)
 
 
 def handler(job):
+    _load_models()
     payload = job.get("input") or {}
     if not isinstance(payload, dict):
         return {"error": "input must be an object"}
