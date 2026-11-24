@@ -80,7 +80,7 @@ MARKER="$WS/.setup_complete"
 
 # Model stack (current production)
 CHRISTIANAI_HF_REPO="${CHRISTIANAI_HF_REPO:-apophaticai/qwen2.5-14b-christianai-v1}"
-CHRISTIANAI_BASE_VLLM="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
+CHRISTIANAI_BASE_VLLM="${CHRISTIANAI_BASE_VLLM:-cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit}"
 VLLM_MODEL="${VLLM_MODEL:-christianai}"
 VLLM_PORT="${VLLM_PORT:-8010}"
 DJANGO_PORT="${DJANGO_PORT:-8000}"

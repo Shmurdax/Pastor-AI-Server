@@ -207,6 +207,32 @@ sys.exit(0 if ok else 1)
 PY
 }
 
+# Gemma 4 is not loadable on vLLM 0.10.x. 0.34 is the release that loaded
+# cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit on the production A40.
+gpu_vllm_supports_gemma() {
+  local py
+  py="$(gpu_venv_python)" || return 1
+  "$py" - <<'PY'
+import sys
+try:
+    import vllm
+except Exception:
+    sys.exit(1)
+parts = []
+for piece in vllm.__version__.split("+")[0].split("."):
+    num = ""
+    for ch in piece:
+        if ch.isdigit():
+            num += ch
+        else:
+            break
+    parts.append(int(num or "0"))
+while len(parts) < 3:
+    parts.append(0)
+sys.exit(0 if tuple(parts[:3]) >= (0, 34, 0) else 1)
+PY
+}
+
 gpu_install_vllm_stack() {
   local py pip_bin index extra
   [[ -n "${VENV_DIR:-}" && -x "${VENV_DIR}/bin/pip" ]] || die "venv missing at ${VENV_DIR:-unset}"
@@ -217,22 +243,10 @@ gpu_install_vllm_stack() {
   export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/workspace/.cache/pip}"
   export TMPDIR="${TMPDIR:-/workspace/tmp}"
   mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
-  if [[ "${GPU_IS_BLACKWELL:-0}" == "1" ]]; then
-    log "Installing vLLM + PyTorch CUDA 12.9+ for Blackwell (sm_120)"
-    "$pip_bin" uninstall -y torch torchvision torchaudio torchcodec vllm 2>/dev/null || true
-    # Official vLLM wheels ship CUDA 12.9 kernels; they pull a matching torch.
-    "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" "vllm>=0.11" "${extra[@]}" \
-      || "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" vllm --extra-index-url https://download.pytorch.org/whl/cu128 \
-      || die "vLLM install failed for Blackwell"
-    gpu_export_cuda_libs
-  else
-    log "Installing PyTorch CUDA 12.8 + vLLM 0.8.5"
-    "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" torch torchvision torchaudio --index-url "$index"
-    "$pip_bin" install --cache-dir "$PIP_CACHE_DIR" "vllm==0.8.5" \
-      || "$pip_bin" install --cache-dir "$PIP_CACHE_DIR" "vllm==0.7.3" \
-      || die "vLLM install failed"
-    "$pip_bin" install --cache-dir "$PIP_CACHE_DIR" "transformers==4.51.3" "tokenizers==0.21.1" || true
-  fi
+  log "Installing vLLM >= 0.34 (Gemma 4). Blackwell cards need the CUDA 12.9 wheel."
+  "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" "vllm>=0.34.0" "${extra[@]}" \
+    || "$pip_bin" install --upgrade --cache-dir "$PIP_CACHE_DIR" "vllm>=0.34.0" --extra-index-url https://download.pytorch.org/whl/cu128 \
+    || die "vLLM install failed"
   gpu_export_cuda_libs
   "$pip_bin" uninstall -y torchcodec torch_c_dlpack_ext 2>/dev/null || true
   log "Python GPU stack: torch $($py -c 'import torch; print(torch.__version__)') vllm $($py -c 'import vllm; print(vllm.__version__)')"
@@ -240,10 +254,15 @@ gpu_install_vllm_stack() {
 
 gpu_ensure_vllm_stack() {
   gpu_detect
-  if gpu_torch_supports_device; then
+  if gpu_torch_supports_device && gpu_vllm_supports_gemma; then
     return 0
   fi
-  warn "PyTorch/vLLM in $VENV_DIR cannot run this GPU (need CUDA 12.9+ kernels for Blackwell sm_120)"
+  if ! gpu_torch_supports_device; then
+    warn "PyTorch/vLLM in $VENV_DIR cannot run this GPU (need CUDA 12.9+ kernels for Blackwell sm_120)"
+  else
+    warn "vLLM is older than 0.34 and cannot load Gemma 4. Upgrading."
+  fi
   gpu_install_vllm_stack
   gpu_torch_supports_device || warn "GPU stack installed but torch still reports missing kernels — check ${LOG_DIR:-/tmp}/vllm.log"
+  gpu_vllm_supports_gemma || warn "vLLM is still older than 0.34 — Gemma 4 will not load"
 }
