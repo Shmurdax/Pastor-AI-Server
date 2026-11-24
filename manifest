@@ -1,0 +1,5 @@
+SHA=af7422dcc93ee3f0cc2d2ca25f6d1fb8b3b90695
+HEALTH=ok
+ISOLATION=ok
+GPU_SMOKE=0
+MIGRATIONS=backend/app/core/migrations/0018_userchathistory_deleted_session_ids.py 
