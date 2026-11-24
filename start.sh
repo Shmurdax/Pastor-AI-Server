@@ -327,7 +327,6 @@ if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
       --max-model-len ${MAX_LEN} \
       --gpu-memory-utilization ${GPU_UTIL} \
       --trust-remote-code \
-      --quantization awq \
       ${ENFORCE_EAGER} \
       >> '${LOG_DIR}/vllm.log' 2>&1
   "
