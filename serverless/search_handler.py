@@ -29,7 +29,15 @@ def _load_models():
         from sentence_transformers import CrossEncoder, SentenceTransformer
     except ImportError:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q", "sentence-transformers"]
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "sentence-transformers==3.3.1",
+                "transformers==4.46.3",
+            ]
         )
         from sentence_transformers import CrossEncoder, SentenceTransformer
     import torch
