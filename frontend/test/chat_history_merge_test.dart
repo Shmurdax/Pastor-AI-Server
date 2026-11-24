@@ -296,4 +296,27 @@ void main() {
     expect(chatHistorySnapshotKey(short), isNot(chatHistorySnapshotKey(longer)));
     expect(chatHistorySnapshotKey(short), chatHistorySnapshotKey(short));
   });
+
+  test('reconcile keeps a local delete while the server still returns the chat', () {
+    final kept = reconcileDeletedSessionIds(
+      localDeleted: const ['gone'],
+      remoteEntries: [
+        {'sessionId': 'gone', 'updatedAt': 2},
+        {'sessionId': 'keep', 'updatedAt': 1},
+      ],
+      remoteDeleted: const [],
+    );
+    expect(kept, {'gone'});
+  });
+
+  test('reconcile keeps server tombstones and drops confirmed local ones', () {
+    final kept = reconcileDeletedSessionIds(
+      localDeleted: const ['local-only', 'still-remote'],
+      remoteEntries: [
+        {'sessionId': 'still-remote', 'updatedAt': 2},
+      ],
+      remoteDeleted: const ['from-server'],
+    );
+    expect(kept, {'from-server', 'still-remote'});
+  });
 }

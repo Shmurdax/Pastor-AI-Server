@@ -308,6 +308,8 @@ class _ChatScreenState extends State<ChatScreen>
   bool _ingestedDocsOpen = false;
   List<Map<String, dynamic>> _chatHistoryEntries = [];
   final Set<String> _deletedSessionIds = {};
+  bool _selectingChats = false;
+  final Set<String> _selectedChatIds = {};
   Timer? _liveHistoryTimer;
   bool _liveHistoryPollInFlight = false;
   /// Server still has a reply streaming that this tab is not generating.
@@ -683,27 +685,21 @@ final bibleRefRegex = RegExp(
     final storageId = auth.user?.id ?? _guestHistoryId;
     final savedSession = await _tokenStorage.loadChatSessionId(storageId);
     var history = await _tokenStorage.loadChatHistory(storageId);
+    _deletedSessionIds
+      ..clear()
+      ..addAll(await _tokenStorage.loadDeletedChatSessionIds(storageId));
 
     // Signed-in users: merge local cache with durable server backup so history
     // survives rebuilds, deploys, and device switches.
     if (auth.isAuthenticated) {
       try {
         final remote = await _apiService.getChatHistory();
-        final remoteEntries = (remote['entries'] as List<dynamic>? ?? const [])
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
-        history = mergeChatHistoryEntries(
-          history,
-          remoteEntries,
-          deletedSessionIds: _deletedSessionIds,
-        );
-        _forgetConfirmedDeletedSessions(remoteEntries);
+        history = await _mergeRemoteChatHistory(history, remote, storageId);
         final active = preferActiveSessionId(
           savedSession,
           remote['active_session_id']?.toString(),
         );
-        if (active.isNotEmpty) {
+        if (active.isNotEmpty && !_deletedSessionIds.contains(active)) {
           await _tokenStorage.saveChatSessionId(storageId, active);
         }
       } catch (e) {
@@ -712,19 +708,26 @@ final bibleRefRegex = RegExp(
     }
 
     final maxEntries = auth.hasPremiumAccess ? _premiumHistoryCap : _freeHistoryCap;
-    if (history.length > maxEntries) {
-      history = history.take(maxEntries).toList();
-    }
+    history = omitDeletedHistoryEntries(history, _deletedSessionIds)
+        .take(maxEntries)
+        .toList();
     await _tokenStorage.saveChatHistory(storageId, history);
+    await _tokenStorage.saveDeletedChatSessionIds(storageId, _deletedSessionIds);
     if (auth.isAuthenticated) {
-      unawaited(_pushChatHistoryToServer(history));
+      unawaited(_pushChatHistoryToServer(history, storageId: storageId));
     }
 
     if (mounted) {
       setState(() {
         _chatHistoryEntries = history;
-        if (savedSession != null) sessionId = savedSession;
-        final preferred = preferActiveSessionId(savedSession, null);
+        _pruneChatSelection();
+        if (savedSession != null && !_deletedSessionIds.contains(savedSession)) {
+          sessionId = savedSession;
+        }
+        final preferred = preferActiveSessionId(
+          _deletedSessionIds.contains(savedSession) ? null : savedSession,
+          null,
+        );
         if (preferred.isNotEmpty) sessionId = preferred;
       });
       await _restoreMessagesForCurrentSession(storageId);
@@ -792,21 +795,20 @@ final bibleRefRegex = RegExp(
       _apiService.setAccessToken(auth.token);
       final remote = await _apiService.getChatHistory();
       if (!mounted) return;
-      final remoteEntries = (remote['entries'] as List<dynamic>? ?? const [])
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      final remoteEntries = _historyEntriesFromPayload(remote);
+      final remoteDeleted = _deletedIdsFromPayload(remote);
       _followRemoteStream = historyNeedsLivePolling(
         remoteEntries,
         isLocallyGenerating: _sessions.isGenerating,
       );
-      if (remoteEntries.isEmpty) return;
-      final merged = mergeChatHistoryEntries(
+      if (remoteEntries.isEmpty && remoteDeleted.isEmpty) return;
+      final storageId = _historyStorageId;
+      final merged = await _mergeRemoteChatHistory(
         _chatHistoryEntries,
-        remoteEntries,
-        deletedSessionIds: _deletedSessionIds,
+        remote,
+        storageId,
       );
-      _forgetConfirmedDeletedSessions(remoteEntries);
+      if (!mounted) return;
       final localGenerating = _sessions.current.activeClient != null;
       Map<String, dynamic>? currentRemote;
       for (final entry in merged) {
@@ -827,6 +829,7 @@ final bibleRefRegex = RegExp(
       if (!mounted || (!changed && !shouldApply)) return;
       setState(() {
         _chatHistoryEntries = merged;
+        _pruneChatSelection();
         if (shouldApply && currentRemote != null) {
           runtime.loadFromHistoryEntry(currentRemote);
         }
@@ -835,7 +838,10 @@ final bibleRefRegex = RegExp(
         _scrollToBottom(followStream: true);
       }
       if (changed) {
-        await _tokenStorage.saveChatHistory(_historyStorageId, merged);
+        await _tokenStorage.saveChatHistory(
+          _historyStorageId,
+          omitDeletedHistoryEntries(merged, _deletedSessionIds),
+        );
       }
     } catch (e) {
       debugPrint('Live chat history poll failed: $e');
@@ -845,27 +851,109 @@ final bibleRefRegex = RegExp(
     }
   }
 
-  void _forgetConfirmedDeletedSessions(List<Map<String, dynamic>> remoteEntries) {
-    final remoteIds = {
-      for (final entry in remoteEntries)
-        (entry['sessionId']?.toString().trim() ?? ''),
-    }..remove('');
-    _deletedSessionIds.removeWhere((id) => !remoteIds.contains(id));
+  List<Map<String, dynamic>> _historyEntriesFromPayload(
+    Map<String, dynamic> payload,
+  ) {
+    return (payload['entries'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
-  Future<void> _pushChatHistoryToServer(List<Map<String, dynamic>> entries) async {
+  List<String> _deletedIdsFromPayload(Map<String, dynamic> payload) {
+    final raw = payload['deleted_session_ids'];
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is String && item.trim().isNotEmpty) item.trim(),
+    ];
+  }
+
+  Future<void> _adoptPersistedDeletions([String? storageId]) async {
+    if (!mounted && storageId == null) return;
+    final id = storageId ?? _historyStorageId;
+    final stored = await _tokenStorage.loadDeletedChatSessionIds(id);
+    _deletedSessionIds.addAll(stored);
+  }
+
+  Future<List<Map<String, dynamic>>> _mergeRemoteChatHistory(
+    List<Map<String, dynamic>> local,
+    Map<String, dynamic> remote,
+    String storageId,
+  ) async {
+    await _adoptPersistedDeletions(storageId);
+    final reconciled = reconcileDeletedSessionIds(
+      localDeleted: _deletedSessionIds,
+      remoteEntries: _historyEntriesFromPayload(remote),
+      remoteDeleted: _deletedIdsFromPayload(remote),
+    );
+    _deletedSessionIds
+      ..clear()
+      ..addAll(reconciled);
+    await _tokenStorage.saveDeletedChatSessionIds(storageId, _deletedSessionIds);
+    return omitDeletedHistoryEntries(
+      mergeChatHistoryEntries(
+        local,
+        _historyEntriesFromPayload(remote),
+        deletedSessionIds: _deletedSessionIds,
+      ),
+      _deletedSessionIds,
+    );
+  }
+
+  void _pruneChatSelection() {
+    final visible = {
+      for (final entry in _chatHistoryEntries)
+        (entry['sessionId']?.toString() ?? ''),
+    }..remove('');
+    _selectedChatIds.removeWhere((id) => !visible.contains(id));
+    if (_chatHistoryEntries.isEmpty) _selectingChats = false;
+  }
+
+  void _clearChatSelectionMemory() {
+    _deletedSessionIds.clear();
+    _selectedChatIds.clear();
+    _selectingChats = false;
+  }
+
+  /// Returns whether the signed-in server copy accepted the save.
+  /// Guest history is local only, so that path reports success.
+  Future<bool> _pushChatHistoryToServer(
+    List<Map<String, dynamic>> entries, {
+    String? storageId,
+  }) async {
+    if (!mounted) return false;
     final auth = context.read<AuthController>();
-    if (!auth.isAuthenticated) return;
+    final id = storageId ?? _historyStorageId;
+    await _adoptPersistedDeletions(id);
+    if (!auth.isAuthenticated) return true;
     try {
       _apiService.setAccessToken(auth.token);
-      await _apiService.putChatHistory(
-        entries: entries,
-        activeSessionId: sessionId,
+      final safe = omitDeletedHistoryEntries(entries, _deletedSessionIds);
+      final active = _deletedSessionIds.contains(sessionId) ? '' : sessionId;
+      final remote = await _apiService.putChatHistory(
+        entries: safe,
+        activeSessionId: active,
         schemaVersion: TokenStorage.chatHistorySchemaVersion,
         deletedSessionIds: _deletedSessionIds.toList(),
       );
+      final merged = await _mergeRemoteChatHistory(
+        _chatHistoryEntries,
+        remote,
+        id,
+      );
+      if (mounted &&
+          chatHistorySnapshotKey(merged) !=
+              chatHistorySnapshotKey(_chatHistoryEntries)) {
+        setState(() {
+          _chatHistoryEntries = merged;
+          _pruneChatSelection();
+        });
+      }
+      return true;
     } catch (e) {
       debugPrint('Chat history server save failed: $e');
+      return false;
     }
   }
 
@@ -918,10 +1006,12 @@ final bibleRefRegex = RegExp(
   String _chatHistoryTitle() => _chatHistoryTitleFor(_sessions.current);
 
   Future<void> _persistChatHistory([ChatSessionRuntime? runtime]) async {
+    if (!mounted) return;
+    final storageId = _historyStorageId;
+    await _adoptPersistedDeletions(storageId);
     final session = runtime ?? _sessions.current;
     if (session.messages.isEmpty) return;
 
-    final storageId = _historyStorageId;
     final snapshot = _currentChatSnapshot(session);
     final sid = session.sessionId;
     if (_deletedSessionIds.contains(sid)) return;
@@ -936,10 +1026,13 @@ final bibleRefRegex = RegExp(
     final trimmed = updated.take(_maxHistoryEntries).toList();
     await _tokenStorage.saveChatHistory(storageId, trimmed);
     if (mounted) {
-      setState(() => _chatHistoryEntries = _withGeneratingSessionsVisible(trimmed, updated));
+      setState(() {
+        _chatHistoryEntries = _withGeneratingSessionsVisible(trimmed, updated);
+        _pruneChatSelection();
+      });
     }
     // Always mirror signed-in history to the server so deploys cannot wipe it.
-    unawaited(_pushChatHistoryToServer(trimmed));
+    unawaited(_pushChatHistoryToServer(trimmed, storageId: storageId));
   }
 
   /// Keep chats that are still generating in the sidebar even if the free
@@ -951,7 +1044,7 @@ final bibleRefRegex = RegExp(
     final display = List<Map<String, dynamic>>.from(trimmed);
     for (final entry in allCandidates) {
       final entrySid = entry['sessionId'] as String?;
-      if (entrySid == null) continue;
+      if (entrySid == null || _deletedSessionIds.contains(entrySid)) continue;
       if (!_sessions.isGenerating(entrySid)) continue;
       if (display.any((e) => e['sessionId'] == entrySid)) continue;
       display.add(entry);
@@ -962,10 +1055,15 @@ final bibleRefRegex = RegExp(
   }
 
   Future<void> _reloadChatHistory() async {
-    final history = await _tokenStorage.loadChatHistory(_historyStorageId);
+    final storageId = _historyStorageId;
+    await _adoptPersistedDeletions(storageId);
+    final history = omitDeletedHistoryEntries(
+      await _tokenStorage.loadChatHistory(storageId),
+      _deletedSessionIds,
+    );
     final trimmed = history.take(_maxHistoryEntries).toList();
     if (trimmed.length != history.length) {
-      await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
+      await _tokenStorage.saveChatHistory(storageId, trimmed);
     }
     if (mounted) {
       setState(() {
@@ -981,17 +1079,62 @@ final bibleRefRegex = RegExp(
               if (runtime.isGenerating) _currentChatSnapshot(runtime),
           ],
         );
+        _pruneChatSelection();
       });
     }
   }
 
-  Future<void> _saveChatHistoryEntries(List<Map<String, dynamic>> entries) async {
+  Future<bool> _saveChatHistoryEntries(
+    List<Map<String, dynamic>> entries, {
+    String? storageId,
+  }) async {
+    final id = storageId ?? _historyStorageId;
     final trimmed = omitDeletedHistoryEntries(entries, _deletedSessionIds)
         .take(_maxHistoryEntries)
         .toList();
-    await _tokenStorage.saveChatHistory(_historyStorageId, trimmed);
-    if (mounted) setState(() => _chatHistoryEntries = trimmed);
-    unawaited(_pushChatHistoryToServer(trimmed));
+    await _tokenStorage.saveChatHistory(id, trimmed);
+    if (mounted) {
+      setState(() {
+        _chatHistoryEntries = trimmed;
+        _pruneChatSelection();
+      });
+    }
+    return _pushChatHistoryToServer(trimmed, storageId: id);
+  }
+
+  Future<bool> _removeChatSessions(Set<String> sessionIds) async {
+    final ids = sessionIds.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty || !mounted) return false;
+    final storageId = _historyStorageId;
+    _deletedSessionIds.addAll(ids);
+    await _tokenStorage.saveDeletedChatSessionIds(storageId, _deletedSessionIds);
+    final updated = [
+      for (final entry in _chatHistoryEntries)
+        if (!ids.contains(entry['sessionId']?.toString())) entry,
+    ];
+    final removedActive = ids.contains(sessionId);
+    for (final sid in ids) {
+      _sessions.disposeSession(sid, cancelledText: _s.responseCancelled);
+    }
+    _selectedChatIds.removeAll(ids);
+    if (removedActive && mounted) {
+      setState(() {
+        _sessions.startNewChat(const Uuid().v4());
+        _showBackToBottomButton = false;
+      });
+      await _tokenStorage.saveChatSessionId(storageId, sessionId);
+    }
+    return _saveChatHistoryEntries(updated, storageId: storageId);
+  }
+
+  void _showChatDeleteResult({required bool synced, required int count}) {
+    if (!mounted) return;
+    final message = synced
+        ? (count == 1 ? _s.chatDeleted : _s.chatsDeleted)
+        : _s.chatDeleteSyncFailed;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
   }
 
   Future<void> _confirmDeleteChatHistoryEntry(Map<String, dynamic> entry) async {
@@ -1018,27 +1161,50 @@ final bibleRefRegex = RegExp(
       ),
     );
     if (delete != true || !mounted) return;
+    final synced = await _removeChatSessions({sid});
+    _showChatDeleteResult(synced: synced, count: 1);
+  }
 
-    _deletedSessionIds.add(sid);
-    final updated = _chatHistoryEntries.where((e) => e['sessionId'] != sid).toList();
-    await _saveChatHistoryEntries(updated);
-    _sessions.disposeSession(sid, cancelledText: _s.responseCancelled);
+  void _toggleChatSelected(String sid) {
+    if (sid.isEmpty) return;
+    setState(() {
+      if (!_selectedChatIds.add(sid)) _selectedChatIds.remove(sid);
+    });
+  }
 
-    if (sid == sessionId && mounted) {
-      setState(() {
-        _sessions.startNewChat(const Uuid().v4());
-        _showBackToBottomButton = false;
-      });
-      await _persistSessionId();
-    } else if (mounted) {
-      setState(() {});
-    }
-
+  Future<void> _confirmDeleteSelectedChats() async {
+    final ids = Set<String>.from(_selectedChatIds);
+    if (ids.isEmpty || !mounted) return;
+    final delete = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          _s.deleteSelectedTitle(ids.length),
+          style: GoogleFonts.figtree(fontWeight: FontWeight.bold, color: _navy),
+        ),
+        content: Text(
+          _s.deleteSelectedBody,
+          style: GoogleFonts.figtree(color: Colors.black87),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(_s.cancel)),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: _pink),
+            child: Text(_s.delete, style: GoogleFonts.figtree(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (delete != true || !mounted) return;
+    final synced = await _removeChatSessions(ids);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_s.chatDeleted), duration: const Duration(seconds: 2)),
-      );
+      setState(() {
+        _selectingChats = false;
+        _selectedChatIds.clear();
+      });
     }
+    _showChatDeleteResult(synced: synced, count: ids.length);
   }
 
   @override
@@ -1527,7 +1693,7 @@ final bibleRefRegex = RegExp(
         if (!mounted) return;
         _followRemoteStream = false;
         _stopLiveHistoryPolling();
-        _deletedSessionIds.clear();
+        _clearChatSelectionMemory();
         _sessions.disposeAll(cancelledText: _s.responseCancelled);
         setState(() {
           _sessions.startNewChat(const Uuid().v4());
@@ -1869,7 +2035,7 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                       _followRemoteStream = false;
                       _stopLiveHistoryPolling();
                       _sessions.disposeAll(cancelledText: _s.responseCancelled);
-                      _deletedSessionIds.clear();
+                      _clearChatSelectionMemory();
                       setState(() {
                         _sessions.startNewChat(const Uuid().v4());
                         _chatHistoryEntries = [];
@@ -2036,15 +2202,90 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
       );
     }
 
+    final visibleIds = [
+      for (final entry in _chatHistoryEntries)
+        if ((entry['sessionId']?.toString() ?? '').isNotEmpty)
+          entry['sessionId'].toString(),
+    ];
+    final allSelected = visibleIds.isNotEmpty &&
+        visibleIds.every(_selectedChatIds.contains);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Row(
+          children: [
+            TextButton(
+              key: const Key('chat-history-select'),
+              onPressed: () {
+                setState(() {
+                  _selectingChats = !_selectingChats;
+                  if (!_selectingChats) _selectedChatIds.clear();
+                });
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: _gold,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: Text(
+                _selectingChats ? _s.doneSelecting : _s.selectChats,
+                style: GoogleFonts.figtree(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+            if (_selectingChats) ...[
+              const Spacer(),
+              TextButton(
+                key: const Key('chat-history-select-all'),
+                onPressed: () {
+                  setState(() {
+                    if (allSelected) {
+                      _selectedChatIds.clear();
+                    } else {
+                      _selectedChatIds
+                        ..clear()
+                        ..addAll(visibleIds);
+                    }
+                  });
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Text(
+                  _s.selectAll,
+                  style: GoogleFonts.figtree(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ],
+          ],
+        ),
         Expanded(
           child: ListView(
             physics: const ClampingScrollPhysics(),
             children: _chatHistoryEntries.map(_buildChatHistoryLink).toList(),
           ),
         ),
+        if (_selectingChats && _selectedChatIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FilledButton.icon(
+              key: const Key('chat-history-delete-selected'),
+              onPressed: _confirmDeleteSelectedChats,
+              style: FilledButton.styleFrom(
+                backgroundColor: _pink,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: Text(
+                _s.deleteSelected(_selectedChatIds.length),
+                style: GoogleFonts.figtree(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -2090,14 +2331,38 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                 : [],
           ),
           child: InkWell(
+            key: Key('chat-history-entry-$sid'),
             borderRadius: BorderRadius.circular(20),
-            onTap: () => _loadChatFromHistory(entry),
+            onTap: () {
+              if (_selectingChats) {
+                _toggleChatSelected(sid);
+                return;
+              }
+              _loadChatFromHistory(entry);
+            },
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (isGenerating)
+                  if (_selectingChats)
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: IgnorePointer(
+                        child: Checkbox(
+                          key: Key('chat-history-check-$sid'),
+                          value: _selectedChatIds.contains(sid),
+                          activeColor: _gold,
+                          checkColor: _navy,
+                          side: const BorderSide(color: Colors.white70),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          onChanged: (_) {},
+                        ),
+                      ),
+                    )
+                  else if (isGenerating)
                     Padding(
                       padding: const EdgeInsets.only(top: 1),
                       child: AnimatedBuilder(
@@ -2155,15 +2420,16 @@ Future<void> _submitMessage(String userText, {required bool addUserMessage, bool
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => _confirmDeleteChatHistoryEntry(entry),
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    color: Colors.white54,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    tooltip: _s.deleteChat,
-                  ),
+                  if (!_selectingChats)
+                    IconButton(
+                      onPressed: () => _confirmDeleteChatHistoryEntry(entry),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: Colors.white54,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      tooltip: _s.deleteChat,
+                    ),
                 ],
               ),
             ),

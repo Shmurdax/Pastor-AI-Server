@@ -9,6 +9,28 @@ Set<String> normalizeDeletedSessionIds(Iterable<String> ids) {
   };
 }
 
+/// Tombstones that must survive the next merge.
+///
+/// Keep a server tombstone, and keep a local one while the server still
+/// returns that chat. Drop a local one once the server has neither the chat
+/// nor the tombstone, so the set does not grow forever.
+Set<String> reconcileDeletedSessionIds({
+  required Iterable<String> localDeleted,
+  required Iterable<Map<String, dynamic>> remoteEntries,
+  required Iterable<String> remoteDeleted,
+}) {
+  final remoteIds = {
+    for (final entry in remoteEntries)
+      (entry['sessionId']?.toString().trim() ?? ''),
+  }..remove('');
+  final remoteTombstones = normalizeDeletedSessionIds(remoteDeleted);
+  return {
+    ...remoteTombstones,
+    for (final id in normalizeDeletedSessionIds(localDeleted))
+      if (remoteIds.contains(id)) id,
+  };
+}
+
 List<Map<String, dynamic>> omitDeletedHistoryEntries(
   List<Map<String, dynamic>> entries,
   Iterable<String> deletedSessionIds,

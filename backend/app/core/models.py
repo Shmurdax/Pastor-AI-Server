@@ -318,6 +318,9 @@ class UserChatHistory(models.Model):
         related_name="chat_history_backup",
     )
     entries = models.JSONField(default=list, blank=True)
+    # Session ids the account removed. Kept so a later sync cannot restore them
+    # from a stale browser copy or from ChatMessage rows.
+    deleted_session_ids = models.JSONField(default=list, blank=True)
     active_session_id = models.CharField(max_length=64, blank=True, default="")
     schema_version = models.PositiveSmallIntegerField(default=1)
     updated_at = models.DateTimeField(auto_now=True)
