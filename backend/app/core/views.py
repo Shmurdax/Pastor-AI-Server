@@ -557,3 +557,50 @@ class ResponseReportAPIView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
+class TranslateAPIView(APIView):
+    """POST /api/translate/ — retranslate visible replies when the UI language changes."""
+
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, HasPremiumAccess]
+    renderer_classes = [JSONRenderer]
+
+    def get(self, request):
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request):
+        from .chat_language import normalize_chat_language
+        from .chat_translate import translate_texts
+
+        auth_error = _require_api_key(request)
+        if auth_error:
+            return auth_error
+        language = normalize_chat_language(
+            request.data.get("language") or request.data.get("locale")
+        )
+        texts = request.data.get("texts")
+        if texts is None and request.data.get("text") is not None:
+            texts = [request.data.get("text")]
+        if not isinstance(texts, list) or not texts:
+            return Response(
+                {"error": "Provide texts: [..] or text"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(texts) > 40:
+            return Response(
+                {"error": "Too many texts (max 40)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            translated = translate_texts(texts, language)
+        except Exception:
+            logger.exception("TranslateAPIView failed")
+            return Response(
+                {"error": "Translation failed. Please retry."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(
+            {"texts": translated, "language": language},
+            status=status.HTTP_200_OK,
+        )
+

@@ -38,22 +38,18 @@ assert vllm_t["isServerless"] is True
 assert vllm_t["imageName"].startswith("runpod/worker-v1-vllm:")
 assert vllm_t["volumeMountPath"] == "/runpod-volume"
 env = vllm_t["env"]
-assert env["MODEL_NAME"] == "Qwen/Qwen2.5-14B-Instruct-AWQ"
+assert env["MODEL_NAME"] == "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"
 assert env["QUANTIZATION"] == "awq"
-assert env["ENABLE_LORA"] == "true"
+assert env["ENABLE_LORA"] == "false"
+assert "LORA_MODULES" not in env
 assert env["OPENAI_SERVED_MODEL_NAME_OVERRIDE"] == "christianai"
-assert "christianai" in env["LORA_MODULES"]
-assert "apophaticai/qwen2.5-14b-christianai-v1" in env["LORA_MODULES"]
-lora = json.loads(env["LORA_MODULES"])
-assert isinstance(lora, dict), env["LORA_MODULES"]
-assert lora["name"] == "christianai"
 assert env["RAW_OPENAI_OUTPUT"] == "1"
 assert env["DOWNLOAD_DIR"] == "/runpod-volume/huggingface-cache"
 assert env["HF_HOME"] == "/runpod-volume/huggingface-cache"
 assert env["ENFORCE_EAGER"] == "true"
-assert env["MAX_MODEL_LEN"] == "32768"
-assert env["MAX_NUM_SEQS"] == "4"
-assert env["MAX_NUM_BATCHED_TOKENS"] == "32768"
+assert env["MAX_MODEL_LEN"] == "8192"
+assert env["MAX_NUM_SEQS"] == "1"
+assert env["MAX_NUM_BATCHED_TOKENS"] == "8192"
 assert "networkVolumeId" not in vllm_e
 assert "dataCenterIds" not in vllm_e
 

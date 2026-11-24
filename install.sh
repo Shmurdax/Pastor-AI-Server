@@ -73,14 +73,12 @@ LOG_DIR="$WS/logs"
 HF_CACHE="$WS/hf_cache"
 QDRANT_BIN="${QDRANT_BIN:-/workspace/bin/qdrant}"
 QDRANT_STORAGE="$WS/qdrant_storage"
-LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
 CONFIG_ENV="$WS/config.env"
 TOKENS_ENV="$WS/tokens.env"
 MARKER="$WS/.setup_complete"
 
-# Model stack (current production)
-CHRISTIANAI_HF_REPO="${CHRISTIANAI_HF_REPO:-apophaticai/qwen2.5-14b-christianai-v1}"
-CHRISTIANAI_BASE_VLLM="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
+# Model stack: Gemma AWQ, no LoRA. Served name stays christianai.
+CHRISTIANAI_BASE_VLLM="${CHRISTIANAI_BASE_VLLM:-cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit}"
 VLLM_MODEL="${VLLM_MODEL:-christianai}"
 VLLM_PORT="${VLLM_PORT:-8010}"
 DJANGO_PORT="${DJANGO_PORT:-8000}"
@@ -357,13 +355,11 @@ CPU_ONLY=${CPU_ONLY:-0}
 VLLM_URL=${RESOLVED_VLLM_URL}
 VLLM_MODEL=${VLLM_MODEL}
 VLLM_PORT=${VLLM_PORT}
-VLLM_MAX_MODEL_LEN=32768
+VLLM_MAX_MODEL_LEN=8192
 VLLM_GPU_MEM_UTIL=0.90
 RUNPOD_VLLM_ENDPOINT_ID=${RUNPOD_VLLM_ENDPOINT_ID:-}
 RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
 VLLM_API_KEY=${VLLM_API_KEY:-}
-CHRISTIANAI_HF_REPO=${CHRISTIANAI_HF_REPO}
-CHRISTIANAI_LORA_DIR=${LORA_DIR}
 CHRISTIANAI_BASE_VLLM=${CHRISTIANAI_BASE_VLLM}
 CHRISTIANAI_SERVED_NAME=${VLLM_MODEL}
 QDRANT_URL=http://127.0.0.1:${QDRANT_PORT}
@@ -431,26 +427,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Download Christian LoRA (local GPU only — serverless worker loads it itself)
+# Chat model
 # ---------------------------------------------------------------------------
-if vllm_use_local_server; then
-  section "Download Christian LoRA ($CHRISTIANAI_HF_REPO)"
-  mkdir -p "$LORA_DIR"
-  export CHRISTIANAI_HF_REPO LORA_DIR HF_TOKEN
-  python - <<'PY'
-import os
-from huggingface_hub import snapshot_download
-repo = os.environ["CHRISTIANAI_HF_REPO"]
-dest = os.environ["LORA_DIR"]
-token = os.environ.get("HF_TOKEN")
-snapshot_download(repo_id=repo, local_dir=dest, token=token)
-print("lora_ok", dest)
-PY
-  [[ -f "$LORA_DIR/adapter_model.safetensors" ]] || die "LoRA download missing adapter_model.safetensors"
-else
-  section "Christian LoRA"
-  log "Skipping LoRA download on this host — configure it on the RunPod Serverless worker"
-fi
+section "Chat model"
+log "Chat uses ${CHRISTIANAI_BASE_VLLM} with no LoRA. Serverless pods point RUNPOD_VLLM_ENDPOINT_ID at that worker."
 
 # ---------------------------------------------------------------------------
 # Django migrate

@@ -60,10 +60,10 @@ WHISPER_IDLE_TIMEOUT="${WHISPER_IDLE_TIMEOUT:-90}"
 WHISPER_EXECUTION_TIMEOUT_MS="${WHISPER_EXECUTION_TIMEOUT_MS:-600000}"
 WHISPER_CONTAINER_DISK_GB="${WHISPER_CONTAINER_DISK_GB:-30}"
 
-MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
-MAX_NUM_SEQS="${MAX_NUM_SEQS:-4}"
-MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-32768}"
+MODEL_NAME="${MODEL_NAME:-cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
+MAX_NUM_SEQS="${MAX_NUM_SEQS:-1}"
+MAX_NUM_BATCHED_TOKENS="${MAX_NUM_BATCHED_TOKENS:-8192}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 LORA_NAME="${LORA_NAME:-christianai}"
 LORA_PATH="${LORA_PATH:-apophaticai/qwen2.5-14b-christianai-v1}"
@@ -254,24 +254,15 @@ vllm_env_json() {
   python3 - "$hf_token" <<'PY'
 import json, os, sys
 hf_token = sys.argv[1]
-# worker-v1-vllm v2.26 passes LORA_MODULES as a single --lora-modules argv.
-# Current vLLM does LoRAModulePath(**json.loads(arg)), which rejects a JSON array.
-lora = {
-    "name": os.environ.get("LORA_NAME", "christianai"),
-    "path": os.environ.get("LORA_PATH", "apophaticai/qwen2.5-14b-christianai-v1"),
-}
 env = {
-    "MODEL_NAME": os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-14B-Instruct-AWQ"),
-    "MAX_MODEL_LEN": os.environ.get("MAX_MODEL_LEN", "32768"),
-    "MAX_NUM_SEQS": os.environ.get("MAX_NUM_SEQS", "4"),
-    "MAX_NUM_BATCHED_TOKENS": os.environ.get("MAX_NUM_BATCHED_TOKENS", "32768"),
+    "MODEL_NAME": os.environ.get("MODEL_NAME", "cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit"),
+    "MAX_MODEL_LEN": os.environ.get("MAX_MODEL_LEN", "8192"),
+    "MAX_NUM_SEQS": os.environ.get("MAX_NUM_SEQS", "1"),
+    "MAX_NUM_BATCHED_TOKENS": os.environ.get("MAX_NUM_BATCHED_TOKENS", "8192"),
     "GPU_MEMORY_UTILIZATION": os.environ.get("GPU_MEMORY_UTILIZATION", "0.90"),
     "TRUST_REMOTE_CODE": "1",
     "QUANTIZATION": "awq",
-    "ENABLE_LORA": "true",
-    "MAX_LORAS": "1",
-    "MAX_LORA_RANK": "16",
-    "LORA_MODULES": json.dumps(lora, separators=(",", ":")),
+    "ENABLE_LORA": "false",
     "OPENAI_SERVED_MODEL_NAME_OVERRIDE": os.environ.get(
         "OPENAI_SERVED_MODEL_NAME_OVERRIDE", "christianai"
     ),
@@ -451,9 +442,10 @@ if [[ "$CREATE_VLLM" == 1 ]]; then
   if is_placeholder "$HF_VALUE"; then
     if [[ "$DRY_RUN" == 1 ]]; then
       HF_VALUE="hf_paste_here"
-      warn "HF_TOKEN is missing; dry-run payload uses hf_paste_here. The real vLLM worker needs a token that can read ${LORA_PATH}."
+      warn "HF_TOKEN is missing; dry-run payload uses hf_paste_here."
     else
-      die "HF_TOKEN is required to create the vLLM worker (private LoRA ${LORA_PATH})."
+      warn "HF_TOKEN is empty. Public Gemma weights do not need it."
+      HF_VALUE=""
     fi
   fi
 fi

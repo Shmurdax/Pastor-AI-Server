@@ -274,9 +274,9 @@ if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
   if [[ -z "$HF_TOK" || "$HF_TOK" == *paste* ]]; then
     warn "HF_TOKEN empty — gated model download will fail. Edit tokens.env && bash apply-tokens.sh"
   fi
-  # Fine-tuned Qwen Christian LoRA (default) or plain VLLM_MODEL path
-  LORA_DIR="${CHRISTIANAI_LORA_DIR:-$WS/christianai-lora}"
-  BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-Qwen/Qwen2.5-14B-Instruct-AWQ}"
+  # Gemma AWQ. The served name stays christianai so existing clients do not change.
+  # There is no Qwen base and no LoRA adapter.
+  BASE_MODEL="${CHRISTIANAI_BASE_VLLM:-cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit}"
   SERVED_NAME="${VLLM_MODEL:-christianai}"
   MAX_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
   CUDA_DEV_EXPORT=""
@@ -300,14 +300,7 @@ if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
   elif [[ "${VLLM_ENFORCE_EAGER:-0}" == "1" ]]; then
     ENFORCE_EAGER="--enforce-eager"
   fi
-  LORA_ARGS=""
-  if [[ -f "$LORA_DIR/adapter_model.safetensors" ]]; then
-    LORA_ARGS="--enable-lora --lora-modules ${SERVED_NAME}=${LORA_DIR} --max-lora-rank 16"
-    log "vLLM using base ${BASE_MODEL} + LoRA ${LORA_DIR} as '${SERVED_NAME}' util=${GPU_UTIL}"
-  else
-    BASE_MODEL="${SERVED_NAME}"
-    warn "LoRA missing at $LORA_DIR — starting base/model id only: $BASE_MODEL"
-  fi
+  log "vLLM using ${BASE_MODEL} as '${SERVED_NAME}' (no LoRA) util=${GPU_UTIL}"
   screen -dmS vllm bash -c "
     source '${VENV_DIR}/bin/activate' &&
     ${CUDA_DEV_EXPORT}
@@ -321,12 +314,12 @@ if [[ "${NEED_VLLM_START:-0}" == "1" ]]; then
     python -m vllm.entrypoints.openai.api_server \
       --model '${BASE_MODEL}' \
       --served-model-name '${SERVED_NAME}' \
-      ${LORA_ARGS} \
       --host 127.0.0.1 \
       --port ${VLLM_PORT} \
       --max-model-len ${MAX_LEN} \
       --gpu-memory-utilization ${GPU_UTIL} \
       --trust-remote-code \
+      --quantization awq \
       ${ENFORCE_EAGER} \
       >> '${LOG_DIR}/vllm.log' 2>&1
   "

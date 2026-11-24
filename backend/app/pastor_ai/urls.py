@@ -54,6 +54,7 @@ from core.views import (
     SermonPdfByNameAPIView,
     PrayerRequestAPIView,
     ResponseReportAPIView,
+    TranslateAPIView,
 )
 from .frontend import serve_frontend, serve_vimeo_embed
 from .health import DeployHealthView
@@ -112,6 +113,8 @@ urlpatterns = [
     # Basic retrieval chat. History stays a separate authenticated backup.
     path('api/chat/warmup/', ChatWarmupAPIView.as_view(), name='basic_chat_warmup'),
     path('api/chat/', BasicChatAPIView.as_view(), name='basic_chat_api'),
+    path('api/translate/', TranslateAPIView.as_view(), name='translate_api'),
+    path('chat/', BasicChatAPIView.as_view(), name='chat_api_legacy'),
     path('api/chat/history/', ChatHistoryAPIView.as_view(), name='chat_history_api'),
     path('api/prayer-requests/', PrayerRequestAPIView.as_view(), name='prayer_requests_api'),
     path('api/prayer-requests/<int:pk>/', PrayerRequestDetailAPI.as_view(), name='prayer_request_detail_api'),
