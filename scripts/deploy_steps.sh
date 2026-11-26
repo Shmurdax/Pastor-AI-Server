@@ -20,14 +20,23 @@ deploy_record_previous() {
 }
 
 deploy_checkout() {
-  local ws="$1" channel="$2"
+  local ws="$1" channel="$2" dirty
   if [[ -n "${DEPLOY_HOOK_CHECKOUT:-}" ]]; then
     "$DEPLOY_HOOK_CHECKOUT" "$ws" "$channel"
     return
   fi
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
   git -C "$ws" fetch origin "$channel"
-  git -C "$ws" checkout -B "$channel" FETCH_HEAD
+  # A pod edit to a tracked file (start.sh on production) makes a plain
+  # checkout abort and leaves the live site on the old commit. Force the
+  # fetched tree the same way pastor_sync_git_channel does at boot.
+  dirty="$(git -C "$ws" status --porcelain --untracked-files=no || true)"
+  if [[ -n "$dirty" ]]; then
+    echo "deploy-steps: discarding local changes before checkout of $channel:" >&2
+    printf '%s\n' "$dirty" >&2
+  fi
+  git -C "$ws" checkout -f -B "$channel" FETCH_HEAD
+  git -C "$ws" reset --hard FETCH_HEAD
 }
 
 deploy_pip() {
@@ -138,7 +147,8 @@ deploy_rollback_code() {
   fi
   [[ "${DEPLOY_DRY_RUN:-0}" == "1" ]] && return 0
   if [[ -n "$sha" && -d "$ws/.git" ]]; then
-    git -C "$ws" checkout "$sha"
+    git -C "$ws" checkout -f "$sha"
+    git -C "$ws" reset --hard "$sha"
   fi
   if [[ -d "$frontend/build/web.prev" ]]; then
     rm -rf "$frontend/build/web"
