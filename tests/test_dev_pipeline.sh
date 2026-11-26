@@ -463,4 +463,31 @@ grep -q 'refs/pastor/manifests' "$ROOT/scripts/arm_prod_deploy.sh" \
 grep -q 'promote_to_master.sh publishes that ref' "$ROOT/scripts/arm_prod_deploy.sh" \
   || fail "arm must point at promote when the manifest ref is missing"
 
+grep -q 'checkout -f -B' "$ROOT/scripts/deploy_steps.sh" \
+  || fail "scheduled checkout must force a dirty worktree"
+grep -q 'reset --hard FETCH_HEAD' "$ROOT/scripts/deploy_steps.sh" \
+  || fail "scheduled checkout must hard-reset to the fetched commit"
+
+# Production abort: local start.sh edits blocked checkout of origin/master.
+unset DEPLOY_HOOK_CHECKOUT || true
+DIRTY_UP="$(mktemp -d)"
+DIRTY_CLONE="$(mktemp -d)"
+git init -q -b master "$DIRTY_UP"
+git -C "$DIRTY_UP" config user.email test@example.com
+git -C "$DIRTY_UP" config user.name test
+printf 'committed\n' > "$DIRTY_UP/start.sh"
+git -C "$DIRTY_UP" add start.sh
+git -C "$DIRTY_UP" commit -qm base
+git clone -q "$DIRTY_UP" "$DIRTY_CLONE"
+printf 'pod edit\n' > "$DIRTY_CLONE/start.sh"
+printf 'shipped\n' > "$DIRTY_UP/start.sh"
+git -C "$DIRTY_UP" add start.sh
+git -C "$DIRTY_UP" commit -qm shipped
+deploy_checkout "$DIRTY_CLONE" master
+[[ "$(git -C "$DIRTY_CLONE" log -1 --pretty=%s)" == "shipped" ]] \
+  || fail "dirty start.sh should not block checkout"
+[[ "$(cat "$DIRTY_CLONE/start.sh")" == "shipped" ]] \
+  || fail "pod edit to start.sh should be replaced by origin/master"
+rm -rf "$DIRTY_UP" "$DIRTY_CLONE"
+
 echo "OK dev pipeline gates"
